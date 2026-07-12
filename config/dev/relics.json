@@ -1,0 +1,1 @@
+[{"id":"echo","modifiesAbility":"primary","mult":1.2},{"id":"drift","modifiesAbility":"dash","mult":1.1},{"id":"ward","modifiesAbility":"guard","mult":1.3}]
