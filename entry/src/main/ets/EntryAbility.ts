@@ -32,4 +32,9 @@ export default class EntryAbility extends UIAbility {
   onBackground(): void {
     console.info('[Ethelan] EntryAbility onBackground');
   }
+
+  // Game Service Kit 登录桩:待真机 SDK 验证后补全
+  onGameServiceInit(): void {
+    console.info('[Ethelan] Game Service Kit stub');
+  }
 }
