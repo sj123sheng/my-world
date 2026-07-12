@@ -1,5 +1,8 @@
 #include "napi/native_api.h"
 #include <string>
+#include "../../../native/engine/core/loop.h"
+
+static Loop g_loop;
 
 static napi_value NativeStart(napi_env env, napi_callback_info info) {
   size_t argc = 1;
@@ -8,11 +11,12 @@ static napi_value NativeStart(napi_env env, napi_callback_info info) {
   char buf[128] = {0};
   size_t len = 0;
   napi_get_value_string_utf8(env, args[0], buf, sizeof(buf), &len);
-  // 后续任务在此启动 Native 帧循环;此处仅记录 surfaceId
+  g_loop.start(buf);
   return nullptr;
 }
 
 static napi_value NativeStop(napi_env env, napi_callback_info) {
+  g_loop.stop();
   return nullptr;
 }
 
