@@ -1,0 +1,6 @@
+{
+  "version": "1.0.0",
+  "entries": [
+    { "id": "region_alpha", "size": 1024, "hash": "deadbeef", "deps": [] }
+  ]
+}
