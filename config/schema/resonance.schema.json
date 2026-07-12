@@ -1,0 +1,4 @@
+{ "type":"object", "required":["pairs"], "properties":{
+  "pairs":{ "type":"array", "items":{ "type":"object",
+    "required":["a","b","result"], "properties":{
+      "a":{"type":"string"},"b":{"type":"string"},"result":{"type":"string"}}}}} }

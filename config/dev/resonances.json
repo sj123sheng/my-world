@@ -1,0 +1,4 @@
+{ "pairs":[
+  {"a":"Radiance","b":"Current","result":"Refraction"},
+  {"a":"Current","b":"Corruption","result":"Stasis"},
+  {"a":"Corruption","b":"Radiance","result":"Collapse"}] }
