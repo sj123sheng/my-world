@@ -1,5 +1,5 @@
 #pragma once
-#include "../../../native/engine/core/tick_clock.h"
+#include "engine/core/tick_clock.h"
 #include <vector>
 enum class SourceType { Radiance, Current, Corruption };
 enum class ResonanceType { Refraction, Stasis, Collapse, Burst }; // 折光/凝滞/崩解/共鸣爆发

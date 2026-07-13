@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "艾瑟兰 - 鸿蒙原生开放世界RPG"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "艾瑟兰主入口"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "艾瑟兰"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "modelVersion": "6.1.0",
+  "name": "my-world",
+  "version": "1.0.0",
+  "description": "Ethelan - HarmonyOS Open-World RPG",
+  "main": "",
+  "author": "ethelandev",
+  "license": "UNLICENSED",
+  "dependencies": {}
+}

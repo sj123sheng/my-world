@@ -1,0 +1,16 @@
+.DS_Store
+.hvigor/
+.idea/
+.codebuddy/
+
+oh_modules/
+entry/oh_modules/
+entry/build/
+entry/.cxx/
+
+local.properties
+*.log
+hilog*.txt
+ps*.txt
+screen*.png
+layout.json

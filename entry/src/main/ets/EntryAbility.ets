@@ -1,8 +1,8 @@
-import UIAbility from '@ohos.app.ability.UIAbility';
-import window from '@ohos.window';
+import { UIAbility, Want, AbilityConstant } from '@kit.AbilityKit';
+import { window } from '@kit.ArkUI';
 
 export default class EntryAbility extends UIAbility {
-  onCreate(want: any, launchParam: any): void {
+  onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     console.info('[Ethelan] EntryAbility onCreate');
   }
 

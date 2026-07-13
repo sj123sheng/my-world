@@ -1,5 +1,67 @@
 cmake_minimum_required(VERSION 3.5)
 project(native_game)
 
-add_library(native_game SHARED native_bridge.cpp)
-target_link_libraries(native_game PUBLIC libace_napi.z.so)
+# ---- include paths (relative to entry/src/main/cpp) ----
+# native/ is at project root: ../../../../native
+set(NATIVE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../../native)
+
+include_directories(
+    ${NATIVE_ROOT}
+    ${NATIVE_ROOT}/engine/core
+    ${NATIVE_ROOT}/engine/input
+    ${NATIVE_ROOT}/engine/render
+    ${NATIVE_ROOT}/engine/resource
+    ${NATIVE_ROOT}/gameplay/combat
+    ${NATIVE_ROOT}/gameplay/entities
+    ${NATIVE_ROOT}/gameplay/growth
+    ${NATIVE_ROOT}/gameplay/player
+    ${NATIVE_ROOT}/platform/harmony
+)
+
+# ---- source files ----
+add_library(native_game SHARED
+    # bridge
+    native_bridge.cpp
+
+    # engine core
+    ${NATIVE_ROOT}/engine/core/loop.cpp
+    ${NATIVE_ROOT}/engine/core/tick_clock.h
+
+    # engine input
+    ${NATIVE_ROOT}/engine/input/input_queue.h
+
+    # engine render
+    ${NATIVE_ROOT}/engine/render/camera.cpp
+    ${NATIVE_ROOT}/engine/render/surface.cpp
+
+    # engine resource
+    ${NATIVE_ROOT}/engine/resource/loader.cpp
+    ${NATIVE_ROOT}/engine/resource/save.cpp
+
+    # gameplay combat
+    ${NATIVE_ROOT}/gameplay/combat/source_aura.cpp
+    ${NATIVE_ROOT}/gameplay/combat/resonance.cpp
+
+    # gameplay player
+    ${NATIVE_ROOT}/gameplay/player/character.cpp
+
+    # gameplay growth
+    ${NATIVE_ROOT}/gameplay/growth/relic.cpp
+
+    # platform harmony
+    ${NATIVE_ROOT}/platform/harmony/lifecycle.cpp
+    ${NATIVE_ROOT}/platform/harmony/audio.cpp
+    ${NATIVE_ROOT}/platform/harmony/fence_wait.cpp
+)
+
+target_compile_definitions(native_game PUBLIC OHOS_PLATFORM)
+
+target_link_libraries(native_game PUBLIC
+    libace_napi.z.so
+    libace_ndk.z.so
+    libnative_window.so
+    libnative_buffer.so
+    libEGL.so
+    libGLESv3.so
+    libhilog_ndk.z.so
+)

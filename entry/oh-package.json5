@@ -1,0 +1,11 @@
+{
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "Ethelan - HarmonyOS Native Open-World RPG MVP",
+  "main": "",
+  "author": "ethelandev",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "libnative_game.so": "file:./src/main/cpp/types/libnative_game"
+  }
+}
