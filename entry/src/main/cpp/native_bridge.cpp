@@ -3,6 +3,7 @@
 #include <string>
 #include <hilog/log.h>
 #include <cmath>
+#include <atomic>
 #include "engine/core/loop.h"
 #include "engine/input/pointer_input.h"
 
@@ -10,6 +11,7 @@
 #define LOGE(...) OH_LOG_Print(LOG_APP, LOG_ERROR, 0xFF00, "Ethelan", __VA_ARGS__)
 
 static Loop g_loop;
+static std::atomic_bool g_foregroundRequested{false};
 
 static InputAction MapTouchAction(OH_NativeXComponent_TouchEventType type) {
   switch (type) {
@@ -58,7 +60,9 @@ static void OnSurfaceCreated(OH_NativeXComponent* component, void* window) {
       InvalidateSurfaceSnapshot();
       return;
     }
-    g_loop.start();
+    if (g_foregroundRequested.load()) {
+      g_loop.start();
+    }
   });
 }
 
@@ -83,7 +87,9 @@ static void OnSurfaceChanged(OH_NativeXComponent* component, void* window) {
       InvalidateSurfaceSnapshot();
       return;
     }
-    g_loop.start();
+    if (g_foregroundRequested.load()) {
+      g_loop.start();
+    }
   });
 }
 
@@ -106,11 +112,13 @@ static void OnDispatchTouchEvent(OH_NativeXComponent* component, void* window) {
 }
 
 static napi_value NativeStart(napi_env env, napi_callback_info) {
+  g_foregroundRequested.store(true);
   g_loop.start();
   return nullptr;
 }
 
 static napi_value NativeStop(napi_env env, napi_callback_info) {
+  g_foregroundRequested.store(false);
   g_loop.stop();
   return nullptr;
 }

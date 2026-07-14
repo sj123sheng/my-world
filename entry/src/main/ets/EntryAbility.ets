@@ -1,5 +1,6 @@
 import { UIAbility, Want, AbilityConstant } from '@kit.AbilityKit';
 import { window } from '@kit.ArkUI';
+import { nativeStart, nativeStop } from './napi/Bridge';
 
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
@@ -27,10 +28,12 @@ export default class EntryAbility extends UIAbility {
 
   onForeground(): void {
     console.info('[Ethelan] EntryAbility onForeground');
+    nativeStart();
   }
 
   onBackground(): void {
     console.info('[Ethelan] EntryAbility onBackground');
+    nativeStop();
   }
 
   // Game Service Kit 登录桩:待真机 SDK 验证后补全
