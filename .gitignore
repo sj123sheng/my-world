@@ -2,6 +2,7 @@
 .hvigor/
 .idea/
 .codebuddy/
+.worktrees/
 
 oh_modules/
 entry/oh_modules/
