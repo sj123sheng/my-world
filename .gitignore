@@ -14,3 +14,5 @@ hilog*.txt
 ps*.txt
 screen*.png
 layout.json
+/.clang-tidy
+/.clangd
