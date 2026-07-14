@@ -11,8 +11,58 @@ struct HitEvent { EntityId attacker, target; AbilityId ability; SourceType sourc
   bool operator==(const HitEvent& o) const { return attacker==o.attacker && target==o.target
     && ability==o.ability && source==o.source && sourceAmount==o.sourceAmount
     && baseDamage==o.baseDamage && tick==o.tick && sequence==o.sequence; } };
+
+enum class GameplayEventType : uint8_t {
+  Hit,
+  Damage,
+  Dodge,
+  Interrupt,
+  PoiseBreak,
+  AuraApplied,
+  Resonance,
+  PhaseChanged,
+  Death,
+  EncounterReset,
+};
+
+enum class PresentationEventType : uint8_t {
+  HitFlash,
+  CameraShake,
+  DodgeFlash,
+  CastBarBroken,
+  PoiseBreakBurst,
+  ResonanceBurst,
+  PhaseTransition,
+};
+
+struct GameplayEvent {
+  Tick tick = 0;
+  EntityId source = 0;
+  EntityId target = 0;
+  GameplayEventType type = GameplayEventType::Hit;
+  FixedPoint value = 0;
+  uint32_t sequence = 0;
+  bool operator==(const GameplayEvent& other) const {
+    return tick == other.tick && source == other.source && target == other.target &&
+           type == other.type && value == other.value && sequence == other.sequence;
+  }
+};
+
+struct PresentationEvent {
+  Tick tick = 0;
+  EntityId source = 0;
+  EntityId target = 0;
+  PresentationEventType type = PresentationEventType::HitFlash;
+  FixedPoint intensity = 0;
+  uint32_t sequence = 0;
+  bool operator==(const PresentationEvent& other) const {
+    return tick == other.tick && source == other.source && target == other.target &&
+           type == other.type && intensity == other.intensity && sequence == other.sequence;
+  }
+};
+
 struct CombatResult { FixedPoint damage, poiseDamage; ResonanceType resonance;
-  std::vector<int> gameplayEvents; std::vector<int> presentationEvents;
+  std::vector<GameplayEvent> gameplayEvents; std::vector<PresentationEvent> presentationEvents;
   bool operator==(const CombatResult& o) const { return damage==o.damage
     && poiseDamage==o.poiseDamage && resonance==o.resonance
     && gameplayEvents==o.gameplayEvents && presentationEvents==o.presentationEvents; } };
