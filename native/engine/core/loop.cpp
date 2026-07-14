@@ -9,32 +9,42 @@
 static float clamp01(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); }
 
 void Loop::start() {
-  if (running || !surface.ready) {
-    LOGI("Loop start skipped: running=%{public}d ready=%{public}d", (int)running, (int)surface.ready);
-    return;
-  }
-  shouldStop = false;
-  running = true;
-  tickCount = 0;
-  fps = 60.0f;
-  lastFpsTime = std::chrono::steady_clock::now();
-  runner = std::thread([this]() {
-    auto lastTickTime = std::chrono::steady_clock::now();
-    while (!shouldStop) {
-      const auto now = std::chrono::steady_clock::now();
-      const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastTickTime).count();
-      lastTickTime = now;
-      tickOnce(std::min<int64_t>(elapsedMs, 250));
-      std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60fps
+  withLifecycle([this]() {
+    if (!surface.ready) {
+      LOGI("Loop start skipped: running=%{public}d ready=%{public}d", (int)running, (int)surface.ready);
+      return;
     }
-    running = false;
+    if (!lifecycle.start([this]() {
+      shouldStop = false;
+      running = true;
+      tickCount = 0;
+      fps = 60.0f;
+      lastFpsTime = std::chrono::steady_clock::now();
+      runner = std::thread([this]() {
+        auto lastTickTime = std::chrono::steady_clock::now();
+        while (!shouldStop) {
+          const auto now = std::chrono::steady_clock::now();
+          const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastTickTime).count();
+          lastTickTime = now;
+          tickOnce(std::min<int64_t>(elapsedMs, 250));
+          std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60fps
+        }
+        running = false;
+      });
+    })) {
+      LOGI("Loop start skipped: already running");
+    }
   });
 }
 
 void Loop::stop() {
-  shouldStop = true;
-  if (runner.joinable()) runner.join();
-  running = false;
+  withLifecycle([this]() {
+    lifecycle.stop([this]() {
+      shouldStop = true;
+      if (runner.joinable()) runner.join();
+      running = false;
+    });
+  });
 }
 
 void Loop::processInput() {
@@ -128,4 +138,8 @@ void Loop::tickOnce(int64_t elapsedMs) {
 
 void Loop::updateFixed(Tick, int64_t dtMs) {
   updatePlayer(static_cast<float>(dtMs) / 1000.0f);
+}
+
+void Loop::publishRendererStopped() {
+  snapshots.publish(RendererStoppedSnapshot(snapshots.read()));
 }

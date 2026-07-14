@@ -28,44 +28,52 @@ static InputAction MapInputAction(int32_t type) {
 }
 
 static void OnSurfaceCreated(OH_NativeXComponent* component, void* window) {
-  LOGI("OnSurfaceCreated");
-  OHNativeWindow* nativeWindow = static_cast<OHNativeWindow*>(window);
-  if (g_loop.surface.ready) {
-    g_loop.stop();
-    surface_destroy(g_loop.surface);
-  }
-  if (!surface_init(g_loop.surface, nativeWindow)) {
-    LOGE("surface_init failed");
-    return;
-  }
-  g_loop.start();
+  g_loop.withLifecycle([window]() {
+    LOGI("OnSurfaceCreated");
+    OHNativeWindow* nativeWindow = static_cast<OHNativeWindow*>(window);
+    if (g_loop.surface.ready) {
+      g_loop.stop();
+      surface_destroy(g_loop.surface);
+      g_loop.publishRendererStopped();
+    }
+    if (!surface_init(g_loop.surface, nativeWindow)) {
+      LOGE("surface_init failed");
+      return;
+    }
+    g_loop.start();
+  });
 }
 
 static void OnSurfaceChanged(OH_NativeXComponent* component, void* window) {
-  LOGI("OnSurfaceChanged");
-  OHNativeWindow* nativeWindow = static_cast<OHNativeWindow*>(window);
-  if (nativeWindow == nullptr) {
-    LOGE("OnSurfaceChanged: window is null");
-    return;
-  }
-  g_loop.stop();
-  if (!g_loop.surface.ready) {
-    LOGI("OnSurfaceChanged: surface not ready yet, init now");
-    if (!surface_init(g_loop.surface, nativeWindow)) {
-      LOGE("surface_init failed in OnSurfaceChanged");
+  g_loop.withLifecycle([window]() {
+    LOGI("OnSurfaceChanged");
+    OHNativeWindow* nativeWindow = static_cast<OHNativeWindow*>(window);
+    if (nativeWindow == nullptr) {
+      LOGE("OnSurfaceChanged: window is null");
       return;
     }
-  } else if (!surface_resize(g_loop.surface, nativeWindow)) {
-    LOGE("surface resize failed");
-    return;
-  }
-  g_loop.start();
+    g_loop.stop();
+    if (!g_loop.surface.ready) {
+      LOGI("OnSurfaceChanged: surface not ready yet, init now");
+      if (!surface_init(g_loop.surface, nativeWindow)) {
+        LOGE("surface_init failed in OnSurfaceChanged");
+        return;
+      }
+    } else if (!surface_resize(g_loop.surface, nativeWindow)) {
+      LOGE("surface resize failed");
+      return;
+    }
+    g_loop.start();
+  });
 }
 
 static void OnSurfaceDestroyed(OH_NativeXComponent* component, void* window) {
-  LOGI("OnSurfaceDestroyed");
-  g_loop.stop();
-  surface_destroy(g_loop.surface);
+  g_loop.withLifecycle([]() {
+    LOGI("OnSurfaceDestroyed");
+    g_loop.stop();
+    surface_destroy(g_loop.surface);
+    g_loop.publishRendererStopped();
+  });
 }
 
 static void OnDispatchTouchEvent(OH_NativeXComponent* component, void* window) {

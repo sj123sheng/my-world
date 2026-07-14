@@ -28,6 +28,7 @@ add_library(native_game SHARED
     ${NATIVE_ROOT}/engine/core/tick_clock.h
     ${NATIVE_ROOT}/engine/core/fixed_step.h
     ${NATIVE_ROOT}/engine/core/game_snapshot.h
+    ${NATIVE_ROOT}/engine/core/lifecycle_state.h
     ${NATIVE_ROOT}/engine/core/snapshot_store.h
     ${NATIVE_ROOT}/engine/core/event_queue.h
 
