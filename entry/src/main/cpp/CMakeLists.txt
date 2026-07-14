@@ -26,9 +26,16 @@ add_library(native_game SHARED
     # engine core
     ${NATIVE_ROOT}/engine/core/loop.cpp
     ${NATIVE_ROOT}/engine/core/tick_clock.h
+    ${NATIVE_ROOT}/engine/core/fixed_step.h
+    ${NATIVE_ROOT}/engine/core/game_snapshot.h
+    ${NATIVE_ROOT}/engine/core/lifecycle_state.h
+    ${NATIVE_ROOT}/engine/core/snapshot_store.h
+    ${NATIVE_ROOT}/engine/core/event_queue.h
 
     # engine input
     ${NATIVE_ROOT}/engine/input/input_queue.h
+    ${NATIVE_ROOT}/engine/input/input_event.h
+    ${NATIVE_ROOT}/engine/input/pointer_input.h
 
     # engine render
     ${NATIVE_ROOT}/engine/render/camera.cpp

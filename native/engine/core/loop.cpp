@@ -2,45 +2,67 @@
 #include <hilog/log.h>
 #include <thread>
 #include <cmath>
+#include <algorithm>
 
 #define LOGI(...) OH_LOG_Print(LOG_APP, LOG_INFO, 0xFF00, "Ethelan", __VA_ARGS__)
 
 static float clamp01(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); }
 
 void Loop::start() {
-  if (running || !surface.ready) {
-    LOGI("Loop start skipped: running=%{public}d ready=%{public}d", (int)running, (int)surface.ready);
-    return;
-  }
-  shouldStop = false;
-  running = true;
-  tickCount = 0;
-  fps = 60.0f;
-  lastFpsTime = std::chrono::steady_clock::now();
-  runner = std::thread([this]() {
-    while (!shouldStop) {
-      tickOnce();
-      std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60fps
+  withLifecycle([this]() {
+    if (!surface.ready) {
+      LOGI("Loop start skipped: running=%{public}d ready=%{public}d", (int)running, (int)surface.ready);
+      return;
     }
-    running = false;
+    if (!lifecycle.start([this]() {
+      shouldStop = false;
+      running = true;
+      tickCount = 0;
+      fps = 60.0f;
+      lastFpsTime = std::chrono::steady_clock::now();
+      runner = std::thread([this]() {
+        auto lastTickTime = std::chrono::steady_clock::now();
+        while (!shouldStop) {
+          const auto now = std::chrono::steady_clock::now();
+          const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastTickTime).count();
+          lastTickTime = now;
+          tickOnce(std::min<int64_t>(elapsedMs, 250));
+          std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60fps
+        }
+        running = false;
+      });
+    })) {
+      LOGI("Loop start skipped: already running");
+    }
   });
 }
 
 void Loop::stop() {
-  shouldStop = true;
-  if (runner.joinable()) runner.join();
-  running = false;
+  withLifecycle([this]() {
+    lifecycle.stop([this]() {
+      shouldStop = true;
+      if (runner.joinable()) runner.join();
+      running = false;
+    });
+  });
 }
 
 void Loop::processInput() {
   InputEvent e;
   while (input.pop(e)) {
-    if (e.type == 0 || e.type == 2) { // down / move
-      surface.player.moving = true;
-      surface.player.targetX = clamp01(e.x / (float)surface.width);
-      surface.player.targetY = clamp01(e.y / (float)surface.height);
-    } else if (e.type == 1 || e.type == 3) { // up / cancel
-      surface.player.moving = false;
+    switch (e.action) {
+      case InputAction::PointerDown:
+      case InputAction::PointerMove:
+        surface.player.moving = true;
+        surface.player.targetX = clamp01(e.x / static_cast<float>(surface.width));
+        surface.player.targetY = clamp01(e.y / static_cast<float>(surface.height));
+        break;
+      case InputAction::PointerUp:
+      case InputAction::PointerCancel:
+        surface.player.moving = false;
+        break;
+      default:
+        break;
     }
   }
 }
@@ -80,9 +102,11 @@ void Loop::updatePlayer(float dt) {
     surface.particles.end());
 }
 
-void Loop::tickOnce() {
+void Loop::tickOnce(int64_t elapsedMs) {
   processInput();
-  updatePlayer(0.016f);
+  fixedStep.advance(elapsedMs, [this](Tick tick, int64_t dtMs) {
+    updateFixed(tick, dtMs);
+  });
   surface_draw(surface);
   surface_swap(surface);
 
@@ -94,7 +118,29 @@ void Loop::tickOnce() {
     tickCount = 0;
     lastFpsTime = now;
   }
+
+  snapshots.publish({
+    fixedStep.tick(),
+    100,
+    100,
+    surface.player.x,
+    surface.player.y,
+    fps,
+    surface.player.moving,
+    0,
+    0,
+    surface.ready,
+  });
+
   if (tickCount <= 5 || tickCount % 60 == 0) {
     LOGI("tickOnce: %{public}d fps=%{public}.1f", tickCount, fps);
   }
+}
+
+void Loop::updateFixed(Tick, int64_t dtMs) {
+  updatePlayer(static_cast<float>(dtMs) / 1000.0f);
+}
+
+void Loop::publishRendererStopped() {
+  snapshots.publish(RendererStoppedSnapshot(snapshots.read()));
 }

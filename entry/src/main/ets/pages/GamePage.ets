@@ -5,8 +5,10 @@ import { Hud } from '../ui/Hud';
 @Component
 struct GamePage {
   private snapshot: Snapshot = {
-    hp: 100, poise: 100, x: 0.5, y: 0.5, fps: 0, moving: false, targetDist: 0, rendererReady: true
+    tick: 0, hp: 100, poise: 100, x: 0.5, y: 0.5, fps: 0, moving: false,
+    targetDist: 0, targetId: 0, bossPhase: 0, rendererReady: true
   };
+  @State tick: number = 0;
   @State hp: number = 100;
   @State poise: number = 100;
   @State posX: number = 0.5;
@@ -14,6 +16,8 @@ struct GamePage {
   @State fps: number = 0;
   @State moving: boolean = false;
   @State targetDist: number = 0;
+  @State targetId: number = 0;
+  @State bossPhase: number = 0;
   @State rendererReady: boolean = true;
   private timer: number = -1;
 
@@ -59,6 +63,7 @@ struct GamePage {
     this.timer = setInterval(() => {
       try {
         this.snapshot = pullSnapshot();
+        this.tick = this.snapshot.tick;
         this.hp = this.snapshot.hp;
         this.poise = this.snapshot.poise;
         this.posX = this.snapshot.x;
@@ -66,6 +71,8 @@ struct GamePage {
         this.fps = this.snapshot.fps;
         this.moving = this.snapshot.moving;
         this.targetDist = this.snapshot.targetDist;
+        this.targetId = this.snapshot.targetId;
+        this.bossPhase = this.snapshot.bossPhase;
         this.rendererReady = this.snapshot.rendererReady;
       } catch (e) {
       }

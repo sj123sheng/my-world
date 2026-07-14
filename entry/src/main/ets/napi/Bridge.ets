@@ -2,11 +2,13 @@ import native from 'libnative_game.so';
 
 interface InputEvent {
   type: number;
+  pointerId?: number;
   x: number;
   y: number;
 }
 
 export interface Snapshot {
+  tick: number;
   hp: number;
   poise: number;
   x: number;
@@ -14,6 +16,8 @@ export interface Snapshot {
   fps: number;
   moving: boolean;
   targetDist: number;
+  targetId: number;
+  bossPhase: number;
   rendererReady: boolean;
 }
 
