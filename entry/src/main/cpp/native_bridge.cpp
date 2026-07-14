@@ -2,14 +2,30 @@
 #include <ace/xcomponent/native_interface_xcomponent.h>
 #include <string>
 #include <hilog/log.h>
-#include <cmath>
 #include "engine/core/loop.h"
-#include "engine/input/input_queue.h"
 
 #define LOGI(...) OH_LOG_Print(LOG_APP, LOG_INFO, 0xFF00, "Ethelan", __VA_ARGS__)
 #define LOGE(...) OH_LOG_Print(LOG_APP, LOG_ERROR, 0xFF00, "Ethelan", __VA_ARGS__)
 
 static Loop g_loop;
+
+static InputAction MapTouchAction(OH_NativeXComponent_TouchEventType type) {
+  switch (type) {
+    case OH_NATIVEXCOMPONENT_DOWN: return InputAction::PointerDown;
+    case OH_NATIVEXCOMPONENT_MOVE: return InputAction::PointerMove;
+    case OH_NATIVEXCOMPONENT_UP: return InputAction::PointerUp;
+    default: return InputAction::PointerCancel;
+  }
+}
+
+static InputAction MapInputAction(int32_t type) {
+  switch (type) {
+    case 0: return InputAction::PointerDown;
+    case 1: return InputAction::PointerUp;
+    case 2: return InputAction::PointerMove;
+    default: return InputAction::PointerCancel;
+  }
+}
 
 static void OnSurfaceCreated(OH_NativeXComponent* component, void* window) {
   LOGI("OnSurfaceCreated");
@@ -56,7 +72,10 @@ static void OnDispatchTouchEvent(OH_NativeXComponent* component, void* window) {
   OH_NativeXComponent_TouchEvent touchEvent;
   int32_t ret = OH_NativeXComponent_GetTouchEvent(component, window, &touchEvent);
   if (ret != 0) return;
-  g_loop.input.push({ static_cast<int>(touchEvent.type), touchEvent.x, touchEvent.y });
+  g_loop.enqueueInput(MapTouchAction(touchEvent.type),
+                      static_cast<int32_t>(touchEvent.id),
+                      touchEvent.x,
+                      touchEvent.y);
 }
 
 static napi_value NativeStart(napi_env env, napi_callback_info) {
@@ -73,34 +92,38 @@ static napi_value NativePushInput(napi_env env, napi_callback_info info) {
   size_t argc = 1;
   napi_value args[1];
   napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-  napi_value typeVal, xVal, yVal;
+  napi_value typeVal, pointerIdVal, xVal, yVal;
   napi_get_named_property(env, args[0], "type", &typeVal);
+  napi_get_named_property(env, args[0], "pointerId", &pointerIdVal);
   napi_get_named_property(env, args[0], "x", &xVal);
   napi_get_named_property(env, args[0], "y", &yVal);
-  int32_t type; double x, y;
+  int32_t type, pointerId = -1; double x, y;
   napi_get_value_int32(env, typeVal, &type);
+  napi_get_value_int32(env, pointerIdVal, &pointerId);
   napi_get_value_double(env, xVal, &x);
   napi_get_value_double(env, yVal, &y);
-  g_loop.input.push({type, (float)x, (float)y});
+  g_loop.enqueueInput(MapInputAction(type), pointerId, static_cast<float>(x), static_cast<float>(y));
   return nullptr;
 }
 
 static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
+  const GameSnapshot snapshot = g_loop.snapshot();
   napi_value result;
   napi_create_object(env, &result);
-  const Player& p = g_loop.surface.player;
-  float dx = p.targetX - p.x;
-  float dy = p.targetY - p.y;
-  float dist = std::sqrt(dx * dx + dy * dy);
-  napi_value hpVal, poiseVal, xVal, yVal, fpsVal, movingVal, distVal, rendererReadyVal;
-  napi_create_int32(env, 100, &hpVal);
-  napi_create_int32(env, 100, &poiseVal);
-  napi_create_double(env, p.x, &xVal);
-  napi_create_double(env, p.y, &yVal);
-  napi_create_double(env, g_loop.fps, &fpsVal);
-  napi_create_double(env, dist, &distVal);
-  napi_get_boolean(env, p.moving, &movingVal);
-  napi_get_boolean(env, g_loop.surface.ready, &rendererReadyVal);
+  napi_value tickVal, hpVal, poiseVal, xVal, yVal, fpsVal, movingVal, distVal;
+  napi_value targetIdVal, bossPhaseVal, rendererReadyVal;
+  napi_create_int64(env, static_cast<int64_t>(snapshot.tick), &tickVal);
+  napi_create_int32(env, snapshot.hp, &hpVal);
+  napi_create_int32(env, snapshot.poise, &poiseVal);
+  napi_create_double(env, snapshot.playerX, &xVal);
+  napi_create_double(env, snapshot.playerY, &yVal);
+  napi_create_double(env, snapshot.fps, &fpsVal);
+  napi_create_double(env, 0.0, &distVal);
+  napi_create_int32(env, snapshot.targetId, &targetIdVal);
+  napi_create_int32(env, snapshot.bossPhase, &bossPhaseVal);
+  napi_get_boolean(env, snapshot.moving, &movingVal);
+  napi_get_boolean(env, snapshot.rendererReady, &rendererReadyVal);
+  napi_set_named_property(env, result, "tick", tickVal);
   napi_set_named_property(env, result, "hp", hpVal);
   napi_set_named_property(env, result, "poise", poiseVal);
   napi_set_named_property(env, result, "x", xVal);
@@ -108,6 +131,8 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_set_named_property(env, result, "fps", fpsVal);
   napi_set_named_property(env, result, "moving", movingVal);
   napi_set_named_property(env, result, "targetDist", distVal);
+  napi_set_named_property(env, result, "targetId", targetIdVal);
+  napi_set_named_property(env, result, "bossPhase", bossPhaseVal);
   napi_set_named_property(env, result, "rendererReady", rendererReadyVal);
   return result;
 }
