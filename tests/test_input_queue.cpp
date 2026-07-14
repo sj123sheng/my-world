@@ -1,5 +1,6 @@
 #include "../native/engine/input/input_queue.h"
 #include <cassert>
+#include <atomic>
 #include <thread>
 
 int main() {
@@ -16,15 +17,25 @@ int main() {
   assert(out.action == InputAction::PointerMove && out.sequence == 2);
   assert(!queue.pop(out));
 
-  InputQueue concurrent(256);
+  InputQueue concurrent(32);
+  std::atomic<bool> producerDone{false};
   std::thread producer([&]() {
     for (uint64_t i = 0; i < 200; ++i) {
-      assert(concurrent.push({InputAction::PointerMove, 1, float(i), 0.0f, i}));
+      while (!concurrent.push({InputAction::PointerMove, 1, float(i), 0.0f, i})) {
+        std::this_thread::yield();
+      }
     }
+    producerDone = true;
   });
-  producer.join();
   uint64_t expected = 0;
-  while (concurrent.pop(out)) assert(out.sequence == expected++);
+  while (!producerDone || expected < 200) {
+    if (concurrent.pop(out)) {
+      assert(out.sequence == expected++);
+    } else {
+      std::this_thread::yield();
+    }
+  }
+  producer.join();
   assert(expected == 200);
   return 0;
 }

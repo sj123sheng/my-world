@@ -110,6 +110,15 @@ void Loop::tickOnce(int64_t elapsedMs) {
   surface_draw(surface);
   surface_swap(surface);
 
+  tickCount++;
+  auto now = std::chrono::steady_clock::now();
+  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastFpsTime).count();
+  if (elapsed >= 1000) {
+    fps = tickCount * 1000.0f / (float)elapsed;
+    tickCount = 0;
+    lastFpsTime = now;
+  }
+
   snapshots.publish({
     fixedStep.tick(),
     100,
@@ -123,14 +132,6 @@ void Loop::tickOnce(int64_t elapsedMs) {
     surface.ready,
   });
 
-  tickCount++;
-  auto now = std::chrono::steady_clock::now();
-  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastFpsTime).count();
-  if (elapsed >= 1000) {
-    fps = tickCount * 1000.0f / (float)elapsed;
-    tickCount = 0;
-    lastFpsTime = now;
-  }
   if (tickCount <= 5 || tickCount % 60 == 0) {
     LOGI("tickOnce: %{public}d fps=%{public}.1f", tickCount, fps);
   }

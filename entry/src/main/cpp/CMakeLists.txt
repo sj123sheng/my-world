@@ -35,6 +35,7 @@ add_library(native_game SHARED
     # engine input
     ${NATIVE_ROOT}/engine/input/input_queue.h
     ${NATIVE_ROOT}/engine/input/input_event.h
+    ${NATIVE_ROOT}/engine/input/pointer_input.h
 
     # engine render
     ${NATIVE_ROOT}/engine/render/camera.cpp

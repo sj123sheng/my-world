@@ -2,7 +2,9 @@
 #include <ace/xcomponent/native_interface_xcomponent.h>
 #include <string>
 #include <hilog/log.h>
+#include <cmath>
 #include "engine/core/loop.h"
+#include "engine/input/pointer_input.h"
 
 #define LOGI(...) OH_LOG_Print(LOG_APP, LOG_INFO, 0xFF00, "Ethelan", __VA_ARGS__)
 #define LOGE(...) OH_LOG_Print(LOG_APP, LOG_ERROR, 0xFF00, "Ethelan", __VA_ARGS__)
@@ -18,13 +20,29 @@ static InputAction MapTouchAction(OH_NativeXComponent_TouchEventType type) {
   }
 }
 
-static InputAction MapInputAction(int32_t type) {
-  switch (type) {
-    case 0: return InputAction::PointerDown;
-    case 1: return InputAction::PointerUp;
-    case 2: return InputAction::PointerMove;
-    default: return InputAction::PointerCancel;
+static void InvalidateSurfaceSnapshot() {
+  surface_destroy(g_loop.surface);
+  g_loop.publishRendererStopped();
+}
+
+static napi_value ThrowInputTypeError(napi_env env, const char* message) {
+  napi_throw_type_error(env, nullptr, message);
+  return nullptr;
+}
+
+static bool GetNumberProperty(napi_env env, napi_value object, const char* name,
+                              bool required, double& value) {
+  bool hasProperty = false;
+  if (napi_has_named_property(env, object, name, &hasProperty) != napi_ok) return false;
+  if (!hasProperty) return !required;
+  napi_value property = nullptr;
+  napi_valuetype propertyType = napi_undefined;
+  if (napi_get_named_property(env, object, name, &property) != napi_ok ||
+      napi_typeof(env, property, &propertyType) != napi_ok || propertyType != napi_number ||
+      napi_get_value_double(env, property, &value) != napi_ok || !std::isfinite(value)) {
+    return false;
   }
+  return true;
 }
 
 static void OnSurfaceCreated(OH_NativeXComponent* component, void* window) {
@@ -33,11 +51,11 @@ static void OnSurfaceCreated(OH_NativeXComponent* component, void* window) {
     OHNativeWindow* nativeWindow = static_cast<OHNativeWindow*>(window);
     if (g_loop.surface.ready) {
       g_loop.stop();
-      surface_destroy(g_loop.surface);
-      g_loop.publishRendererStopped();
+      InvalidateSurfaceSnapshot();
     }
     if (!surface_init(g_loop.surface, nativeWindow)) {
       LOGE("surface_init failed");
+      InvalidateSurfaceSnapshot();
       return;
     }
     g_loop.start();
@@ -57,10 +75,12 @@ static void OnSurfaceChanged(OH_NativeXComponent* component, void* window) {
       LOGI("OnSurfaceChanged: surface not ready yet, init now");
       if (!surface_init(g_loop.surface, nativeWindow)) {
         LOGE("surface_init failed in OnSurfaceChanged");
+        InvalidateSurfaceSnapshot();
         return;
       }
     } else if (!surface_resize(g_loop.surface, nativeWindow)) {
       LOGE("surface resize failed");
+      InvalidateSurfaceSnapshot();
       return;
     }
     g_loop.start();
@@ -71,8 +91,7 @@ static void OnSurfaceDestroyed(OH_NativeXComponent* component, void* window) {
   g_loop.withLifecycle([]() {
     LOGI("OnSurfaceDestroyed");
     g_loop.stop();
-    surface_destroy(g_loop.surface);
-    g_loop.publishRendererStopped();
+    InvalidateSurfaceSnapshot();
   });
 }
 
@@ -98,19 +117,41 @@ static napi_value NativeStop(napi_env env, napi_callback_info) {
 
 static napi_value NativePushInput(napi_env env, napi_callback_info info) {
   size_t argc = 1;
-  napi_value args[1];
-  napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-  napi_value typeVal, pointerIdVal, xVal, yVal;
-  napi_get_named_property(env, args[0], "type", &typeVal);
-  napi_get_named_property(env, args[0], "pointerId", &pointerIdVal);
-  napi_get_named_property(env, args[0], "x", &xVal);
-  napi_get_named_property(env, args[0], "y", &yVal);
-  int32_t type, pointerId = -1; double x, y;
-  napi_get_value_int32(env, typeVal, &type);
-  napi_get_value_int32(env, pointerIdVal, &pointerId);
-  napi_get_value_double(env, xVal, &x);
-  napi_get_value_double(env, yVal, &y);
-  g_loop.enqueueInput(MapInputAction(type), pointerId, static_cast<float>(x), static_cast<float>(y));
+  napi_value args[1] = {nullptr};
+  if (napi_get_cb_info(env, info, &argc, args, nullptr, nullptr) != napi_ok || argc != 1) {
+    return ThrowInputTypeError(env, "pushInput expects exactly one event object");
+  }
+  napi_valuetype argumentType = napi_undefined;
+  if (args[0] == nullptr || napi_typeof(env, args[0], &argumentType) != napi_ok ||
+      argumentType != napi_object) {
+    return ThrowInputTypeError(env, "pushInput event must be an object");
+  }
+
+  double typeNumber = 0.0;
+  double pointerIdNumber = 0.0;
+  double x = 0.0;
+  double y = 0.0;
+  if (!GetNumberProperty(env, args[0], "type", true, typeNumber) ||
+      !GetNumberProperty(env, args[0], "pointerId", false, pointerIdNumber) ||
+      !GetNumberProperty(env, args[0], "x", true, x) ||
+      !GetNumberProperty(env, args[0], "y", true, y)) {
+    return ThrowInputTypeError(env, "pushInput requires numeric type/x/y and optional pointerId");
+  }
+  int32_t type = 0;
+  InputAction action = InputAction::PointerCancel;
+  if (!TryConvertInt32(typeNumber, type) || !TryMapPointerAction(type, action)) {
+    return ThrowInputTypeError(env, "pushInput type must be a pointer action from 0 to 3");
+  }
+  int32_t pointerId = 0;
+  if (!TryConvertInt32(pointerIdNumber, pointerId)) {
+    return ThrowInputTypeError(env, "pushInput pointerId must be an integer");
+  }
+  float inputX = 0.0f;
+  float inputY = 0.0f;
+  if (!TryConvertFloat(x, inputX) || !TryConvertFloat(y, inputY)) {
+    return ThrowInputTypeError(env, "pushInput x/y must fit finite native coordinates");
+  }
+  g_loop.enqueueInput(action, pointerId, inputX, inputY);
   return nullptr;
 }
 
