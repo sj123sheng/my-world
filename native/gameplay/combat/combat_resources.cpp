@@ -61,12 +61,12 @@ void CombatResources::advance(Tick now) {
   }
   if (stamina_ >= config_.maxStamina || now < recoveryStartTick_) return;
 
-  const Tick eligibleMs = now - recoveryStartTick_ + 1;
-  const Tick elapsedMs = eligibleMs - recoveredMs_;
+  const __int128 eligibleMs = static_cast<__int128>(now) - recoveryStartTick_ + 1;
+  const __int128 elapsedMs = eligibleMs - recoveredMs_;
   if (elapsedMs <= 0) return;
   recoveredMs_ = eligibleMs;
 
-  const __int128 scaled = static_cast<__int128>(elapsedMs) *
+  const __int128 scaled = elapsedMs *
                           config_.staminaRecoveryPerSecond + recoveryRemainder_;
   const __int128 gain = scaled / 1000;
   stamina_ = gain >= config_.maxStamina - stamina_

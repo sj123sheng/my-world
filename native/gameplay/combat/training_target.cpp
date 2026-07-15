@@ -74,10 +74,7 @@ FixedPoint TrainingTarget::applyPoiseDamage(FixedPoint amount, Tick now) {
 }
 
 bool TrainingTarget::corroded() const {
-  return std::any_of(sourceAuras_.active().begin(), sourceAuras_.active().end(),
-                     [](const SourceAura& aura) {
-                       return aura.type == SourceType::Corruption;
-                     });
+  return corrosionUntil_ > 0;
 }
 
 void TrainingTarget::applyWeakness(Tick until, FixedPoint multiplier) {

@@ -1,6 +1,7 @@
 #include "../native/gameplay/combat/combat_resources.h"
 
 #include <cassert>
+#include <limits>
 
 int main() {
   CombatResources resources(CombatConfig::defaults());
@@ -37,5 +38,14 @@ int main() {
   assert(insufficient.insightRemainingMs() == 0);
   insufficient.advance(999);
   assert(insufficient.stamina() == fp(100));
+
+  CombatConfig zeroDelay = CombatConfig::defaults();
+  zeroDelay.staminaRecoveryDelayMs = 0;
+  CombatResources atMaximum(zeroDelay);
+  const Tick maximum = std::numeric_limits<Tick>::max();
+  assert(atMaximum.spendStamina(fp(30), maximum));
+  atMaximum.advance(maximum);
+  assert(atMaximum.stamina() >= fp(70));
+  assert(atMaximum.stamina() <= fp(100));
   return 0;
 }

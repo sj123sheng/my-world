@@ -21,10 +21,12 @@ class TrainingPulse {
   DodgeGrade classifyDodge(Tick tick) const;
   Tick warningRemainingMs(Tick now) const;
   PulseEventKind phase(Tick now) const;
+  void resetAt(Tick now);
 
  private:
   CombatConfig config_;
   Tick lastAdvanceTick_ = -1;
   Tick nextWarningTick_ = 0;
   Tick nextHitTick_ = 0;
+  Tick epochTick_ = 0;
 };

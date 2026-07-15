@@ -55,8 +55,16 @@ Tick TrainingPulse::warningRemainingMs(Tick now) const {
 
 PulseEventKind TrainingPulse::phase(Tick now) const {
   const Tick period = config_.trainingPulsePeriodMs;
-  const Tick inCycle = now >= 0 ? now % period : 0;
+  const Tick elapsed = now >= epochTick_ ? now - epochTick_ : 0;
+  const Tick inCycle = elapsed % period;
   if (inCycle == config_.trainingPulseWarningMs) return PulseEventKind::Hit;
   if (inCycle < config_.trainingPulseWarningMs) return PulseEventKind::Warning;
   return PulseEventKind::None;
+}
+
+void TrainingPulse::resetAt(Tick now) {
+  epochTick_ = now;
+  lastAdvanceTick_ = now;
+  nextWarningTick_ = advanceCursor(now, config_.trainingPulsePeriodMs);
+  nextHitTick_ = advanceCursor(now, config_.trainingPulseWarningMs);
 }

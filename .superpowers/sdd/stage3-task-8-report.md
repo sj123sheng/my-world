@@ -140,6 +140,10 @@ hdc list targets -v
   `b1dfc54516dff5408c530d16745175c956df9415d3bb1ce6bd39ee6b06788390`。
 - 上述仅更新自动化与构建证据；本报告列出的九项真机出口仍全部未验收、未勾选。
 
+最终复审追加修复后再次 fresh 验证：C++ 31/31、Node 1/1、diff-check clean；Hvigor
+`BUILD SUCCESSFUL in 8 s 803 ms`，signed HAP 4,081,855 bytes，SHA-256
+`e2358664e37799365188f042c714fcdde9939f0ac14c4fcec2bfa5a3ac7f7f07`。真机状态未变。
+
 ## 文档与提交范围
 
 仅更新 `README.md`、战斗垂直切片路线图和阶段 3 计划。用户已有的

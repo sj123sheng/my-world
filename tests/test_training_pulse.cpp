@@ -50,5 +50,13 @@ int main() {
   const Tick beforeMaximum = nearLimit.warningRemainingMs(maximum - 1);
   assert(atMaximum >= 1 && atMaximum <= 3000);
   assert(beforeMaximum >= 1 && beforeMaximum <= 3000);
+
+  TrainingPulse resetEpoch(CombatConfig::defaults());
+  resetEpoch.resetAt(27800);
+  assert(resetEpoch.advance(27801).empty());
+  assert(resetEpoch.advance(28599).empty());
+  const auto epochHit = resetEpoch.advance(28600);
+  assert(epochHit.size() == 1);
+  assert(epochHit[0].kind == PulseEventKind::Hit && epochHit[0].tick == 28600);
   return 0;
 }

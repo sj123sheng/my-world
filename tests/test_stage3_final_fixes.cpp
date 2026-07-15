@@ -25,6 +25,15 @@ int main() {
   assert(lethal.events().gameplay.size() == 11);
   assert(lethal.events().gameplay[9].type == GameplayEventType::Damage);
   assert(lethal.events().gameplay[10].type == GameplayEventType::EncounterReset);
+  lethal.update({27801, 1, false, CombatController::kTrainingTargetId, true});
+  assert(lethal.snapshot().playerHp == fp(100));
+  assert(lethal.events().gameplay.empty());
+  lethal.update({28599, 798, false, CombatController::kTrainingTargetId, true});
+  assert(lethal.snapshot().playerHp == fp(100));
+  lethal.update({28600, 1, false, CombatController::kTrainingTargetId, true});
+  assert(lethal.snapshot().playerHp == fp(90));
+  assert(lethal.events().gameplay.size() == 1);
+  assert(lethal.events().gameplay[0].tick == 28600);
 
   CombatController fields(CombatConfig::defaults());
   fields.enqueue({CombatAction::Radiance, 7});

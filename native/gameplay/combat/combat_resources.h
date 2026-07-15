@@ -37,7 +37,7 @@ class CombatResources {
   FixedPoint stamina_ = 0;
   Tick now_ = 0;
   Tick recoveryStartTick_ = 0;
-  Tick recoveredMs_ = 0;
+  __int128 recoveredMs_ = 0;
   int64_t recoveryRemainder_ = 0;
   Tick insightExpiresAt_ = 0;
   Tick insightGrantedAt_ = 0;

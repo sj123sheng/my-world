@@ -201,7 +201,7 @@ void CombatController::reset() {
 
 void CombatController::resetTrainingEncounter() {
   actions_.reset();
-  pulse_ = TrainingPulse(config_);
+  pulse_.resetAt(currentTick_);
   target_.reset();
   pendingActions_.clear();
   playerHp_ = config_.trainingPlayerHp;

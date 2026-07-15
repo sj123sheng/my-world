@@ -100,5 +100,18 @@ int main() {
   assert(collapsed.poiseBroken);
   assert(collapsed.hpDamage == fp(20));
   assert(collapseTarget.weakUntil() == 3010);
+
+  TrainingTarget corrosionTarget = TrainingTarget::defaults();
+  SourceReactionSystem corrosion(config);
+  corrosion.apply(corrosionTarget, SourceType::Corruption, fp(1), 100, 1);
+  assert(corrosionTarget.corroded());
+  corrosion.apply(corrosionTarget, SourceType::Radiance, fp(1), 200, 2);
+  assert(corrosionTarget.corroded());
+  corrosionTarget.advance(6099);
+  assert(corrosionTarget.corroded());
+  corrosionTarget.advance(6100);
+  assert(!corrosionTarget.corroded());
+  corrosionTarget.reset();
+  assert(!corrosionTarget.corroded());
   return 0;
 }
