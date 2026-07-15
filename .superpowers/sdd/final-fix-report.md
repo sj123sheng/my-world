@@ -104,3 +104,41 @@ DEVECO_SDK_HOME=/Applications/DevEco-Studio.app/Contents/sdk \
 
 - HAP 未配置签名；unsigned 组装成功不代表可直接安装。
 - 本次没有执行真机触控、画面和帧稳定性验收；自动化通过不替代真机出口。
+
+## 最终复审补充修复
+
+最终复审发现首版世界到视图 yaw 矩阵与控制器基向量方向相反。控制器使用
+`right=(cos,-sin)`、`forward=(sin,cos)`，因此渲染现在使用严格逆变换：
+
+```text
+viewX = cos(yaw) * dx - sin(yaw) * dy
+viewY = sin(yaw) * dx + cos(yaw) * dy
+```
+
+- 新增 `worldVectorToView()`；玩家世界朝向先经该变换，再用 `atan2` 取得视图朝向，GL 与
+  软件路径不再各自推导角度。
+- 跨模块测试覆盖 yaw `0`、`0.37`、`1.2`、`-2.1`：controller move 经世界基向量后再
+  world-to-view，恢复原 move 方向；SoftTargeting 正前方候选固定落在 view 正前轴。
+- 玩家和粒子明确为屏幕空间 billboard：中心位置应用完整相机变换，尺寸只随 distance
+  缩放，不受 pitch 拉伸；纯几何测试验证 portrait 视口中 NDC x/y 半径对应相同像素半径。
+- props 保持世界几何，显式传递 NDC x/y 半径；GL 与软件 rasterizer 使用同一半径约定，
+  非方形 aspect 和 pitch 下不再出现路径尺寸差异。
+
+TDD RED：新增测试最初因缺少 `billboardNdcRadii()`、`worldVectorToView()` 编译失败；补齐
+API 后，同一测试通过。
+
+最终复验：
+
+```bash
+"$CLANG" "${COMMON[@]}" tests/test_camera_render_transform.cpp \
+  native/gameplay/player/player_controller.cpp \
+  native/gameplay/targeting/soft_targeting.cpp \
+  -o /tmp/test_camera_render_transform
+```
+
+- C++：20/20 编译及运行通过；Node：1/1 通过。
+- OHOS arm64：清理构建目录后，16 个生产编译单元完整编译并链接为 ARM aarch64 ELF。
+- HAP：最终复验 `BUILD SUCCESSFUL in 8 s 873 ms`，当前用户签名配置生成
+  `entry-default-signed.hap`，同时保留 unsigned 产物。
+- HAP 构建前后 `git hash-object build-profile.json5` 一致；该用户改动未被修改或暂存。
+- `git diff --check`：退出码 0。

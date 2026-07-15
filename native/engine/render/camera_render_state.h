@@ -22,22 +22,32 @@ class CameraRenderState {
   float pitch() const { return pitch_; }
   float distance() const { return distance_; }
 
-  Vec2 worldToView(Vec2 world) const {
-    const Vec2 delta = world - target_;
+  Vec2 worldVectorToView(Vec2 worldVector) const {
     const float cosine = std::cos(yaw_);
     const float sine = std::sin(yaw_);
     const float zoom = neutralDistance_ / distance_;
     const float pitchScale = std::cos(pitch_) / std::cos(neutralPitch_);
-    const float rotatedX = cosine * delta.x + sine * delta.y;
-    const float rotatedY = -sine * delta.x + cosine * delta.y;
-    return {0.5f + rotatedX * zoom,
-            0.5f + rotatedY * zoom * pitchScale};
+    const float rotatedX = cosine * worldVector.x - sine * worldVector.y;
+    const float rotatedY = sine * worldVector.x + cosine * worldVector.y;
+    return {rotatedX * zoom, rotatedY * zoom * pitchScale};
+  }
+
+  Vec2 worldToView(Vec2 world) const {
+    const Vec2 viewOffset = worldVectorToView(world - target_);
+    return {0.5f + viewOffset.x, 0.5f + viewOffset.y};
   }
 
   Vec2 worldSizeToView(Vec2 worldSize) const {
     const float zoom = neutralDistance_ / distance_;
     const float pitchScale = std::cos(pitch_) / std::cos(neutralPitch_);
     return {worldSize.x * zoom, worldSize.y * zoom * pitchScale};
+  }
+
+  Vec2 billboardNdcRadii(float worldRadius, float viewportAspect) const {
+    // Screen-facing billboards keep equal pixel radii. Pitch affects their
+    // world-space center but not their on-screen shape.
+    const float zoom = neutralDistance_ / distance_;
+    return {worldRadius * zoom * viewportAspect, worldRadius * zoom};
   }
 
  private:

@@ -760,3 +760,10 @@ git commit -m "docs: 完成阶段2输入相机验收" \
   整体回退内建安全默认。
 - [x] 新增独立渲染变换测试及 Loop 集成断言；最终矩阵为 C++ 20/20、Node 1/1，
   OHOS arm64 `native_game` 完整链接和 unsigned HAP 组装通过。
+- [x] 最终复审统一 yaw 坐标约定：控制器 `right=(cos,-sin)`、`forward=(sin,cos)`，
+  渲染逆变换为 `viewX=cos*dx-sin*dy`、`viewY=sin*dx+cos*dy`；角色视图朝向由世界
+  朝向向量经同一变换后 `atan2` 得到。
+- [x] 玩家和粒子定义为屏幕空间 billboard：位置仍应用 target/yaw/pitch/distance，尺寸只随
+  distance 缩放；通过显式 NDC x/y 半径保证 GL 与软件路径在非方形视口中均为像素圆形。
+- [x] 跨模块测试验证多组任意 yaw 下 controller move 往返视图方向不变，以及
+  SoftTargeting 正前方候选稳定落在视图前轴。

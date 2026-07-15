@@ -160,14 +160,16 @@ static void drawSolidRectGL(const Surface& s, float x, float y, float w, float h
   drawArraysGL(s, GL_TRIANGLE_STRIP, verts, colors);
 }
 
-static void drawSolidCircleGL(const Surface& s, float cx, float cy, float radius, int segs, float r, float g, float b, float a) {
+static void drawSolidEllipseGL(const Surface& s, float cx, float cy,
+                               Vec2 radii, int segs, float r, float g,
+                               float b, float a) {
   std::vector<float> verts;
   verts.push_back(cx);
   verts.push_back(cy);
   for (int i = 0; i <= segs; ++i) {
     float theta = (float)i / (float)segs * 6.283185f;
-    verts.push_back(cx + std::cos(theta) * radius);
-    verts.push_back(cy + std::sin(theta) * radius);
+    verts.push_back(cx + std::cos(theta) * radii.x);
+    verts.push_back(cy + std::sin(theta) * radii.y);
   }
   std::vector<float> colors;
   fillColor(colors, verts.size() / 2, r, g, b, a);
@@ -210,6 +212,7 @@ static void drawGridGL(const Surface& s) {
 }
 
 static void drawPropsGL(const Surface& s) {
+  // Props remain projected world geometry, including pitch-dependent height.
   const float asp = aspect(s);
   const Vec2 scale = cameraScale(s);
   for (const auto& p : s.props) {
@@ -220,43 +223,52 @@ static void drawPropsGL(const Surface& s) {
     float rh = p.size * scale.y;
     if (p.kind == 0) {
       drawSolidRectGL(s, x, y + rh * 0.3f, r * 0.25f, rh * 0.4f, 0.45f, 0.30f, 0.18f, 1.0f);
-      drawSolidCircleGL(s, x, y - rh * 0.2f, rh * 0.6f, 16, 0.15f, 0.55f, 0.25f, 1.0f);
-      drawSolidCircleGL(s, x, y - rh * 0.45f, rh * 0.4f, 14, 0.20f, 0.65f, 0.30f, 1.0f);
+      drawSolidEllipseGL(s, x, y - rh * 0.2f, {r * 0.6f, rh * 0.6f}, 16, 0.15f, 0.55f, 0.25f, 1.0f);
+      drawSolidEllipseGL(s, x, y - rh * 0.45f, {r * 0.4f, rh * 0.4f}, 14, 0.20f, 0.65f, 0.30f, 1.0f);
     } else {
-      drawSolidCircleGL(s, x, y, rh * 0.55f, 12, 0.42f, 0.42f, 0.46f, 1.0f);
-      drawSolidCircleGL(s, x - r * 0.3f, y + rh * 0.1f, rh * 0.35f, 10, 0.50f, 0.50f, 0.54f, 1.0f);
+      drawSolidEllipseGL(s, x, y, {r * 0.55f, rh * 0.55f}, 12, 0.42f, 0.42f, 0.46f, 1.0f);
+      drawSolidEllipseGL(s, x - r * 0.3f, y + rh * 0.1f, {r * 0.35f, rh * 0.35f}, 10, 0.50f, 0.50f, 0.54f, 1.0f);
     }
   }
 }
 
 static void drawParticlesGL(const Surface& s) {
+  // Particles and the player are screen-facing billboards in both pipelines.
   const float asp = aspect(s);
-  const Vec2 scale = cameraScale(s);
   for (const auto& p : s.particles) {
     float a = p.life / p.maxLife;
     const Vec2 view = worldToNdc(s, {p.x, p.y});
     float x = view.x;
     float y = view.y;
-    float r = 0.012f * asp * a * 0.5f * (scale.x + scale.y);
-    drawSolidCircleGL(s, x, y, r, 10, 0.9f, 0.9f, 1.0f, a * 0.7f);
+    const Vec2 radii =
+        s.cameraRenderState.billboardNdcRadii(0.012f * a, asp);
+    drawSolidEllipseGL(s, x, y, radii, 10, 0.9f, 0.9f, 1.0f,
+                       a * 0.7f);
   }
 }
 
 static void drawPlayerGL(const Surface& s) {
   const float asp = aspect(s);
-  const Vec2 scale = cameraScale(s);
   const Vec2 view = worldToNdc(s, {s.player.x, s.player.y});
   float x = view.x;
   float y = view.y;
-  float r = s.player.size * asp * 0.5f * (scale.x + scale.y);
-  drawSolidCircleGL(s, x, y - r * 0.1f, r * 1.1f, 20, 0.0f, 0.0f, 0.0f, 0.35f);
-  drawSolidCircleGL(s, x, y, r, 24, 0.18f, 0.65f, 0.95f, 1.0f);
-  drawSolidCircleGL(s, x, y, r * 0.75f, 20, 0.25f, 0.75f, 1.0f, 1.0f);
-  const float viewAngle = s.player.angle - s.cameraRenderState.yaw();
-  float ax = x + std::cos(viewAngle) * r * 0.6f;
-  float ay = y - std::sin(viewAngle) * r * 0.6f * asp;
-  drawSolidCircleGL(s, ax, ay, r * 0.28f, 12, 1.0f, 1.0f, 1.0f, 0.95f);
-  drawSolidCircleGL(s, ax, ay, r * 0.14f, 8, 0.95f, 0.35f, 0.35f, 1.0f);
+  const Vec2 radii =
+      s.cameraRenderState.billboardNdcRadii(s.player.size, asp);
+  drawSolidEllipseGL(s, x, y - radii.y * 0.1f, radii * 1.1f, 20,
+                     0.0f, 0.0f, 0.0f, 0.35f);
+  drawSolidEllipseGL(s, x, y, radii, 24, 0.18f, 0.65f, 0.95f, 1.0f);
+  drawSolidEllipseGL(s, x, y, radii * 0.75f, 20, 0.25f, 0.75f, 1.0f,
+                     1.0f);
+  const Vec2 worldFacing{std::cos(s.player.angle), std::sin(s.player.angle)};
+  const Vec2 viewFacing =
+      s.cameraRenderState.worldVectorToView(worldFacing);
+  const float viewAngle = std::atan2(viewFacing.y, viewFacing.x);
+  float ax = x + std::cos(viewAngle) * radii.x * 0.6f;
+  float ay = y - std::sin(viewAngle) * radii.y * 0.6f;
+  drawSolidEllipseGL(s, ax, ay, radii * 0.28f, 12, 1.0f, 1.0f, 1.0f,
+                     0.95f);
+  drawSolidEllipseGL(s, ax, ay, radii * 0.14f, 8, 0.95f, 0.35f, 0.35f,
+                     1.0f);
 }
 
 // -----------------------------------------------------------------------------
@@ -372,11 +384,13 @@ static void drawSolidRectSW(const Surface& s, Canvas& c, float x, float y, float
   drawRect(c, cx - rw, cy - rh, rw * 2 + 1, rh * 2 + 1, packColor(r, g, b, a, c.swapRedBlue));
 }
 
-static void drawSolidCircleSW(const Surface& s, Canvas& c, float cx, float cy, float radius, float r, float g, float b, float a) {
+static void drawSolidEllipseSW(const Surface& s, Canvas& c, float cx, float cy,
+                               Vec2 radii, float r, float g, float b,
+                               float a) {
   int scx = ndcToScreenX(s, cx);
   int scy = ndcToScreenY(s, cy);
-  int srx = ndcToPixelRadiusX(s, radius);
-  int sry = ndcToPixelRadiusY(s, radius / aspect(s));
+  int srx = ndcToPixelRadiusX(s, radii.x);
+  int sry = ndcToPixelRadiusY(s, radii.y);
   drawSolidEllipse(c, scx, scy, srx, sry, packColor(r, g, b, a, c.swapRedBlue));
 }
 
@@ -402,6 +416,7 @@ static void drawGridSW(const Surface& s, Canvas& c) {
 }
 
 static void drawPropsSW(const Surface& s, Canvas& c) {
+  // Keep the same projected world-geometry radii used by the GL path.
   const float asp = aspect(s);
   const Vec2 scale = cameraScale(s);
   for (const auto& p : s.props) {
@@ -412,43 +427,52 @@ static void drawPropsSW(const Surface& s, Canvas& c) {
     float rh = p.size * scale.y;
     if (p.kind == 0) {
       drawSolidRectSW(s, c, x, y + rh * 0.3f, r * 0.25f, rh * 0.4f, 0.45f, 0.30f, 0.18f, 1.0f);
-      drawSolidCircleSW(s, c, x, y - rh * 0.2f, rh * 0.6f, 0.15f, 0.55f, 0.25f, 1.0f);
-      drawSolidCircleSW(s, c, x, y - rh * 0.45f, rh * 0.4f, 0.20f, 0.65f, 0.30f, 1.0f);
+      drawSolidEllipseSW(s, c, x, y - rh * 0.2f, {r * 0.6f, rh * 0.6f}, 0.15f, 0.55f, 0.25f, 1.0f);
+      drawSolidEllipseSW(s, c, x, y - rh * 0.45f, {r * 0.4f, rh * 0.4f}, 0.20f, 0.65f, 0.30f, 1.0f);
     } else {
-      drawSolidCircleSW(s, c, x, y, rh * 0.55f, 0.42f, 0.42f, 0.46f, 1.0f);
-      drawSolidCircleSW(s, c, x - r * 0.3f, y + rh * 0.1f, rh * 0.35f, 0.50f, 0.50f, 0.54f, 1.0f);
+      drawSolidEllipseSW(s, c, x, y, {r * 0.55f, rh * 0.55f}, 0.42f, 0.42f, 0.46f, 1.0f);
+      drawSolidEllipseSW(s, c, x - r * 0.3f, y + rh * 0.1f, {r * 0.35f, rh * 0.35f}, 0.50f, 0.50f, 0.54f, 1.0f);
     }
   }
 }
 
 static void drawParticlesSW(const Surface& s, Canvas& c) {
+  // Billboard radii are shared with GL and map to circular pixel geometry.
   const float asp = aspect(s);
-  const Vec2 scale = cameraScale(s);
   for (const auto& p : s.particles) {
     float a = p.life / p.maxLife;
     const Vec2 view = worldToNdc(s, {p.x, p.y});
     float x = view.x;
     float y = view.y;
-    float r = 0.012f * asp * a * 0.5f * (scale.x + scale.y);
-    drawSolidCircleSW(s, c, x, y, r, 0.9f, 0.9f, 1.0f, a * 0.7f);
+    const Vec2 radii =
+        s.cameraRenderState.billboardNdcRadii(0.012f * a, asp);
+    drawSolidEllipseSW(s, c, x, y, radii, 0.9f, 0.9f, 1.0f,
+                       a * 0.7f);
   }
 }
 
 static void drawPlayerSW(const Surface& s, Canvas& c) {
   const float asp = aspect(s);
-  const Vec2 scale = cameraScale(s);
   const Vec2 view = worldToNdc(s, {s.player.x, s.player.y});
   float x = view.x;
   float y = view.y;
-  float r = s.player.size * asp * 0.5f * (scale.x + scale.y);
-  drawSolidCircleSW(s, c, x, y - r * 0.1f, r * 1.1f, 0.0f, 0.0f, 0.0f, 0.35f);
-  drawSolidCircleSW(s, c, x, y, r, 0.18f, 0.65f, 0.95f, 1.0f);
-  drawSolidCircleSW(s, c, x, y, r * 0.75f, 0.25f, 0.75f, 1.0f, 1.0f);
-  const float viewAngle = s.player.angle - s.cameraRenderState.yaw();
-  float ax = x + std::cos(viewAngle) * r * 0.6f;
-  float ay = y - std::sin(viewAngle) * r * 0.6f * asp;
-  drawSolidCircleSW(s, c, ax, ay, r * 0.28f, 1.0f, 1.0f, 1.0f, 0.95f);
-  drawSolidCircleSW(s, c, ax, ay, r * 0.14f, 0.95f, 0.35f, 0.35f, 1.0f);
+  const Vec2 radii =
+      s.cameraRenderState.billboardNdcRadii(s.player.size, asp);
+  drawSolidEllipseSW(s, c, x, y - radii.y * 0.1f, radii * 1.1f, 0.0f,
+                     0.0f, 0.0f, 0.35f);
+  drawSolidEllipseSW(s, c, x, y, radii, 0.18f, 0.65f, 0.95f, 1.0f);
+  drawSolidEllipseSW(s, c, x, y, radii * 0.75f, 0.25f, 0.75f, 1.0f,
+                     1.0f);
+  const Vec2 worldFacing{std::cos(s.player.angle), std::sin(s.player.angle)};
+  const Vec2 viewFacing =
+      s.cameraRenderState.worldVectorToView(worldFacing);
+  const float viewAngle = std::atan2(viewFacing.y, viewFacing.x);
+  float ax = x + std::cos(viewAngle) * radii.x * 0.6f;
+  float ay = y - std::sin(viewAngle) * radii.y * 0.6f;
+  drawSolidEllipseSW(s, c, ax, ay, radii * 0.28f, 1.0f, 1.0f, 1.0f,
+                     0.95f);
+  drawSolidEllipseSW(s, c, ax, ay, radii * 0.14f, 0.95f, 0.35f, 0.35f,
+                     1.0f);
 }
 
 static void softwareDrawFrame(Surface& s) {

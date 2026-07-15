@@ -24,6 +24,9 @@
 - 最终审查修复：相机 target/yaw/pitch/distance 已进入 GL 与软件灰盒渲染，网格、场景物件、
   粒子和玩家共用世界到视图变换；触控仅由 ArkTS `changedTouches` 经 N-API 生产；输入
   sequence 分配与队列 push 已在线性化临界区内完成；非正相机距离配置整体回退安全默认。
+- 最终复审补充：世界到视图 yaw 使用角色控制器 camera right/forward 基的严格逆变换；
+  跨模块测试覆盖任意 yaw 的移动方向和软锁定前轴。玩家、粒子使用随 distance 缩放、
+  不受 pitch 拉伸的屏幕 billboard，GL/软件路径在非方形视口中保持相同像素圆形。
 - 自动化通过：20/20 个 C++ 测试与 1/1 个 Node 桥接契约测试退出码均为 0。
 - Native 链接通过：OHOS arm64-v8a `native_game` 完整编译并链接为 aarch64 ELF 共享库。
 - HAP 构建通过：Hvigor `assembleHap` 返回 `BUILD SUCCESSFUL`，生成 unsigned HAP；未配置
