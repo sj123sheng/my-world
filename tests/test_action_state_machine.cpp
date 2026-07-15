@@ -1,6 +1,7 @@
 #include "../native/gameplay/combat/action_state_machine.h"
 
 #include <cassert>
+#include <limits>
 
 namespace {
 
@@ -125,6 +126,17 @@ void testSingleTickCanHitAndExpireChainWindow() {
   assert(next.has_value() && next->ability == 1);
 }
 
+void testAttackHitTickSaturatesAtTickMaximum() {
+  ActionStateMachine machine(CombatConfig::defaults());
+  const Tick maximum = std::numeric_limits<Tick>::max();
+  machine.update(maximum - 100, 0, targetContext());
+  assert(machine.request({CombatAction::Attack, 1}, targetContext()).accepted);
+  const auto hit = machine.update(maximum, 160, targetContext());
+  assert(hit.has_value());
+  assert(hit->tick == maximum);
+  assert(hit->transactionId == 0);
+}
+
 void testChainWindowIncludesExactly480ButExcludes481() {
   ActionStateMachine atBoundary(CombatConfig::defaults());
   assert(atBoundary.request({CombatAction::Attack, 1}, targetContext()).accepted);
@@ -216,6 +228,7 @@ int main() {
   testInvalidTargetDoesNotChangeState();
   testLargeTickUsesFixedHitTimeAndCarriesRemainder();
   testSingleTickCanHitAndExpireChainWindow();
+  testAttackHitTickSaturatesAtTickMaximum();
   testChainWindowIncludesExactly480ButExcludes481();
   testDodgeSpendsStaminaAndHasBoundedInvulnerability();
   testDodgeRejectsAtomicallyWhenStaminaIsInsufficient();

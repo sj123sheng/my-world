@@ -181,3 +181,68 @@ PASS git_diff_check
 ```
 
 `build-profile.json5` 仍是用户原有未暂存修改；未修改 Task 6、CMake 或 UI。
+
+## Important 审查修复：不可复用事务标识
+
+### 根因与 RED
+
+上一版 pending 事务使用外部 `ActionRequest.sequence` 作为确认键。sequence 只负责输入排序，
+调用方可以复用；两个不同技能使用相同 sequence，或 reset 前后的事务使用相同 sequence 时，
+旧回执可能错误提交新事务。
+
+先修改测试，要求 `HitRequest::transactionId` 独立于外部 sequence，并覆盖同 sequence 的连续
+事务、reset 前旧回执、重复确认及普通攻击 Tick 最大值。严格编译输出：
+
+```text
+tests/test_source_abilities.cpp:39:14: error: no member named 'transactionId' in
+'HitRequest'
+tests/test_source_abilities.cpp:88:16: error: no member named 'transactionId' in
+'HitRequest'
+transaction_source_red=1
+
+tests/test_action_state_machine.cpp:137:15: error: no member named 'transactionId' in
+'HitRequest'
+transaction_action_red=1
+```
+
+### GREEN 与实现
+
+- `HitRequest` 末尾增加内部生成的 `uint64_t transactionId`，保留外部 `sequence` 的排序用途
+  和既有聚合初始化字段顺序。
+- 普通攻击无需确认，`transactionId == 0`；每个源技能/终结命中请求从 1 开始单调分配。
+- pending 与 `confirmHit()` 只按 transactionId 关联。旧 ID、错误 ID 和重复确认均不能提交
+  当前事务。
+- `reset()` 只清 pending，不重置 ID 分配器，因此同一状态机生命周期内不会复用旧 ID。
+- `UINT64_MAX` 可分配一次；随后永久标记耗尽，新的源技能/终结请求以 `InvalidAction` 拒绝，
+  不发生 wrap。普通攻击和闪避不受影响。
+- 普通攻击 hit tick 改用与源技能/终结相同的饱和加法；接近 `Tick::max` 时固定为最大值。
+
+定向 GREEN：
+
+```text
+transaction_source_green=0
+transaction_action_green=0
+```
+
+### 最终回归
+
+```text
+PASS test_combat_config
+PASS test_event_order
+PASS test_decision_log
+PASS test_action_state_machine
+PASS test_combat_resources
+PASS test_training_pulse
+PASS test_damage_resolver
+PASS test_source_reaction_system
+PASS test_source_aura
+PASS test_resonance
+PASS test_source_abilities
+PASS test_resonance_window
+PASS task1_to_task5_transaction=12/12
+PASS focused_action_damage_task5=4/4
+PASS git_diff_check
+```
+
+最终审查 Minor：按本次明确范围未扩大处理体力恢复在极端 Tick 下的算术；该路径应由后续
+专门资源边界任务覆盖。`build-profile.json5` 仍未暂存，未修改 Task 6、CMake 或 UI。

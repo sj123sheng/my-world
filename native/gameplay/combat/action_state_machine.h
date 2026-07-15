@@ -31,6 +31,7 @@ struct HitRequest {
   Tick tick = 0;
   uint64_t sequence = 0;
   FixedPoint sourceAmount = FP_ONE;
+  uint64_t transactionId = 0;
 };
 
 class ActionStateMachine {
@@ -39,7 +40,7 @@ class ActionStateMachine {
 
   ActionDecision request(const ActionRequest& request, const ActionContext& context);
   std::optional<HitRequest> update(Tick now, int64_t dtMs, const ActionContext& context);
-  bool confirmHit(uint64_t sequence, bool landed);
+  bool confirmHit(uint64_t transactionId, bool landed);
   void resetCombo();
   void reset();
   bool isInvulnerable() const;
@@ -59,6 +60,7 @@ class ActionStateMachine {
   static bool isSourceAction(CombatAction action);
   static std::size_t sourceIndex(CombatAction action);
   static SourceType sourceType(CombatAction action);
+  uint64_t allocateTransactionId();
 
   CombatConfig config_;
   CombatResources resources_;
@@ -76,11 +78,13 @@ class ActionStateMachine {
   uint64_t actionSequence_ = 0;
 
   struct PendingHitTransaction {
-    uint64_t sequence = 0;
+    uint64_t transactionId = 0;
     CombatAction action = CombatAction::Attack;
     std::optional<SourceType> source;
     Tick hitTick = 0;
     bool insightApplied = false;
   };
   std::optional<PendingHitTransaction> pendingHit_;
+  uint64_t nextTransactionId_ = 1;
+  bool transactionIdsExhausted_ = false;
 };

@@ -35,6 +35,10 @@ ActionDecision ActionStateMachine::request(const ActionRequest& request,
   if (actionActive_ || pendingHit_) {
     return {false, ActionRejectReason::ActionLocked};
   }
+  if ((isSourceAction(request.action) || request.action == CombatAction::Ultimate) &&
+      transactionIdsExhausted_) {
+    return {false, ActionRejectReason::InvalidAction};
+  }
 
   if (request.action == CombatAction::Dodge &&
       !resources_.spendStamina(config_.dodgeCost, lastUpdateTick_)) {
@@ -137,32 +141,38 @@ std::optional<HitRequest> ActionStateMachine::update(Tick now,
         damage = multiply(damage, config_.insightDamageMultiplier);
         amount = multiply(amount, config_.insightDamageMultiplier);
       }
+      const uint64_t transactionId = allocateTransactionId();
       pendingHit_ = PendingHitTransaction{
-          actionSequence_, activeAction_, source, hitTick, insightApplied};
+          transactionId, activeAction_, source, hitTick, insightApplied};
       actionStartKnown_ = false;
-      return HitRequest{actionContext_.attacker,
-                        actionContext_.target,
-                        static_cast<AbilityId>(5 + index),
-                        source,
-                        damage,
-                        config_.sourcePoiseDamage[index],
-                        hitTick,
-                        actionSequence_,
-                        amount};
+      HitRequest hit{actionContext_.attacker,
+                     actionContext_.target,
+                     static_cast<AbilityId>(5 + index),
+                     source,
+                     damage,
+                     config_.sourcePoiseDamage[index],
+                     hitTick,
+                     actionSequence_,
+                     amount};
+      hit.transactionId = transactionId;
+      return hit;
     }
     if (activeAction_ == CombatAction::Ultimate) {
       const Tick hitTick = hitTickFrom(actionStartTick_);
+      const uint64_t transactionId = allocateTransactionId();
       pendingHit_ = PendingHitTransaction{
-          actionSequence_, activeAction_, std::nullopt, hitTick, false};
+          transactionId, activeAction_, std::nullopt, hitTick, false};
       actionStartKnown_ = false;
-      return HitRequest{actionContext_.attacker,
-                        actionContext_.target,
-                        8,
-                        std::nullopt,
-                        config_.ultimateDamage,
-                        config_.ultimatePoiseDamage,
-                        hitTick,
-                        actionSequence_};
+      HitRequest hit{actionContext_.attacker,
+                     actionContext_.target,
+                     8,
+                     std::nullopt,
+                     config_.ultimateDamage,
+                     config_.ultimatePoiseDamage,
+                     hitTick,
+                     actionSequence_};
+      hit.transactionId = transactionId;
+      return hit;
     }
 
     waitingForChain_ = true;
@@ -174,7 +184,7 @@ std::optional<HitRequest> ActionStateMachine::update(Tick now,
                    std::nullopt,
                    config_.comboDamage[index],
                    config_.comboPoiseDamage[index],
-                   actionStartTick_ + kAttackHitMs,
+                   hitTickFrom(actionStartTick_),
                    actionSequence_};
     if (chainElapsedMs_ > config_.comboWindowMs) {
       resetCombo();
@@ -191,8 +201,8 @@ std::optional<HitRequest> ActionStateMachine::update(Tick now,
   return std::nullopt;
 }
 
-bool ActionStateMachine::confirmHit(uint64_t sequence, bool landed) {
-  if (!pendingHit_ || pendingHit_->sequence != sequence) return false;
+bool ActionStateMachine::confirmHit(uint64_t transactionId, bool landed) {
+  if (!pendingHit_ || pendingHit_->transactionId != transactionId) return false;
   const PendingHitTransaction transaction = *pendingHit_;
   pendingHit_.reset();
   if (!landed) return true;
@@ -210,6 +220,16 @@ bool ActionStateMachine::confirmHit(uint64_t sequence, bool landed) {
     return resources_.spendUltimate(transaction.hitTick);
   }
   return false;
+}
+
+uint64_t ActionStateMachine::allocateTransactionId() {
+  const uint64_t allocated = nextTransactionId_;
+  if (nextTransactionId_ == std::numeric_limits<uint64_t>::max()) {
+    transactionIdsExhausted_ = true;
+  } else {
+    ++nextTransactionId_;
+  }
+  return allocated;
 }
 
 bool ActionStateMachine::isSourceAction(CombatAction action) {

@@ -36,10 +36,11 @@ void testResourcesCommitOnlyAfterResolvedHit() {
   TrainingTarget target = TrainingTarget::defaults();
   const DamageOutcome outcome = DamageResolver(CombatConfig::defaults()).resolve(target, hit);
   assert(landed(outcome));
-  assert(machine.confirmHit(hit.sequence, landed(outcome)));
+  assert(hit.transactionId != 0);
+  assert(machine.confirmHit(hit.transactionId, landed(outcome)));
   assert(!machine.hasInsight());
   assert(machine.resonance() == fp(10));
-  assert(!machine.confirmHit(hit.sequence, true));
+  assert(!machine.confirmHit(hit.transactionId, true));
   assert(machine.resonance() == fp(10));
   assert(machine.request({CombatAction::Current, 42}, targetContext()).reason ==
          ActionRejectReason::Cooldown);
@@ -57,7 +58,7 @@ void testDeadTargetResolutionDoesNotCommitResourcesOrHistory() {
   assert(DamageResolver(CombatConfig::defaults()).resolve(target, lethal).killed);
   const DamageOutcome outcome = DamageResolver(CombatConfig::defaults()).resolve(target, hit);
   assert(!landed(outcome));
-  assert(machine.confirmHit(hit.sequence, landed(outcome)));
+  assert(machine.confirmHit(hit.transactionId, landed(outcome)));
   assert(machine.hasInsight());
   assert(machine.resonance() == 0);
 
@@ -70,11 +71,37 @@ void testDeadTargetResolutionDoesNotCommitResourcesOrHistory() {
 void testMismatchedConfirmationDoesNotCommitOrDuplicate() {
   ActionStateMachine machine(CombatConfig::defaults());
   const HitRequest hit = cast(machine, CombatAction::Corruption, 0, 160, 61);
-  assert(!machine.confirmHit(hit.sequence + 1, true));
+  assert(!machine.confirmHit(hit.transactionId + 1, true));
   assert(machine.resonance() == 0);
-  assert(machine.confirmHit(hit.sequence, false));
+  assert(machine.confirmHit(hit.transactionId, false));
   assert(machine.resonance() == 0);
-  assert(!machine.confirmHit(hit.sequence, true));
+  assert(!machine.confirmHit(hit.transactionId, true));
+}
+
+void testExternalSequenceReuseCannotConfirmAnotherTransaction() {
+  ActionStateMachine machine(CombatConfig::defaults());
+  const HitRequest first = cast(machine, CombatAction::Radiance, 0, 160, 77);
+  assert(machine.confirmHit(first.transactionId, false));
+
+  const HitRequest second = cast(machine, CombatAction::Current, 160, 320, 77);
+  assert(first.sequence == second.sequence);
+  assert(first.transactionId != second.transactionId);
+  assert(!machine.confirmHit(first.transactionId, true));
+  assert(machine.resonance() == 0);
+  assert(machine.confirmHit(second.transactionId, true));
+  assert(machine.resonance() == fp(10));
+}
+
+void testResetDoesNotReuseTransactionIdentity() {
+  ActionStateMachine machine(CombatConfig::defaults());
+  const HitRequest beforeReset = cast(machine, CombatAction::Radiance, 0, 160, 88);
+  machine.reset();
+  const HitRequest afterReset = cast(machine, CombatAction::Current, 0, 160, 88);
+  assert(beforeReset.transactionId != afterReset.transactionId);
+  assert(!machine.confirmHit(beforeReset.transactionId, true));
+  assert(machine.resonance() == 0);
+  assert(machine.confirmHit(afterReset.transactionId, true));
+  assert(machine.resonance() == fp(10));
 }
 
 void testThreeSourceHitsAndCooldownBoundaries() {
@@ -84,7 +111,7 @@ void testThreeSourceHitsAndCooldownBoundaries() {
   assert(light.baseDamage == fp(20) && light.poiseDamage == fp(6));
   assert(light.tick == 160 && light.sequence == 1);
   assert(radiance.resonance() == 0);
-  assert(radiance.confirmHit(light.sequence, true));
+  assert(radiance.confirmHit(light.transactionId, true));
   assert(radiance.resonance() == fp(10));
 
   auto cooling = radiance.request({CombatAction::Radiance, 2}, targetContext());
@@ -98,7 +125,7 @@ void testThreeSourceHitsAndCooldownBoundaries() {
   ActionStateMachine current(CombatConfig::defaults());
   const HitRequest currentHit = cast(current, CombatAction::Current, 0, 160, 1);
   assert(currentHit.baseDamage == fp(16));
-  assert(current.confirmHit(currentHit.sequence, true));
+  assert(current.confirmHit(currentHit.transactionId, true));
   current.update(4159, 3999, targetContext());
   assert(current.request({CombatAction::Current, 2}, targetContext()).reason ==
          ActionRejectReason::Cooldown);
@@ -108,7 +135,7 @@ void testThreeSourceHitsAndCooldownBoundaries() {
   ActionStateMachine corruption(CombatConfig::defaults());
   const HitRequest dark = cast(corruption, CombatAction::Corruption, 0, 160, 1);
   assert(dark.baseDamage == fp(12) && dark.poiseDamage == fp(18));
-  assert(corruption.confirmHit(dark.sequence, true));
+  assert(corruption.confirmHit(dark.transactionId, true));
   corruption.update(5159, 4999, targetContext());
   assert(corruption.request({CombatAction::Corruption, 2}, targetContext()).reason ==
          ActionRejectReason::Cooldown);
@@ -140,7 +167,7 @@ void testInsightConsumesOnlyOnSuccessfulSourceHit() {
   assert(empowered.baseDamage == fp(24));
   assert(empowered.sourceAmount == fp(1.5));
   assert(machine.hasInsight());
-  assert(machine.confirmHit(empowered.sequence, true));
+  assert(machine.confirmHit(empowered.transactionId, true));
   assert(!machine.hasInsight());
 }
 
@@ -154,7 +181,7 @@ void testLargeDtUsesExactSourceHitTick() {
   assert(hit->baseDamage == fp(18) && hit->poiseDamage == fp(18));
   assert(hit->sourceAmount == fp(1.5));
   assert(machine.hasInsight());
-  assert(machine.confirmHit(hit->sequence, true));
+  assert(machine.confirmHit(hit->transactionId, true));
   assert(!machine.hasInsight());
 }
 
@@ -164,6 +191,8 @@ int main() {
   testResourcesCommitOnlyAfterResolvedHit();
   testDeadTargetResolutionDoesNotCommitResourcesOrHistory();
   testMismatchedConfirmationDoesNotCommitOrDuplicate();
+  testExternalSequenceReuseCannotConfirmAnotherTransaction();
+  testResetDoesNotReuseTransactionIdentity();
   testThreeSourceHitsAndCooldownBoundaries();
   testInsightConsumesOnlyOnSuccessfulSourceHit();
   testLargeDtUsesExactSourceHitTick();

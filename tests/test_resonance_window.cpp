@@ -102,7 +102,8 @@ void testUltimateRejectsAtomicallyAndConsumesOnHit() {
   TrainingTarget resolvedTarget = TrainingTarget::defaults();
   const DamageOutcome outcome =
       DamageResolver(CombatConfig::defaults()).resolve(resolvedTarget, *hit);
-  assert(machine.confirmHit(hit->sequence, outcome.hpDamage > 0 || outcome.poiseDamage > 0));
+  assert(machine.confirmHit(hit->transactionId,
+                            outcome.hpDamage > 0 || outcome.poiseDamage > 0));
   assert(machine.resonance() == 0);
 }
 
@@ -125,7 +126,7 @@ void testMissDoesNotSpendUltimate() {
   const DamageOutcome outcome =
       DamageResolver(CombatConfig::defaults()).resolve(deadTarget, *hit);
   assert(outcome.hpDamage == 0 && outcome.poiseDamage == 0);
-  assert(machine.confirmHit(hit->sequence, false));
+  assert(machine.confirmHit(hit->transactionId, false));
   assert(machine.resonance() == fp(100));
   assert(machine.canUltimate(2160));
 }
