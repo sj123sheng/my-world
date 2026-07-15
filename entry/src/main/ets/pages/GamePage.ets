@@ -6,6 +6,7 @@ import { Hud } from '../ui/Hud';
 struct GamePage {
   private snapshot: Snapshot = {
     tick: 0, hp: 100, poise: 100, x: 0.5, y: 0.5, fps: 0, moving: false,
+    moveX: 0, moveY: 0, cameraYaw: 0, cameraPitch: 0,
     targetDist: 0, targetId: 0, bossPhase: 0, rendererReady: true
   };
   @State tick: number = 0;
@@ -15,6 +16,10 @@ struct GamePage {
   @State posY: number = 0.5;
   @State fps: number = 0;
   @State moving: boolean = false;
+  @State moveX: number = 0;
+  @State moveY: number = 0;
+  @State cameraYaw: number = 0;
+  @State cameraPitch: number = 0;
   @State targetDist: number = 0;
   @State targetId: number = 0;
   @State bossPhase: number = 0;
@@ -35,7 +40,14 @@ struct GamePage {
           nativeStop();
         })
         .onTouch((event: TouchEvent) => {
-          pushInput({ type: event.type as number, x: event.touches[0].windowX, y: event.touches[0].windowY });
+          event.changedTouches.forEach((touch: TouchObject) => {
+            pushInput({
+              type: event.type as number,
+              pointerId: touch.id,
+              x: touch.windowX,
+              y: touch.windowY
+            });
+          });
         })
 
       if (!this.rendererReady) {
@@ -70,6 +82,10 @@ struct GamePage {
         this.posY = this.snapshot.y;
         this.fps = this.snapshot.fps;
         this.moving = this.snapshot.moving;
+        this.moveX = this.snapshot.moveX;
+        this.moveY = this.snapshot.moveY;
+        this.cameraYaw = this.snapshot.cameraYaw;
+        this.cameraPitch = this.snapshot.cameraPitch;
         this.targetDist = this.snapshot.targetDist;
         this.targetId = this.snapshot.targetId;
         this.bossPhase = this.snapshot.bossPhase;

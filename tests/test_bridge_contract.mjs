@@ -28,10 +28,17 @@ for (const field of fields) {
   assert.match(initializer[1], new RegExp(`\\b${field}\\s*:`), `initial Snapshot missing ${field}`);
 }
 
-for (const field of ['tick', 'targetId', 'bossPhase']) {
+for (const field of ['tick', 'moveX', 'moveY', 'cameraYaw', 'cameraPitch',
+  'targetDist', 'targetId', 'bossPhase']) {
   assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
     `GamePage polling must assign ${field}`);
+  assert.match(nativeBridge, new RegExp(`"${field}"`));
 }
+
+assert.match(page, /changedTouches/,
+  'GamePage must forward every changed pointer');
+assert.match(page, /pointerId:\s*touch\.id/,
+  'GamePage must preserve pointer ids');
 
 assert.match(nativeBridge, /argc != 1/, 'NativePushInput must reject wrong argument count');
 assert.match(nativeBridge, /argumentType != napi_object/, 'NativePushInput must require an object');

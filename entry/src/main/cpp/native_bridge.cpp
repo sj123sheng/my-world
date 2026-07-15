@@ -167,7 +167,8 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   const GameSnapshot snapshot = g_loop.snapshot();
   napi_value result;
   napi_create_object(env, &result);
-  napi_value tickVal, hpVal, poiseVal, xVal, yVal, fpsVal, movingVal, distVal;
+  napi_value tickVal, hpVal, poiseVal, xVal, yVal, fpsVal, movingVal;
+  napi_value moveXVal, moveYVal, cameraYawVal, cameraPitchVal, distVal;
   napi_value targetIdVal, bossPhaseVal, rendererReadyVal;
   napi_create_int64(env, static_cast<int64_t>(snapshot.tick), &tickVal);
   napi_create_int32(env, snapshot.hp, &hpVal);
@@ -175,7 +176,11 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_create_double(env, snapshot.playerX, &xVal);
   napi_create_double(env, snapshot.playerY, &yVal);
   napi_create_double(env, snapshot.fps, &fpsVal);
-  napi_create_double(env, 0.0, &distVal);
+  napi_create_double(env, snapshot.moveX, &moveXVal);
+  napi_create_double(env, snapshot.moveY, &moveYVal);
+  napi_create_double(env, snapshot.cameraYaw, &cameraYawVal);
+  napi_create_double(env, snapshot.cameraPitch, &cameraPitchVal);
+  napi_create_double(env, snapshot.targetDist, &distVal);
   napi_create_int32(env, snapshot.targetId, &targetIdVal);
   napi_create_int32(env, snapshot.bossPhase, &bossPhaseVal);
   napi_get_boolean(env, snapshot.moving, &movingVal);
@@ -187,6 +192,10 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_set_named_property(env, result, "y", yVal);
   napi_set_named_property(env, result, "fps", fpsVal);
   napi_set_named_property(env, result, "moving", movingVal);
+  napi_set_named_property(env, result, "moveX", moveXVal);
+  napi_set_named_property(env, result, "moveY", moveYVal);
+  napi_set_named_property(env, result, "cameraYaw", cameraYawVal);
+  napi_set_named_property(env, result, "cameraPitch", cameraPitchVal);
   napi_set_named_property(env, result, "targetDist", distVal);
   napi_set_named_property(env, result, "targetId", targetIdVal);
   napi_set_named_property(env, result, "bossPhase", bossPhaseVal);
