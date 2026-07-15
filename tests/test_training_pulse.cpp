@@ -1,6 +1,7 @@
 #include "../native/gameplay/combat/training_pulse.h"
 
 #include <cassert>
+#include <limits>
 
 int main() {
   TrainingPulse pulse(CombatConfig::defaults());
@@ -42,5 +43,12 @@ int main() {
   assert(direct.size() == 2);
   assert(direct[0].kind == PulseEventKind::Warning && direct[0].tick == 0);
   assert(direct[1].kind == PulseEventKind::Hit && direct[1].tick == 800);
+
+  TrainingPulse nearLimit(CombatConfig::defaults());
+  const Tick maximum = std::numeric_limits<Tick>::max();
+  const Tick atMaximum = nearLimit.warningRemainingMs(maximum);
+  const Tick beforeMaximum = nearLimit.warningRemainingMs(maximum - 1);
+  assert(atMaximum >= 1 && atMaximum <= 3000);
+  assert(beforeMaximum >= 1 && beforeMaximum <= 3000);
   return 0;
 }

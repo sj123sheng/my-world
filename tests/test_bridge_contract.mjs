@@ -10,8 +10,11 @@ const loop = fs.readFileSync('native/engine/core/loop.cpp', 'utf8');
 const controls = fs.existsSync('entry/src/main/ets/ui/CombatControls.ets')
   ? fs.readFileSync('entry/src/main/ets/ui/CombatControls.ets', 'utf8') : '';
 
-for (const label of ['普攻', '闪避', '辉印', '脉流', '蚀质', '终结']) {
-  assert.match(controls, new RegExp(label), `CombatControls missing ${label}`);
+const buttonActions = [['普攻', 0], ['闪避', 1], ['辉印', 2], ['脉流', 3], ['蚀质', 4], ['终结', 5]];
+for (const [label, type] of buttonActions) {
+  assert.match(controls,
+    new RegExp(`Button\\(['"]${label}['"]\\)(?:(?!Button\\().)*pushAction\\(${type}\\)`, 's'),
+    `CombatControls must pair ${label} with pushAction(${type})`);
 }
 assert.match(bridge, /export const pushAction/, 'Bridge must export pushAction');
 assert.doesNotMatch(page, /\.onTouch\s*\(/,
@@ -51,16 +54,11 @@ assert.match(pushActionBody, /!TryConvertInt32\(typeNumber, type\)/,
   'NativePushAction must reject fractional numbers');
 assert.match(pushActionBody, /type < 0 \|\| type > 5/,
   'NativePushAction must reject action types outside 0..5');
-for (const action of ['Attack', 'Dodge', 'Radiance', 'Current', 'Corruption', 'Ultimate']) {
-  assert.match(pushActionBody, new RegExp(`InputAction::${action}`),
-    `NativePushAction missing ${action} mapping`);
-}
+assert.match(pushActionBody,
+  /kActions\[\]\s*=\s*\{\s*InputAction::Attack,\s*InputAction::Dodge,\s*InputAction::Radiance,\s*InputAction::Current,\s*InputAction::Corruption,\s*InputAction::Ultimate\s*\}/,
+  'NativePushAction mapping order must be 0 Attack, 1 Dodge, 2 Radiance, 3 Current, 4 Corruption, 5 Ultimate');
 assert.match(pushActionBody, /g_loop\.enqueueInput\(action, -1, 0\.0f, 0\.0f\)/,
   'NativePushAction must enqueue through Loop');
-for (let type = 0; type <= 5; type++) {
-  assert.match(controls, new RegExp(`pushAction\\(${type}\\)`),
-    `CombatControls missing pushAction(${type})`);
-}
 
 const snapshotInterface = bridge.match(/export interface Snapshot \{([\s\S]*?)\n\}/);
 assert(snapshotInterface, 'Bridge must declare Snapshot');

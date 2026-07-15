@@ -83,3 +83,55 @@ entry/build/default/outputs/default/entry-default-signed.hap
   代码结构保证，但仍需设备尺寸上的人工确认。
 - 诊断 HUD 直接展示数值和拒绝原因枚举，符合阶段 3 临时诊断范围，未加入阶段 6 文案映射和
   视觉精修。
+
+## 审查修复（2026-07-16）
+
+审查发现并修复两处边界问题：
+
+1. `CombatController` 原先对每次动作决策都写入 `lastRejectReason_`，导致同帧先拒绝、后成功
+   时成功决策的 `None` 覆盖最近拒绝。现仅在 `!decision.accepted` 时更新，生命周期
+   `reset()` 才清为 `None`。新增测试覆盖同帧非法动作后成功普攻仍保留
+   `InvalidAction`，并验证 reset 清零。
+2. `TrainingPulse::warningRemainingMs` 原先通过
+   `(elapsed / period + 1) * period` 构造下一个绝对 Tick，接近 `Tick` 最大值时发生有符号
+   溢出。现只用 `elapsed % period` 计算剩余量，结果保持在 `[1, period]`。新增
+   `Tick::max` 与 `Tick::max - 1` 测试，并使用 signed-integer-overflow sanitizer 验证。
+
+Node 契约同步加强：
+
+- 每个 `Button(label)` 必须在下一个按钮出现前调用对应的 `pushAction(0..5)`，交换按钮编号
+  会失败；
+- Native `kActions` 整体顺序必须是 `Attack, Dodge, Radiance, Current, Corruption,
+  Ultimate`，逐项存在但顺序错误也会失败。
+
+RED 证据：
+
+```text
+Assertion failed: rejectThenAccept.snapshot().lastRejectReason ==
+ActionRejectReason::InvalidAction
+controller_exit=134
+
+training_pulse.cpp:40:62: runtime error: signed integer overflow:
+3074457345618259 * 3000 cannot be represented in type 'Tick'
+sanitizer_exit=134
+```
+
+最终从空目录编译并运行：
+
+```text
+node tests/test_bridge_contract.mjs                         PASS
+test_combat_controller                                     PASS
+test_training_pulse + signed-integer-overflow sanitizer    PASS
+test_loop_integration                                      PASS
+git diff --check                                           PASS
+```
+
+Hvigor 使用前述相同 `DEVECO_SDK_HOME` 和 `assembleHap` 命令重新执行；Native Ninja、
+ArkTS、PackageHap、SignHap 均完成：
+
+```text
+BUILD SUCCESSFUL in 8 s 804 ms
+FINAL PASS: node=1 controller=1 pulse+ubsan=1 loop=1 signed_hap=1 diff_check=1
+```
+
+本次审查修复未修改 `build-profile.json5`，未执行 Task 8 真机验证。

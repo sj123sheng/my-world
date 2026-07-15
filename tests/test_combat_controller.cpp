@@ -35,6 +35,17 @@ int main() {
   ordered.update({0, 16, false, CombatController::kTrainingTargetId, true});
   assert(ordered.snapshot().lastAcceptedSequence == 6);
 
+  CombatController rejectThenAccept(CombatConfig::defaults());
+  rejectThenAccept.enqueue({static_cast<CombatAction>(255), 1});
+  rejectThenAccept.enqueue({CombatAction::Attack, 2});
+  rejectThenAccept.update(
+      {0, 16, false, CombatController::kTrainingTargetId, true});
+  assert(rejectThenAccept.snapshot().lastAcceptedSequence == 2);
+  assert(rejectThenAccept.snapshot().lastRejectReason ==
+         ActionRejectReason::InvalidAction);
+  rejectThenAccept.reset();
+  assert(rejectThenAccept.snapshot().lastRejectReason == ActionRejectReason::None);
+
   ordered.update({16, 16, true, CombatController::kTrainingTargetId, true});
   assert(ordered.snapshot().comboSegment == 0);
 

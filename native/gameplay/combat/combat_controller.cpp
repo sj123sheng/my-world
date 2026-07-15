@@ -40,8 +40,10 @@ void CombatController::update(const CombatFrameInput& input) {
                    });
   for (const ActionRequest& request : pendingActions_) {
     const ActionDecision decision = actions_.request(request, context);
-    lastRejectReason_ = decision.reason;
-    if (!decision.accepted) continue;
+    if (!decision.accepted) {
+      lastRejectReason_ = decision.reason;
+      continue;
+    }
     lastAcceptedSequence_ = request.sequence;
     if (request.action == CombatAction::Attack) {
       comboSegment_ = static_cast<uint8_t>(comboSegment_ % 4 + 1);

@@ -37,8 +37,8 @@ Tick TrainingPulse::warningRemainingMs(Tick now) const {
   Tick warning = nextWarningTick_;
   if (warning <= now) {
     const Tick elapsed = now - warning;
-    warning += (elapsed / config_.trainingPulsePeriodMs + 1) *
-               config_.trainingPulsePeriodMs;
+    const Tick elapsedInPeriod = elapsed % config_.trainingPulsePeriodMs;
+    return config_.trainingPulsePeriodMs - elapsedInPeriod;
   }
   return warning - now;
 }
