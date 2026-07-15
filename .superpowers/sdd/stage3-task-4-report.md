@@ -83,3 +83,46 @@ PASS related_combat_regressions=4/4
   Task 应负责注册。
 - 反应事件向量/表现事件未在 brief 的产出接口或断言中定义；当前 outcome 只提供结算结果，
   后续循环集成若需要事件队列，应在对应任务中补充契约。
+
+## 审查阻塞项修复
+
+### 根因与 RED
+
+初版将 `SourceAuraContainer` 放在 `SourceReactionSystem`，系统没有 target key，导致同一个
+系统实例对任意目标读写同一附着容器；目标死亡复位也无法访问并清理该状态。先新增双目标
+隔离、死亡复活清理和真实双候选测试，再编译，退出码 `1`：
+
+```text
+error: no member named 'sourceAuras' in 'TrainingTarget'
+review_red_exit=1
+```
+
+该失败证明旧目标类型不拥有附着，符合审查指出的根因。
+
+### 修复内容
+
+- `SourceAuraContainer` 改由每个 `TrainingTarget` 独立持有；反应系统不再保存全局附着。
+- `TrainingTarget::advance(now)` 仅衰减自身附着，`reset()` 调用 `clear()`，死亡 2000ms
+  复位后不会保留旧附着。
+- `SourceReactionSystem::apply()` 只读取和修改传入目标的容器。
+- 多候选固定按 `Radiance`、`Current`、`Corruption` 枚举顺序选择首个有效组合，不依赖
+  容器插入/迭代顺序；选中后只结算一次，消费旧组合并重新施加当前源。
+- 测试用逆序预置 `Corruption`、`Radiance`，再命中 `Current`，固定选择折光，只造成
+  12 生命伤害、0 韧伤，最终仅保留 `Current`。
+
+### GREEN 与回归
+
+首次修复后定向执行：
+
+```text
+review_green_exit=0
+```
+
+提交前以 C++17、`-Wall -Wextra -Werror` 重新编译运行两个 Task 4 测试、
+`test_source_aura`、`test_resonance`、`test_event_order` 及四个战斗相关回归，结果：
+
+```text
+REVIEW FINAL VERIFY PASS: 9/9 tests; diff checks clean
+```
+
+`build-profile.json5` 仍为用户已有未暂存修改；本次未触碰 CMake、AI 或 HUD。

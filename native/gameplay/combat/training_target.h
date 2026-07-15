@@ -1,6 +1,7 @@
 #pragma once
 
 #include "combat_config.h"
+#include "source_aura.h"
 
 class TrainingTarget {
  public:
@@ -18,6 +19,8 @@ class TrainingTarget {
   Tick deathResetAt() const { return deathResetAt_; }
   FixedPoint hpDamageMultiplier(Tick now) const;
   FixedPoint poiseDamageMultiplier(Tick now) const;
+  SourceAuraContainer& sourceAuras() { return sourceAuras_; }
+  const SourceAuraContainer& sourceAuras() const { return sourceAuras_; }
 
   FixedPoint applyHpDamage(FixedPoint amount, Tick now);
   FixedPoint applyPoiseDamage(FixedPoint amount, Tick now);
@@ -32,4 +35,5 @@ class TrainingTarget {
   Tick breakUntil_ = 0;
   Tick stagnationUntil_ = 0;
   Tick deathResetAt_ = 0;
+  SourceAuraContainer sourceAuras_;
 };

@@ -2,8 +2,6 @@
 
 #include "damage_resolver.h"
 #include "resonance.h"
-#include "source_aura.h"
-
 #include <optional>
 
 struct ReactionOutcome {
@@ -21,10 +19,8 @@ class SourceReactionSystem {
                         FixedPoint amount,
                         Tick now,
                         EntityId applier);
-  const std::vector<SourceAura>& activeAuras() const { return auras_.active(); }
 
  private:
   CombatConfig config_;
   DamageResolver resolver_;
-  SourceAuraContainer auras_;
 };

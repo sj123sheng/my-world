@@ -9,18 +9,23 @@ ReactionOutcome SourceReactionSystem::apply(TrainingTarget& target,
                                             Tick now,
                                             EntityId applier) {
   target.advance(now);
-  auras_.decay(now);
+  SourceAuraContainer& auras = target.sourceAuras();
 
   ReactionOutcome outcome;
-  for (const SourceAura& aura : auras_.active()) {
-    const std::optional<ResonanceType> reaction = resolveResonance(aura.type, source);
-    if (!reaction) continue;
-    outcome.type = reaction;
-    break;
+  constexpr SourceType kPriority[] = {
+      SourceType::Radiance, SourceType::Current, SourceType::Corruption};
+  for (const SourceType candidate : kPriority) {
+    for (const SourceAura& aura : auras.active()) {
+      if (aura.type != candidate) continue;
+      const std::optional<ResonanceType> reaction = resolveResonance(candidate, source);
+      if (reaction) outcome.type = reaction;
+      break;
+    }
+    if (outcome.type) break;
   }
 
   if (outcome.type) {
-    auras_.clear();
+    auras.clear();
     HitRequest reactionHit;
     reactionHit.tick = now;
     switch (*outcome.type) {
@@ -48,6 +53,6 @@ ReactionOutcome SourceReactionSystem::apply(TrainingTarget& target,
     }
   }
 
-  auras_.apply({source, amount, now + config_.sourceAuraDurationMs, applier});
+  auras.apply({source, amount, now + config_.sourceAuraDurationMs, applier});
   return outcome;
 }

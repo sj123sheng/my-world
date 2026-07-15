@@ -12,5 +12,8 @@ int main(){
   assert(c.consume(SourceType::Radiance));
   assert(c.active().empty());
   assert(!c.consume(SourceType::Radiance));
+  c.apply({SourceType::Current, fp(1.0), 400, 3});
+  c.clear();
+  assert(c.active().empty());
   return 0;
 }

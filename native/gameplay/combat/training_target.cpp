@@ -11,6 +11,7 @@ void TrainingTarget::advance(Tick now) {
     reset();
     return;
   }
+  sourceAuras_.decay(now);
   if (reactionWeakUntil_ > 0 && now >= reactionWeakUntil_) {
     reactionWeakUntil_ = 0;
   }
@@ -30,6 +31,7 @@ void TrainingTarget::reset() {
   breakUntil_ = 0;
   stagnationUntil_ = 0;
   deathResetAt_ = 0;
+  sourceAuras_.clear();
 }
 
 Tick TrainingTarget::weakUntil() const { return std::max(reactionWeakUntil_, breakUntil_); }
