@@ -30,8 +30,8 @@
 - HarmonyOS Stage 模型应用工程与 API 23 配置。
 - ArkTS + ArkUI 页面、HUD 和应用生命周期管理。
 - XComponent Surface 与 Native C++ 回调注册。
-- ArkTS `changedTouches` 单一触控源，经 N-API 注入输入队列；Native XComponent
-  不再重复采集触控。
+- Native XComponent `DispatchTouchEvent` 是真机生产触控的单一来源；回调逐点读取
+  `touchPoints` 的动作、ID 与局部坐标并注入输入队列，ArkTS 页面不再重复生产触控。
 - HarmonyOS NDK C++ 游戏帧循环。
 - EGL 1.4 与 OpenGL ES 3 原生渲染上下文。
 - 基础网格、玩家、目标、场景物件和粒子绘制。

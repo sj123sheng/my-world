@@ -92,6 +92,40 @@ static void OnSurfaceDestroyed(OH_NativeXComponent* component, void* window) {
   });
 }
 
+static bool MapTouchAction(OH_NativeXComponent_TouchEventType type,
+                           InputAction& action) {
+  return TryMapPointerAction(static_cast<int32_t>(type), action);
+}
+
+static void OnDispatchTouchEvent(OH_NativeXComponent* component, void* window) {
+  OH_NativeXComponent_TouchEvent touchEvent{};
+  if (OH_NativeXComponent_GetTouchEvent(component, window, &touchEvent) !=
+      OH_NATIVEXCOMPONENT_RESULT_SUCCESS) {
+    LOGE("OH_NativeXComponent_GetTouchEvent failed");
+    return;
+  }
+
+  if (touchEvent.numPoints == 0) {
+    InputAction action = InputAction::PointerCancel;
+    if (MapTouchAction(touchEvent.type, action)) {
+      g_loop.enqueueInput(action, touchEvent.id, touchEvent.x, touchEvent.y);
+    }
+    return;
+  }
+
+  const uint32_t pointCount =
+      touchEvent.numPoints > OH_NATIVE_XCOMPONENT_MAX_TOUCH_POINTS_NUMBER
+          ? OH_NATIVE_XCOMPONENT_MAX_TOUCH_POINTS_NUMBER
+          : touchEvent.numPoints;
+  for (uint32_t index = 0; index < pointCount; ++index) {
+    const OH_NativeXComponent_TouchPoint& point = touchEvent.touchPoints[index];
+    InputAction action = InputAction::PointerCancel;
+    if (MapTouchAction(point.type, action)) {
+      g_loop.enqueueInput(action, point.id, point.x, point.y);
+    }
+  }
+}
+
 static napi_value NativeStart(napi_env env, napi_callback_info) {
   g_foregroundRequested.store(true);
   g_loop.start();
@@ -212,7 +246,7 @@ static napi_value Init(napi_env env, napi_value exports) {
     .OnSurfaceCreated = OnSurfaceCreated,
     .OnSurfaceChanged = OnSurfaceChanged,
     .OnSurfaceDestroyed = OnSurfaceDestroyed,
-    .DispatchTouchEvent = nullptr,
+    .DispatchTouchEvent = OnDispatchTouchEvent,
   };
   OH_NativeXComponent_RegisterCallback(nativeXComponent, &callback);
   LOGI("XComponent callbacks registered");

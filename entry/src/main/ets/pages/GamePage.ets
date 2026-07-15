@@ -1,4 +1,4 @@
-import { nativeStart, nativeStop, pushInput, pullSnapshot, Snapshot } from '../napi/Bridge';
+import { nativeStart, nativeStop, pullSnapshot, Snapshot } from '../napi/Bridge';
 import { Hud } from '../ui/Hud';
 
 @Entry
@@ -38,16 +38,6 @@ struct GamePage {
         .backgroundColor('#141628')
         .onDestroy(() => {
           nativeStop();
-        })
-        .onTouch((event: TouchEvent) => {
-          event.changedTouches.forEach((touch: TouchObject) => {
-            pushInput({
-              type: event.type as number,
-              pointerId: touch.id,
-              x: touch.windowX,
-              y: touch.windowY
-            });
-          });
         })
 
       if (!this.rendererReady) {

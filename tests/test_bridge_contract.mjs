@@ -8,14 +8,14 @@ const ability = fs.readFileSync('entry/src/main/ets/EntryAbility.ets', 'utf8');
 const nativeBridge = fs.readFileSync('entry/src/main/cpp/native_bridge.cpp', 'utf8');
 const loop = fs.readFileSync('native/engine/core/loop.cpp', 'utf8');
 
-assert.doesNotMatch(nativeBridge, /OH_NativeXComponent_GetTouchEvent/,
-  'Native XComponent must not produce touch input alongside ArkTS changedTouches');
-assert.doesNotMatch(nativeBridge, /OnDispatchTouchEvent/,
-  'Native XComponent touch dispatch callback must not be registered');
-assert.match(nativeBridge, /\.DispatchTouchEvent\s*=\s*nullptr/,
-  'XComponent touch callback must be explicitly disabled');
-assert.equal((nativeBridge.match(/g_loop\.enqueueInput\(/g) ?? []).length, 1,
-  'NativePushInput must be the only native enqueue site for ArkTS touch input');
+assert.doesNotMatch(page, /\.onTouch\s*\(/,
+  'GamePage must not register an ArkTS touch producer for a library-backed XComponent');
+assert.doesNotMatch(page, /\bpushInput\b/,
+  'GamePage must not produce input through the N-API pushInput bridge');
+assert.match(nativeBridge, /\.DispatchTouchEvent\s*=\s*OnDispatchTouchEvent/,
+  'XComponent touch callback must be registered as the only production input source');
+assert.match(nativeBridge, /OH_NativeXComponent_GetTouchEvent/,
+  'Native XComponent callback must fetch its touch event');
 
 function functionBody(source, signature) {
   const start = source.indexOf(signature);
@@ -27,19 +27,6 @@ function functionBody(source, signature) {
     if (source[index] === '}' && --depth === 0) return source.slice(open + 1, index);
   }
   assert.fail(`unterminated function: ${signature}`);
-}
-
-function blockBody(source, marker) {
-  const start = source.indexOf(marker);
-  assert.notEqual(start, -1, `missing block: ${marker}`);
-  const open = source.indexOf('{', start);
-  assert.notEqual(open, -1, `missing opening brace after: ${marker}`);
-  let depth = 0;
-  for (let index = open; index < source.length; index++) {
-    if (source[index] === '{') depth++;
-    if (source[index] === '}' && --depth === 0) return source.slice(open + 1, index);
-  }
-  assert.fail(`unterminated block: ${marker}`);
 }
 
 const snapshotInterface = bridge.match(/export interface Snapshot \{([\s\S]*?)\n\}/);
@@ -78,10 +65,28 @@ for (const field of ['moveX', 'moveY', 'cameraYaw', 'cameraPitch', 'targetDist']
     `NativePullSnapshot must export ${field} using its created value`);
 }
 
-const changedTouchCallback = blockBody(page, 'event.changedTouches.forEach');
-const pushInputCall = blockBody(changedTouchCallback, 'pushInput(');
-assert.match(pushInputCall, /pointerId:\s*touch\.id/,
-  'changedTouches callback pushInput must preserve pointer ids');
+const dispatchTouchBody = functionBody(nativeBridge, 'static void OnDispatchTouchEvent');
+assert.match(dispatchTouchBody,
+  /OH_NativeXComponent_GetTouchEvent\(component, window, &touchEvent\)/,
+  'Native callback must read the touch event for this component and window');
+assert.match(dispatchTouchBody,
+  /touchEvent\.numPoints\s*==\s*0[\s\S]*?MapTouchAction\(touchEvent\.type, action\)[\s\S]*?g_loop\.enqueueInput\(action, touchEvent\.id, touchEvent\.x, touchEvent\.y\)/,
+  'zero-point events must fall back to the top-level type/id/x/y fields');
+assert.match(dispatchTouchBody,
+  /OH_NATIVE_XCOMPONENT_MAX_TOUCH_POINTS_NUMBER/,
+  'Native callback must cap the reported point count at the SDK array capacity');
+assert.match(dispatchTouchBody,
+  /for\s*\([\s\S]*?<\s*(?:pointCount|touchEvent\.numPoints)[\s\S]*?\)/,
+  'Native callback must iterate all reported touch points');
+assert.match(dispatchTouchBody, /touchEvent\.touchPoints\[/,
+  'Native callback must read every point from touchEvent.touchPoints');
+for (const field of ['type', 'id', 'x', 'y']) {
+  assert.match(dispatchTouchBody, new RegExp(`point\\.${field}`),
+    `Native callback must preserve per-point ${field}`);
+}
+assert.match(dispatchTouchBody,
+  /MapTouchAction\(point\.type, action\)[\s\S]*?g_loop\.enqueueInput\(action, point\.id, point\.x, point\.y\)/,
+  'Native callback must map and enqueue each point with its own type/id/x/y');
 
 assert.match(bridge, /interface InputEvent \{[\s\S]*?pointerId:\s*number;/,
   'Bridge InputEvent must require pointerId');
@@ -122,7 +127,7 @@ assert.match(functionBody(nativeBridge, 'static napi_value NativeStop'),
   'NativeStop must clear foreground before stopping');
 assert.match(functionBody(nativeBridge, 'static napi_value NativePushInput'),
   /g_loop\.enqueueInput\(/,
-  'the single native enqueue site must belong to the N-API producer');
+  'pushInput remains a validated external/test bridge even though GamePage does not call it');
 for (const callback of ['OnSurfaceCreated', 'OnSurfaceChanged']) {
   assert.match(functionBody(nativeBridge, `static void ${callback}`),
     /if \(g_foregroundRequested\.load\(\)\)[\s\S]*?g_loop\.start\(\);/,

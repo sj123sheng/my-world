@@ -556,6 +556,10 @@ git commit -m "refactor: 集成输入相机固定循环" \
 - Consumes: XComponent `TouchEvent.touches`/`changedTouches` 与 Task 5 快照。
 - Produces: 每根变化指针一条 `pushInput`；ArkTS `Snapshot` 与 Native 对象字段一致。
 
+> 2026-07-15 真机修正：带 `libraryname` 的 Native XComponent 在目标真机没有触发 ArkTS
+> `.onTouch`。当前生产链路已经改为 Native `DispatchTouchEvent` 逐点采集；本任务以下
+> ArkTS 转发步骤仅保留为历史实施记录，不再描述当前架构。
+
 - [ ] **Step 1: 扩展契约测试并确认失败**
 
 在 `tests/test_bridge_contract.mjs` 中将快照字段检查扩展为：
@@ -767,3 +771,15 @@ git commit -m "docs: 完成阶段2输入相机验收" \
   distance 缩放；通过显式 NDC x/y 半径保证 GL 与软件路径在非方形视口中均为像素圆形。
 - [x] 跨模块测试验证多组任意 yaw 下 controller move 往返视图方向不变，以及
   SoftTargeting 正前方候选稳定落在视图前轴。
+
+## 真机输入生产者修复（2026-07-15）
+
+- [x] 契约测试要求 `GamePage` 不含 `.onTouch` 或 `pushInput` 生产路径。
+- [x] Native 回调注册 `OnDispatchTouchEvent` 并调用
+  `OH_NativeXComponent_GetTouchEvent`。
+- [x] `numPoints` 限制在 SDK 触点数组容量内，并逐点按各自 `type/id/x/y` 映射、入队；
+  零点事件回退顶层 `type/id/x/y`，未知动作不入队。
+- [x] `Bridge.ets` 的 `pushInput` API 保留为测试或未来外部输入入口，但页面不再调用，
+  生产环境只有 Native XComponent 一个触控生产者。
+- [ ] signed HAP 安装后，以单指和双指注入复验 HUD `moveX/moveY`、玩家位置、相机角度
+  与画面变化；自动化及构建结果不能替代此设备出口。
