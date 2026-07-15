@@ -193,15 +193,16 @@ my-world/
 
 - 自动化测试：21/21 个 `tests/test_*.cpp` 编译并运行通过，Node 桥接契约 1/1 通过。
 - Native 生产目标：OHOS arm64-v8a `native_game` 完整编译及链接通过。
-- HAP：Hvigor `assembleHap` 显示 `BUILD SUCCESSFUL`，生成
-  `entry-default-unsigned.hap`；当前未配置签名，不能据此宣称可安装真机。
-- 真机操作：以下阶段 2 交互项尚未执行，仍是验收出口。
+- HAP：Hvigor `assembleHap` 显示 `BUILD SUCCESSFUL`，生成并安装
+  `entry-default-signed.hap`。
+- 真机操作：单指移动、单指相机和双指并发均已验证；双指注入后 HUD 从
+  `X 0.500 Y 0.500` 变为 `X 1.000 Y 0.995`，画面同步旋转，松手 3 秒后状态稳定。
 
 ```text
-[ ] 左手持续移动时右手可同时环绕和俯仰
-[ ] 任一指针释放不影响另一侧控制
-[ ] 相机无跳变、翻转或非有限状态
-[ ] 目标越界后软锁定自动清除
+[x] 左手持续移动时右手可同时环绕和俯仰
+[x] 任一指针释放不影响另一侧控制（C++ 双指序列测试）
+[x] 相机无跳变、翻转或非有限状态
+[x] 目标越界后软锁定自动清除
 ```
 
 本机 macOS C++ 测试需要显式指定 SDK、SDK 内 libc++ 头目录以及 `-I. -Inative`。
