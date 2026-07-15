@@ -25,7 +25,7 @@ struct SoftTargetingConfig {
 
 class SoftTargeting {
  public:
-  explicit SoftTargeting(SoftTargetingConfig config = {}) : config_(config) {}
+  explicit SoftTargeting(SoftTargetingConfig config = {});
 
   std::optional<TargetSelection> select(
       Vec2 player, float cameraYaw,
