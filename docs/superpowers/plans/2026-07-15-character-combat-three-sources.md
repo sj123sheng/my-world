@@ -163,9 +163,9 @@ assert(r.spendStamina(fp(30),0) && r.stamina() == fp(70));
 r.advance(499); assert(r.stamina() == fp(70));
 r.advance(999); assert(r.stamina() == fp(80));
 TrainingPulse pulse(CombatConfig::defaults());
-assert(pulse.advance(2200).kind == PulseEventKind::Hit);
-assert(pulse.classifyDodge(2100) == DodgeGrade::Precise);
-assert(pulse.classifyDodge(1999) == DodgeGrade::Normal);
+assert(pulse.advance(800).kind == PulseEventKind::Hit);
+assert(pulse.classifyDodge(700) == DodgeGrade::Precise);
+assert(pulse.classifyDodge(599) == DodgeGrade::Normal);
 ```
 
 增加闪避耗 `30`、总长 `300ms`、前 `200ms` 无敌、体力不足原子拒绝、精准闪避授予 `5 秒` 洞察断言。
@@ -324,6 +324,7 @@ CombatController combat(CombatConfig::defaults());
 combat.enqueue({CombatAction::Attack,1});
 combat.update({0,16,false,1});
 assert(combat.snapshot().comboSegment == 1);
+combat.update({160,144,false,1});
 assert(combat.snapshot().targetHp == 292);
 Loop loop; loop.surface.width=1000; loop.surface.height=800;
 assert(loop.enqueueInput(InputAction::Attack,-1,0,0));
