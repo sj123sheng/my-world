@@ -55,11 +55,13 @@ int main() {
   running.hp = 73;
   running.playerX = 0.25f;
   running.targetId = 9;
+  running.targetDist = 3.5f;
   running.rendererReady = true;
   const GameSnapshot stopped = RendererStoppedSnapshot(running);
   assert(!stopped.rendererReady);
   assert(stopped.tick == running.tick);
   assert(stopped.hp == running.hp);
   assert(stopped.playerX == running.playerX);
-  assert(stopped.targetId == running.targetId);
+  assert(stopped.targetId == 0);
+  assert(stopped.targetDist == 0.0f);
 }

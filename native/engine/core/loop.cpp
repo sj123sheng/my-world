@@ -20,6 +20,7 @@ void Loop::start() {
       return;
     }
     if (!lifecycle.start([this]() {
+      resetInput();
       shouldStop = false;
       running = true;
       tickCount = 0;
@@ -50,6 +51,7 @@ void Loop::stop() {
       running = false;
     });
     resetInput();
+    publishRendererStopped();
   });
 }
 
@@ -93,10 +95,6 @@ void Loop::processInput() {
         } else if (releaseRole == TouchRole::Camera) {
           cameraGesture.end(e.pointerId);
         }
-        if (e.action == InputAction::PointerCancel) {
-          resetInput();
-          return;
-        }
         break;
       default:
         break;
@@ -108,18 +106,18 @@ void Loop::processInput() {
 
 void Loop::resetInput() {
   touchRouter.clear();
-  joystick = VirtualJoystick(VirtualJoystickConfig{});
-  cameraGesture = CameraGesture(CameraGestureConfig{});
+  joystick.clear();
+  cameraGesture.clear();
   intent.move = {};
   intent.lookDelta = {};
-  InputEvent discarded;
-  while (input.pop(discarded)) {
-  }
+  currentTarget.reset();
+  input.clear();
 }
 
 void Loop::tickOnce(int64_t elapsedMs) {
   if (!surface.ready) {
     resetInput();
+    publishRendererStopped();
     return;
   }
   processInput();
@@ -166,6 +164,23 @@ void Loop::updateFixed(Tick, int64_t dtMs) {
   const float dtSeconds = static_cast<float>(dtMs) / 1000.0f;
   playerController.update(surface.player, intent.move, camera.yaw(),
                           dtSeconds);
+
+  particleEmitTimer += dtSeconds;
+  if (surface.player.moving && particleEmitTimer > 0.05f) {
+    particleEmitTimer = 0.0f;
+    surface.particles.push_back({surface.player.x, surface.player.y, 0.4f,
+                                 0.4f});
+  }
+  for (Particle& particle : surface.particles) {
+    particle.life -= dtSeconds;
+  }
+  surface.particles.erase(
+      std::remove_if(surface.particles.begin(), surface.particles.end(),
+                     [](const Particle& particle) {
+                       return particle.life <= 0.0f;
+                     }),
+      surface.particles.end());
+
   camera.update({surface.player.x, surface.player.y}, lookDelta, dtSeconds);
 
   std::vector<TargetCandidate> candidates;
@@ -180,5 +195,6 @@ void Loop::updateFixed(Tick, int64_t dtMs) {
 }
 
 void Loop::publishRendererStopped() {
+  currentTarget.reset();
   snapshots.publish(RendererStoppedSnapshot(snapshots.read()));
 }

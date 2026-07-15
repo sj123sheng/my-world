@@ -17,7 +17,6 @@ class CameraGesture {
   void begin(int32_t pointerId, Vec2 position) {
     pointerId_ = pointerId;
     previous_ = position;
-    accumulated_ = {};
   }
 
   void move(int32_t pointerId, Vec2 position) {
@@ -32,6 +31,12 @@ class CameraGesture {
   void end(int32_t pointerId) {
     if (pointerId != pointerId_) return;
     pointerId_ = -1;
+  }
+
+  void clear() {
+    pointerId_ = -1;
+    previous_ = {};
+    accumulated_ = {};
   }
 
   Vec2 consumeDelta() {

@@ -1,7 +1,9 @@
 #include "native/engine/core/loop.h"
 
 #include <cassert>
+#include <chrono>
 #include <cmath>
+#include <thread>
 #include <type_traits>
 
 int main() {
@@ -43,6 +45,41 @@ int main() {
   assert(loop.intent.lookDelta == Vec2{});
   assert(loop.touchRouter.activeCount() == 0);
 
+  Loop orderedCameraLoop;
+  orderedCameraLoop.surface.width = 1000;
+  orderedCameraLoop.surface.height = 800;
+  assert(orderedCameraLoop.enqueueInput(InputAction::PointerDown, 10, 700.0f,
+                                        400.0f));
+  assert(orderedCameraLoop.enqueueInput(InputAction::PointerMove, 10, 750.0f,
+                                        430.0f));
+  assert(orderedCameraLoop.enqueueInput(InputAction::PointerUp, 10, 750.0f,
+                                        430.0f));
+  assert(orderedCameraLoop.enqueueInput(InputAction::PointerDown, 11, 800.0f,
+                                        400.0f));
+  orderedCameraLoop.processInput();
+  assert((orderedCameraLoop.intent.lookDelta == Vec2{0.5f, 0.3f}));
+
+  Loop cancelLoop;
+  cancelLoop.surface.width = 1000;
+  cancelLoop.surface.height = 800;
+  assert(cancelLoop.enqueueInput(InputAction::PointerDown, 20, 100.0f,
+                                 400.0f));
+  assert(cancelLoop.enqueueInput(InputAction::PointerMove, 20, 150.0f,
+                                 400.0f));
+  assert(cancelLoop.enqueueInput(InputAction::PointerDown, 21, 700.0f,
+                                 400.0f));
+  assert(cancelLoop.enqueueInput(InputAction::PointerMove, 21, 730.0f,
+                                 420.0f));
+  assert(cancelLoop.enqueueInput(InputAction::PointerCancel, 21, 730.0f,
+                                 420.0f));
+  assert(cancelLoop.enqueueInput(InputAction::PointerMove, 20, 180.0f,
+                                 400.0f));
+  cancelLoop.processInput();
+  assert(cancelLoop.touchRouter.activeCount() == 1);
+  assert(cancelLoop.touchRouter.role(20) == TouchRole::Movement);
+  assert(std::abs(cancelLoop.intent.move.x - 0.8f) < 0.0001f);
+  assert((cancelLoop.intent.lookDelta == Vec2{0.3f, 0.2f}));
+
   assert(loop.enqueueInput(InputAction::PointerDown, 3, 100.0f, 400.0f));
   assert(loop.enqueueInput(InputAction::PointerMove, 3, 180.0f, 400.0f));
   assert(loop.enqueueInput(InputAction::PointerUp, 3, 180.0f, 400.0f));
@@ -71,6 +108,20 @@ int main() {
   assert(targeted.targetId == 1);
   assert(std::abs(targeted.targetDist - 0.3f) < 0.001f);
 
+  targetingLoop.resetInput();
+  targetingLoop.tickOnce(0);
+  const GameSnapshot resetWithoutFixedTick = targetingLoop.snapshot();
+  assert(resetWithoutFixedTick.targetId == 0);
+  assert(resetWithoutFixedTick.targetDist == 0.0f);
+
+  targetingLoop.tickOnce(16);
+  assert(targetingLoop.snapshot().targetId == 1);
+  targetingLoop.publishRendererStopped();
+  const GameSnapshot stopped = targetingLoop.snapshot();
+  assert(!stopped.rendererReady);
+  assert(stopped.targetId == 0);
+  assert(stopped.targetDist == 0.0f);
+
   assert(targetingLoop.enqueueInput(InputAction::PointerDown, 5, 100.0f,
                                     400.0f));
   assert(targetingLoop.enqueueInput(InputAction::PointerMove, 5, 180.0f,
@@ -81,4 +132,35 @@ int main() {
   targetingLoop.tickOnce(16);
   assert(targetingLoop.intent.move == Vec2{});
   assert(targetingLoop.touchRouter.activeCount() == 0);
+  const GameSnapshot invalidSurface = targetingLoop.snapshot();
+  assert(!invalidSurface.rendererReady);
+  assert(invalidSurface.targetId == 0);
+  assert(invalidSurface.targetDist == 0.0f);
+
+  Loop particleLoop;
+  particleLoop.intent.move = {1.0f, 0.0f};
+  particleLoop.updateFixed(1, 60);
+  assert(particleLoop.surface.particles.size() == 1);
+  assert(std::abs(particleLoop.surface.particles.front().life - 0.34f) <
+         0.0001f);
+  particleLoop.intent.move = {};
+  particleLoop.updateFixed(2, 200);
+  assert(std::abs(particleLoop.surface.particles.front().life - 0.14f) <
+         0.0001f);
+  particleLoop.updateFixed(3, 200);
+  assert(particleLoop.surface.particles.empty());
+
+  Loop restartedLoop;
+  restartedLoop.surface.width = 1000;
+  restartedLoop.surface.height = 800;
+  restartedLoop.surface.ready = true;
+  assert(restartedLoop.enqueueInput(InputAction::PointerDown, 30, 100.0f,
+                                    400.0f));
+  assert(restartedLoop.enqueueInput(InputAction::PointerMove, 30, 200.0f,
+                                    400.0f));
+  restartedLoop.start();
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  restartedLoop.stop();
+  assert(restartedLoop.surface.player.x == 0.5f);
+  assert(restartedLoop.surface.player.y == 0.5f);
 }

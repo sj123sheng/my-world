@@ -35,6 +35,7 @@ struct Loop {
   std::atomic<bool> shouldStop{false};
   std::thread runner;
   float fps = 0.0f;
+  float particleEmitTimer = 0.0f;
   int tickCount = 0;
   std::chrono::steady_clock::time_point lastFpsTime;
 

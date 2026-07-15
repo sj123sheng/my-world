@@ -27,6 +27,12 @@ class InputQueue {
     return true;
   }
 
+  void clear() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::queue<InputEvent> empty;
+    queue_.swap(empty);
+  }
+
   uint64_t droppedCount() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return dropped_;

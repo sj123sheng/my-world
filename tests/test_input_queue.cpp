@@ -17,6 +17,14 @@ int main() {
   assert(out.action == InputAction::PointerMove && out.sequence == 2);
   assert(!queue.pop(out));
 
+  assert(queue.push({InputAction::PointerDown, 8, 1.0f, 2.0f, 4}));
+  assert(queue.push({InputAction::PointerMove, 8, 3.0f, 4.0f, 5}));
+  queue.clear();
+  assert(!queue.pop(out));
+  assert(queue.push({InputAction::PointerDown, 9, 5.0f, 6.0f, 6}));
+  assert(queue.pop(out));
+  assert(out.pointerId == 9 && out.sequence == 6);
+
   InputQueue concurrent(32);
   std::atomic<bool> producerDone{false};
   std::thread producer([&]() {

@@ -43,6 +43,12 @@ class VirtualJoystick {
     value_ = {};
   }
 
+  void clear() {
+    pointerId_ = -1;
+    origin_ = {};
+    value_ = {};
+  }
+
   Vec2 value() const { return value_; }
 
  private:

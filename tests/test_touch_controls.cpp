@@ -60,6 +60,14 @@ int main() {
   assert(std::abs(joystick.value().length() - 1.0f) < 0.0001f);
   joystick.end(1);
   assert(joystick.value() == Vec2{});
+  VirtualJoystick configuredJoystick({0.0f, 200.0f});
+  configuredJoystick.begin(7, {0, 0});
+  configuredJoystick.move(7, {100, 0});
+  assert((configuredJoystick.value() == Vec2{0.5f, 0.0f}));
+  configuredJoystick.clear();
+  configuredJoystick.begin(8, {0, 0});
+  configuredJoystick.move(8, {100, 0});
+  assert((configuredJoystick.value() == Vec2{0.5f, 0.0f}));
   VirtualJoystick invalidJoystick(
       {0.1f, std::numeric_limits<float>::quiet_NaN()});
   invalidJoystick.begin(5, {0, 0});
@@ -74,6 +82,18 @@ int main() {
   camera.move(2, {830, 180});
   assert((camera.consumeDelta() == Vec2{0.1f, -0.1f}));
   assert(camera.consumeDelta() == Vec2{});
+  CameraGesture orderedCamera({0.02f, 0.03f});
+  orderedCamera.begin(10, {800, 200});
+  orderedCamera.move(10, {810, 210});
+  orderedCamera.end(10);
+  orderedCamera.begin(11, {900, 300});
+  assert((orderedCamera.consumeDelta() == Vec2{0.2f, 0.3f}));
+  orderedCamera.move(11, {905, 310});
+  orderedCamera.clear();
+  assert(orderedCamera.consumeDelta() == Vec2{});
+  orderedCamera.begin(12, {0, 0});
+  orderedCamera.move(12, {10, 10});
+  assert((orderedCamera.consumeDelta() == Vec2{0.2f, 0.3f}));
   CameraGesture invalidCamera(
       {std::numeric_limits<float>::infinity(), 0.01f});
   invalidCamera.begin(6, {0, 0});
