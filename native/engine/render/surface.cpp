@@ -167,18 +167,6 @@ static void drawSolidCircleGL(const Surface& s, float cx, float cy, float radius
   drawArraysGL(s, GL_TRIANGLE_FAN, verts, colors);
 }
 
-static void drawRingGL(const Surface& s, float cx, float cy, float radius, int segs, float r, float g, float b, float a) {
-  std::vector<float> verts;
-  for (int i = 0; i <= segs; ++i) {
-    float theta = (float)i / (float)segs * 6.283185f;
-    verts.push_back(cx + std::cos(theta) * radius);
-    verts.push_back(cy + std::sin(theta) * radius);
-  }
-  std::vector<float> colors;
-  fillColor(colors, verts.size() / 2, r, g, b, a);
-  drawArraysGL(s, GL_LINE_STRIP, verts, colors);
-}
-
 static void drawGridGL(const Surface& s) {
   std::vector<float> verts;
   const int lines = 10;
@@ -223,16 +211,6 @@ static void drawPropsGL(const Surface& s) {
       drawSolidCircleGL(s, x - r * 0.3f, y + rh * 0.1f, rh * 0.35f, 10, 0.50f, 0.50f, 0.54f, 1.0f);
     }
   }
-}
-
-static void drawTargetGL(const Surface& s) {
-  if (!s.player.moving) return;
-  const float asp = aspect(s);
-  float x = ndcX(s.player.targetX);
-  float y = ndcY(s.player.targetY);
-  float r = 0.025f * asp;
-  drawRingGL(s, x, y, r, 24, 1.0f, 0.9f, 0.25f, 1.0f);
-  drawRingGL(s, x, y, r * 0.6f, 16, 1.0f, 0.75f, 0.15f, 0.6f);
 }
 
 static void drawParticlesGL(const Surface& s) {
@@ -352,17 +330,6 @@ static void drawSolidEllipse(Canvas& c, int cx, int cy, int rx, int ry, uint32_t
   }
 }
 
-static void drawEllipseOutline(Canvas& c, int cx, int cy, int rx, int ry, uint32_t color) {
-  if (rx <= 0 || ry <= 0) return;
-  int segs = std::max(24, (int)(6.283185f * std::max(rx, ry) / 2));
-  for (int i = 0; i <= segs; ++i) {
-    float theta = (float)i / segs * 6.283185f;
-    int x = cx + (int)(std::cos(theta) * rx);
-    int y = cy + (int)(std::sin(theta) * ry);
-    blendPixel(c, x, y, color);
-  }
-}
-
 static int ndcToScreenX(const Surface& s, float x) {
   return static_cast<int>((x + 1.0f) * 0.5f * (s.width - 1));
 }
@@ -390,14 +357,6 @@ static void drawSolidCircleSW(const Surface& s, Canvas& c, float cx, float cy, f
   int srx = ndcToPixelRadiusX(s, radius);
   int sry = ndcToPixelRadiusY(s, radius / aspect(s));
   drawSolidEllipse(c, scx, scy, srx, sry, packColor(r, g, b, a, c.swapRedBlue));
-}
-
-static void drawRingSW(const Surface& s, Canvas& c, float cx, float cy, float radius, float r, float g, float b, float a) {
-  int scx = ndcToScreenX(s, cx);
-  int scy = ndcToScreenY(s, cy);
-  int srx = ndcToPixelRadiusX(s, radius);
-  int sry = ndcToPixelRadiusY(s, radius / aspect(s));
-  drawEllipseOutline(c, scx, scy, srx, sry, packColor(r, g, b, a, c.swapRedBlue));
 }
 
 static void drawGridSW(const Surface& s, Canvas& c) {
@@ -433,16 +392,6 @@ static void drawPropsSW(const Surface& s, Canvas& c) {
       drawSolidCircleSW(s, c, x - r * 0.3f, y + rh * 0.1f, rh * 0.35f, 0.50f, 0.50f, 0.54f, 1.0f);
     }
   }
-}
-
-static void drawTargetSW(const Surface& s, Canvas& c) {
-  if (!s.player.moving) return;
-  const float asp = aspect(s);
-  float x = ndcX(s.player.targetX);
-  float y = ndcY(s.player.targetY);
-  float r = 0.025f * asp;
-  drawRingSW(s, c, x, y, r, 1.0f, 0.9f, 0.25f, 1.0f);
-  drawRingSW(s, c, x, y, r * 0.6f, 1.0f, 0.75f, 0.15f, 0.6f);
 }
 
 static void drawParticlesSW(const Surface& s, Canvas& c) {
@@ -526,7 +475,6 @@ static void softwareDrawFrame(Surface& s) {
   clearCanvas(c, packColor(0.06f, 0.08f, 0.14f, 1.0f, c.swapRedBlue));
   drawGridSW(s, c);
   drawPropsSW(s, c);
-  drawTargetSW(s, c);
   drawParticlesSW(s, c);
   drawPlayerSW(s, c);
 
@@ -780,7 +728,6 @@ void surface_draw(Surface& s) {
 
   drawGridGL(s);
   drawPropsGL(s);
-  drawTargetGL(s);
   drawParticlesGL(s);
   drawPlayerGL(s);
   glFlush();

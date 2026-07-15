@@ -9,12 +9,14 @@ int main() {
   TouchRouter router;
   assert(!router.handle({InputAction::PointerDown, 1, 100, 200, 0}, 0, 800));
   assert(router.handle({InputAction::PointerDown, 1, 100, 200, 1}, 1000, 800));
+  assert(router.activeCount() == 1);
   assert(router.role(1) == TouchRole::Movement);
   assert(router.handle({InputAction::PointerDown, 2, 800, 200, 2}, 1000, 800));
   assert(router.role(2) == TouchRole::Camera);
   assert(router.handle({InputAction::PointerMove, 1, 900, 200, 3}, 1000, 800));
   assert(router.role(1) == TouchRole::Movement);
   assert(router.handle({InputAction::PointerUp, 2, 820, 210, 4}, 1000, 800));
+  assert(router.activeCount() == 1);
   assert(router.role(1) == TouchRole::Movement);
   assert(router.role(2) == TouchRole::None);
   assert(router.handle({InputAction::PointerDown, 3, 200, 300, 5}, 1000, 800));
@@ -45,6 +47,7 @@ int main() {
                         std::numeric_limits<float>::quiet_NaN()));
   assert(router.role(6) == TouchRole::None);
   router.clear();
+  assert(router.activeCount() == 0);
   assert(router.role(1) == TouchRole::None);
   assert(router.role(3) == TouchRole::None);
   assert(router.role(4) == TouchRole::None);

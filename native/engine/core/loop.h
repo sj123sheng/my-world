@@ -2,15 +2,31 @@
 #include <thread>
 #include <atomic>
 #include <chrono>
+#include <optional>
 #include "fixed_step.h"
 #include "lifecycle_state.h"
 #include "snapshot_store.h"
 #include "../render/surface.h"
+#include "../render/camera.h"
 #include "../input/input_queue.h"
+#include "../input/touch_router.h"
+#include "../input/virtual_joystick.h"
+#include "../input/camera_gesture.h"
+#include "../input/player_intent.h"
+#include "../../gameplay/player/player_controller.h"
+#include "../../gameplay/targeting/soft_targeting.h"
 
 struct Loop {
   Surface surface;
   InputQueue input;
+  TouchRouter touchRouter;
+  VirtualJoystick joystick{VirtualJoystickConfig{}};
+  CameraGesture cameraGesture{CameraGestureConfig{}};
+  PlayerIntent intent;
+  PlayerController playerController;
+  ThirdPersonCamera camera;
+  SoftTargeting softTargeting;
+  std::optional<TargetSelection> currentTarget;
   FixedStep fixedStep{16, 4};
   SnapshotStore snapshots;
   LifecycleState lifecycle;
@@ -27,7 +43,7 @@ struct Loop {
   void tickOnce(int64_t elapsedMs);
   void updateFixed(Tick tick, int64_t dtMs);
   void processInput();
-  void updatePlayer(float dt);
+  void resetInput();
   void publishRendererStopped();
 
   template <typename Fn>

@@ -1,16 +1,21 @@
 #include "loop.h"
+#ifdef OHOS_PLATFORM
 #include <hilog/log.h>
+#endif
 #include <thread>
-#include <cmath>
 #include <algorithm>
+#include <vector>
 
+#ifdef OHOS_PLATFORM
 #define LOGI(...) OH_LOG_Print(LOG_APP, LOG_INFO, 0xFF00, "Ethelan", __VA_ARGS__)
-
-static float clamp01(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); }
+#else
+#define LOGI(...) ((void)0)
+#endif
 
 void Loop::start() {
   withLifecycle([this]() {
     if (!surface.ready) {
+      resetInput();
       LOGI("Loop start skipped: running=%{public}d ready=%{public}d", (int)running, (int)surface.ready);
       return;
     }
@@ -44,71 +49,87 @@ void Loop::stop() {
       if (runner.joinable()) runner.join();
       running = false;
     });
+    resetInput();
   });
 }
 
 void Loop::processInput() {
   InputEvent e;
   while (input.pop(e)) {
+    const TouchRole releaseRole = touchRouter.role(e.pointerId);
     switch (e.action) {
-      case InputAction::PointerDown:
+      case InputAction::PointerDown: {
+        if (!touchRouter.handle(e, static_cast<float>(surface.width),
+                                static_cast<float>(surface.height))) {
+          break;
+        }
+        const TouchRole role = touchRouter.role(e.pointerId);
+        if (role == TouchRole::Movement) {
+          joystick.begin(e.pointerId, {e.x, e.y});
+        } else if (role == TouchRole::Camera) {
+          cameraGesture.begin(e.pointerId, {e.x, e.y});
+        }
+        break;
+      }
       case InputAction::PointerMove:
-        surface.player.moving = true;
-        surface.player.targetX = clamp01(e.x / static_cast<float>(surface.width));
-        surface.player.targetY = clamp01(e.y / static_cast<float>(surface.height));
+        if (!touchRouter.handle(e, static_cast<float>(surface.width),
+                                static_cast<float>(surface.height))) {
+          break;
+        }
+        if (releaseRole == TouchRole::Movement) {
+          joystick.move(e.pointerId, {e.x, e.y});
+        } else if (releaseRole == TouchRole::Camera) {
+          cameraGesture.move(e.pointerId, {e.x, e.y});
+        }
         break;
       case InputAction::PointerUp:
       case InputAction::PointerCancel:
-        surface.player.moving = false;
+        if (!touchRouter.handle(e, static_cast<float>(surface.width),
+                                static_cast<float>(surface.height))) {
+          break;
+        }
+        if (releaseRole == TouchRole::Movement) {
+          joystick.end(e.pointerId);
+        } else if (releaseRole == TouchRole::Camera) {
+          cameraGesture.end(e.pointerId);
+        }
+        if (e.action == InputAction::PointerCancel) {
+          resetInput();
+          return;
+        }
         break;
       default:
         break;
     }
   }
+  intent.move = joystick.value();
+  intent.lookDelta = intent.lookDelta + cameraGesture.consumeDelta();
 }
 
-void Loop::updatePlayer(float dt) {
-  if (surface.player.moving) {
-    const float dx = surface.player.targetX - surface.player.x;
-    const float dy = surface.player.targetY - surface.player.y;
-    const float dist = std::sqrt(dx * dx + dy * dy);
-    if (dist > 0.001f) {
-      surface.player.angle = std::atan2(dy, dx);
-      const float speed = 2.0f * dt;
-      float step = std::min(dist, speed);
-      surface.player.x = clamp01(surface.player.x + std::cos(surface.player.angle) * step);
-      surface.player.y = clamp01(surface.player.y + std::sin(surface.player.angle) * step);
-    }
+void Loop::resetInput() {
+  touchRouter.clear();
+  joystick = VirtualJoystick(VirtualJoystickConfig{});
+  cameraGesture = CameraGesture(CameraGestureConfig{});
+  intent.move = {};
+  intent.lookDelta = {};
+  InputEvent discarded;
+  while (input.pop(discarded)) {
   }
-
-  // trail particles
-  static float emitTimer = 0.0f;
-  emitTimer += dt;
-  if (surface.player.moving && emitTimer > 0.05f) {
-    emitTimer = 0.0f;
-    Particle p;
-    p.x = surface.player.x;
-    p.y = surface.player.y;
-    p.life = 0.4f;
-    p.maxLife = 0.4f;
-    surface.particles.push_back(p);
-  }
-
-  for (auto& p : surface.particles) {
-    p.life -= dt;
-  }
-  surface.particles.erase(
-    std::remove_if(surface.particles.begin(), surface.particles.end(), [](const Particle& p) { return p.life <= 0.0f; }),
-    surface.particles.end());
 }
 
 void Loop::tickOnce(int64_t elapsedMs) {
+  if (!surface.ready) {
+    resetInput();
+    return;
+  }
   processInput();
   fixedStep.advance(elapsedMs, [this](Tick tick, int64_t dtMs) {
     updateFixed(tick, dtMs);
   });
+#ifdef OHOS_PLATFORM
   surface_draw(surface);
   surface_swap(surface);
+#endif
 
   tickCount++;
   auto now = std::chrono::steady_clock::now();
@@ -119,18 +140,20 @@ void Loop::tickOnce(int64_t elapsedMs) {
     lastFpsTime = now;
   }
 
-  snapshots.publish({
-    fixedStep.tick(),
-    100,
-    100,
-    surface.player.x,
-    surface.player.y,
-    fps,
-    surface.player.moving,
-    0,
-    0,
-    surface.ready,
-  });
+  GameSnapshot snapshot;
+  snapshot.tick = fixedStep.tick();
+  snapshot.playerX = surface.player.x;
+  snapshot.playerY = surface.player.y;
+  snapshot.fps = fps;
+  snapshot.moving = surface.player.moving;
+  snapshot.targetId = currentTarget ? currentTarget->id : 0;
+  snapshot.rendererReady = surface.ready;
+  snapshot.moveX = intent.move.x;
+  snapshot.moveY = intent.move.y;
+  snapshot.cameraYaw = camera.yaw();
+  snapshot.cameraPitch = camera.pitch();
+  snapshot.targetDist = currentTarget ? currentTarget->distance : 0.0f;
+  snapshots.publish(snapshot);
 
   if (tickCount <= 5 || tickCount % 60 == 0) {
     LOGI("tickOnce: %{public}d fps=%{public}.1f", tickCount, fps);
@@ -138,7 +161,22 @@ void Loop::tickOnce(int64_t elapsedMs) {
 }
 
 void Loop::updateFixed(Tick, int64_t dtMs) {
-  updatePlayer(static_cast<float>(dtMs) / 1000.0f);
+  const Vec2 lookDelta = intent.lookDelta;
+  intent.lookDelta = {};
+  const float dtSeconds = static_cast<float>(dtMs) / 1000.0f;
+  playerController.update(surface.player, intent.move, camera.yaw(),
+                          dtSeconds);
+  camera.update({surface.player.x, surface.player.y}, lookDelta, dtSeconds);
+
+  std::vector<TargetCandidate> candidates;
+  candidates.reserve(surface.props.size());
+  for (std::size_t i = 0; i < surface.props.size(); ++i) {
+    const Prop& prop = surface.props[i];
+    candidates.push_back(
+        {static_cast<int32_t>(i + 1), {prop.x, prop.y}});
+  }
+  currentTarget = softTargeting.select(
+      {surface.player.x, surface.player.y}, camera.yaw(), candidates);
 }
 
 void Loop::publishRendererStopped() {

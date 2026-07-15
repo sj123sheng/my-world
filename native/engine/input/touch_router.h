@@ -1,5 +1,6 @@
 #pragma once
 #include "input_event.h"
+#include <cstddef>
 #include <cmath>
 #include <cstdint>
 #include <unordered_map>
@@ -39,6 +40,8 @@ class TouchRouter {
     const auto found = roles_.find(pointerId);
     return found == roles_.end() ? TouchRole::None : found->second;
   }
+
+  std::size_t activeCount() const { return roles_.size(); }
 
   void clear() { roles_.clear(); }
 

@@ -1,8 +1,22 @@
 #pragma once
+#ifdef OHOS_PLATFORM
 #include <native_window/external_window.h>
 #include <native_buffer/native_buffer.h>
 #include <EGL/egl.h>
 #include <GLES3/gl3.h>
+#else
+struct OHNativeWindow;
+struct OH_NativeBuffer;
+using EGLDisplay = void*;
+using EGLSurface = void*;
+using EGLContext = void*;
+using EGLConfig = void*;
+using GLuint = unsigned int;
+using GLint = int;
+inline constexpr EGLDisplay EGL_NO_DISPLAY = nullptr;
+inline constexpr EGLSurface EGL_NO_SURFACE = nullptr;
+inline constexpr EGLContext EGL_NO_CONTEXT = nullptr;
+#endif
 #include <vector>
 #include <random>
 #include <cstdint>

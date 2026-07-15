@@ -9,12 +9,14 @@ include_directories(
     ${NATIVE_ROOT}
     ${NATIVE_ROOT}/engine/core
     ${NATIVE_ROOT}/engine/input
+    ${NATIVE_ROOT}/engine/math
     ${NATIVE_ROOT}/engine/render
     ${NATIVE_ROOT}/engine/resource
     ${NATIVE_ROOT}/gameplay/combat
     ${NATIVE_ROOT}/gameplay/entities
     ${NATIVE_ROOT}/gameplay/growth
     ${NATIVE_ROOT}/gameplay/player
+    ${NATIVE_ROOT}/gameplay/targeting
     ${NATIVE_ROOT}/platform/harmony
 )
 
@@ -51,6 +53,10 @@ add_library(native_game SHARED
 
     # gameplay player
     ${NATIVE_ROOT}/gameplay/player/character.cpp
+    ${NATIVE_ROOT}/gameplay/player/player_controller.cpp
+
+    # gameplay targeting
+    ${NATIVE_ROOT}/gameplay/targeting/soft_targeting.cpp
 
     # gameplay growth
     ${NATIVE_ROOT}/gameplay/growth/relic.cpp
