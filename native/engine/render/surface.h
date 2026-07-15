@@ -38,6 +38,14 @@ struct Prop {
   int kind; // 0 = tree, 1 = rock
 };
 
+struct TrainingTargetRenderState {
+  uint32_t id = 1001;
+  float x = 0.5f;
+  float y = 0.8f;
+  float size = 0.045f;
+  bool alive = true;
+};
+
 struct Surface {
   std::mutex windowMutex;
   OHNativeWindow* window = nullptr;
@@ -60,6 +68,7 @@ struct Surface {
   CameraRenderState cameraRenderState;
   std::vector<Particle> particles;
   std::vector<Prop> props;
+  TrainingTargetRenderState trainingTarget;
   std::vector<uint32_t> pixelBuffer;
 };
 

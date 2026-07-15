@@ -12,7 +12,23 @@ int main() {
   static_assert(std::is_same_v<decltype(&Loop::tickOnce), void (Loop::*)(int64_t)>);
   static_assert(std::is_same_v<decltype(&Loop::updateFixed), void (Loop::*)(Tick, int64_t)>);
 
+  Loop combatLoop;
+  combatLoop.surface.width = 1000;
+  combatLoop.surface.height = 800;
+  assert(combatLoop.enqueueInput(InputAction::Attack, -1, 0.0f, 0.0f));
+  combatLoop.processInput();
+  assert(combatLoop.touchRouter.activeCount() == 0);
+  combatLoop.updateFixed(1, 16);
+  assert(combatLoop.snapshot().comboSegment == 1);
+  assert(combatLoop.snapshot().targetHp == fp(300));
+  combatLoop.updateFixed(10, 144);
+  assert(combatLoop.snapshot().targetHp == fp(292));
+  combatLoop.stop();
+  assert(combatLoop.snapshot().comboSegment == 0);
+  assert(combatLoop.snapshot().targetHp == fp(300));
+
   Loop loop;
+
   assert(loop.enqueueInput(InputAction::PointerDown, 42, 10.0f, 20.0f));
 
   InputEvent event{};
@@ -118,10 +134,12 @@ int main() {
   targetingLoop.surface.width = 1000;
   targetingLoop.surface.height = 800;
   targetingLoop.surface.ready = true;
+  // 场景 props 只参与渲染；即使与假人重合，也不能抢占战斗软锁定。
   targetingLoop.surface.props.push_back({0.5f, 0.8f, 0.05f, 1});
   targetingLoop.tickOnce(16);
   const GameSnapshot targeted = targetingLoop.snapshot();
-  assert(targeted.targetId == 1);
+  assert(targeted.targetId == static_cast<int32_t>(CombatController::kTrainingTargetId));
+  assert(targetingLoop.surface.props.size() == 1);
   assert(std::abs(targeted.targetDist - 0.3f) < 0.001f);
 
   targetingLoop.resetInput();
@@ -131,7 +149,8 @@ int main() {
   assert(resetWithoutFixedTick.targetDist == 0.0f);
 
   targetingLoop.tickOnce(16);
-  assert(targetingLoop.snapshot().targetId == 1);
+  assert(targetingLoop.snapshot().targetId ==
+         static_cast<int32_t>(CombatController::kTrainingTargetId));
   GameSnapshot activeRenderer = targetingLoop.snapshot();
   activeRenderer.moving = true;
   activeRenderer.moveX = 0.75f;
@@ -157,7 +176,8 @@ int main() {
   pausedLoop.tickOnce(16);
   assert(pausedLoop.snapshot().rendererReady);
   assert(pausedLoop.snapshot().moving);
-  assert(pausedLoop.snapshot().targetId == 1);
+  assert(pausedLoop.snapshot().targetId ==
+         static_cast<int32_t>(CombatController::kTrainingTargetId));
   pausedLoop.stop();
   const GameSnapshot paused = pausedLoop.snapshot();
   assert(paused.rendererReady);
@@ -175,7 +195,8 @@ int main() {
   assert(activeBeforeInvalid.rendererReady);
   assert(activeBeforeInvalid.moving);
   assert(activeBeforeInvalid.moveX != 0.0f || activeBeforeInvalid.moveY != 0.0f);
-  assert(activeBeforeInvalid.targetId == 1);
+  assert(activeBeforeInvalid.targetId ==
+         static_cast<int32_t>(CombatController::kTrainingTargetId));
   targetingLoop.surface.ready = false;
   targetingLoop.tickOnce(16);
   assert(targetingLoop.intent.move == Vec2{});

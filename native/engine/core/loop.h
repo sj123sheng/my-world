@@ -16,6 +16,7 @@
 #include "../input/player_intent.h"
 #include "../../gameplay/player/player_controller.h"
 #include "../../gameplay/targeting/soft_targeting.h"
+#include "../../gameplay/combat/combat_controller.h"
 
 struct Loop {
   Surface surface;
@@ -27,6 +28,7 @@ struct Loop {
   PlayerController playerController;
   ThirdPersonCamera camera;
   SoftTargeting softTargeting;
+  CombatController combat{CombatConfig::defaults()};
   std::optional<TargetSelection> currentTarget;
   FixedStep fixedStep{16, 4};
   SnapshotStore snapshots;

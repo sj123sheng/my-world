@@ -50,6 +50,13 @@ add_library(native_game SHARED
     # gameplay combat
     ${NATIVE_ROOT}/gameplay/combat/source_aura.cpp
     ${NATIVE_ROOT}/gameplay/combat/resonance.cpp
+    ${NATIVE_ROOT}/gameplay/combat/action_state_machine.cpp
+    ${NATIVE_ROOT}/gameplay/combat/combat_resources.cpp
+    ${NATIVE_ROOT}/gameplay/combat/training_pulse.cpp
+    ${NATIVE_ROOT}/gameplay/combat/training_target.cpp
+    ${NATIVE_ROOT}/gameplay/combat/damage_resolver.cpp
+    ${NATIVE_ROOT}/gameplay/combat/source_reaction_system.cpp
+    ${NATIVE_ROOT}/gameplay/combat/combat_controller.cpp
 
     # gameplay player
     ${NATIVE_ROOT}/gameplay/player/character.cpp

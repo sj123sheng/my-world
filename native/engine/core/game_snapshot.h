@@ -18,4 +18,11 @@ struct GameSnapshot {
   float cameraYaw = 0.0f;
   float cameraPitch = 0.0f;
   float targetDist = 0.0f;
+  uint8_t comboSegment = 0;
+  FixedPoint playerHp = fp(100);
+  FixedPoint targetHp = fp(300);
+  FixedPoint targetPoise = fp(100);
+  FixedPoint stamina = fp(100);
+  FixedPoint resonance = 0;
+  bool hasInsight = false;
 };

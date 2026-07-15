@@ -12,10 +12,23 @@
 #define LOGI(...) ((void)0)
 #endif
 
+namespace {
+void ApplyCombatSnapshot(GameSnapshot& output, const CombatSnapshot& combat) {
+  output.comboSegment = combat.comboSegment;
+  output.playerHp = combat.playerHp;
+  output.targetHp = combat.targetHp;
+  output.targetPoise = combat.targetPoise;
+  output.stamina = combat.stamina;
+  output.resonance = combat.resonance;
+  output.hasInsight = combat.hasInsight;
+}
+}  // namespace
+
 void Loop::start() {
   withLifecycle([this]() {
     if (!surface.ready) {
       resetInput();
+      combat.reset();
       LOGI("Loop start skipped: running=%{public}d ready=%{public}d", (int)running, (int)surface.ready);
       return;
     }
@@ -51,6 +64,8 @@ void Loop::stop() {
       running = false;
     });
     resetInput();
+    combat.reset();
+    surface.trainingTarget.alive = true;
     GameSnapshot paused = snapshots.read();
     paused.moving = false;
     paused.targetId = 0;
@@ -58,6 +73,7 @@ void Loop::stop() {
     paused.moveY = 0.0f;
     paused.targetDist = 0.0f;
     paused.rendererReady = surface.ready;
+    ApplyCombatSnapshot(paused, combat.snapshot());
     snapshots.publish(paused);
   });
 }
@@ -65,6 +81,11 @@ void Loop::stop() {
 void Loop::processInput() {
   InputEvent e;
   while (input.pop(e)) {
+    CombatAction combatAction;
+    if (TryMapCombatAction(e.action, combatAction)) {
+      intent.actions.push_back({combatAction, e.sequence});
+      continue;
+    }
     const TouchRole releaseRole = touchRouter.role(e.pointerId);
     switch (e.action) {
       case InputAction::PointerDown: {
@@ -117,6 +138,7 @@ void Loop::resetInput() {
   cameraGesture.clear();
   intent.move = {};
   intent.lookDelta = {};
+  intent.actions.clear();
   surface.player.moving = false;
   particleEmitTimer = 0.0f;
   currentTarget.reset();
@@ -126,6 +148,8 @@ void Loop::resetInput() {
 void Loop::tickOnce(int64_t elapsedMs) {
   if (!surface.ready) {
     resetInput();
+    combat.reset();
+    surface.trainingTarget.alive = true;
     publishRendererStopped();
     return;
   }
@@ -160,6 +184,8 @@ void Loop::tickOnce(int64_t elapsedMs) {
   snapshot.cameraYaw = camera.yaw();
   snapshot.cameraPitch = camera.pitch();
   snapshot.targetDist = currentTarget ? currentTarget->distance : 0.0f;
+  const CombatSnapshot& combatSnapshot = combat.snapshot();
+  ApplyCombatSnapshot(snapshot, combatSnapshot);
   snapshots.publish(snapshot);
 
   if (tickCount <= 5 || tickCount % 60 == 0) {
@@ -167,7 +193,7 @@ void Loop::tickOnce(int64_t elapsedMs) {
   }
 }
 
-void Loop::updateFixed(Tick, int64_t dtMs) {
+void Loop::updateFixed(Tick tick, int64_t dtMs) {
   const Vec2 lookDelta = intent.lookDelta;
   intent.lookDelta = {};
   const float dtSeconds = static_cast<float>(dtMs) / 1000.0f;
@@ -194,17 +220,31 @@ void Loop::updateFixed(Tick, int64_t dtMs) {
   surface.cameraRenderState = camera.renderState();
 
   std::vector<TargetCandidate> candidates;
-  candidates.reserve(surface.props.size());
-  for (std::size_t i = 0; i < surface.props.size(); ++i) {
-    const Prop& prop = surface.props[i];
-    candidates.push_back(
-        {static_cast<int32_t>(i + 1), {prop.x, prop.y}});
+  candidates.reserve(1);
+  if (surface.trainingTarget.alive) {
+    candidates.push_back({static_cast<int32_t>(surface.trainingTarget.id),
+                          {surface.trainingTarget.x, surface.trainingTarget.y}});
   }
   currentTarget = softTargeting.select(
       {surface.player.x, surface.player.y}, camera.yaw(), candidates);
+
+  for (const ActionRequest& action : intent.actions) combat.enqueue(action);
+  intent.actions.clear();
+  combat.update({tick, dtMs, surface.player.moving,
+                 currentTarget ? static_cast<EntityId>(currentTarget->id) : 0,
+                 currentTarget.has_value() && surface.trainingTarget.alive});
+  surface.trainingTarget.alive = combat.snapshot().targetAlive;
+
+  GameSnapshot updated = snapshots.read();
+  ApplyCombatSnapshot(updated, combat.snapshot());
+  snapshots.publish(updated);
 }
 
 void Loop::publishRendererStopped() {
   currentTarget.reset();
-  snapshots.publish(RendererStoppedSnapshot(snapshots.read()));
+  combat.reset();
+  surface.trainingTarget.alive = true;
+  GameSnapshot stopped = RendererStoppedSnapshot(snapshots.read());
+  ApplyCombatSnapshot(stopped, combat.snapshot());
+  snapshots.publish(stopped);
 }

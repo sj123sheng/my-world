@@ -271,6 +271,14 @@ static void drawPlayerGL(const Surface& s) {
                      1.0f);
 }
 
+static void drawTrainingTargetGL(const Surface& s) {
+  if (!s.trainingTarget.alive) return;
+  const Vec2 view = worldToNdc(s, {s.trainingTarget.x, s.trainingTarget.y});
+  const Vec2 radii = s.cameraRenderState.billboardNdcRadii(
+      s.trainingTarget.size, aspect(s));
+  drawSolidEllipseGL(s, view.x, view.y, radii, 20, 0.85f, 0.32f, 0.22f, 1.0f);
+}
+
 // -----------------------------------------------------------------------------
 // Software rasterizer fallback (used when OpenGL ES is unavailable on simulators)
 // -----------------------------------------------------------------------------
@@ -475,6 +483,14 @@ static void drawPlayerSW(const Surface& s, Canvas& c) {
                      1.0f);
 }
 
+static void drawTrainingTargetSW(const Surface& s, Canvas& c) {
+  if (!s.trainingTarget.alive) return;
+  const Vec2 view = worldToNdc(s, {s.trainingTarget.x, s.trainingTarget.y});
+  const Vec2 radii = s.cameraRenderState.billboardNdcRadii(
+      s.trainingTarget.size, aspect(s));
+  drawSolidEllipseSW(s, c, view.x, view.y, radii, 0.85f, 0.32f, 0.22f, 1.0f);
+}
+
 static void softwareDrawFrame(Surface& s) {
   std::lock_guard<std::mutex> lock(s.windowMutex);
   if (!s.ready || !s.window) return;
@@ -531,6 +547,7 @@ static void softwareDrawFrame(Surface& s) {
   clearCanvas(c, packColor(0.06f, 0.08f, 0.14f, 1.0f, c.swapRedBlue));
   drawGridSW(s, c);
   drawPropsSW(s, c);
+  drawTrainingTargetSW(s, c);
   drawParticlesSW(s, c);
   drawPlayerSW(s, c);
 
@@ -784,6 +801,7 @@ void surface_draw(Surface& s) {
 
   drawGridGL(s);
   drawPropsGL(s);
+  drawTrainingTargetGL(s);
   drawParticlesGL(s);
   drawPlayerGL(s);
   glFlush();
