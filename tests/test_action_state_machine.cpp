@@ -141,6 +141,36 @@ void testChainWindowIncludesExactly480ButExcludes481() {
   assert(reset.has_value() && reset->ability == 1);
 }
 
+void testDodgeSpendsStaminaAndHasBoundedInvulnerability() {
+  ActionStateMachine machine(CombatConfig::defaults());
+  const ActionContext context{};
+  assert(machine.request({CombatAction::Dodge, 1}, context).accepted);
+  assert(machine.stamina() == fp(70));
+  assert(machine.isInvulnerable());
+  assert(!machine.update(199, 199, context).has_value());
+  assert(machine.isInvulnerable());
+  assert(!machine.update(200, 1, context).has_value());
+  assert(!machine.isInvulnerable());
+  assert(!machine.update(300, 100, context).has_value());
+  assert(machine.request({CombatAction::Dodge, 2}, context).accepted);
+  assert(machine.stamina() == fp(40));
+}
+
+void testDodgeRejectsAtomicallyWhenStaminaIsInsufficient() {
+  ActionStateMachine machine(CombatConfig::defaults());
+  const ActionContext context{};
+  assert(machine.request({CombatAction::Dodge, 1}, context).accepted);
+  assert(!machine.update(300, 300, context).has_value());
+  assert(machine.request({CombatAction::Dodge, 2}, context).accepted);
+  assert(!machine.update(600, 300, context).has_value());
+  assert(machine.request({CombatAction::Dodge, 3}, context).accepted);
+  assert(!machine.update(900, 300, context).has_value());
+  assert(machine.stamina() == fp(10));
+  const auto rejected = machine.request({CombatAction::Dodge, 4}, context);
+  assert(!rejected.accepted && rejected.reason == ActionRejectReason::InsufficientStamina);
+  assert(machine.stamina() == fp(10));
+}
+
 }  // namespace
 
 int main() {
@@ -152,5 +182,7 @@ int main() {
   testLargeTickUsesFixedHitTimeAndCarriesRemainder();
   testSingleTickCanHitAndExpireChainWindow();
   testChainWindowIncludesExactly480ButExcludes481();
+  testDodgeSpendsStaminaAndHasBoundedInvulnerability();
+  testDodgeRejectsAtomicallyWhenStaminaIsInsufficient();
   return 0;
 }

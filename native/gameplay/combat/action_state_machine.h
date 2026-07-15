@@ -2,6 +2,7 @@
 
 #include "combat_action.h"
 #include "combat_config.h"
+#include "combat_resources.h"
 #include "event.h"
 
 #include <cstdint>
@@ -39,11 +40,15 @@ class ActionStateMachine {
   std::optional<HitRequest> update(Tick now, int64_t dtMs, const ActionContext& context);
   void resetCombo();
   void reset();
+  bool isInvulnerable() const;
+  FixedPoint stamina() const { return resources_.stamina(); }
 
  private:
   static constexpr Tick kAttackHitMs = 160;
 
   CombatConfig config_;
+  CombatResources resources_;
+  CombatAction activeAction_ = CombatAction::Attack;
   uint8_t comboIndex_ = 0;
   bool actionActive_ = false;
   bool waitingForChain_ = false;

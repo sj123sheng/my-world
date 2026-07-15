@@ -2,21 +2,39 @@
 
 #include <algorithm>
 
-ActionStateMachine::ActionStateMachine(CombatConfig config) : config_(config.validated()) {}
+ActionStateMachine::ActionStateMachine(CombatConfig config)
+    : config_(config.validated()), resources_(config_) {}
 
 ActionDecision ActionStateMachine::request(const ActionRequest& request,
                                            const ActionContext& context) {
-  if (request.action != CombatAction::Attack) {
+  if (request.action != CombatAction::Attack && request.action != CombatAction::Dodge) {
     return {false, ActionRejectReason::InvalidAction};
   }
-  if (context.target == 0) {
+  if (request.action == CombatAction::Attack && context.target == 0) {
     return {false, ActionRejectReason::NoTarget};
   }
-  if (!context.targetAlive) {
+  if (request.action == CombatAction::Attack && !context.targetAlive) {
     return {false, ActionRejectReason::TargetDead};
   }
   if (actionActive_) {
     return {false, ActionRejectReason::ActionLocked};
+  }
+
+  if (request.action == CombatAction::Dodge &&
+      !resources_.spendStamina(config_.dodgeCost, lastUpdateTick_)) {
+    return {false, ActionRejectReason::InsufficientStamina};
+  }
+
+  if (request.action == CombatAction::Dodge) {
+    resetCombo();
+    actionActive_ = true;
+    activeAction_ = CombatAction::Dodge;
+    actionStartKnown_ = hasTimeline_;
+    actionStartTick_ = lastUpdateTick_;
+    actionElapsedMs_ = 0;
+    actionContext_ = context;
+    actionSequence_ = request.sequence;
+    return {true, ActionRejectReason::None};
   }
 
   if (!waitingForChain_ || comboIndex_ >= config_.comboDamage.size()) {
@@ -24,6 +42,7 @@ ActionDecision ActionStateMachine::request(const ActionRequest& request,
   }
   ++comboIndex_;
   actionActive_ = true;
+  activeAction_ = CombatAction::Attack;
   waitingForChain_ = false;
   actionStartKnown_ = hasTimeline_;
   actionStartTick_ = lastUpdateTick_;
@@ -40,6 +59,7 @@ std::optional<HitRequest> ActionStateMachine::update(Tick now,
   const Tick elapsed = std::max<int64_t>(0, dtMs);
   lastUpdateTick_ = now;
   hasTimeline_ = true;
+  resources_.advance(now);
   if (context.moving || context.damageTaken) {
     resetCombo();
     return std::nullopt;
@@ -51,6 +71,13 @@ std::optional<HitRequest> ActionStateMachine::update(Tick now,
       actionStartKnown_ = true;
     }
     actionElapsedMs_ += elapsed;
+    if (activeAction_ == CombatAction::Dodge) {
+      if (actionElapsedMs_ >= config_.dodgeDurationMs) {
+        actionActive_ = false;
+        actionStartKnown_ = false;
+      }
+      return std::nullopt;
+    }
     if (actionElapsedMs_ < kAttackHitMs) {
       return std::nullopt;
     }
@@ -80,6 +107,11 @@ std::optional<HitRequest> ActionStateMachine::update(Tick now,
     }
   }
   return std::nullopt;
+}
+
+bool ActionStateMachine::isInvulnerable() const {
+  return actionActive_ && activeAction_ == CombatAction::Dodge &&
+         actionElapsedMs_ < config_.dodgeInvulnerabilityMs;
 }
 
 void ActionStateMachine::resetCombo() {
