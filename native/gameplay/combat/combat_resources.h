@@ -10,6 +10,7 @@ class CombatResources {
   void advance(Tick now);
   void grantInsight(Tick tick);
   bool consumeInsight(Tick tick);
+  void reset();
 
   FixedPoint stamina() const { return stamina_; }
   Tick insightRemainingMs() const;

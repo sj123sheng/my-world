@@ -89,5 +89,60 @@ PASS test_fixed_step (existing unused-parameter warnings)
 ## Concerns
 
 - `test_fixed_step` 在 `-Werror` 下会因既有未使用参数失败；正常警告级别回归通过。
-- 单值 `PulseEvent` 接口无法一次返回跨越区间的全部事件；当前确定性规则是返回最新边界事件，
-  绝对周期相位不会因大 dt 漂移。
+- 初始实现的单值 `PulseEvent` 接口会遗漏跨越区间的中间事件；此项已在下方审查修复中解决。
+
+## 审查阻塞项修复（追加提交）
+
+### RED
+
+先修改测试要求批量事件、资源 reset、闪避不被移动/受伤取消和状态机 reset 恢复体力，
+随后编译新测试。
+
+关键输出：
+
+```text
+tests/test_training_pulse.cpp:8:18: error: no member named 'size' in 'PulseEvent'
+tests/test_training_pulse.cpp:10:29: error: no member named 'empty' in 'PulseEvent'
+training_red_exit=1
+tests/test_combat_resources.cpp:35:16: error: no member named 'reset' in 'CombatResources'
+resources_red_exit=1
+```
+
+失败原因分别是旧接口仅返回单事件、资源类型缺少 reset，符合审查项预期。
+
+### GREEN 与回归
+
+使用显式 macOS SDK、libc++ 头目录、C++17、`-Wall -Wextra -Werror` 编译并执行：
+
+```text
+GREEN PASS: task3 3/3
+```
+
+覆盖：
+
+- `test_training_pulse`
+- `test_combat_resources`
+- `test_action_state_machine`
+
+回归以相同工具链执行；`test_fixed_step` 因既有未使用参数警告未启用 `-Werror`：
+
+```text
+REGRESSION PASS: fixed_step event_order decision_log combat_config; diff-check clean
+```
+
+### 修复内容
+
+- `TrainingPulse::advance` 改为 `std::vector<PulseEvent>`，返回 `(lastAdvanceTick, now]`
+  内全部事件；首次调用额外包含 tick 0 Warning，事件严格按 tick 排序且不重复。
+- 大 dt 直接推进到 6800ms 返回 `0W, 800H, 3000W, 3800H, 6000W, 6800H`。
+- 移动/受伤只重置普攻连段，不取消进行中的 Dodging。
+- `CombatResources::reset()` 恢复满体力并清空恢复时间线、定点余数和洞察。
+- `ActionStateMachine::reset()` 同步调用资源 reset。
+- 洞察有效期边界和一次性消费使用独立实例验证。
+
+### 自审与 Concerns 更新
+
+- 批量接口消除了旧实现永久丢弃中间脉冲事件的问题；此前“只返回最新事件”的 concern 已解决。
+- 所有新增状态只在 Task 3 文件内，未修改后续模块或既有 `request/update` 签名。
+- `build-profile.json5` 仍为用户已有未暂存修改，本任务未触碰。
+- 剩余非阻塞 concern：`test_fixed_step` 的既有未使用参数警告仍存在，执行结果为退出码 0。

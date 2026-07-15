@@ -5,26 +5,22 @@
 
 TrainingPulse::TrainingPulse(CombatConfig config) : config_(config.validated()) {}
 
-PulseEvent TrainingPulse::advance(Tick now) {
-  if (now <= lastAdvanceTick_) return {};
-  const Tick previous = lastAdvanceTick_;
+std::vector<PulseEvent> TrainingPulse::advance(Tick now) {
+  std::vector<PulseEvent> events;
+  if (now <= lastAdvanceTick_) return events;
   lastAdvanceTick_ = now;
+  if (nextHitTick_ == 0) nextHitTick_ = config_.trainingPulseWarningMs;
 
-  const Tick hitCycle = now >= config_.trainingPulseWarningMs
-                            ? (now - config_.trainingPulseWarningMs) /
-                                  config_.trainingPulsePeriodMs
-                            : -1;
-  const Tick hitTick = hitCycle >= 0
-                           ? hitCycle * config_.trainingPulsePeriodMs +
-                                 config_.trainingPulseWarningMs
-                           : -1;
-  const Tick warningTick = (now / config_.trainingPulsePeriodMs) *
-                           config_.trainingPulsePeriodMs;
-  if (hitTick > previous && hitTick >= warningTick) {
-    return {PulseEventKind::Hit, hitTick};
+  while (nextWarningTick_ <= now || nextHitTick_ <= now) {
+    if (nextWarningTick_ <= nextHitTick_ && nextWarningTick_ <= now) {
+      events.push_back({PulseEventKind::Warning, nextWarningTick_});
+      nextWarningTick_ += config_.trainingPulsePeriodMs;
+    } else if (nextHitTick_ <= now) {
+      events.push_back({PulseEventKind::Hit, nextHitTick_});
+      nextHitTick_ += config_.trainingPulsePeriodMs;
+    }
   }
-  if (warningTick > previous) return {PulseEventKind::Warning, warningTick};
-  return {};
+  return events;
 }
 
 DodgeGrade TrainingPulse::classifyDodge(Tick tick) const {

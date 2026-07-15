@@ -171,6 +171,41 @@ void testDodgeRejectsAtomicallyWhenStaminaIsInsufficient() {
   assert(machine.stamina() == fp(10));
 }
 
+void testMovingAndDamageDoNotCancelDodge() {
+  ActionStateMachine movingMachine(CombatConfig::defaults());
+  const ActionContext context{};
+  assert(movingMachine.request({CombatAction::Dodge, 1}, context).accepted);
+  auto moving = context;
+  moving.moving = true;
+  assert(!movingMachine.update(100, 100, moving).has_value());
+  assert(movingMachine.isInvulnerable());
+  assert(!movingMachine.update(200, 100, moving).has_value());
+  assert(!movingMachine.isInvulnerable());
+  assert(!movingMachine.update(300, 100, moving).has_value());
+  assert(movingMachine.request({CombatAction::Dodge, 2}, context).accepted);
+
+  ActionStateMachine damagedMachine(CombatConfig::defaults());
+  assert(damagedMachine.request({CombatAction::Dodge, 1}, context).accepted);
+  auto damaged = context;
+  damaged.damageTaken = true;
+  assert(!damagedMachine.update(100, 100, damaged).has_value());
+  assert(damagedMachine.isInvulnerable());
+  assert(!damagedMachine.update(300, 200, damaged).has_value());
+  assert(damagedMachine.request({CombatAction::Dodge, 2}, context).accepted);
+}
+
+void testResetRestoresResourcesAndClearsDodge() {
+  ActionStateMachine machine(CombatConfig::defaults());
+  const ActionContext context{};
+  assert(machine.request({CombatAction::Dodge, 1}, context).accepted);
+  assert(machine.stamina() == fp(70) && machine.isInvulnerable());
+  machine.reset();
+  assert(machine.stamina() == fp(100));
+  assert(!machine.isInvulnerable());
+  assert(machine.request({CombatAction::Dodge, 2}, context).accepted);
+  assert(machine.stamina() == fp(70));
+}
+
 }  // namespace
 
 int main() {
@@ -184,5 +219,7 @@ int main() {
   testChainWindowIncludesExactly480ButExcludes481();
   testDodgeSpendsStaminaAndHasBoundedInvulnerability();
   testDodgeRejectsAtomicallyWhenStaminaIsInsufficient();
+  testMovingAndDamageDoNotCancelDodge();
+  testResetRestoresResourcesAndClearsDodge();
   return 0;
 }

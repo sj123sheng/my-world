@@ -19,10 +19,23 @@ int main() {
   assert(!insufficient.spendStamina(fp(30), 0));
   assert(insufficient.stamina() == fp(10));
 
-  resources.grantInsight(1200);
-  assert(resources.insightRemainingMs() == 5000);
-  assert(resources.consumeInsight(6199));
-  assert(!resources.consumeInsight(6200));
-  assert(resources.insightRemainingMs() == 0);
+  CombatResources insightBoundary(CombatConfig::defaults());
+  insightBoundary.grantInsight(1200);
+  assert(insightBoundary.consumeInsight(6199));
+  CombatResources insightExpired(CombatConfig::defaults());
+  insightExpired.grantInsight(1200);
+  assert(!insightExpired.consumeInsight(6200));
+
+  CombatResources insightOnce(CombatConfig::defaults());
+  insightOnce.grantInsight(50);
+  assert(insightOnce.consumeInsight(50));
+  assert(!insightOnce.consumeInsight(50));
+
+  insufficient.grantInsight(0);
+  insufficient.reset();
+  assert(insufficient.stamina() == fp(100));
+  assert(insufficient.insightRemainingMs() == 0);
+  insufficient.advance(999);
+  assert(insufficient.stamina() == fp(100));
   return 0;
 }

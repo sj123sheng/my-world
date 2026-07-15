@@ -60,7 +60,8 @@ std::optional<HitRequest> ActionStateMachine::update(Tick now,
   lastUpdateTick_ = now;
   hasTimeline_ = true;
   resources_.advance(now);
-  if (context.moving || context.damageTaken) {
+  if ((context.moving || context.damageTaken) &&
+      !(actionActive_ && activeAction_ == CombatAction::Dodge)) {
     resetCombo();
     return std::nullopt;
   }
@@ -125,6 +126,7 @@ void ActionStateMachine::resetCombo() {
 
 void ActionStateMachine::reset() {
   resetCombo();
+  resources_.reset();
   hasTimeline_ = false;
   lastUpdateTick_ = 0;
   actionStartTick_ = 0;

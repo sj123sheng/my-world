@@ -3,7 +3,17 @@
 #include <algorithm>
 
 CombatResources::CombatResources(CombatConfig config) : config_(config.validated()) {
+  reset();
+}
+
+void CombatResources::reset() {
   stamina_ = config_.maxStamina;
+  now_ = 0;
+  recoveryStartTick_ = 0;
+  recoveredMs_ = 0;
+  recoveryRemainder_ = 0;
+  insightExpiresAt_ = 0;
+  insightAvailable_ = false;
 }
 
 bool CombatResources::spendStamina(FixedPoint amount, Tick tick) {
