@@ -187,6 +187,23 @@ my-world/
 
 ## 测试与验证
 
+### 阶段 3 自动化、构建与真机状态
+
+2026-07-16 基于 `639a656` 的收口结果：
+
+- 自动化测试：仓库现有 30/30 个 `tests/test_*.cpp` 逐个使用显式 macOS SDK、
+  SDK 内 `usr/include/c++/v1`、`-I. -Inative` 编译并运行通过；Node 桥接契约 1/1 通过，
+  `git diff --check` 通过。
+- 生产构建：指定 `DEVECO_SDK_HOME=/Applications/DevEco-Studio.app/Contents/sdk` 的
+  Hvigor `assembleHap` 返回 `BUILD SUCCESSFUL`；signed HAP 为
+  `entry/build/default/outputs/default/entry-default-signed.hap`（3,885,608 bytes，
+  SHA-1 `27e50f5df1ab525117ef7c717332eded7120e1b9`）。构建前后 `build-profile.json5`
+  SHA-1 均为 `a482c4c748ac73c906b8d1b726e0075b000880eb`。
+- 真机验收：未完成。目标设备 `2MN0224C12000754` 首次探测为 `USB Offline`，重启 hdc
+  后目标列表为空，无法确认设备连接、解锁，亦无法安装 HAP、定位按钮、采集 UITest dump、
+  截图或 HUD 数值。因此阶段 3 的九项真机出口均保持未验收，包括移动/相机/战斗并发回归；
+  自动化通过不替代真机证据。
+
 ### 阶段 2 自动化与构建状态
 
 2026-07-15 的阶段 2 收口验证结果如下，各层结果彼此独立：
