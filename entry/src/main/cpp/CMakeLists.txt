@@ -67,6 +67,8 @@ add_library(native_game SHARED
     ${NATIVE_ROOT}/platform/harmony/fence_wait.cpp
 )
 
+target_include_directories(native_game PRIVATE ${NATIVE_ROOT}/..)
+
 target_compile_definitions(native_game PUBLIC OHOS_PLATFORM)
 
 target_link_libraries(native_game PUBLIC

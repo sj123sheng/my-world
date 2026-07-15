@@ -136,14 +136,14 @@ static napi_value NativePushInput(napi_env env, napi_callback_info info) {
   }
 
   double typeNumber = 0.0;
-  double pointerIdNumber = 0.0;
+  double pointerIdNumber;
   double x = 0.0;
   double y = 0.0;
   if (!GetNumberProperty(env, args[0], "type", true, typeNumber) ||
-      !GetNumberProperty(env, args[0], "pointerId", false, pointerIdNumber) ||
+      !GetNumberProperty(env, args[0], "pointerId", true, pointerIdNumber) ||
       !GetNumberProperty(env, args[0], "x", true, x) ||
       !GetNumberProperty(env, args[0], "y", true, y)) {
-    return ThrowInputTypeError(env, "pushInput requires numeric type/x/y and optional pointerId");
+    return ThrowInputTypeError(env, "pushInput requires numeric type/pointerId/x/y");
   }
   int32_t type = 0;
   InputAction action = InputAction::PointerCancel;

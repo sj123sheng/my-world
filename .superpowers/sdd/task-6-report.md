@@ -86,3 +86,70 @@ Error Message: SDK component missing.
 - ArkTS/HAP 完整编译仍因本机 `SDK component missing` 无法执行；需在 SDK 组件完整的
   DevEco 环境复验。
 - CMake include 路径缺少仓库根目录是既有工程配置问题，本任务按 brief 未修改 CMake。
+
+## 审查修复补充
+
+### 输入与快照契约
+
+- `pointerId` 已在 `Bridge.ets` 的 `InputEvent` 和 `Index.d.ts` 的 `pushInput` 参数中改为
+  必填字段。
+- `NativePushInput` 以 `required=true` 读取 `pointerId`，缺失字段会抛出类型错误，不再将
+  缺失指针 ID 当作 `0`。
+- 契约测试现在读取 `Index.d.ts`，并逐项比较 Bridge `Snapshot`、`.d.ts` 返回对象和
+  `NativePullSnapshot` 导出的字段及顺序。
+- 对 `moveX`、`moveY`、`cameraYaw`、`cameraPitch`、`targetDist`，测试分别验证
+  `napi_create_double` 读取同名 `snapshot` 字段，且 `napi_set_named_property` 使用对应的
+  同一 value。
+- 多指测试限定在 `changedTouches.forEach` 回调作用域内，验证其中的 `pushInput` 对象确实
+  包含 `pointerId: touch.id`。
+
+强化测试后的 RED 结果为退出码 `1`，预期失败信息为：
+
+```text
+AssertionError [ERR_ASSERTION]: Bridge InputEvent must require pointerId
+```
+
+完成契约修复后重新运行：
+
+```bash
+node tests/test_bridge_contract.mjs
+```
+
+结果退出码 `0`、无输出。
+
+### CMake 与 OHOS Native 验证
+
+生产目标 `native_game` 已通过 `target_include_directories` 加入 `${NATIVE_ROOT}/..`。重新使用
+现有 debug/arm64-v8a CMake/Ninja 对象目标编译 `surface.cpp.o`，CMake 自动重新生成，实际
+OHOS clang 命令包含：
+
+```text
+-I.../entry/src/main/cpp/../../../../native/..
+```
+
+该命令不含额外手工 `-I.`，对象编译退出码 `0`，原先 `surface.h` 中
+`native/gameplay/player/player_controller.h file not found` 的错误已消失。
+
+继续使用同一生产目标编译 `native_bridge.cpp.o` 时，也越过上述 include 错误，但在既有
+CMake 未指定 C++17 的位置遇到：
+
+```text
+error: no template named 'optional' in namespace 'std'
+```
+
+随后用同一 OHOS clang、`-std=c++17` 及 CMake 等价 include 列表（仍未使用 `-I.`）对
+`native_bridge.cpp` 执行 `-fsyntax-only`，结果退出码 `0`、无输出。
+
+完整 HAP 构建再次尝试后仍在源码编译前被本机环境阻断，退出码 `255`：
+
+```text
+00303168 Configuration Error
+Error Message: SDK component missing.
+```
+
+### 审查修复后的剩余疑虑
+
+- Task 6 Node 契约测试和 OHOS C++17 语法验证通过。
+- CMake arm64 生产对象已证明仓库根 include 生效；完整 Native 生产目标仍需后续统一启用
+  C++17，当前首个后续错误为 `std::optional` 不可用。
+- ArkTS/HAP 完整构建仍需在 SDK 组件完整的 DevEco 环境复验。

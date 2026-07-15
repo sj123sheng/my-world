@@ -2,7 +2,7 @@ import native from 'libnative_game.so';
 
 interface InputEvent {
   type: number;
-  pointerId?: number;
+  pointerId: number;
   x: number;
   y: number;
 }
