@@ -13,15 +13,6 @@
 static Loop g_loop;
 static std::atomic_bool g_foregroundRequested{false};
 
-static InputAction MapTouchAction(OH_NativeXComponent_TouchEventType type) {
-  switch (type) {
-    case OH_NATIVEXCOMPONENT_DOWN: return InputAction::PointerDown;
-    case OH_NATIVEXCOMPONENT_MOVE: return InputAction::PointerMove;
-    case OH_NATIVEXCOMPONENT_UP: return InputAction::PointerUp;
-    default: return InputAction::PointerCancel;
-  }
-}
-
 static void InvalidateSurfaceSnapshot() {
   surface_destroy(g_loop.surface);
   g_loop.publishRendererStopped();
@@ -99,16 +90,6 @@ static void OnSurfaceDestroyed(OH_NativeXComponent* component, void* window) {
     g_loop.stop();
     InvalidateSurfaceSnapshot();
   });
-}
-
-static void OnDispatchTouchEvent(OH_NativeXComponent* component, void* window) {
-  OH_NativeXComponent_TouchEvent touchEvent;
-  int32_t ret = OH_NativeXComponent_GetTouchEvent(component, window, &touchEvent);
-  if (ret != 0) return;
-  g_loop.enqueueInput(MapTouchAction(touchEvent.type),
-                      static_cast<int32_t>(touchEvent.id),
-                      touchEvent.x,
-                      touchEvent.y);
 }
 
 static napi_value NativeStart(napi_env env, napi_callback_info) {
@@ -231,7 +212,7 @@ static napi_value Init(napi_env env, napi_value exports) {
     .OnSurfaceCreated = OnSurfaceCreated,
     .OnSurfaceChanged = OnSurfaceChanged,
     .OnSurfaceDestroyed = OnSurfaceDestroyed,
-    .DispatchTouchEvent = OnDispatchTouchEvent,
+    .DispatchTouchEvent = nullptr,
   };
   OH_NativeXComponent_RegisterCallback(nativeXComponent, &callback);
   LOGI("XComponent callbacks registered");

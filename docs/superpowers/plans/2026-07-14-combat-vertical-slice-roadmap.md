@@ -21,7 +21,10 @@
 
 - 实现提交：`5c18eb1` 至 `d13b0e1`，覆盖双区多指输入、相机相对移动、自由相机、
   确定性软锁定、固定循环集成、桥接快照以及 OHOS Native C++17 构建修复。
-- 自动化通过：19/19 个 C++ 测试与 1/1 个 Node 桥接契约测试退出码均为 0。
+- 最终审查修复：相机 target/yaw/pitch/distance 已进入 GL 与软件灰盒渲染，网格、场景物件、
+  粒子和玩家共用世界到视图变换；触控仅由 ArkTS `changedTouches` 经 N-API 生产；输入
+  sequence 分配与队列 push 已在线性化临界区内完成；非正相机距离配置整体回退安全默认。
+- 自动化通过：20/20 个 C++ 测试与 1/1 个 Node 桥接契约测试退出码均为 0。
 - Native 链接通过：OHOS arm64-v8a `native_game` 完整编译并链接为 aarch64 ELF 共享库。
 - HAP 构建通过：Hvigor `assembleHap` 返回 `BUILD SUCCESSFUL`，生成 unsigned HAP；未配置
   签名，因此不包含安装验证。

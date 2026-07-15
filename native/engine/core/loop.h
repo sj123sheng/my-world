@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <optional>
+#include <mutex>
 #include "fixed_step.h"
 #include "lifecycle_state.h"
 #include "snapshot_store.h"
@@ -30,7 +31,8 @@ struct Loop {
   FixedStep fixedStep{16, 4};
   SnapshotStore snapshots;
   LifecycleState lifecycle;
-  std::atomic<uint64_t> inputSequence{0};
+  std::mutex inputEnqueueMutex;
+  uint64_t inputSequence = 0;
   std::atomic<bool> running{false};
   std::atomic<bool> shouldStop{false};
   std::thread runner;
@@ -53,7 +55,11 @@ struct Loop {
   }
 
   bool enqueueInput(InputAction action, int32_t pointerId, float x, float y) {
-    return input.push({action, pointerId, x, y, inputSequence.fetch_add(1)});
+    std::lock_guard<std::mutex> lock(inputEnqueueMutex);
+    const bool accepted =
+        input.push({action, pointerId, x, y, inputSequence});
+    if (accepted) ++inputSequence;
+    return accepted;
   }
 
   GameSnapshot snapshot() const { return snapshots.read(); }

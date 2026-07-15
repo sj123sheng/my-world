@@ -27,15 +27,12 @@ ThirdPersonCameraConfig sanitizeConfig(ThirdPersonCameraConfig config) {
   config.defaultPitch =
       std::clamp(config.defaultPitch, config.minPitch, config.maxPitch);
 
-  if (!std::isfinite(config.minDistance)) {
-    config.minDistance = defaults.minDistance;
-  }
-  if (!std::isfinite(config.maxDistance)) {
-    config.maxDistance = defaults.maxDistance;
-  }
-  if (config.minDistance > config.maxDistance) {
+  if (!std::isfinite(config.minDistance) ||
+      !std::isfinite(config.maxDistance) || config.minDistance <= 0.0f ||
+      config.maxDistance <= 0.0f || config.minDistance > config.maxDistance) {
     config.minDistance = defaults.minDistance;
     config.maxDistance = defaults.maxDistance;
+    config.defaultDistance = defaults.defaultDistance;
   }
   if (!std::isfinite(config.defaultDistance)) {
     config.defaultDistance = defaults.defaultDistance;
@@ -90,7 +87,7 @@ void ThirdPersonCamera::reset() {
   yaw_ = config_.defaultYaw;
   pitch_ = config_.defaultPitch;
   distance_ = config_.defaultDistance;
-  target_ = {};
+  target_ = {0.5f, 0.5f};
 }
 
 float ThirdPersonCamera::yaw() const { return yaw_; }
@@ -105,6 +102,11 @@ Vec2 ThirdPersonCamera::position() const {
   const float projectedDistance = distance_ * std::cos(pitch_);
   return {target_.x - std::sin(yaw_) * projectedDistance,
           target_.y - std::cos(yaw_) * projectedDistance};
+}
+
+CameraRenderState ThirdPersonCamera::renderState() const {
+  return {target_, yaw_, pitch_, distance_, config_.defaultPitch,
+          config_.defaultDistance};
 }
 
 const ThirdPersonCameraConfig& ThirdPersonCamera::config() const {

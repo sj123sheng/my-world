@@ -8,6 +8,15 @@ const ability = fs.readFileSync('entry/src/main/ets/EntryAbility.ets', 'utf8');
 const nativeBridge = fs.readFileSync('entry/src/main/cpp/native_bridge.cpp', 'utf8');
 const loop = fs.readFileSync('native/engine/core/loop.cpp', 'utf8');
 
+assert.doesNotMatch(nativeBridge, /OH_NativeXComponent_GetTouchEvent/,
+  'Native XComponent must not produce touch input alongside ArkTS changedTouches');
+assert.doesNotMatch(nativeBridge, /OnDispatchTouchEvent/,
+  'Native XComponent touch dispatch callback must not be registered');
+assert.match(nativeBridge, /\.DispatchTouchEvent\s*=\s*nullptr/,
+  'XComponent touch callback must be explicitly disabled');
+assert.equal((nativeBridge.match(/g_loop\.enqueueInput\(/g) ?? []).length, 1,
+  'NativePushInput must be the only native enqueue site for ArkTS touch input');
+
 function functionBody(source, signature) {
   const start = source.indexOf(signature);
   assert.notEqual(start, -1, `missing function: ${signature}`);
@@ -111,6 +120,9 @@ assert.match(functionBody(nativeBridge, 'static napi_value NativeStart'),
 assert.match(functionBody(nativeBridge, 'static napi_value NativeStop'),
   /g_foregroundRequested\.store\(false\)[\s\S]*?g_loop\.stop\(\);/,
   'NativeStop must clear foreground before stopping');
+assert.match(functionBody(nativeBridge, 'static napi_value NativePushInput'),
+  /g_loop\.enqueueInput\(/,
+  'the single native enqueue site must belong to the N-API producer');
 for (const callback of ['OnSurfaceCreated', 'OnSurfaceChanged']) {
   assert.match(functionBody(nativeBridge, `static void ${callback}`),
     /if \(g_foregroundRequested\.load\(\)\)[\s\S]*?g_loop\.start\(\);/,

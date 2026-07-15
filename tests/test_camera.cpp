@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cmath>
 #include <limits>
+#include <utility>
 
 namespace {
 
@@ -18,8 +19,8 @@ void assertReset(const ThirdPersonCamera& camera) {
   assert(camera.yaw() == camera.config().defaultYaw);
   assert(camera.pitch() == camera.config().defaultPitch);
   assert(camera.distance() == camera.config().defaultDistance);
-  assert(camera.target().x == 0.0f);
-  assert(camera.target().y == 0.0f);
+  assert(camera.target().x == 0.5f);
+  assert(camera.target().y == 0.5f);
 }
 
 void assertValidConfig(const ThirdPersonCameraConfig& config) {
@@ -35,6 +36,8 @@ void assertValidConfig(const ThirdPersonCameraConfig& config) {
   assert(config.defaultPitch >= config.minPitch);
   assert(config.defaultPitch <= config.maxPitch);
   assert(config.minDistance <= config.maxDistance);
+  assert(config.minDistance > 0.0f);
+  assert(config.maxDistance > 0.0f);
   assert(config.defaultDistance >= config.minDistance);
   assert(config.defaultDistance <= config.maxDistance);
 }
@@ -79,8 +82,10 @@ int main() {
   smoothCamera.update(smoothTarget, {}, fixedDt);
   const float expectedFollow =
       1.0f - std::exp(-smoothCamera.config().followSharpness * fixedDt);
-  assert(close(smoothCamera.target().x, smoothTarget.x * expectedFollow));
-  assert(close(smoothCamera.target().y, smoothTarget.y * expectedFollow));
+  assert(close(smoothCamera.target().x,
+               0.5f + (smoothTarget.x - 0.5f) * expectedFollow));
+  assert(close(smoothCamera.target().y,
+               0.5f + (smoothTarget.y - 0.5f) * expectedFollow));
 
   ThirdPersonCamera repeatedCamera;
   repeatedCamera.update(smoothTarget, {}, fixedDt);
@@ -93,8 +98,9 @@ int main() {
   projectionConfig.defaultDistance = 0.35f;
   ThirdPersonCamera projectionCamera(projectionConfig);
   const Vec2 position = projectionCamera.position();
-  assert(std::abs(position.x + projectionConfig.defaultDistance) < 0.0001f);
-  assert(std::abs(position.y) < 0.0001f);
+  assert(std::abs(position.x - (0.5f - projectionConfig.defaultDistance)) <
+         0.0001f);
+  assert(std::abs(position.y - 0.5f) < 0.0001f);
 
   ThirdPersonCameraConfig nonFiniteConfig;
   nonFiniteConfig.defaultYaw = std::numeric_limits<float>::quiet_NaN();
@@ -146,4 +152,21 @@ int main() {
   assert(std::isfinite(invertedCamera.pitch()));
   invertedCamera.setDistance(100.0f);
   assert(std::isfinite(invertedCamera.distance()));
+
+  for (const auto invalidDistances : {
+           std::pair<float, float>{0.0f, 0.6f},
+           std::pair<float, float>{0.2f, 0.0f},
+           std::pair<float, float>{-0.2f, 0.6f},
+           std::pair<float, float>{0.2f, -0.6f},
+       }) {
+    ThirdPersonCameraConfig invalidConfig;
+    invalidConfig.minDistance = invalidDistances.first;
+    invalidConfig.maxDistance = invalidDistances.second;
+    ThirdPersonCamera invalidCamera(invalidConfig);
+    assert(invalidCamera.config().minDistance == builtInDefaults.minDistance);
+    assert(invalidCamera.config().maxDistance == builtInDefaults.maxDistance);
+    assert(invalidCamera.config().defaultDistance ==
+           builtInDefaults.defaultDistance);
+    assertReset(invalidCamera);
+  }
 }

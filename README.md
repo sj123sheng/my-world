@@ -30,12 +30,15 @@
 - HarmonyOS Stage 模型应用工程与 API 23 配置。
 - ArkTS + ArkUI 页面、HUD 和应用生命周期管理。
 - XComponent Surface 与 Native C++ 回调注册。
-- N-API 输入事件、启停控制和状态快照桥接。
+- ArkTS `changedTouches` 单一触控源，经 N-API 注入输入队列；Native XComponent
+  不再重复采集触控。
 - HarmonyOS NDK C++ 游戏帧循环。
 - EGL 1.4 与 OpenGL ES 3 原生渲染上下文。
 - 基础网格、玩家、目标、场景物件和粒子绘制。
 - 双区多指触控、虚拟摇杆与相机相对玩家移动。
-- 固定步自由第三人称相机与确定性软锁定目标选择。
+- 固定步自由第三人称相机与确定性软锁定目标选择；相机 target/yaw/pitch/distance
+  已统一接入 GL 与软件灰盒渲染坐标变换。
+- 多生产者输入在同一临界区分配 sequence 并入队，队列 FIFO 与 sequence 顺序一致。
 - NativeWindow 生命周期串行化和 fence 同步工具。
 - GLES 初始化失败时的 ArkUI 安全提示，不进入不稳定的软件 Buffer 路径。
 - 资源清单、配置 Schema、存档和确定性战斗相关基础模块。
@@ -187,7 +190,7 @@ my-world/
 
 2026-07-15 的阶段 2 收口验证结果如下，各层结果彼此独立：
 
-- 自动化测试：19/19 个 `tests/test_*.cpp` 编译并运行通过，Node 桥接契约 1/1 通过。
+- 自动化测试：20/20 个 `tests/test_*.cpp` 编译并运行通过，Node 桥接契约 1/1 通过。
 - Native 生产目标：OHOS arm64-v8a `native_game` 完整编译及链接通过。
 - HAP：Hvigor `assembleHap` 显示 `BUILD SUCCESSFUL`，生成
   `entry-default-unsigned.hap`；当前未配置签名，不能据此宣称可安装真机。

@@ -3,8 +3,10 @@
 #include <cassert>
 #include <chrono>
 #include <cmath>
+#include <atomic>
 #include <thread>
 #include <type_traits>
+#include <vector>
 
 int main() {
   static_assert(std::is_same_v<decltype(&Loop::tickOnce), void (Loop::*)(int64_t)>);
@@ -31,6 +33,9 @@ int main() {
 
   loop.surface.width = 1000;
   loop.surface.height = 800;
+  const Vec2 renderProbe{0.8f, 0.7f};
+  const Vec2 renderedAtDefaults =
+      loop.surface.cameraRenderState.worldToView(renderProbe);
   assert(loop.enqueueInput(InputAction::PointerDown, 1, 100.0f, 400.0f));
   assert(loop.enqueueInput(InputAction::PointerMove, 1, 180.0f, 400.0f));
   assert(loop.enqueueInput(InputAction::PointerDown, 2, 700.0f, 400.0f));
@@ -39,6 +44,17 @@ int main() {
   loop.updateFixed(1, 16);
   assert(loop.intent.move.length() > 0.0f);
   assert(loop.camera.yaw() != 0.0f);
+  assert(loop.surface.cameraRenderState.yaw() == loop.camera.yaw());
+  assert(loop.surface.cameraRenderState.pitch() == loop.camera.pitch());
+  assert(loop.surface.cameraRenderState.distance() == loop.camera.distance());
+  const Vec2 renderedBeforeDistance =
+      loop.surface.cameraRenderState.worldToView(renderProbe);
+  assert(!(renderedBeforeDistance == renderedAtDefaults));
+  loop.camera.setDistance(loop.camera.config().maxDistance);
+  loop.updateFixed(2, 16);
+  const Vec2 renderedAfterDistance =
+      loop.surface.cameraRenderState.worldToView(renderProbe);
+  assert(!(renderedAfterDistance == renderedBeforeDistance));
   assert(loop.surface.player.moving);
   loop.resetInput();
   assert(loop.intent.move == Vec2{});
@@ -204,4 +220,32 @@ int main() {
   restartedLoop.stop();
   assert(restartedLoop.surface.player.x == 0.5f);
   assert(restartedLoop.surface.player.y == 0.5f);
+
+  for (int round = 0; round < 20; ++round) {
+    Loop concurrentLoop;
+    constexpr int producerCount = 8;
+    constexpr int eventsPerProducer = 32;
+    std::atomic<bool> start{false};
+    std::vector<std::thread> producers;
+    for (int producer = 0; producer < producerCount; ++producer) {
+      producers.emplace_back([&, producer]() {
+        while (!start.load(std::memory_order_acquire)) {
+          std::this_thread::yield();
+        }
+        for (int index = 0; index < eventsPerProducer; ++index) {
+          assert(concurrentLoop.enqueueInput(InputAction::PointerMove,
+                                             producer, float(index), 0.0f));
+        }
+      });
+    }
+    start.store(true, std::memory_order_release);
+    for (auto& producer : producers) producer.join();
+
+    InputEvent concurrentEvent{};
+    uint64_t expectedSequence = 0;
+    while (concurrentLoop.input.pop(concurrentEvent)) {
+      assert(concurrentEvent.sequence == expectedSequence++);
+    }
+    assert(expectedSequence == producerCount * eventsPerProducer);
+  }
 }

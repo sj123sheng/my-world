@@ -55,6 +55,13 @@ static const char* kFragmentShader100 =
 static float aspect(const Surface& s) { return (float)s.height / (float)s.width; }
 static float ndcX(float x) { return x * 2.0f - 1.0f; }
 static float ndcY(float y) { return 1.0f - y * 2.0f; }
+static Vec2 worldToNdc(const Surface& s, Vec2 world) {
+  const Vec2 view = s.cameraRenderState.worldToView(world);
+  return {ndcX(view.x), ndcY(view.y)};
+}
+static Vec2 cameraScale(const Surface& s) {
+  return s.cameraRenderState.worldSizeToView({1.0f, 1.0f});
+}
 
 // -----------------------------------------------------------------------------
 // OpenGL ES pipeline
@@ -171,25 +178,32 @@ static void drawGridGL(const Surface& s) {
   std::vector<float> verts;
   const int lines = 10;
   const float step = 1.0f / lines;
+  const auto appendLine = [&s, &verts](Vec2 start, Vec2 end) {
+    const Vec2 viewStart = worldToNdc(s, start);
+    const Vec2 viewEnd = worldToNdc(s, end);
+    verts.push_back(viewStart.x); verts.push_back(viewStart.y);
+    verts.push_back(viewEnd.x); verts.push_back(viewEnd.y);
+  };
   for (int i = 0; i <= lines; ++i) {
     float p = i * step;
-    float x = ndcX(p);
-    float y = ndcY(p);
-    verts.push_back(x); verts.push_back(-1.0f);
-    verts.push_back(x); verts.push_back(1.0f);
-    verts.push_back(-1.0f); verts.push_back(y);
-    verts.push_back(1.0f); verts.push_back(y);
+    appendLine({p, 0.0f}, {p, 1.0f});
+    appendLine({0.0f, p}, {1.0f, p});
   }
   std::vector<float> colors;
   fillColor(colors, verts.size() / 2, 0.18f, 0.22f, 0.35f, 1.0f);
   drawArraysGL(s, GL_LINES, verts, colors);
 
-  std::vector<float> border = {
-    -1.0f, -1.0f, 1.0f, -1.0f,
-    1.0f, -1.0f, 1.0f, 1.0f,
-    1.0f, 1.0f, -1.0f, 1.0f,
-    -1.0f, 1.0f, -1.0f, -1.0f,
+  std::vector<float> border;
+  const auto appendBorder = [&s, &border](Vec2 start, Vec2 end) {
+    const Vec2 viewStart = worldToNdc(s, start);
+    const Vec2 viewEnd = worldToNdc(s, end);
+    border.push_back(viewStart.x); border.push_back(viewStart.y);
+    border.push_back(viewEnd.x); border.push_back(viewEnd.y);
   };
+  appendBorder({0.0f, 0.0f}, {1.0f, 0.0f});
+  appendBorder({1.0f, 0.0f}, {1.0f, 1.0f});
+  appendBorder({1.0f, 1.0f}, {0.0f, 1.0f});
+  appendBorder({0.0f, 1.0f}, {0.0f, 0.0f});
   std::vector<float> borderColors;
   fillColor(borderColors, 8, 0.25f, 0.30f, 0.45f, 1.0f);
   drawArraysGL(s, GL_LINES, border, borderColors);
@@ -197,11 +211,13 @@ static void drawGridGL(const Surface& s) {
 
 static void drawPropsGL(const Surface& s) {
   const float asp = aspect(s);
+  const Vec2 scale = cameraScale(s);
   for (const auto& p : s.props) {
-    float x = ndcX(p.x);
-    float y = ndcY(p.y);
-    float r = p.size * asp;
-    float rh = p.size;
+    const Vec2 view = worldToNdc(s, {p.x, p.y});
+    float x = view.x;
+    float y = view.y;
+    float r = p.size * asp * scale.x;
+    float rh = p.size * scale.y;
     if (p.kind == 0) {
       drawSolidRectGL(s, x, y + rh * 0.3f, r * 0.25f, rh * 0.4f, 0.45f, 0.30f, 0.18f, 1.0f);
       drawSolidCircleGL(s, x, y - rh * 0.2f, rh * 0.6f, 16, 0.15f, 0.55f, 0.25f, 1.0f);
@@ -215,25 +231,30 @@ static void drawPropsGL(const Surface& s) {
 
 static void drawParticlesGL(const Surface& s) {
   const float asp = aspect(s);
+  const Vec2 scale = cameraScale(s);
   for (const auto& p : s.particles) {
     float a = p.life / p.maxLife;
-    float x = ndcX(p.x);
-    float y = ndcY(p.y);
-    float r = 0.012f * asp * a;
+    const Vec2 view = worldToNdc(s, {p.x, p.y});
+    float x = view.x;
+    float y = view.y;
+    float r = 0.012f * asp * a * 0.5f * (scale.x + scale.y);
     drawSolidCircleGL(s, x, y, r, 10, 0.9f, 0.9f, 1.0f, a * 0.7f);
   }
 }
 
 static void drawPlayerGL(const Surface& s) {
   const float asp = aspect(s);
-  float x = ndcX(s.player.x);
-  float y = ndcY(s.player.y);
-  float r = s.player.size * asp;
+  const Vec2 scale = cameraScale(s);
+  const Vec2 view = worldToNdc(s, {s.player.x, s.player.y});
+  float x = view.x;
+  float y = view.y;
+  float r = s.player.size * asp * 0.5f * (scale.x + scale.y);
   drawSolidCircleGL(s, x, y - r * 0.1f, r * 1.1f, 20, 0.0f, 0.0f, 0.0f, 0.35f);
   drawSolidCircleGL(s, x, y, r, 24, 0.18f, 0.65f, 0.95f, 1.0f);
   drawSolidCircleGL(s, x, y, r * 0.75f, 20, 0.25f, 0.75f, 1.0f, 1.0f);
-  float ax = x + std::cos(s.player.angle) * r * 0.6f;
-  float ay = y - std::sin(s.player.angle) * r * 0.6f * asp;
+  const float viewAngle = s.player.angle - s.cameraRenderState.yaw();
+  float ax = x + std::cos(viewAngle) * r * 0.6f;
+  float ay = y - std::sin(viewAngle) * r * 0.6f * asp;
   drawSolidCircleGL(s, ax, ay, r * 0.28f, 12, 1.0f, 1.0f, 1.0f, 0.95f);
   drawSolidCircleGL(s, ax, ay, r * 0.14f, 8, 0.95f, 0.35f, 0.35f, 1.0f);
 }
@@ -363,26 +384,32 @@ static void drawGridSW(const Surface& s, Canvas& c) {
   const uint32_t gridColor = packColor(0.18f, 0.22f, 0.35f, 1.0f, c.swapRedBlue);
   const uint32_t borderColor = packColor(0.25f, 0.30f, 0.45f, 1.0f, c.swapRedBlue);
   const int lines = 10;
+  const auto drawWorldLine = [&s, &c](Vec2 start, Vec2 end, uint32_t color) {
+    const Vec2 viewStart = worldToNdc(s, start);
+    const Vec2 viewEnd = worldToNdc(s, end);
+    drawLine(c, ndcToScreenX(s, viewStart.x), ndcToScreenY(s, viewStart.y),
+             ndcToScreenX(s, viewEnd.x), ndcToScreenY(s, viewEnd.y), color);
+  };
   for (int i = 0; i <= lines; ++i) {
     float p = (float)i / lines;
-    int x = ndcToScreenX(s, ndcX(p));
-    int y = ndcToScreenY(s, ndcY(p));
-    drawLine(c, x, 0, x, s.height - 1, gridColor);
-    drawLine(c, 0, y, s.width - 1, y, gridColor);
+    drawWorldLine({p, 0.0f}, {p, 1.0f}, gridColor);
+    drawWorldLine({0.0f, p}, {1.0f, p}, gridColor);
   }
-  drawLine(c, 0, 0, s.width - 1, 0, borderColor);
-  drawLine(c, s.width - 1, 0, s.width - 1, s.height - 1, borderColor);
-  drawLine(c, s.width - 1, s.height - 1, 0, s.height - 1, borderColor);
-  drawLine(c, 0, s.height - 1, 0, 0, borderColor);
+  drawWorldLine({0.0f, 0.0f}, {1.0f, 0.0f}, borderColor);
+  drawWorldLine({1.0f, 0.0f}, {1.0f, 1.0f}, borderColor);
+  drawWorldLine({1.0f, 1.0f}, {0.0f, 1.0f}, borderColor);
+  drawWorldLine({0.0f, 1.0f}, {0.0f, 0.0f}, borderColor);
 }
 
 static void drawPropsSW(const Surface& s, Canvas& c) {
   const float asp = aspect(s);
+  const Vec2 scale = cameraScale(s);
   for (const auto& p : s.props) {
-    float x = ndcX(p.x);
-    float y = ndcY(p.y);
-    float r = p.size * asp;
-    float rh = p.size;
+    const Vec2 view = worldToNdc(s, {p.x, p.y});
+    float x = view.x;
+    float y = view.y;
+    float r = p.size * asp * scale.x;
+    float rh = p.size * scale.y;
     if (p.kind == 0) {
       drawSolidRectSW(s, c, x, y + rh * 0.3f, r * 0.25f, rh * 0.4f, 0.45f, 0.30f, 0.18f, 1.0f);
       drawSolidCircleSW(s, c, x, y - rh * 0.2f, rh * 0.6f, 0.15f, 0.55f, 0.25f, 1.0f);
@@ -396,25 +423,30 @@ static void drawPropsSW(const Surface& s, Canvas& c) {
 
 static void drawParticlesSW(const Surface& s, Canvas& c) {
   const float asp = aspect(s);
+  const Vec2 scale = cameraScale(s);
   for (const auto& p : s.particles) {
     float a = p.life / p.maxLife;
-    float x = ndcX(p.x);
-    float y = ndcY(p.y);
-    float r = 0.012f * asp * a;
+    const Vec2 view = worldToNdc(s, {p.x, p.y});
+    float x = view.x;
+    float y = view.y;
+    float r = 0.012f * asp * a * 0.5f * (scale.x + scale.y);
     drawSolidCircleSW(s, c, x, y, r, 0.9f, 0.9f, 1.0f, a * 0.7f);
   }
 }
 
 static void drawPlayerSW(const Surface& s, Canvas& c) {
   const float asp = aspect(s);
-  float x = ndcX(s.player.x);
-  float y = ndcY(s.player.y);
-  float r = s.player.size * asp;
+  const Vec2 scale = cameraScale(s);
+  const Vec2 view = worldToNdc(s, {s.player.x, s.player.y});
+  float x = view.x;
+  float y = view.y;
+  float r = s.player.size * asp * 0.5f * (scale.x + scale.y);
   drawSolidCircleSW(s, c, x, y - r * 0.1f, r * 1.1f, 0.0f, 0.0f, 0.0f, 0.35f);
   drawSolidCircleSW(s, c, x, y, r, 0.18f, 0.65f, 0.95f, 1.0f);
   drawSolidCircleSW(s, c, x, y, r * 0.75f, 0.25f, 0.75f, 1.0f, 1.0f);
-  float ax = x + std::cos(s.player.angle) * r * 0.6f;
-  float ay = y - std::sin(s.player.angle) * r * 0.6f * asp;
+  const float viewAngle = s.player.angle - s.cameraRenderState.yaw();
+  float ax = x + std::cos(viewAngle) * r * 0.6f;
+  float ay = y - std::sin(viewAngle) * r * 0.6f * asp;
   drawSolidCircleSW(s, c, ax, ay, r * 0.28f, 1.0f, 1.0f, 1.0f, 0.95f);
   drawSolidCircleSW(s, c, ax, ay, r * 0.14f, 0.95f, 0.35f, 0.35f, 1.0f);
 }

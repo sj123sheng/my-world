@@ -1,6 +1,7 @@
 #pragma once
 
 #include "native/engine/math/vec2.h"
+#include "native/engine/render/camera_render_state.h"
 
 struct ThirdPersonCameraConfig {
   float defaultYaw = 0.0f;
@@ -26,6 +27,7 @@ class ThirdPersonCamera {
   float distance() const;
   Vec2 target() const;
   Vec2 position() const;
+  CameraRenderState renderState() const;
   const ThirdPersonCameraConfig& config() const;
 
  private:

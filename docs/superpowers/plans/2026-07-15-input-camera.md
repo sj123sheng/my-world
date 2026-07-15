@@ -745,3 +745,18 @@ git commit -m "docs: 完成阶段2输入相机验收" \
   快照字段统一为 `moveX/moveY/cameraYaw/cameraPitch/targetDist/targetId`。
 - 依赖顺序：Task 1 输入语义 → Task 2 控制器 → Task 3 相机 → Task 4 锁定 → Task 5
   循环集成 → Task 6 桥接 → Task 7 验收，每个任务均有独立测试和提交边界。
+
+## 最终审查修复（2026-07-15）
+
+- [x] 新增纯 C++ `CameraRenderState` 世界到视图变换。默认 target `(0.5, 0.5)`、默认
+  yaw/pitch/distance 保持原灰盒画面不变；yaw 旋转、pitch 纵向投影与 distance 缩放均可见。
+- [x] `Loop::updateFixed()` 将 `ThirdPersonCamera::renderState()` 传给 `Surface`；GL 与软件
+  路径的网格、props、particles、player 均读取相同变换，不扩展三维 shader。
+- [x] 触控生产者收敛为 ArkTS `changedTouches` → N-API；Native XComponent
+  `DispatchTouchEvent` 显式置空，删除 `GetTouchEvent` 与 Native 触控入队路径。
+- [x] `Loop::enqueueInput()` 用独立 mutex 在线性化临界区内完成 sequence 分配和
+  `InputQueue::push()`，多生产者回归验证出队 sequence 严格单调连续。
+- [x] `ThirdPersonCameraConfig` 的 min/max distance 任一非有限、零、负或倒置时，距离配置
+  整体回退内建安全默认。
+- [x] 新增独立渲染变换测试及 Loop 集成断言；最终矩阵为 C++ 20/20、Node 1/1，
+  OHOS arm64 `native_game` 完整链接和 unsigned HAP 组装通过。

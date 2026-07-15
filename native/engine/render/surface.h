@@ -22,6 +22,7 @@ inline constexpr EGLContext EGL_NO_CONTEXT = nullptr;
 #include <cstdint>
 #include <mutex>
 #include "native/gameplay/player/player_controller.h"
+#include "native/engine/render/camera_render_state.h"
 
 struct Particle {
   float x;
@@ -56,6 +57,7 @@ struct Surface {
   bool ready = false;
   bool glWindowCreated = false;
   Player player;
+  CameraRenderState cameraRenderState;
   std::vector<Particle> particles;
   std::vector<Prop> props;
   std::vector<uint32_t> pixelBuffer;

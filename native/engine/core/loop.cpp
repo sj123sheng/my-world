@@ -191,6 +191,7 @@ void Loop::updateFixed(Tick, int64_t dtMs) {
       surface.particles.end());
 
   camera.update({surface.player.x, surface.player.y}, lookDelta, dtSeconds);
+  surface.cameraRenderState = camera.renderState();
 
   std::vector<TargetCandidate> candidates;
   candidates.reserve(surface.props.size());
