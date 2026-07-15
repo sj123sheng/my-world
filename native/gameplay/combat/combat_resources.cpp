@@ -1,8 +1,15 @@
 #include "combat_resources.h"
 
 #include <algorithm>
+#include <limits>
 
 namespace {
+
+Tick saturatingAdd(Tick tick, Tick duration) {
+  const Tick maximum = std::numeric_limits<Tick>::max();
+  if (duration > 0 && tick > maximum - duration) return maximum;
+  return tick + duration;
+}
 
 std::size_t sourceIndex(SourceType source) {
   switch (source) {
@@ -26,9 +33,11 @@ void CombatResources::reset() {
   recoveredMs_ = 0;
   recoveryRemainder_ = 0;
   insightExpiresAt_ = 0;
+  insightGrantedAt_ = 0;
   insightAvailable_ = false;
   sourceReadyAt_.fill(0);
   distinctSourceTicks_.fill(std::nullopt);
+  lastDistinctSourceTick_.reset();
   resonance_ = 0;
   ultimateWindowExpiresAt_ = 0;
   ultimateWindowActive_ = false;
@@ -38,7 +47,7 @@ bool CombatResources::spendStamina(FixedPoint amount, Tick tick) {
   advance(tick);
   if (amount < 0 || stamina_ < amount) return false;
   stamina_ -= amount;
-  recoveryStartTick_ = tick + config_.staminaRecoveryDelayMs;
+  recoveryStartTick_ = saturatingAdd(tick, config_.staminaRecoveryDelayMs);
   recoveredMs_ = 0;
   recoveryRemainder_ = 0;
   return true;
@@ -65,12 +74,13 @@ void CombatResources::advance(Tick now) {
 void CombatResources::grantInsight(Tick tick) {
   advance(tick);
   insightAvailable_ = true;
-  insightExpiresAt_ = tick + config_.insightDurationMs;
+  insightGrantedAt_ = tick;
+  insightExpiresAt_ = saturatingAdd(tick, config_.insightDurationMs);
 }
 
 bool CombatResources::consumeInsight(Tick tick) {
   advance(tick);
-  if (!insightAvailable_ || tick >= insightExpiresAt_) {
+  if (!insightAvailableAt(tick)) {
     insightAvailable_ = false;
     return false;
   }
@@ -87,13 +97,17 @@ bool CombatResources::hasInsight() const {
   return insightAvailable_ && now_ < insightExpiresAt_;
 }
 
+bool CombatResources::insightAvailableAt(Tick tick) const {
+  return insightAvailable_ && tick >= insightGrantedAt_ && tick < insightExpiresAt_;
+}
+
 bool CombatResources::sourceReady(SourceType source, Tick tick) const {
   return tick >= sourceReadyAt_[sourceIndex(source)];
 }
 
 void CombatResources::startSourceCooldown(SourceType source, Tick tick) {
   const std::size_t index = sourceIndex(source);
-  sourceReadyAt_[index] = tick + config_.sourceCooldownMs[index];
+  sourceReadyAt_[index] = saturatingAdd(tick, config_.sourceCooldownMs[index]);
 }
 
 void CombatResources::addResonance(FixedPoint amount) {
@@ -106,9 +120,13 @@ void CombatResources::addResonance(FixedPoint amount) {
 }
 
 void CombatResources::recordDistinctSource(SourceType source, Tick tick) {
+  if (lastDistinctSourceTick_ && tick < *lastDistinctSourceTick_) return;
+  lastDistinctSourceTick_ = tick;
   distinctSourceTicks_[sourceIndex(source)] = tick;
   for (auto& recorded : distinctSourceTicks_) {
-    if (recorded && tick - *recorded > config_.triSourceWindowMs) recorded.reset();
+    if (recorded && static_cast<__int128>(tick) - *recorded > config_.triSourceWindowMs) {
+      recorded.reset();
+    }
   }
   if (!distinctSourceTicks_[0] || !distinctSourceTicks_[1] || !distinctSourceTicks_[2]) return;
 
@@ -116,10 +134,10 @@ void CombatResources::recordDistinctSource(SourceType source, Tick tick) {
                                  *distinctSourceTicks_[2]});
   const Tick maximum = std::max({*distinctSourceTicks_[0], *distinctSourceTicks_[1],
                                  *distinctSourceTicks_[2]});
-  if (maximum - minimum <= config_.triSourceWindowMs) {
+  if (static_cast<__int128>(maximum) - minimum <= config_.triSourceWindowMs) {
     resonance_ = config_.maxResonance;
     ultimateWindowActive_ = true;
-    ultimateWindowExpiresAt_ = tick + config_.ultimateWindowMs;
+    ultimateWindowExpiresAt_ = saturatingAdd(tick, config_.ultimateWindowMs);
     distinctSourceTicks_.fill(std::nullopt);
   }
 }

@@ -101,3 +101,83 @@ PASS task1_to_task5=12/12
 - brief 未定义 5 秒“窗口增益”的具体数值效果，本任务只保存并暴露
   `ultimateWindowActive(now)`；Task 6 可编排表现或快照，但不得把它误作终结施放资格。
 - 新 `.cpp` 未注册到生产 CMake，符合本 Task 的禁止范围；由后续集成任务统一处理。
+
+## Important 审查修复：两阶段命中提交
+
+### 根因
+
+初版在 `ActionStateMachine::update()` 生成 `HitRequest` 时立即消费洞察、启动冷却、增加共鸣、
+记录三源或清空终结能量；但 `DamageResolver::resolve()` 遇到已经死亡的目标会返回全零结果。
+这使“命中请求已生成”被错误等同于“目标实际受到有效命中”。
+
+### RED
+
+先扩展两个 Task 5 测试，通过真实 `DamageResolver` 覆盖活目标、请求后死亡、错误 sequence、
+重复确认和终结空结果，再以相同 C++17 严格参数编译：
+
+```text
+tests/test_source_abilities.cpp:37:18: error: no member named 'confirmHit' in
+'ActionStateMachine'
+tests/test_source_abilities.cpp:71:19: error: no member named 'confirmHit' in
+'ActionStateMachine'
+source_review_red=1
+
+tests/test_resonance_window.cpp:65:20: error: no member named 'insightAvailableAt' in
+'CombatResources'
+tests/test_resonance_window.cpp:97:18: error: no member named 'confirmHit' in
+'ActionStateMachine'
+resonance_review_red=1
+```
+
+失败原因与审查项一致：状态机缺少命中确认边界，资源也不能只读判断指定命中 tick 的洞察。
+
+### GREEN 与语义
+
+`update()` 现在只生成预测后的 `HitRequest`，并保存一个最小 pending transaction：
+`sequence/action/source/hitTick/insightApplied`。资源只在
+`confirmHit(sequence, landed=true)` 时提交：
+
+- 源技能提交洞察消费、冷却、`+10` 共鸣和三源历史。
+- 终结技提交清空 100 共鸣。
+- `landed=false` 清 pending 且不提交；重复确认不提交。
+- sequence 不匹配返回 false 并保留正确 pending；pending 存在时新动作返回 `ActionLocked`，
+  防止错误回执或新动作覆盖待确认事务。
+
+两个定向测试首次 GREEN：
+
+```text
+source_review_green=0
+resonance_review_green=0
+```
+
+### Tick 安全修复
+
+- 洞察、冷却、体力恢复延迟和终结窗口 deadline 改用饱和加法。
+- 三源窗口差值使用 `__int128`，避免 `Tick` 极值相减溢出。
+- 三源历史显式忽略倒序 tick，并测试倒序后不能错误充满。
+- 覆盖接近 `numeric_limits<Tick>::max()` 的冷却、洞察和终结窗口边界；饱和 deadline
+  在最大 tick 到期，共鸣仍保留 100。
+
+### 审查修复回归
+
+Tasks 1–5 全部战斗测试与 damage resolver 相关测试执行结果：
+
+```text
+PASS test_combat_config
+PASS test_event_order
+PASS test_decision_log
+PASS test_action_state_machine
+PASS test_combat_resources
+PASS test_training_pulse
+PASS test_damage_resolver
+PASS test_source_reaction_system
+PASS test_source_aura
+PASS test_resonance
+PASS test_source_abilities
+PASS test_resonance_window
+PASS task1_to_task5_review=12/12
+PASS damage_resolver_related=3/3
+PASS git_diff_check
+```
+
+`build-profile.json5` 仍是用户原有未暂存修改；未修改 Task 6、CMake 或 UI。

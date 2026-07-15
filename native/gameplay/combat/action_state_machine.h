@@ -39,6 +39,7 @@ class ActionStateMachine {
 
   ActionDecision request(const ActionRequest& request, const ActionContext& context);
   std::optional<HitRequest> update(Tick now, int64_t dtMs, const ActionContext& context);
+  bool confirmHit(uint64_t sequence, bool landed);
   void resetCombo();
   void reset();
   bool isInvulnerable() const;
@@ -73,4 +74,13 @@ class ActionStateMachine {
   Tick chainElapsedMs_ = 0;
   ActionContext actionContext_;
   uint64_t actionSequence_ = 0;
+
+  struct PendingHitTransaction {
+    uint64_t sequence = 0;
+    CombatAction action = CombatAction::Attack;
+    std::optional<SourceType> source;
+    Tick hitTick = 0;
+    bool insightApplied = false;
+  };
+  std::optional<PendingHitTransaction> pendingHit_;
 };

@@ -1,11 +1,18 @@
 #include "action_state_machine.h"
 
 #include <algorithm>
+#include <limits>
 
 namespace {
 
 FixedPoint multiply(FixedPoint value, FixedPoint multiplier) {
   return static_cast<FixedPoint>((static_cast<__int128>(value) * multiplier) / FP_ONE);
+}
+
+Tick hitTickFrom(Tick start) {
+  const Tick maximum = std::numeric_limits<Tick>::max();
+  if (start > maximum - 160) return maximum;
+  return start + 160;
 }
 
 }  // namespace
@@ -25,7 +32,7 @@ ActionDecision ActionStateMachine::request(const ActionRequest& request,
   if (request.action != CombatAction::Dodge && !context.targetAlive) {
     return {false, ActionRejectReason::TargetDead};
   }
-  if (actionActive_) {
+  if (actionActive_ || pendingHit_) {
     return {false, ActionRejectReason::ActionLocked};
   }
 
@@ -122,16 +129,16 @@ std::optional<HitRequest> ActionStateMachine::update(Tick now,
     if (isSourceAction(activeAction_)) {
       const std::size_t index = sourceIndex(activeAction_);
       const SourceType source = sourceType(activeAction_);
-      const Tick hitTick = actionStartTick_ + kAttackHitMs;
+      const Tick hitTick = hitTickFrom(actionStartTick_);
       FixedPoint damage = config_.sourceDamage[index];
       FixedPoint amount = FP_ONE;
-      if (resources_.consumeInsight(hitTick)) {
+      const bool insightApplied = resources_.insightAvailableAt(hitTick);
+      if (insightApplied) {
         damage = multiply(damage, config_.insightDamageMultiplier);
         amount = multiply(amount, config_.insightDamageMultiplier);
       }
-      resources_.startSourceCooldown(source, hitTick);
-      resources_.addResonance(config_.sourceResonanceGain);
-      resources_.recordDistinctSource(source, hitTick);
+      pendingHit_ = PendingHitTransaction{
+          actionSequence_, activeAction_, source, hitTick, insightApplied};
       actionStartKnown_ = false;
       return HitRequest{actionContext_.attacker,
                         actionContext_.target,
@@ -144,11 +151,9 @@ std::optional<HitRequest> ActionStateMachine::update(Tick now,
                         amount};
     }
     if (activeAction_ == CombatAction::Ultimate) {
-      const Tick hitTick = actionStartTick_ + kAttackHitMs;
-      if (!resources_.spendUltimate(hitTick)) {
-        actionStartKnown_ = false;
-        return std::nullopt;
-      }
+      const Tick hitTick = hitTickFrom(actionStartTick_);
+      pendingHit_ = PendingHitTransaction{
+          actionSequence_, activeAction_, std::nullopt, hitTick, false};
       actionStartKnown_ = false;
       return HitRequest{actionContext_.attacker,
                         actionContext_.target,
@@ -184,6 +189,27 @@ std::optional<HitRequest> ActionStateMachine::update(Tick now,
     }
   }
   return std::nullopt;
+}
+
+bool ActionStateMachine::confirmHit(uint64_t sequence, bool landed) {
+  if (!pendingHit_ || pendingHit_->sequence != sequence) return false;
+  const PendingHitTransaction transaction = *pendingHit_;
+  pendingHit_.reset();
+  if (!landed) return true;
+
+  if (transaction.source) {
+    if (transaction.insightApplied) {
+      (void)resources_.consumeInsight(transaction.hitTick);
+    }
+    resources_.startSourceCooldown(*transaction.source, transaction.hitTick);
+    resources_.addResonance(config_.sourceResonanceGain);
+    resources_.recordDistinctSource(*transaction.source, transaction.hitTick);
+    return true;
+  }
+  if (transaction.action == CombatAction::Ultimate) {
+    return resources_.spendUltimate(transaction.hitTick);
+  }
+  return false;
 }
 
 bool ActionStateMachine::isSourceAction(CombatAction action) {
@@ -231,4 +257,5 @@ void ActionStateMachine::reset() {
   actionStartTick_ = 0;
   actionContext_ = {};
   actionSequence_ = 0;
+  pendingHit_.reset();
 }

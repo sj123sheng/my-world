@@ -15,6 +15,7 @@ class CombatResources {
   void grantInsight(Tick tick);
   bool consumeInsight(Tick tick);
   bool hasInsight() const;
+  bool insightAvailableAt(Tick tick) const;
   bool sourceReady(SourceType source, Tick tick) const;
   void startSourceCooldown(SourceType source, Tick tick);
   void addResonance(FixedPoint amount);
@@ -36,9 +37,11 @@ class CombatResources {
   Tick recoveredMs_ = 0;
   int64_t recoveryRemainder_ = 0;
   Tick insightExpiresAt_ = 0;
+  Tick insightGrantedAt_ = 0;
   bool insightAvailable_ = false;
   std::array<Tick, 3> sourceReadyAt_{};
   std::array<std::optional<Tick>, 3> distinctSourceTicks_{};
+  std::optional<Tick> lastDistinctSourceTick_;
   FixedPoint resonance_ = 0;
   Tick ultimateWindowExpiresAt_ = 0;
   bool ultimateWindowActive_ = false;

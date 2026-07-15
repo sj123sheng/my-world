@@ -2,6 +2,7 @@
 #include "../native/gameplay/combat/source_reaction_system.h"
 
 #include <cassert>
+#include <limits>
 
 namespace {
 
@@ -53,6 +54,33 @@ void testWindowExpirationKeepsFullEnergy() {
   assert(resources.spendUltimate(7000));
 }
 
+void testSaturatingDeadlinesAndOutOfOrderSourceTicks() {
+  const Tick maximum = std::numeric_limits<Tick>::max();
+  CombatResources deadlines(CombatConfig::defaults());
+  deadlines.startSourceCooldown(SourceType::Radiance, maximum - 1000);
+  assert(!deadlines.sourceReady(SourceType::Radiance, maximum - 1));
+  assert(deadlines.sourceReady(SourceType::Radiance, maximum));
+
+  deadlines.grantInsight(maximum - 1000);
+  assert(deadlines.insightAvailableAt(maximum - 1));
+
+  CombatResources nearMaximumWindow(CombatConfig::defaults());
+  nearMaximumWindow.recordDistinctSource(SourceType::Radiance, maximum - 8000);
+  nearMaximumWindow.recordDistinctSource(SourceType::Current, maximum - 4000);
+  nearMaximumWindow.recordDistinctSource(SourceType::Corruption, maximum - 1000);
+  assert(nearMaximumWindow.ultimateWindowActive(maximum - 1));
+  assert(!nearMaximumWindow.ultimateWindowActive(maximum));
+  assert(nearMaximumWindow.resonance() == fp(100));
+
+  CombatResources history(CombatConfig::defaults());
+  history.recordDistinctSource(SourceType::Current, 100);
+  history.recordDistinctSource(SourceType::Radiance, 99);
+  history.recordDistinctSource(SourceType::Corruption, 101);
+  assert(history.resonance() == 0);
+  history.recordDistinctSource(SourceType::Radiance, 102);
+  assert(history.resonance() == fp(100));
+}
+
 void testUltimateRejectsAtomicallyAndConsumesOnHit() {
   ActionStateMachine machine(CombatConfig::defaults());
   const ActionContext target{1, 2, true, false, false};
@@ -70,6 +98,11 @@ void testUltimateRejectsAtomicallyAndConsumesOnHit() {
   assert(hit.has_value());
   assert(hit->baseDamage == fp(60) && hit->poiseDamage == fp(40));
   assert(!hit->source.has_value() && hit->tick == 7160);
+  assert(machine.resonance() == fp(100));
+  TrainingTarget resolvedTarget = TrainingTarget::defaults();
+  const DamageOutcome outcome =
+      DamageResolver(CombatConfig::defaults()).resolve(resolvedTarget, *hit);
+  assert(machine.confirmHit(hit->sequence, outcome.hpDamage > 0 || outcome.poiseDamage > 0));
   assert(machine.resonance() == 0);
 }
 
@@ -81,9 +114,18 @@ void testMissDoesNotSpendUltimate() {
   machine.recordDistinctSource(SourceType::Corruption, 2000);
   machine.update(2000, 2000, target);
   assert(machine.request({CombatAction::Ultimate, 1}, target).accepted);
-  auto dead = target;
-  dead.targetAlive = false;
-  assert(!machine.update(2160, 160, dead).has_value());
+  const auto hit = machine.update(2160, 160, target);
+  assert(hit.has_value());
+
+  TrainingTarget deadTarget = TrainingTarget::defaults();
+  HitRequest lethal;
+  lethal.baseDamage = fp(300);
+  lethal.tick = 2100;
+  assert(DamageResolver(CombatConfig::defaults()).resolve(deadTarget, lethal).killed);
+  const DamageOutcome outcome =
+      DamageResolver(CombatConfig::defaults()).resolve(deadTarget, *hit);
+  assert(outcome.hpDamage == 0 && outcome.poiseDamage == 0);
+  assert(machine.confirmHit(hit->sequence, false));
   assert(machine.resonance() == fp(100));
   assert(machine.canUltimate(2160));
 }
@@ -94,6 +136,7 @@ int main() {
   testNormalAndReactionResonanceAccumulate();
   testTriSourceBoundaryAndExpiredHistory();
   testWindowExpirationKeepsFullEnergy();
+  testSaturatingDeadlinesAndOutOfOrderSourceTicks();
   testUltimateRejectsAtomicallyAndConsumesOnHit();
   testMissDoesNotSpendUltimate();
   return 0;
