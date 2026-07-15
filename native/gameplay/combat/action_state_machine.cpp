@@ -2,18 +2,27 @@
 
 #include <algorithm>
 
+namespace {
+
+FixedPoint multiply(FixedPoint value, FixedPoint multiplier) {
+  return static_cast<FixedPoint>((static_cast<__int128>(value) * multiplier) / FP_ONE);
+}
+
+}  // namespace
+
 ActionStateMachine::ActionStateMachine(CombatConfig config)
     : config_(config.validated()), resources_(config_) {}
 
 ActionDecision ActionStateMachine::request(const ActionRequest& request,
                                            const ActionContext& context) {
-  if (request.action != CombatAction::Attack && request.action != CombatAction::Dodge) {
+  if (request.action != CombatAction::Attack && request.action != CombatAction::Dodge &&
+      !isSourceAction(request.action) && request.action != CombatAction::Ultimate) {
     return {false, ActionRejectReason::InvalidAction};
   }
-  if (request.action == CombatAction::Attack && context.target == 0) {
+  if (request.action != CombatAction::Dodge && context.target == 0) {
     return {false, ActionRejectReason::NoTarget};
   }
-  if (request.action == CombatAction::Attack && !context.targetAlive) {
+  if (request.action != CombatAction::Dodge && !context.targetAlive) {
     return {false, ActionRejectReason::TargetDead};
   }
   if (actionActive_) {
@@ -25,10 +34,30 @@ ActionDecision ActionStateMachine::request(const ActionRequest& request,
     return {false, ActionRejectReason::InsufficientStamina};
   }
 
+  if (isSourceAction(request.action) &&
+      !resources_.sourceReady(sourceType(request.action), lastUpdateTick_)) {
+    return {false, ActionRejectReason::Cooldown};
+  }
+  if (request.action == CombatAction::Ultimate && !resources_.canUltimate(lastUpdateTick_)) {
+    return {false, ActionRejectReason::InsufficientResonance};
+  }
+
   if (request.action == CombatAction::Dodge) {
     resetCombo();
     actionActive_ = true;
     activeAction_ = CombatAction::Dodge;
+    actionStartKnown_ = hasTimeline_;
+    actionStartTick_ = lastUpdateTick_;
+    actionElapsedMs_ = 0;
+    actionContext_ = context;
+    actionSequence_ = request.sequence;
+    return {true, ActionRejectReason::None};
+  }
+
+  if (isSourceAction(request.action) || request.action == CombatAction::Ultimate) {
+    resetCombo();
+    actionActive_ = true;
+    activeAction_ = request.action;
     actionStartKnown_ = hasTimeline_;
     actionStartTick_ = lastUpdateTick_;
     actionElapsedMs_ = 0;
@@ -83,7 +112,54 @@ std::optional<HitRequest> ActionStateMachine::update(Tick now,
       return std::nullopt;
     }
 
+    if (context.target == 0 || !context.targetAlive || context.target != actionContext_.target) {
+      actionActive_ = false;
+      actionStartKnown_ = false;
+      return std::nullopt;
+    }
+
     actionActive_ = false;
+    if (isSourceAction(activeAction_)) {
+      const std::size_t index = sourceIndex(activeAction_);
+      const SourceType source = sourceType(activeAction_);
+      const Tick hitTick = actionStartTick_ + kAttackHitMs;
+      FixedPoint damage = config_.sourceDamage[index];
+      FixedPoint amount = FP_ONE;
+      if (resources_.consumeInsight(hitTick)) {
+        damage = multiply(damage, config_.insightDamageMultiplier);
+        amount = multiply(amount, config_.insightDamageMultiplier);
+      }
+      resources_.startSourceCooldown(source, hitTick);
+      resources_.addResonance(config_.sourceResonanceGain);
+      resources_.recordDistinctSource(source, hitTick);
+      actionStartKnown_ = false;
+      return HitRequest{actionContext_.attacker,
+                        actionContext_.target,
+                        static_cast<AbilityId>(5 + index),
+                        source,
+                        damage,
+                        config_.sourcePoiseDamage[index],
+                        hitTick,
+                        actionSequence_,
+                        amount};
+    }
+    if (activeAction_ == CombatAction::Ultimate) {
+      const Tick hitTick = actionStartTick_ + kAttackHitMs;
+      if (!resources_.spendUltimate(hitTick)) {
+        actionStartKnown_ = false;
+        return std::nullopt;
+      }
+      actionStartKnown_ = false;
+      return HitRequest{actionContext_.attacker,
+                        actionContext_.target,
+                        8,
+                        std::nullopt,
+                        config_.ultimateDamage,
+                        config_.ultimatePoiseDamage,
+                        hitTick,
+                        actionSequence_};
+    }
+
     waitingForChain_ = true;
     chainElapsedMs_ = actionElapsedMs_ - kAttackHitMs;
     const std::size_t index = comboIndex_ - 1;
@@ -108,6 +184,29 @@ std::optional<HitRequest> ActionStateMachine::update(Tick now,
     }
   }
   return std::nullopt;
+}
+
+bool ActionStateMachine::isSourceAction(CombatAction action) {
+  return action == CombatAction::Radiance || action == CombatAction::Current ||
+         action == CombatAction::Corruption;
+}
+
+std::size_t ActionStateMachine::sourceIndex(CombatAction action) {
+  switch (action) {
+    case CombatAction::Radiance: return 0;
+    case CombatAction::Current: return 1;
+    case CombatAction::Corruption: return 2;
+    default: return 0;
+  }
+}
+
+SourceType ActionStateMachine::sourceType(CombatAction action) {
+  switch (action) {
+    case CombatAction::Radiance: return SourceType::Radiance;
+    case CombatAction::Current: return SourceType::Current;
+    case CombatAction::Corruption: return SourceType::Corruption;
+    default: return SourceType::Radiance;
+  }
 }
 
 bool ActionStateMachine::isInvulnerable() const {

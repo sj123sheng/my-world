@@ -30,6 +30,7 @@ struct HitRequest {
   FixedPoint poiseDamage = 0;
   Tick tick = 0;
   uint64_t sequence = 0;
+  FixedPoint sourceAmount = FP_ONE;
 };
 
 class ActionStateMachine {
@@ -42,9 +43,21 @@ class ActionStateMachine {
   void reset();
   bool isInvulnerable() const;
   FixedPoint stamina() const { return resources_.stamina(); }
+  void grantInsight(Tick tick) { resources_.grantInsight(tick); }
+  bool hasInsight() const { return resources_.hasInsight(); }
+  FixedPoint resonance() const { return resources_.resonance(); }
+  void addResonance(FixedPoint amount) { resources_.addResonance(amount); }
+  void recordDistinctSource(SourceType source, Tick tick) {
+    resources_.recordDistinctSource(source, tick);
+  }
+  bool canUltimate(Tick tick) { return resources_.canUltimate(tick); }
 
  private:
   static constexpr Tick kAttackHitMs = 160;
+
+  static bool isSourceAction(CombatAction action);
+  static std::size_t sourceIndex(CombatAction action);
+  static SourceType sourceType(CombatAction action);
 
   CombatConfig config_;
   CombatResources resources_;

@@ -25,6 +25,7 @@ ReactionOutcome SourceReactionSystem::apply(TrainingTarget& target,
   }
 
   if (outcome.type) {
+    outcome.resonanceGain = config_.reactionResonanceGain;
     auras.clear();
     HitRequest reactionHit;
     reactionHit.tick = now;

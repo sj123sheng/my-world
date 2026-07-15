@@ -8,6 +8,7 @@ struct ReactionOutcome {
   std::optional<ResonanceType> type;
   FixedPoint hpDamage = 0;
   FixedPoint poiseDamage = 0;
+  FixedPoint resonanceGain = 0;
   bool poiseBroken = false;
 };
 
