@@ -1,3 +1,4 @@
 #pragma once
 #include "event.h"
-ResonanceType resolveResonance(SourceType a, SourceType b);
+#include <optional>
+std::optional<ResonanceType> resolveResonance(SourceType a, SourceType b);

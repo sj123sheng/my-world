@@ -1,8 +1,11 @@
 #include "resonance.h"
-ResonanceType resolveResonance(SourceType a, SourceType b){
-  if (a==SourceType::Radiance && b==SourceType::Current)  return ResonanceType::Refraction;
-  if (a==SourceType::Current  && b==SourceType::Corruption) return ResonanceType::Stasis;
-  if (a==SourceType::Corruption&& b==SourceType::Radiance)  return ResonanceType::Collapse;
-  // 三种顺序命中触发 Burst 在 M1-3 处理
-  return ResonanceType::Refraction; // 默认占位
+std::optional<ResonanceType> resolveResonance(SourceType a, SourceType b){
+  if (a == b) return std::nullopt;
+  if ((a==SourceType::Radiance && b==SourceType::Current) ||
+      (a==SourceType::Current && b==SourceType::Radiance)) return ResonanceType::Refraction;
+  if ((a==SourceType::Current && b==SourceType::Corruption) ||
+      (a==SourceType::Corruption && b==SourceType::Current)) return ResonanceType::Stasis;
+  if ((a==SourceType::Corruption && b==SourceType::Radiance) ||
+      (a==SourceType::Radiance && b==SourceType::Corruption)) return ResonanceType::Collapse;
+  return std::nullopt;
 }
