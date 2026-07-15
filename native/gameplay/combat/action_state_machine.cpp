@@ -15,6 +15,12 @@ Tick hitTickFrom(Tick start) {
   return start + 160;
 }
 
+Tick saturatingAdd(Tick tick, Tick duration) {
+  const Tick maximum = std::numeric_limits<Tick>::max();
+  if (duration > 0 && tick > maximum - duration) return maximum;
+  return tick + duration;
+}
+
 }  // namespace
 
 ActionStateMachine::ActionStateMachine(CombatConfig config)
@@ -62,6 +68,12 @@ ActionDecision ActionStateMachine::request(const ActionRequest& request,
     actionElapsedMs_ = 0;
     actionContext_ = context;
     actionSequence_ = request.sequence;
+    if (actionStartKnown_) {
+      dodgeIntervalKnown_ = true;
+      dodgeInvulnerableFrom_ = actionStartTick_;
+      dodgeInvulnerableUntil_ =
+          saturatingAdd(actionStartTick_, config_.dodgeInvulnerabilityMs);
+    }
     return {true, ActionRejectReason::None};
   }
 
@@ -110,6 +122,12 @@ std::optional<HitRequest> ActionStateMachine::update(Tick now,
     if (!actionStartKnown_) {
       actionStartTick_ = now - elapsed;
       actionStartKnown_ = true;
+      if (activeAction_ == CombatAction::Dodge) {
+        dodgeIntervalKnown_ = true;
+        dodgeInvulnerableFrom_ = actionStartTick_;
+        dodgeInvulnerableUntil_ =
+            saturatingAdd(actionStartTick_, config_.dodgeInvulnerabilityMs);
+      }
     }
     actionElapsedMs_ += elapsed;
     if (activeAction_ == CombatAction::Dodge) {
@@ -260,6 +278,11 @@ bool ActionStateMachine::isInvulnerable() const {
          actionElapsedMs_ < config_.dodgeInvulnerabilityMs;
 }
 
+bool ActionStateMachine::wasInvulnerableAt(Tick tick) const {
+  return dodgeIntervalKnown_ && tick >= dodgeInvulnerableFrom_ &&
+         tick < dodgeInvulnerableUntil_;
+}
+
 void ActionStateMachine::resetCombo() {
   comboIndex_ = 0;
   actionActive_ = false;
@@ -278,4 +301,7 @@ void ActionStateMachine::reset() {
   actionContext_ = {};
   actionSequence_ = 0;
   pendingHit_.reset();
+  dodgeIntervalKnown_ = false;
+  dodgeInvulnerableFrom_ = 0;
+  dodgeInvulnerableUntil_ = 0;
 }

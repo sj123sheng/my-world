@@ -56,7 +56,7 @@ void CombatController::update(const CombatFrameInput& input) {
   if (input.moving) comboSegment_ = 0;
   for (const PulseEvent& pulseEvent : pulse_.advance(input.tick)) {
     if (pulseEvent.kind != PulseEventKind::Hit) continue;
-    if (actions_.isInvulnerable()) {
+    if (actions_.wasInvulnerableAt(pulseEvent.tick)) {
       events_.gameplay.push_back({pulseEvent.tick, kPlayerId, kPlayerId,
                                   GameplayEventType::Dodge, 0, 0});
       events_.presentation.push_back({pulseEvent.tick, kPlayerId, kPlayerId,

@@ -52,6 +52,21 @@ int main() {
   assert(pulse.snapshot().playerHp == fp(100));
   assert(pulse.snapshot().hasInsight);
 
+  CombatController historicalPulse(CombatConfig::defaults());
+  historicalPulse.update(
+      {0, 0, false, CombatController::kTrainingTargetId, true});
+  historicalPulse.enqueue({CombatAction::Dodge, 1});
+  historicalPulse.update(
+      {750, 1, false, CombatController::kTrainingTargetId, true});
+  historicalPulse.update(
+      {4000, 3249, false, CombatController::kTrainingTargetId, true});
+  assert(historicalPulse.snapshot().playerHp == fp(90));
+  assert(std::count_if(historicalPulse.events().gameplay.begin(),
+                       historicalPulse.events().gameplay.end(),
+                       [](const GameplayEvent& event) {
+                         return event.type == GameplayEventType::Dodge;
+                       }) == 1);
+
   CombatController reset(CombatConfig::defaults());
   reset.enqueue({CombatAction::Attack, 1});
   reset.update({0, 16, false, CombatController::kTrainingTargetId, true});

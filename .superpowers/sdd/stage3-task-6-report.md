@@ -84,3 +84,119 @@ DEVECO_SDK_HOME=/Applications/DevEco-Studio.app/Contents/sdk \
   后续表现层接入时应在同一帧复制批次，不能持有控制器内部引用。
 - 场景 props 不再作为软锁定候选，这是为保证训练假人 ID/位置稳定而做的
   明确战斗域约束；已有回归测试固定该行为。
+
+## 审查修复（2026-07-16）
+
+### RED 证据
+
+历史无敌查询测试先编译失败：
+
+```text
+tests/test_action_state_machine.cpp:228:18: error: no member named
+'wasInvulnerableAt' in 'ActionStateMachine'
+tests/test_action_state_machine.cpp:229:19: error: no member named
+'wasInvulnerableAt' in 'ActionStateMachine'
+tests/test_action_state_machine.cpp:233:18: error: no member named
+'wasInvulnerableAt' in 'ActionStateMachine'
+3 errors generated.
+```
+
+Loop 毫秒时钟和帧事件接口测试先编译失败：
+
+```text
+tests/test_loop_integration.cpp:39:26: error: no member named 'combatTimeMs' in 'Loop'
+tests/test_loop_integration.cpp:49:59: error: no member named 'combatEvents' in 'Loop'
+tests/test_loop_integration.cpp:56:24: error: no member named 'combatEvents' in 'Loop'
+3 errors generated.
+```
+
+### 修复内容
+
+- `Loop` 使用独立 `combatTimeMs_`，每个固定步按 `dtMs` 饱和累加；
+  `GameSnapshot.tick` 仍保留固定步序号。
+- `tickOnce` 开始时清空外层帧事件；每个固定子步把控制器纯值事件追加到
+  `frameCombatEvents_`，保证早期子步事件不会被晚期空批次覆盖，下一帧不会
+  重复。
+- `ActionStateMachine` 保存最近一次闪避的绝对无敌区间，并通过
+  `wasInvulnerableAt(Tick)` 判断历史脉冲。大步长跨过 800 ms 和 3800 ms
+  两次脉冲时，只将 800 ms 判为闪避。
+- `start()` 成功启动 runner 前重置控制器、战斗毫秒时钟和帧事件；停止、
+  渲染失效同样归零。
+- 训练假人死亡后立即清除 `currentTarget`，同一击杀帧快照中的
+  `targetId/targetDist` 均为 0。
+
+### 完整回归命令输出
+
+测试命令使用下列公共参数逐项从源码编译后执行：
+
+```sh
+SDKROOT="$(xcrun --show-sdk-path)"
+CLANG="$(xcrun --find clang++)"
+B=(-std=c++17 -isysroot "$SDKROOT" \
+   -I"$SDKROOT/usr/include/c++/v1" -I. -Inative)
+```
+
+输出：
+
+```text
+PASS test_combat_controller
+PASS test_loop_integration
+PASS test_loop_lifecycle
+PASS test_touch_controls
+PASS test_player_controller
+PASS test_camera
+PASS test_soft_targeting
+PASS test_combat_config
+PASS test_action_state_machine
+PASS test_combat_resources
+PASS test_training_pulse
+PASS test_damage_resolver
+PASS test_source_reaction_system
+PASS test_source_abilities
+PASS test_resonance_window
+PASS git diff --check
+```
+
+OHOS/HAP 命令：
+
+```sh
+DEVECO_SDK_HOME=/Applications/DevEco-Studio.app/Contents/sdk \
+  /Applications/DevEco-Studio.app/Contents/tools/hvigor/bin/hvigorw \
+  assembleHap --mode module -p product=default -p buildMode=debug --no-daemon
+```
+
+完整构建阶段输出：
+
+```text
+UP-TO-DATE :entry:default@PreBuild
+Finished :entry:default@CreateModuleInfo
+UP-TO-DATE :entry:default@GenerateMetadata
+Finished :entry:default@ConfigureCmake
+UP-TO-DATE :entry:default@MergeProfile
+UP-TO-DATE :entry:default@CreateBuildProfile
+Finished :entry:default@PreCheckSyscap
+Finished :entry:default@GeneratePkgContextInfo
+UP-TO-DATE :entry:default@GeneratePkgSdkInfo
+Finished :entry:default@ProcessIntegratedHsp
+Finished :entry:default@BuildNativeWithCmake
+UP-TO-DATE :entry:default@MakePackInfo
+Finished :entry:default@SyscapTransform
+UP-TO-DATE :entry:default@ProcessProfile
+UP-TO-DATE :entry:default@ProcessRouterMap
+UP-TO-DATE :entry:default@ProcessShareConfig
+Finished :entry:default@ProcessStartupConfig
+UP-TO-DATE :entry:default@ProcessResource
+UP-TO-DATE :entry:default@GenerateLoaderJson
+UP-TO-DATE :entry:default@CompileResource
+UP-TO-DATE :entry:default@CompileArkTS
+Finished :entry:default@BuildJS
+Finished :entry:default@BuildNativeWithNinja
+Finished :entry:default@ProcessLibs
+Finished :entry:default@DoNativeStrip
+Finished :entry:default@CacheNativeLibs
+UP-TO-DATE :entry:default@GeneratePkgModuleJson
+Finished :entry:default@ProcessCompiledResources
+Finished :entry:default@PackageHap
+Finished :entry:default@PackingCheck
+BUILD SUCCESS (exit 0)
+```

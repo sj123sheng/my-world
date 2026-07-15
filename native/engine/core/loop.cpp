@@ -5,6 +5,7 @@
 #include <thread>
 #include <algorithm>
 #include <vector>
+#include <limits>
 
 #ifdef OHOS_PLATFORM
 #define LOGI(...) OH_LOG_Print(LOG_APP, LOG_INFO, 0xFF00, "Ethelan", __VA_ARGS__)
@@ -22,6 +23,12 @@ void ApplyCombatSnapshot(GameSnapshot& output, const CombatSnapshot& combat) {
   output.resonance = combat.resonance;
   output.hasInsight = combat.hasInsight;
 }
+
+Tick AdvanceCombatTime(Tick now, int64_t dtMs) {
+  if (dtMs <= 0) return now;
+  const Tick maximum = std::numeric_limits<Tick>::max();
+  return now > maximum - dtMs ? maximum : now + dtMs;
+}
 }  // namespace
 
 void Loop::start() {
@@ -29,11 +36,22 @@ void Loop::start() {
     if (!surface.ready) {
       resetInput();
       combat.reset();
+      combatTimeMs_ = 0;
+      {
+        std::lock_guard<std::mutex> lock(combatEventMutex);
+        frameCombatEvents_ = {};
+      }
       LOGI("Loop start skipped: running=%{public}d ready=%{public}d", (int)running, (int)surface.ready);
       return;
     }
     if (!lifecycle.start([this]() {
       resetInput();
+      combat.reset();
+      combatTimeMs_ = 0;
+      {
+        std::lock_guard<std::mutex> lock(combatEventMutex);
+        frameCombatEvents_ = {};
+      }
       shouldStop = false;
       running = true;
       tickCount = 0;
@@ -65,6 +83,11 @@ void Loop::stop() {
     });
     resetInput();
     combat.reset();
+    combatTimeMs_ = 0;
+    {
+      std::lock_guard<std::mutex> lock(combatEventMutex);
+      frameCombatEvents_ = {};
+    }
     surface.trainingTarget.alive = true;
     GameSnapshot paused = snapshots.read();
     paused.moving = false;
@@ -146,9 +169,14 @@ void Loop::resetInput() {
 }
 
 void Loop::tickOnce(int64_t elapsedMs) {
+  {
+    std::lock_guard<std::mutex> lock(combatEventMutex);
+    frameCombatEvents_ = {};
+  }
   if (!surface.ready) {
     resetInput();
     combat.reset();
+    combatTimeMs_ = 0;
     surface.trainingTarget.alive = true;
     publishRendererStopped();
     return;
@@ -230,10 +258,23 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
 
   for (const ActionRequest& action : intent.actions) combat.enqueue(action);
   intent.actions.clear();
-  combat.update({tick, dtMs, surface.player.moving,
+  combatTimeMs_ = AdvanceCombatTime(combatTimeMs_, dtMs);
+  combat.update({combatTimeMs_, dtMs, surface.player.moving,
                  currentTarget ? static_cast<EntityId>(currentTarget->id) : 0,
                  currentTarget.has_value() && surface.trainingTarget.alive});
   surface.trainingTarget.alive = combat.snapshot().targetAlive;
+  if (!surface.trainingTarget.alive) currentTarget.reset();
+
+  {
+    std::lock_guard<std::mutex> lock(combatEventMutex);
+    const CombatEventBatch& stepEvents = combat.events();
+    frameCombatEvents_.gameplay.insert(frameCombatEvents_.gameplay.end(),
+                                       stepEvents.gameplay.begin(),
+                                       stepEvents.gameplay.end());
+    frameCombatEvents_.presentation.insert(frameCombatEvents_.presentation.end(),
+                                           stepEvents.presentation.begin(),
+                                           stepEvents.presentation.end());
+  }
 
   GameSnapshot updated = snapshots.read();
   ApplyCombatSnapshot(updated, combat.snapshot());
@@ -243,6 +284,11 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
 void Loop::publishRendererStopped() {
   currentTarget.reset();
   combat.reset();
+  combatTimeMs_ = 0;
+  {
+    std::lock_guard<std::mutex> lock(combatEventMutex);
+    frameCombatEvents_ = {};
+  }
   surface.trainingTarget.alive = true;
   GameSnapshot stopped = RendererStoppedSnapshot(snapshots.read());
   ApplyCombatSnapshot(stopped, combat.snapshot());

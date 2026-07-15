@@ -218,6 +218,21 @@ void testResetRestoresResourcesAndClearsDodge() {
   assert(machine.stamina() == fp(70));
 }
 
+void testHistoricalInvulnerabilityUsesAbsoluteDodgeInterval() {
+  ActionStateMachine machine(CombatConfig::defaults());
+  const ActionContext context{};
+  assert(!machine.update(750, 0, context).has_value());
+  assert(machine.request({CombatAction::Dodge, 1}, context).accepted);
+  assert(!machine.update(751, 1, context).has_value());
+  assert(machine.isInvulnerable());
+  assert(machine.wasInvulnerableAt(800));
+  assert(!machine.wasInvulnerableAt(3800));
+
+  assert(!machine.update(1100, 349, context).has_value());
+  assert(!machine.isInvulnerable());
+  assert(machine.wasInvulnerableAt(800));
+}
+
 }  // namespace
 
 int main() {
@@ -234,5 +249,6 @@ int main() {
   testDodgeRejectsAtomicallyWhenStaminaIsInsufficient();
   testMovingAndDamageDoNotCancelDodge();
   testResetRestoresResourcesAndClearsDodge();
+  testHistoricalInvulnerabilityUsesAbsoluteDodgeInterval();
   return 0;
 }

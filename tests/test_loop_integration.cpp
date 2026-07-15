@@ -27,6 +27,61 @@ int main() {
   assert(combatLoop.snapshot().comboSegment == 0);
   assert(combatLoop.snapshot().targetHp == fp(300));
 
+  Loop millisecondLoop;
+  millisecondLoop.surface.width = 1000;
+  millisecondLoop.surface.height = 800;
+  millisecondLoop.surface.ready = true;
+  for (Tick step = 1; step <= 49; ++step) millisecondLoop.tickOnce(16);
+  assert(millisecondLoop.snapshot().playerHp == fp(100));
+  millisecondLoop.tickOnce(16);
+  assert(millisecondLoop.snapshot().playerHp == fp(90));
+  assert(millisecondLoop.combatTimeMs() == 800);
+
+  Loop multiStepLoop;
+  multiStepLoop.surface.width = 1000;
+  multiStepLoop.surface.height = 800;
+  multiStepLoop.surface.ready = true;
+  assert(multiStepLoop.enqueueInput(InputAction::Attack, -1, 0.0f, 0.0f));
+  multiStepLoop.processInput();
+  for (Tick step = 1; step <= 9; ++step) {
+    multiStepLoop.updateFixed(step, 16);
+  }
+  multiStepLoop.tickOnce(64);
+  const CombatEventBatch firstFrameEvents = multiStepLoop.combatEvents();
+  assert(firstFrameEvents.gameplay.size() == 2);
+  assert(firstFrameEvents.gameplay[0].type == GameplayEventType::Hit);
+  assert(firstFrameEvents.gameplay[1].type == GameplayEventType::Damage);
+  assert(firstFrameEvents.gameplay[0].sequence ==
+         firstFrameEvents.gameplay[1].sequence);
+  multiStepLoop.tickOnce(16);
+  assert(multiStepLoop.combatEvents().gameplay.empty());
+
+  Loop restartCombatLoop;
+  restartCombatLoop.surface.width = 1000;
+  restartCombatLoop.surface.height = 800;
+  restartCombatLoop.surface.ready = true;
+  for (Tick step = 1; step <= 49; ++step) {
+    restartCombatLoop.updateFixed(step, 16);
+  }
+  restartCombatLoop.start();
+  std::this_thread::sleep_for(std::chrono::milliseconds(40));
+  assert(restartCombatLoop.snapshot().playerHp == fp(100));
+  restartCombatLoop.stop();
+
+  CombatConfig fragileTargetConfig = CombatConfig::defaults();
+  fragileTargetConfig.trainingTargetHp = fp(8);
+  Loop lethalLoop;
+  lethalLoop.combat = CombatController(fragileTargetConfig);
+  lethalLoop.surface.width = 1000;
+  lethalLoop.surface.height = 800;
+  lethalLoop.surface.ready = true;
+  assert(lethalLoop.enqueueInput(InputAction::Attack, -1, 0.0f, 0.0f));
+  for (int frame = 0; frame < 10; ++frame) lethalLoop.tickOnce(16);
+  const GameSnapshot lethal = lethalLoop.snapshot();
+  assert(lethal.targetHp == 0);
+  assert(lethal.targetId == 0);
+  assert(lethal.targetDist == 0.0f);
+
   Loop loop;
 
   assert(loop.enqueueInput(InputAction::PointerDown, 42, 10.0f, 20.0f));

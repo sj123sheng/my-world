@@ -44,6 +44,7 @@ class ActionStateMachine {
   void resetCombo();
   void reset();
   bool isInvulnerable() const;
+  bool wasInvulnerableAt(Tick tick) const;
   FixedPoint stamina() const { return resources_.stamina(); }
   void grantInsight(Tick tick) { resources_.grantInsight(tick); }
   bool hasInsight() const { return resources_.hasInsight(); }
@@ -87,4 +88,7 @@ class ActionStateMachine {
   std::optional<PendingHitTransaction> pendingHit_;
   uint64_t nextTransactionId_ = 1;
   bool transactionIdsExhausted_ = false;
+  bool dodgeIntervalKnown_ = false;
+  Tick dodgeInvulnerableFrom_ = 0;
+  Tick dodgeInvulnerableUntil_ = 0;
 };
