@@ -116,9 +116,16 @@ int main() {
 
   targetingLoop.tickOnce(16);
   assert(targetingLoop.snapshot().targetId == 1);
+  GameSnapshot activeRenderer = targetingLoop.snapshot();
+  activeRenderer.moving = true;
+  activeRenderer.moveX = 0.75f;
+  activeRenderer.moveY = -0.25f;
+  targetingLoop.snapshots.publish(activeRenderer);
   targetingLoop.publishRendererStopped();
   const GameSnapshot stopped = targetingLoop.snapshot();
   assert(!stopped.rendererReady);
+  assert(!stopped.moving);
+  assert(stopped.moveX == 0.0f && stopped.moveY == 0.0f);
   assert(stopped.targetId == 0);
   assert(stopped.targetDist == 0.0f);
 
@@ -147,14 +154,20 @@ int main() {
                                     400.0f));
   assert(targetingLoop.enqueueInput(InputAction::PointerMove, 5, 180.0f,
                                     400.0f));
-  targetingLoop.processInput();
-  assert(targetingLoop.intent.move.length() > 0.0f);
+  targetingLoop.tickOnce(16);
+  const GameSnapshot activeBeforeInvalid = targetingLoop.snapshot();
+  assert(activeBeforeInvalid.rendererReady);
+  assert(activeBeforeInvalid.moving);
+  assert(activeBeforeInvalid.moveX != 0.0f || activeBeforeInvalid.moveY != 0.0f);
+  assert(activeBeforeInvalid.targetId == 1);
   targetingLoop.surface.ready = false;
   targetingLoop.tickOnce(16);
   assert(targetingLoop.intent.move == Vec2{});
   assert(targetingLoop.touchRouter.activeCount() == 0);
   const GameSnapshot invalidSurface = targetingLoop.snapshot();
   assert(!invalidSurface.rendererReady);
+  assert(!invalidSurface.moving);
+  assert(invalidSurface.moveX == 0.0f && invalidSurface.moveY == 0.0f);
   assert(invalidSurface.targetId == 0);
   assert(invalidSurface.targetDist == 0.0f);
 

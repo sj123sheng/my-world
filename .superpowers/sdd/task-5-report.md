@@ -302,3 +302,57 @@ OHOS_SDK=/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/native
 
 完整 HAP 构建仍受此前记录的本机 DevEco `SDK component missing` 环境问题阻断；本轮
 宿主行为测试和 OHOS 生产 C++ 条件编译路径均已验证。
+
+---
+
+# Task 5 Renderer-Stopped 输入诊断清理补充修复
+
+## 修复内容
+
+`RendererStoppedSnapshot()` 除既有的 `rendererReady=false`、`targetId=0` 和
+`targetDist=0` 外，现在统一设置：
+
+- `moving=false`
+- `moveX=0`
+- `moveY=0`
+
+这样 Surface 无效、Surface 销毁/初始化失败后显式调用 `publishRendererStopped()` 的
+所有路径都不会向桥接层暴露上一有效帧的活动移动状态或输入向量。普通 `Loop::stop()`
+仍使用暂停快照逻辑并保留 `surface.ready`，未重新混用 renderer-stopped 语义。
+
+## 测试覆盖
+
+- `test_loop_lifecycle` 先构造 `moving=true`、非零 `moveX/moveY`、有效目标和
+  `rendererReady=true` 的快照，再通过 `RendererStoppedSnapshot()` 转换，断言渲染、
+  移动、输入和目标诊断全部归零，同时保留 tick、HP、玩家位置等玩法状态。
+- `test_loop_integration` 在显式 `publishRendererStopped()` 前发布活动移动/非零输入/
+  有效目标快照，验证全部清零。
+- Surface invalid 集成路径先通过真实输入和 fixed tick 发布活动移动、非零输入和有效
+  目标快照，再令 `surface.ready=false`，验证 renderer、移动、输入和目标诊断全部清零。
+
+## TDD 证据
+
+修复前，生命周期测试和 Loop 显式发布测试均首先失败于 `stopped.moving` 仍为 true；
+给纯转换函数补齐三个字段后，两项受影响测试转绿。
+
+## 完整验证
+
+使用 `/usr/bin/clang++`、显式 macOS 15.4 SDK、C++17 和
+`-Wall -Wextra -Werror` 重新编译运行以下 7 组测试，均退出码 `0`：
+
+- `test_input_queue`
+- `test_touch_controls`
+- `test_player_controller`
+- `test_camera`
+- `test_soft_targeting`
+- `test_loop_lifecycle`
+- `test_loop_integration`
+
+DevEco OpenHarmony SDK clang 对 `loop.cpp`、`surface.cpp`、`camera.cpp`、
+`player_controller.cpp`、`soft_targeting.cpp` 执行 aarch64 OHOS
+`-fsyntax-only -Wall -Wextra -Werror`，退出码 `0`。
+
+## 剩余疑虑
+
+完整 HAP 构建仍受此前记录的本机 DevEco `SDK component missing` 环境问题阻断；本轮
+宿主行为与 OHOS C++ 生产条件编译路径已验证。

@@ -54,6 +54,9 @@ int main() {
   running.tick = 17;
   running.hp = 73;
   running.playerX = 0.25f;
+  running.moving = true;
+  running.moveX = 0.75f;
+  running.moveY = -0.25f;
   running.targetId = 9;
   running.targetDist = 3.5f;
   running.rendererReady = true;
@@ -62,6 +65,9 @@ int main() {
   assert(stopped.tick == running.tick);
   assert(stopped.hp == running.hp);
   assert(stopped.playerX == running.playerX);
+  assert(!stopped.moving);
+  assert(stopped.moveX == 0.0f);
+  assert(stopped.moveY == 0.0f);
   assert(stopped.targetId == 0);
   assert(stopped.targetDist == 0.0f);
 }
