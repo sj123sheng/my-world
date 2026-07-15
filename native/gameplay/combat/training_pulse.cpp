@@ -32,3 +32,13 @@ DodgeGrade TrainingPulse::classifyDodge(Tick tick) const {
   const Tick distance = std::min(std::llabs(tick - priorHit), std::llabs(nextHit - tick));
   return distance <= config_.preciseDodgeWindowMs ? DodgeGrade::Precise : DodgeGrade::Normal;
 }
+
+Tick TrainingPulse::warningRemainingMs(Tick now) const {
+  Tick warning = nextWarningTick_;
+  if (warning <= now) {
+    const Tick elapsed = now - warning;
+    warning += (elapsed / config_.trainingPulsePeriodMs + 1) *
+               config_.trainingPulsePeriodMs;
+  }
+  return warning - now;
+}

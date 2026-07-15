@@ -25,4 +25,8 @@ struct GameSnapshot {
   FixedPoint stamina = fp(100);
   FixedPoint resonance = 0;
   bool hasInsight = false;
+  bool invulnerable = false;
+  Tick insightMs = 0;
+  Tick pulseWarningMs = 0;
+  int32_t lastRejectReason = 0;
 };

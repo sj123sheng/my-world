@@ -24,6 +24,10 @@ struct CombatSnapshot {
   FixedPoint stamina = 0;
   FixedPoint resonance = 0;
   bool hasInsight = false;
+  bool invulnerable = false;
+  Tick insightMs = 0;
+  Tick pulseWarningMs = 0;
+  ActionRejectReason lastRejectReason = ActionRejectReason::None;
   bool targetAlive = false;
   uint64_t lastAcceptedSequence = 0;
 };
@@ -64,4 +68,6 @@ class CombatController {
   FixedPoint playerHp_ = 0;
   uint8_t comboSegment_ = 0;
   uint64_t lastAcceptedSequence_ = 0;
+  ActionRejectReason lastRejectReason_ = ActionRejectReason::None;
+  Tick currentTick_ = 0;
 };

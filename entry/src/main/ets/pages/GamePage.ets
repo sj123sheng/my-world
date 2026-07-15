@@ -1,5 +1,6 @@
 import { nativeStart, nativeStop, pullSnapshot, Snapshot } from '../napi/Bridge';
 import { Hud } from '../ui/Hud';
+import { CombatControls } from '../ui/CombatControls';
 
 @Entry
 @Component
@@ -7,7 +8,10 @@ struct GamePage {
   private snapshot: Snapshot = {
     tick: 0, hp: 100, poise: 100, x: 0.5, y: 0.5, fps: 0, moving: false,
     moveX: 0, moveY: 0, cameraYaw: 0, cameraPitch: 0,
-    targetDist: 0, targetId: 0, bossPhase: 0, rendererReady: true
+    targetDist: 0, targetId: 0, bossPhase: 0, rendererReady: true,
+    stamina: 100, comboSegment: 0, invulnerable: false, insightMs: 0,
+    resonance: 0, targetHp: 300, targetPoise: 100, pulseWarningMs: 0,
+    lastRejectReason: 0
   };
   @State tick: number = 0;
   @State hp: number = 100;
@@ -24,6 +28,15 @@ struct GamePage {
   @State targetId: number = 0;
   @State bossPhase: number = 0;
   @State rendererReady: boolean = true;
+  @State stamina: number = 100;
+  @State comboSegment: number = 0;
+  @State invulnerable: boolean = false;
+  @State insightMs: number = 0;
+  @State resonance: number = 0;
+  @State targetHp: number = 300;
+  @State targetPoise: number = 100;
+  @State pulseWarningMs: number = 0;
+  @State lastRejectReason: number = 0;
   private timer: number = -1;
 
   build() {
@@ -55,7 +68,16 @@ struct GamePage {
         .alignItems(HorizontalAlign.Center)
       }
 
-      Hud({ hp: this.hp, poise: this.poise, x: this.posX, y: this.posY, fps: this.fps, moving: this.moving, targetDist: this.targetDist })
+      Hud({ hp: this.hp, poise: this.poise, x: this.posX, y: this.posY,
+        fps: this.fps, moving: this.moving, targetDist: this.targetDist,
+        stamina: this.stamina, comboSegment: this.comboSegment,
+        invulnerable: this.invulnerable, insightMs: this.insightMs,
+        resonance: this.resonance, targetHp: this.targetHp,
+        targetPoise: this.targetPoise, pulseWarningMs: this.pulseWarningMs,
+        lastRejectReason: this.lastRejectReason })
+
+      CombatControls()
+        .align(Alignment.BottomEnd)
     }
     .width('100%')
     .height('100%')
@@ -80,6 +102,15 @@ struct GamePage {
         this.targetId = this.snapshot.targetId;
         this.bossPhase = this.snapshot.bossPhase;
         this.rendererReady = this.snapshot.rendererReady;
+        this.stamina = this.snapshot.stamina;
+        this.comboSegment = this.snapshot.comboSegment;
+        this.invulnerable = this.snapshot.invulnerable;
+        this.insightMs = this.snapshot.insightMs;
+        this.resonance = this.snapshot.resonance;
+        this.targetHp = this.snapshot.targetHp;
+        this.targetPoise = this.snapshot.targetPoise;
+        this.pulseWarningMs = this.snapshot.pulseWarningMs;
+        this.lastRejectReason = this.snapshot.lastRejectReason;
       } catch (e) {
       }
     }, 100);

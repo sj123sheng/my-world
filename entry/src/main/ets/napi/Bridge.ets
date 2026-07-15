@@ -23,9 +23,19 @@ export interface Snapshot {
   targetId: number;
   bossPhase: number;
   rendererReady: boolean;
+  stamina: number;
+  comboSegment: number;
+  invulnerable: boolean;
+  insightMs: number;
+  resonance: number;
+  targetHp: number;
+  targetPoise: number;
+  pulseWarningMs: number;
+  lastRejectReason: number;
 }
 
 export const nativeStart = (): void => native.nativeStart();
 export const nativeStop = (): void => native.nativeStop();
 export const pushInput = (e: InputEvent): void => native.pushInput(e);
+export const pushAction = (type: number): void => native.pushAction(type);
 export const pullSnapshot = (): Snapshot => native.pullSnapshot();

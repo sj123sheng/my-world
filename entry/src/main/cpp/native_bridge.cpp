@@ -160,6 +160,31 @@ static napi_value NativePushInput(napi_env env, napi_callback_info info) {
   return nullptr;
 }
 
+static napi_value NativePushAction(napi_env env, napi_callback_info info) {
+  size_t argc = 2;
+  napi_value args[2] = {nullptr, nullptr};
+  if (napi_get_cb_info(env, info, &argc, args, nullptr, nullptr) != napi_ok || argc != 1) {
+    return ThrowInputTypeError(env, "pushAction expects exactly one action type");
+  }
+  napi_valuetype argumentType = napi_undefined;
+  double typeNumber = 0.0;
+  if (args[0] == nullptr || napi_typeof(env, args[0], &argumentType) != napi_ok ||
+      argumentType != napi_number || napi_get_value_double(env, args[0], &typeNumber) != napi_ok ||
+      !std::isfinite(typeNumber)) {
+    return ThrowInputTypeError(env, "pushAction type must be a finite integer from 0 to 5");
+  }
+  int32_t type = 0;
+  if (!TryConvertInt32(typeNumber, type) || type < 0 || type > 5) {
+    return ThrowInputTypeError(env, "pushAction type must be an integer from 0 to 5");
+  }
+  static constexpr InputAction kActions[] = {
+      InputAction::Attack, InputAction::Dodge, InputAction::Radiance,
+      InputAction::Current, InputAction::Corruption, InputAction::Ultimate};
+  const InputAction action = kActions[type];
+  g_loop.enqueueInput(action, -1, 0.0f, 0.0f);
+  return nullptr;
+}
+
 static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   const GameSnapshot snapshot = g_loop.snapshot();
   napi_value result;
@@ -167,6 +192,9 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_value tickVal, hpVal, poiseVal, xVal, yVal, fpsVal, movingVal;
   napi_value moveXVal, moveYVal, cameraYawVal, cameraPitchVal, distVal;
   napi_value targetIdVal, bossPhaseVal, rendererReadyVal;
+  napi_value staminaVal, comboSegmentVal, invulnerableVal, insightMsVal;
+  napi_value resonanceVal, targetHpVal, targetPoiseVal, pulseWarningMsVal;
+  napi_value lastRejectReasonVal;
   napi_create_int64(env, static_cast<int64_t>(snapshot.tick), &tickVal);
   napi_create_int32(env, snapshot.hp, &hpVal);
   napi_create_int32(env, snapshot.poise, &poiseVal);
@@ -182,6 +210,15 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_create_int32(env, snapshot.bossPhase, &bossPhaseVal);
   napi_get_boolean(env, snapshot.moving, &movingVal);
   napi_get_boolean(env, snapshot.rendererReady, &rendererReadyVal);
+  napi_create_double(env, static_cast<double>(snapshot.stamina) / FP_ONE, &staminaVal);
+  napi_create_uint32(env, snapshot.comboSegment, &comboSegmentVal);
+  napi_get_boolean(env, snapshot.invulnerable, &invulnerableVal);
+  napi_create_int64(env, snapshot.insightMs, &insightMsVal);
+  napi_create_double(env, static_cast<double>(snapshot.resonance) / FP_ONE, &resonanceVal);
+  napi_create_double(env, static_cast<double>(snapshot.targetHp) / FP_ONE, &targetHpVal);
+  napi_create_double(env, static_cast<double>(snapshot.targetPoise) / FP_ONE, &targetPoiseVal);
+  napi_create_int64(env, snapshot.pulseWarningMs, &pulseWarningMsVal);
+  napi_create_int32(env, snapshot.lastRejectReason, &lastRejectReasonVal);
   napi_set_named_property(env, result, "tick", tickVal);
   napi_set_named_property(env, result, "hp", hpVal);
   napi_set_named_property(env, result, "poise", poiseVal);
@@ -197,6 +234,15 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_set_named_property(env, result, "targetId", targetIdVal);
   napi_set_named_property(env, result, "bossPhase", bossPhaseVal);
   napi_set_named_property(env, result, "rendererReady", rendererReadyVal);
+  napi_set_named_property(env, result, "stamina", staminaVal);
+  napi_set_named_property(env, result, "comboSegment", comboSegmentVal);
+  napi_set_named_property(env, result, "invulnerable", invulnerableVal);
+  napi_set_named_property(env, result, "insightMs", insightMsVal);
+  napi_set_named_property(env, result, "resonance", resonanceVal);
+  napi_set_named_property(env, result, "targetHp", targetHpVal);
+  napi_set_named_property(env, result, "targetPoise", targetPoiseVal);
+  napi_set_named_property(env, result, "pulseWarningMs", pulseWarningMsVal);
+  napi_set_named_property(env, result, "lastRejectReason", lastRejectReasonVal);
   return result;
 }
 
@@ -206,6 +252,7 @@ static napi_value Init(napi_env env, napi_value exports) {
     {"nativeStart", nullptr, NativeStart, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"nativeStop", nullptr, NativeStop, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pushInput", nullptr, NativePushInput, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"pushAction", nullptr, NativePushAction, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pullSnapshot", nullptr, NativePullSnapshot, nullptr, nullptr, nullptr, napi_default, nullptr},
   };
   napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);

@@ -27,6 +27,7 @@ ActionContext CombatController::contextFor(const CombatFrameInput& input) const 
 
 void CombatController::update(const CombatFrameInput& input) {
   events_ = {};
+  currentTick_ = input.tick;
   target_.advance(input.tick);
   ActionContext context = contextFor(input);
 
@@ -39,6 +40,7 @@ void CombatController::update(const CombatFrameInput& input) {
                    });
   for (const ActionRequest& request : pendingActions_) {
     const ActionDecision decision = actions_.request(request, context);
+    lastRejectReason_ = decision.reason;
     if (!decision.accepted) continue;
     lastAcceptedSequence_ = request.sequence;
     if (request.action == CombatAction::Attack) {
@@ -133,6 +135,10 @@ void CombatController::refreshSnapshot() {
   snapshot_.stamina = actions_.stamina();
   snapshot_.resonance = actions_.resonance();
   snapshot_.hasInsight = actions_.hasInsight();
+  snapshot_.invulnerable = actions_.isInvulnerable();
+  snapshot_.insightMs = actions_.insightRemainingMs();
+  snapshot_.pulseWarningMs = pulse_.warningRemainingMs(currentTick_);
+  snapshot_.lastRejectReason = lastRejectReason_;
   snapshot_.targetAlive = target_.alive();
   snapshot_.lastAcceptedSequence = lastAcceptedSequence_;
 }
@@ -146,5 +152,7 @@ void CombatController::reset() {
   playerHp_ = config_.trainingPlayerHp;
   comboSegment_ = 0;
   lastAcceptedSequence_ = 0;
+  lastRejectReason_ = ActionRejectReason::None;
+  currentTick_ = 0;
   refreshSnapshot();
 }

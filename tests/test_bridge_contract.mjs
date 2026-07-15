@@ -7,6 +7,19 @@ const page = fs.readFileSync('entry/src/main/ets/pages/GamePage.ets', 'utf8');
 const ability = fs.readFileSync('entry/src/main/ets/EntryAbility.ets', 'utf8');
 const nativeBridge = fs.readFileSync('entry/src/main/cpp/native_bridge.cpp', 'utf8');
 const loop = fs.readFileSync('native/engine/core/loop.cpp', 'utf8');
+const controls = fs.existsSync('entry/src/main/ets/ui/CombatControls.ets')
+  ? fs.readFileSync('entry/src/main/ets/ui/CombatControls.ets', 'utf8') : '';
+
+for (const label of ['普攻', '闪避', '辉印', '脉流', '蚀质', '终结']) {
+  assert.match(controls, new RegExp(label), `CombatControls missing ${label}`);
+}
+assert.match(bridge, /export const pushAction/, 'Bridge must export pushAction');
+assert.doesNotMatch(page, /\.onTouch\s*\(/,
+  'GamePage must not register an ArkTS touch producer');
+for (const field of ['stamina', 'comboSegment', 'invulnerable', 'insightMs',
+  'resonance', 'targetHp', 'targetPoise', 'pulseWarningMs', 'lastRejectReason']) {
+  assert.match(bridge, new RegExp(`\\b${field}\\b`), `Bridge Snapshot missing ${field}`);
+}
 
 assert.doesNotMatch(page, /\.onTouch\s*\(/,
   'GamePage must not register an ArkTS touch producer for a library-backed XComponent');
@@ -27,6 +40,26 @@ function functionBody(source, signature) {
     if (source[index] === '}' && --depth === 0) return source.slice(open + 1, index);
   }
   assert.fail(`unterminated function: ${signature}`);
+}
+
+const pushActionBody = functionBody(nativeBridge, 'static napi_value NativePushAction');
+assert.match(pushActionBody, /argc != 1/, 'NativePushAction must require exactly one argument');
+assert.match(pushActionBody, /argumentType != napi_number/, 'NativePushAction must require a number');
+assert.match(pushActionBody, /!std::isfinite\(typeNumber\)/,
+  'NativePushAction must reject non-finite numbers');
+assert.match(pushActionBody, /!TryConvertInt32\(typeNumber, type\)/,
+  'NativePushAction must reject fractional numbers');
+assert.match(pushActionBody, /type < 0 \|\| type > 5/,
+  'NativePushAction must reject action types outside 0..5');
+for (const action of ['Attack', 'Dodge', 'Radiance', 'Current', 'Corruption', 'Ultimate']) {
+  assert.match(pushActionBody, new RegExp(`InputAction::${action}`),
+    `NativePushAction missing ${action} mapping`);
+}
+assert.match(pushActionBody, /g_loop\.enqueueInput\(action, -1, 0\.0f, 0\.0f\)/,
+  'NativePushAction must enqueue through Loop');
+for (let type = 0; type <= 5; type++) {
+  assert.match(controls, new RegExp(`pushAction\\(${type}\\)`),
+    `CombatControls missing pushAction(${type})`);
 }
 
 const snapshotInterface = bridge.match(/export interface Snapshot \{([\s\S]*?)\n\}/);

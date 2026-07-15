@@ -48,6 +48,7 @@ class ActionStateMachine {
   FixedPoint stamina() const { return resources_.stamina(); }
   void grantInsight(Tick tick) { resources_.grantInsight(tick); }
   bool hasInsight() const { return resources_.hasInsight(); }
+  Tick insightRemainingMs() const { return resources_.insightRemainingMs(); }
   FixedPoint resonance() const { return resources_.resonance(); }
   void addResonance(FixedPoint amount) { resources_.addResonance(amount); }
   void recordDistinctSource(SourceType source, Tick tick) {

@@ -22,6 +22,10 @@ void ApplyCombatSnapshot(GameSnapshot& output, const CombatSnapshot& combat) {
   output.stamina = combat.stamina;
   output.resonance = combat.resonance;
   output.hasInsight = combat.hasInsight;
+  output.invulnerable = combat.invulnerable;
+  output.insightMs = combat.insightMs;
+  output.pulseWarningMs = combat.pulseWarningMs;
+  output.lastRejectReason = static_cast<int32_t>(combat.lastRejectReason);
 }
 
 Tick AdvanceCombatTime(Tick now, int64_t dtMs) {

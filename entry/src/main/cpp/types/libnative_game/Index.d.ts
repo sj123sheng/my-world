@@ -1,6 +1,7 @@
 export const nativeStart: () => void;
 export const nativeStop: () => void;
 export const pushInput: (event: {type: number, pointerId: number, x: number, y: number}) => void;
+export const pushAction: (type: number) => void;
 export const pullSnapshot: () => {
   tick: number,
   hp: number,
@@ -16,5 +17,14 @@ export const pullSnapshot: () => {
   targetDist: number,
   targetId: number,
   bossPhase: number,
-  rendererReady: boolean
+  rendererReady: boolean,
+  stamina: number,
+  comboSegment: number,
+  invulnerable: boolean,
+  insightMs: number,
+  resonance: number,
+  targetHp: number,
+  targetPoise: number,
+  pulseWarningMs: number,
+  lastRejectReason: number
 };
