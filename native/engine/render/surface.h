@@ -7,16 +7,7 @@
 #include <random>
 #include <cstdint>
 #include <mutex>
-
-struct Player {
-  float x = 0.5f;
-  float y = 0.5f;
-  float targetX = 0.5f;
-  float targetY = 0.5f;
-  float size = 0.05f;
-  float angle = 0.0f;
-  bool moving = false;
-};
+#include "native/gameplay/player/player_controller.h"
 
 struct Particle {
   float x;
