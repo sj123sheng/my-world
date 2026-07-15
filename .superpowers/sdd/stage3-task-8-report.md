@@ -144,6 +144,10 @@ hdc list targets -v
 `BUILD SUCCESSFUL in 8 s 803 ms`，signed HAP 4,081,855 bytes，SHA-256
 `e2358664e37799365188f042c714fcdde9939f0ac14c4fcec2bfa5a3ac7f7f07`。真机状态未变。
 
+epoch 精准闪避最终修复后再次 fresh 验证：C++ 31/31、Node 1/1、diff-check clean；
+Hvigor `BUILD SUCCESSFUL in 7 s 475 ms`，signed HAP 4,081,455 bytes，SHA-256
+`8f91fe68540c33a99483fd76d5b3fef1f23a78daf8724a7e4665377c26c6db7f`。真机状态未变。
+
 ## 文档与提交范围
 
 仅更新 `README.md`、战斗垂直切片路线图和阶段 3 计划。用户已有的

@@ -35,6 +35,22 @@ int main() {
   assert(lethal.events().gameplay.size() == 1);
   assert(lethal.events().gameplay[0].tick == 28600);
 
+  CombatController oldTimelineDodge(CombatConfig::defaults());
+  oldTimelineDodge.update({27800, 27800, false,
+                           CombatController::kTrainingTargetId, true});
+  oldTimelineDodge.enqueue({CombatAction::Dodge, 101});
+  oldTimelineDodge.update({27800, 0, false,
+                           CombatController::kTrainingTargetId, true});
+  assert(!oldTimelineDodge.snapshot().hasInsight);
+
+  CombatController epochDodge(CombatConfig::defaults());
+  epochDodge.update({27800, 27800, false,
+                     CombatController::kTrainingTargetId, true});
+  epochDodge.enqueue({CombatAction::Dodge, 102});
+  epochDodge.update({28500, 700, false,
+                     CombatController::kTrainingTargetId, true});
+  assert(epochDodge.snapshot().hasInsight);
+
   CombatController fields(CombatConfig::defaults());
   fields.enqueue({CombatAction::Radiance, 7});
   fields.update({0, 0, false, CombatController::kTrainingTargetId, true});

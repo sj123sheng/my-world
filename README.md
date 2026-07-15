@@ -196,8 +196,8 @@ my-world/
   `git diff --check` 通过。
 - 生产构建：指定 `DEVECO_SDK_HOME=/Applications/DevEco-Studio.app/Contents/sdk` 的
   Hvigor `assembleHap` 返回 `BUILD SUCCESSFUL`；signed HAP 为
-  `entry/build/default/outputs/default/entry-default-signed.hap`（4,081,855 bytes，
-  SHA-256 `e2358664e37799365188f042c714fcdde9939f0ac14c4fcec2bfa5a3ac7f7f07`）。
+  `entry/build/default/outputs/default/entry-default-signed.hap`（4,081,455 bytes，
+  SHA-256 `8f91fe68540c33a99483fd76d5b3fef1f23a78daf8724a7e4665377c26c6db7f`）。
   构建前后 `build-profile.json5` SHA-256 均为
   `b1dfc54516dff5408c530d16745175c956df9415d3bb1ce6bd39ee6b06788390`。
 - 真机验收：未完成。目标设备 `2MN0224C12000754` 首次探测为 `USB Offline`，重启 hdc

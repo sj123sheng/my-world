@@ -53,6 +53,11 @@ int main() {
 
   TrainingPulse resetEpoch(CombatConfig::defaults());
   resetEpoch.resetAt(27800);
+  assert(resetEpoch.classifyDodge(27800) == DodgeGrade::Normal);
+  assert(resetEpoch.classifyDodge(28499) == DodgeGrade::Normal);
+  assert(resetEpoch.classifyDodge(28500) == DodgeGrade::Precise);
+  assert(resetEpoch.classifyDodge(28700) == DodgeGrade::Precise);
+  assert(resetEpoch.classifyDodge(28701) == DodgeGrade::Normal);
   assert(resetEpoch.advance(27801).empty());
   assert(resetEpoch.advance(28599).empty());
   const auto epochHit = resetEpoch.advance(28600);

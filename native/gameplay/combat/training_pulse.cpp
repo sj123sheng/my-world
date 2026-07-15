@@ -34,13 +34,20 @@ std::vector<PulseEvent> TrainingPulse::advance(Tick now) {
 }
 
 DodgeGrade TrainingPulse::classifyDodge(Tick tick) const {
-  const Tick firstHit = config_.trainingPulseWarningMs;
-  Tick cycle = (tick - firstHit) / config_.trainingPulsePeriodMs;
-  if (tick < firstHit) --cycle;
-  const Tick priorHit = firstHit + cycle * config_.trainingPulsePeriodMs;
-  const Tick nextHit = priorHit + config_.trainingPulsePeriodMs;
-  const Tick distance = std::min(std::llabs(tick - priorHit), std::llabs(nextHit - tick));
-  return distance <= config_.preciseDodgeWindowMs ? DodgeGrade::Precise : DodgeGrade::Normal;
+  if (tick < epochTick_) return DodgeGrade::Normal;
+  const __int128 elapsed = static_cast<__int128>(tick) - epochTick_;
+  const __int128 firstHit = config_.trainingPulseWarningMs;
+  const __int128 window = config_.preciseDodgeWindowMs;
+  if (elapsed + window < firstHit) return DodgeGrade::Normal;
+
+  const __int128 period = config_.trainingPulsePeriodMs;
+  const __int128 fromFirstHit = elapsed - firstHit;
+  if (fromFirstHit < 0) {
+    return -fromFirstHit <= window ? DodgeGrade::Precise : DodgeGrade::Normal;
+  }
+  const __int128 remainder = fromFirstHit % period;
+  const __int128 distance = std::min(remainder, period - remainder);
+  return distance <= window ? DodgeGrade::Precise : DodgeGrade::Normal;
 }
 
 Tick TrainingPulse::warningRemainingMs(Tick now) const {
