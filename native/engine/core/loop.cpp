@@ -51,7 +51,14 @@ void Loop::stop() {
       running = false;
     });
     resetInput();
-    publishRendererStopped();
+    GameSnapshot paused = snapshots.read();
+    paused.moving = false;
+    paused.targetId = 0;
+    paused.moveX = 0.0f;
+    paused.moveY = 0.0f;
+    paused.targetDist = 0.0f;
+    paused.rendererReady = surface.ready;
+    snapshots.publish(paused);
   });
 }
 
@@ -110,6 +117,8 @@ void Loop::resetInput() {
   cameraGesture.clear();
   intent.move = {};
   intent.lookDelta = {};
+  surface.player.moving = false;
+  particleEmitTimer = 0.0f;
   currentTarget.reset();
   input.clear();
 }

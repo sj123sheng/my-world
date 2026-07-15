@@ -122,6 +122,27 @@ int main() {
   assert(stopped.targetId == 0);
   assert(stopped.targetDist == 0.0f);
 
+  Loop pausedLoop;
+  pausedLoop.surface.width = 1000;
+  pausedLoop.surface.height = 800;
+  pausedLoop.surface.ready = true;
+  pausedLoop.surface.props.push_back({0.5f, 0.8f, 0.05f, 1});
+  assert(pausedLoop.enqueueInput(InputAction::PointerDown, 40, 100.0f,
+                                 400.0f));
+  assert(pausedLoop.enqueueInput(InputAction::PointerMove, 40, 180.0f,
+                                 400.0f));
+  pausedLoop.tickOnce(16);
+  assert(pausedLoop.snapshot().rendererReady);
+  assert(pausedLoop.snapshot().moving);
+  assert(pausedLoop.snapshot().targetId == 1);
+  pausedLoop.stop();
+  const GameSnapshot paused = pausedLoop.snapshot();
+  assert(paused.rendererReady);
+  assert(!paused.moving);
+  assert(paused.moveX == 0.0f && paused.moveY == 0.0f);
+  assert(paused.targetId == 0);
+  assert(paused.targetDist == 0.0f);
+
   assert(targetingLoop.enqueueInput(InputAction::PointerDown, 5, 100.0f,
                                     400.0f));
   assert(targetingLoop.enqueueInput(InputAction::PointerMove, 5, 180.0f,
@@ -149,6 +170,13 @@ int main() {
          0.0001f);
   particleLoop.updateFixed(3, 200);
   assert(particleLoop.surface.particles.empty());
+
+  Loop resetParticleTimerLoop;
+  resetParticleTimerLoop.updateFixed(1, 40);
+  resetParticleTimerLoop.resetInput();
+  resetParticleTimerLoop.intent.move = {1.0f, 0.0f};
+  resetParticleTimerLoop.updateFixed(2, 20);
+  assert(resetParticleTimerLoop.surface.particles.empty());
 
   Loop restartedLoop;
   restartedLoop.surface.width = 1000;
