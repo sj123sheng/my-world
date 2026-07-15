@@ -69,6 +69,8 @@ add_library(native_game SHARED
 
 target_include_directories(native_game PRIVATE ${NATIVE_ROOT}/..)
 
+target_compile_features(native_game PUBLIC cxx_std_17)
+
 target_compile_definitions(native_game PUBLIC OHOS_PLATFORM)
 
 target_link_libraries(native_game PUBLIC

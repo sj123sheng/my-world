@@ -153,3 +153,38 @@ Error Message: SDK component missing.
 - CMake arm64 生产对象已证明仓库根 include 生效；完整 Native 生产目标仍需后续统一启用
   C++17，当前首个后续错误为 `std::optional` 不可用。
 - ArkTS/HAP 完整构建仍需在 SDK 组件完整的 DevEco 环境复验。
+
+## C++17 生产目标修复补充
+
+阶段全局技术约束明确要求 C++17，因此 `native_game` 生产目标已增加：
+
+```cmake
+target_compile_features(native_game PUBLIC cxx_std_17)
+```
+
+使用现有 debug/arm64-v8a CMake/Ninja 工程重新构建完整目标：
+
+```bash
+/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/native/build-tools/cmake/bin/ninja \
+  -C entry/.cxx/default/default/debug/arm64-v8a -v native_game
+```
+
+CMake 自动重新生成后，实际 OHOS clang 编译命令包含 `-std=gnu++17`。完整构建执行
+17 个步骤，覆盖 `native_bridge.cpp`、阶段引擎/玩法源码以及最终共享库链接，退出码 `0`；
+产物边界为：
+
+```text
+entry/build/default/intermediates/cmake/default/obj/arm64-v8a/libnative_game.so
+```
+
+此前 `std::optional` 不可用的阶段阻塞已经消除，未发现需要继续修改的阶段业务源码。
+编译过程中仅有工具链自身的 `--gcc-toolchain` unused warning，不影响对象生成或链接。
+
+最终验证结果：
+
+- `node tests/test_bridge_contract.mjs`：退出码 `0`。
+- OHOS clang 使用 C++17 和 CMake 等价 include 对 `native_bridge.cpp` 执行
+  `-fsyntax-only`：退出码 `0`。
+- debug/arm64-v8a 完整 `native_game` 编译及链接：退出码 `0`。
+- 完整 HAP 仍在进入源码编译前被本机 `SDK component missing` 阻断；Native 生产目标本身
+  已完成编译和链接。
