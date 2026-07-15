@@ -32,9 +32,9 @@ int main() {
   millisecondLoop.surface.height = 800;
   millisecondLoop.surface.ready = true;
   for (Tick step = 1; step <= 49; ++step) millisecondLoop.tickOnce(16);
-  assert(millisecondLoop.snapshot().playerHp == fp(100));
+  assert(millisecondLoop.snapshot().hp == fp(100));
   millisecondLoop.tickOnce(16);
-  assert(millisecondLoop.snapshot().playerHp == fp(90));
+  assert(millisecondLoop.snapshot().hp == fp(90));
   assert(millisecondLoop.combatTimeMs() == 800);
 
   Loop multiStepLoop;
@@ -65,7 +65,7 @@ int main() {
   }
   restartCombatLoop.start();
   std::this_thread::sleep_for(std::chrono::milliseconds(40));
-  assert(restartCombatLoop.snapshot().playerHp == fp(100));
+  assert(restartCombatLoop.snapshot().hp == fp(100));
   restartCombatLoop.stop();
 
   CombatConfig fragileTargetConfig = CombatConfig::defaults();

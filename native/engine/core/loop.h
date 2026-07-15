@@ -35,7 +35,7 @@ struct Loop {
   LifecycleState lifecycle;
   std::mutex inputEnqueueMutex;
   mutable std::mutex combatEventMutex;
-  Tick combatTimeMs_ = 0;
+  std::atomic<Tick> combatTimeMs_{0};
   CombatEventBatch frameCombatEvents_;
   uint64_t inputSequence = 0;
   std::atomic<bool> running{false};
@@ -68,7 +68,7 @@ struct Loop {
   }
 
   GameSnapshot snapshot() const { return snapshots.read(); }
-  Tick combatTimeMs() const { return combatTimeMs_; }
+  Tick combatTimeMs() const { return combatTimeMs_.load(); }
   CombatEventBatch combatEvents() const {
     std::lock_guard<std::mutex> lock(combatEventMutex);
     return frameCombatEvents_;

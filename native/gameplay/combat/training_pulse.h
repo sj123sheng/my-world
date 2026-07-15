@@ -20,6 +20,7 @@ class TrainingPulse {
   std::vector<PulseEvent> advance(Tick now);
   DodgeGrade classifyDodge(Tick tick) const;
   Tick warningRemainingMs(Tick now) const;
+  PulseEventKind phase(Tick now) const;
 
  private:
   CombatConfig config_;

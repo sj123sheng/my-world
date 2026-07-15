@@ -16,6 +16,8 @@ class TrainingTarget {
   bool alive() const { return hp_ > 0; }
   Tick weakUntil() const;
   Tick stagnationUntil() const { return stagnationUntil_; }
+  bool poiseBroken(Tick now) const { return breakUntil_ > now; }
+  bool corroded() const;
   Tick deathResetAt() const { return deathResetAt_; }
   FixedPoint hpDamageMultiplier(Tick now) const;
   FixedPoint poiseDamageMultiplier(Tick now) const;
@@ -26,6 +28,7 @@ class TrainingTarget {
   FixedPoint applyPoiseDamage(FixedPoint amount, Tick now);
   void applyWeakness(Tick until, FixedPoint multiplier);
   void applyStagnation(Tick until);
+  void applyCorrosion(Tick until) { corrosionUntil_ = std::max(corrosionUntil_, until); }
 
  private:
   CombatConfig config_;
@@ -34,6 +37,7 @@ class TrainingTarget {
   Tick reactionWeakUntil_ = 0;
   Tick breakUntil_ = 0;
   Tick stagnationUntil_ = 0;
+  Tick corrosionUntil_ = 0;
   Tick deathResetAt_ = 0;
   SourceAuraContainer sourceAuras_;
 };

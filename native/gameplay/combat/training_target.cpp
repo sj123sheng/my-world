@@ -1,6 +1,12 @@
 #include "training_target.h"
 
 #include <algorithm>
+#include <limits>
+
+namespace { Tick saturatedDeadline(Tick now, Tick duration) {
+  const Tick maximum = std::numeric_limits<Tick>::max();
+  return duration > 0 && now > maximum - duration ? maximum : now + duration;
+} }
 
 TrainingTarget::TrainingTarget(CombatConfig config) : config_(config.validated()) { reset(); }
 
@@ -22,6 +28,7 @@ void TrainingTarget::advance(Tick now) {
   if (stagnationUntil_ > 0 && now >= stagnationUntil_) {
     stagnationUntil_ = 0;
   }
+  if (corrosionUntil_ > 0 && now >= corrosionUntil_) corrosionUntil_ = 0;
 }
 
 void TrainingTarget::reset() {
@@ -30,6 +37,7 @@ void TrainingTarget::reset() {
   reactionWeakUntil_ = 0;
   breakUntil_ = 0;
   stagnationUntil_ = 0;
+  corrosionUntil_ = 0;
   deathResetAt_ = 0;
   sourceAuras_.clear();
 }
@@ -51,7 +59,7 @@ FixedPoint TrainingTarget::applyHpDamage(FixedPoint amount, Tick now) {
   if (!alive() || amount <= 0) return 0;
   const FixedPoint applied = std::min(amount, hp_);
   hp_ -= applied;
-  if (hp_ == 0) deathResetAt_ = now + config_.trainingDeathResetMs;
+  if (hp_ == 0) deathResetAt_ = saturatedDeadline(now, config_.trainingDeathResetMs);
   return applied;
 }
 
@@ -60,9 +68,16 @@ FixedPoint TrainingTarget::applyPoiseDamage(FixedPoint amount, Tick now) {
   const FixedPoint applied = std::min(amount, poise_);
   poise_ -= applied;
   if (poise_ == 0) {
-    breakUntil_ = std::max(breakUntil_, now + config_.trainingBreakDurationMs);
+    breakUntil_ = std::max(breakUntil_, saturatedDeadline(now, config_.trainingBreakDurationMs));
   }
   return applied;
+}
+
+bool TrainingTarget::corroded() const {
+  return std::any_of(sourceAuras_.active().begin(), sourceAuras_.active().end(),
+                     [](const SourceAura& aura) {
+                       return aura.type == SourceType::Corruption;
+                     });
 }
 
 void TrainingTarget::applyWeakness(Tick until, FixedPoint multiplier) {

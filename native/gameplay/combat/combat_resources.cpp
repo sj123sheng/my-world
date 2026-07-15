@@ -66,9 +66,15 @@ void CombatResources::advance(Tick now) {
   if (elapsedMs <= 0) return;
   recoveredMs_ = eligibleMs;
 
-  const int64_t scaled = elapsedMs * config_.staminaRecoveryPerSecond + recoveryRemainder_;
-  stamina_ = std::min(config_.maxStamina, stamina_ + scaled / 1000);
-  recoveryRemainder_ = scaled % 1000;
+  const __int128 scaled = static_cast<__int128>(elapsedMs) *
+                          config_.staminaRecoveryPerSecond + recoveryRemainder_;
+  const __int128 gain = scaled / 1000;
+  stamina_ = gain >= config_.maxStamina - stamina_
+                 ? config_.maxStamina
+                 : stamina_ + static_cast<FixedPoint>(gain);
+  recoveryRemainder_ = stamina_ == config_.maxStamina
+                           ? 0
+                           : static_cast<int64_t>(scaled % 1000);
 }
 
 void CombatResources::grantInsight(Tick tick) {
@@ -158,4 +164,15 @@ bool CombatResources::spendUltimate(Tick tick) {
 bool CombatResources::ultimateWindowActive(Tick tick) {
   advance(tick);
   return ultimateWindowActive_;
+}
+
+Tick CombatResources::sourceCooldownRemainingMs(SourceType source) const {
+  const Tick ready = sourceReadyAt_[sourceIndex(source)];
+  return ready > now_ ? ready - now_ : 0;
+}
+
+Tick CombatResources::ultimateWindowRemainingMs() const {
+  return ultimateWindowActive_ && ultimateWindowExpiresAt_ > now_
+             ? ultimateWindowExpiresAt_ - now_
+             : 0;
 }

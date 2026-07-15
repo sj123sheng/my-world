@@ -26,8 +26,11 @@ class CombatResources {
   void reset();
 
   FixedPoint stamina() const { return stamina_; }
+  FixedPoint maxStamina() const { return config_.maxStamina; }
   Tick insightRemainingMs() const;
   FixedPoint resonance() const { return resonance_; }
+  Tick sourceCooldownRemainingMs(SourceType source) const;
+  Tick ultimateWindowRemainingMs() const;
 
  private:
   CombatConfig config_;

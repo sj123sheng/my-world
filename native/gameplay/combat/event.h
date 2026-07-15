@@ -7,7 +7,7 @@ using EntityId = uint32_t;
 using AbilityId = uint32_t;
 struct SourceAura { SourceType type; FixedPoint amount; Tick expireAt; EntityId applier; };
 struct HitEvent { EntityId attacker, target; AbilityId ability; SourceType source;
-  FixedPoint sourceAmount, baseDamage; Tick tick; uint32_t sequence;
+  FixedPoint sourceAmount, baseDamage; Tick tick; uint64_t sequence;
   bool operator==(const HitEvent& o) const { return attacker==o.attacker && target==o.target
     && ability==o.ability && source==o.source && sourceAmount==o.sourceAmount
     && baseDamage==o.baseDamage && tick==o.tick && sequence==o.sequence; } };
@@ -41,7 +41,7 @@ struct GameplayEvent {
   EntityId target = 0;
   GameplayEventType type = GameplayEventType::Hit;
   FixedPoint value = 0;
-  uint32_t sequence = 0;
+  uint64_t sequence = 0;
   bool operator==(const GameplayEvent& other) const {
     return tick == other.tick && source == other.source && target == other.target &&
            type == other.type && value == other.value && sequence == other.sequence;
@@ -54,7 +54,7 @@ struct PresentationEvent {
   EntityId target = 0;
   PresentationEventType type = PresentationEventType::HitFlash;
   FixedPoint intensity = 0;
-  uint32_t sequence = 0;
+  uint64_t sequence = 0;
   bool operator==(const PresentationEvent& other) const {
     return tick == other.tick && source == other.source && target == other.target &&
            type == other.type && intensity == other.intensity && sequence == other.sequence;

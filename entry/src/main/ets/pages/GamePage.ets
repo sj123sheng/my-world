@@ -11,7 +11,11 @@ struct GamePage {
     targetDist: 0, targetId: 0, bossPhase: 0, rendererReady: true,
     stamina: 100, comboSegment: 0, invulnerable: false, insightMs: 0,
     resonance: 0, targetHp: 300, targetPoise: 100, pulseWarningMs: 0,
-    lastRejectReason: 0
+    lastRejectReason: 0, currentAction: 0, comboWindowMs: 0,
+    radianceCooldownMs: 0, currentCooldownMs: 0, corruptionCooldownMs: 0,
+    ultimateWindowMs: 0, targetPoiseBroken: false, radianceAttached: false,
+    currentAttached: false, corruptionAttached: false, corroded: false,
+    currentReaction: -1, pulsePhase: 0
   };
   @State tick: number = 0;
   @State hp: number = 100;
@@ -37,6 +41,19 @@ struct GamePage {
   @State targetPoise: number = 100;
   @State pulseWarningMs: number = 0;
   @State lastRejectReason: number = 0;
+  @State currentAction: number = 0;
+  @State comboWindowMs: number = 0;
+  @State radianceCooldownMs: number = 0;
+  @State currentCooldownMs: number = 0;
+  @State corruptionCooldownMs: number = 0;
+  @State ultimateWindowMs: number = 0;
+  @State targetPoiseBroken: boolean = false;
+  @State radianceAttached: boolean = false;
+  @State currentAttached: boolean = false;
+  @State corruptionAttached: boolean = false;
+  @State corroded: boolean = false;
+  @State currentReaction: number = -1;
+  @State pulsePhase: number = 0;
   private timer: number = -1;
 
   build() {
@@ -74,7 +91,13 @@ struct GamePage {
         invulnerable: this.invulnerable, insightMs: this.insightMs,
         resonance: this.resonance, targetHp: this.targetHp,
         targetPoise: this.targetPoise, pulseWarningMs: this.pulseWarningMs,
-        lastRejectReason: this.lastRejectReason })
+        lastRejectReason: this.lastRejectReason, currentAction: this.currentAction,
+        comboWindowMs: this.comboWindowMs, radianceCooldownMs: this.radianceCooldownMs,
+        currentCooldownMs: this.currentCooldownMs, corruptionCooldownMs: this.corruptionCooldownMs,
+        ultimateWindowMs: this.ultimateWindowMs, targetPoiseBroken: this.targetPoiseBroken,
+        radianceAttached: this.radianceAttached, currentAttached: this.currentAttached,
+        corruptionAttached: this.corruptionAttached, corroded: this.corroded,
+        currentReaction: this.currentReaction, pulsePhase: this.pulsePhase })
 
       CombatControls()
         .align(Alignment.BottomEnd)
@@ -111,6 +134,19 @@ struct GamePage {
         this.targetPoise = this.snapshot.targetPoise;
         this.pulseWarningMs = this.snapshot.pulseWarningMs;
         this.lastRejectReason = this.snapshot.lastRejectReason;
+        this.currentAction = this.snapshot.currentAction;
+        this.comboWindowMs = this.snapshot.comboWindowMs;
+        this.radianceCooldownMs = this.snapshot.radianceCooldownMs;
+        this.currentCooldownMs = this.snapshot.currentCooldownMs;
+        this.corruptionCooldownMs = this.snapshot.corruptionCooldownMs;
+        this.ultimateWindowMs = this.snapshot.ultimateWindowMs;
+        this.targetPoiseBroken = this.snapshot.targetPoiseBroken;
+        this.radianceAttached = this.snapshot.radianceAttached;
+        this.currentAttached = this.snapshot.currentAttached;
+        this.corruptionAttached = this.snapshot.corruptionAttached;
+        this.corroded = this.snapshot.corroded;
+        this.currentReaction = this.snapshot.currentReaction;
+        this.pulsePhase = this.snapshot.pulsePhase;
       } catch (e) {
       }
     }, 100);

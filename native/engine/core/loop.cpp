@@ -16,7 +16,8 @@
 namespace {
 void ApplyCombatSnapshot(GameSnapshot& output, const CombatSnapshot& combat) {
   output.comboSegment = combat.comboSegment;
-  output.playerHp = combat.playerHp;
+  output.hp = combat.playerHp;
+  output.poise = combat.playerPoise;
   output.targetHp = combat.targetHp;
   output.targetPoise = combat.targetPoise;
   output.stamina = combat.stamina;
@@ -26,6 +27,19 @@ void ApplyCombatSnapshot(GameSnapshot& output, const CombatSnapshot& combat) {
   output.insightMs = combat.insightMs;
   output.pulseWarningMs = combat.pulseWarningMs;
   output.lastRejectReason = static_cast<int32_t>(combat.lastRejectReason);
+  output.currentAction = combat.currentAction;
+  output.comboWindowMs = combat.comboWindowMs;
+  output.radianceCooldownMs = combat.radianceCooldownMs;
+  output.currentCooldownMs = combat.currentCooldownMs;
+  output.corruptionCooldownMs = combat.corruptionCooldownMs;
+  output.ultimateWindowMs = combat.ultimateWindowMs;
+  output.targetPoiseBroken = combat.targetPoiseBroken;
+  output.radianceAttached = combat.radianceAttached;
+  output.currentAttached = combat.currentAttached;
+  output.corruptionAttached = combat.corruptionAttached;
+  output.corroded = combat.corroded;
+  output.currentReaction = combat.currentReaction;
+  output.pulsePhase = combat.pulsePhase;
 }
 
 Tick AdvanceCombatTime(Tick now, int64_t dtMs) {
@@ -262,8 +276,9 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
 
   for (const ActionRequest& action : intent.actions) combat.enqueue(action);
   intent.actions.clear();
-  combatTimeMs_ = AdvanceCombatTime(combatTimeMs_, dtMs);
-  combat.update({combatTimeMs_, dtMs, surface.player.moving,
+  const Tick combatTime = AdvanceCombatTime(combatTimeMs_.load(), dtMs);
+  combatTimeMs_.store(combatTime);
+  combat.update({combatTime, dtMs, surface.player.moving,
                  currentTarget ? static_cast<EntityId>(currentTarget->id) : 0,
                  currentTarget.has_value() && surface.trainingTarget.alive});
   surface.trainingTarget.alive = combat.snapshot().targetAlive;
@@ -278,6 +293,14 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     frameCombatEvents_.presentation.insert(frameCombatEvents_.presentation.end(),
                                            stepEvents.presentation.begin(),
                                            stepEvents.presentation.end());
+    const auto less = [](const auto& left, const auto& right) {
+      if (left.tick != right.tick) return left.tick < right.tick;
+      if (left.source != right.source) return left.source < right.source;
+      if (left.target != right.target) return left.target < right.target;
+      return left.sequence < right.sequence;
+    };
+    std::stable_sort(frameCombatEvents_.gameplay.begin(), frameCombatEvents_.gameplay.end(), less);
+    std::stable_sort(frameCombatEvents_.presentation.begin(), frameCombatEvents_.presentation.end(), less);
   }
 
   GameSnapshot updated = snapshots.read();

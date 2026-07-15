@@ -49,7 +49,7 @@
 
 ## 阶段 3 验收状态（2026-07-16）
 
-- [x] 战斗状态与三源完整自动化出口：仓库现有 30/30 个 C++ 测试逐个编译运行通过，
+- [x] 战斗状态与三源完整自动化出口：仓库现有 31/31 个 C++ 测试逐个编译运行通过，
   Node 桥接契约 1/1 通过，`git diff --check` 通过。
 - [x] 生产构建出口：指定 SDK 的 Hvigor `assembleHap` 返回 `BUILD SUCCESSFUL`，signed HAP
   存在；构建前后 `build-profile.json5` SHA-1 一致。

@@ -305,3 +305,22 @@ void ActionStateMachine::reset() {
   dodgeInvulnerableFrom_ = 0;
   dodgeInvulnerableUntil_ = 0;
 }
+
+ActionState ActionStateMachine::state() const {
+  if (!actionActive_ && !waitingForChain_) return ActionState::Idle;
+  if (waitingForChain_) {
+    return static_cast<ActionState>(static_cast<uint8_t>(ActionState::Attack1) +
+                                    std::min<uint8_t>(comboIndex_, 4) - 1);
+  }
+  if (activeAction_ == CombatAction::Dodge) return ActionState::Dodging;
+  if (activeAction_ == CombatAction::Ultimate) return ActionState::CastingUltimate;
+  if (isSourceAction(activeAction_)) return ActionState::CastingSource;
+  return static_cast<ActionState>(static_cast<uint8_t>(ActionState::Attack1) +
+                                  std::min<uint8_t>(comboIndex_, 4) - 1);
+}
+
+Tick ActionStateMachine::comboWindowRemainingMs() const {
+  return waitingForChain_ && chainElapsedMs_ < config_.comboWindowMs
+             ? config_.comboWindowMs - chainElapsedMs_
+             : 0;
+}

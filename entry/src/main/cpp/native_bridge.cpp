@@ -196,8 +196,8 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_value resonanceVal, targetHpVal, targetPoiseVal, pulseWarningMsVal;
   napi_value lastRejectReasonVal;
   napi_create_int64(env, static_cast<int64_t>(snapshot.tick), &tickVal);
-  napi_create_int32(env, snapshot.hp, &hpVal);
-  napi_create_int32(env, snapshot.poise, &poiseVal);
+  napi_create_double(env, static_cast<double>(snapshot.hp) / FP_ONE, &hpVal);
+  napi_create_double(env, static_cast<double>(snapshot.poise) / FP_ONE, &poiseVal);
   napi_create_double(env, snapshot.playerX, &xVal);
   napi_create_double(env, snapshot.playerY, &yVal);
   napi_create_double(env, snapshot.fps, &fpsVal);
@@ -243,6 +243,33 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_set_named_property(env, result, "targetPoise", targetPoiseVal);
   napi_set_named_property(env, result, "pulseWarningMs", pulseWarningMsVal);
   napi_set_named_property(env, result, "lastRejectReason", lastRejectReasonVal);
+  napi_value extra[13];
+  napi_create_int32(env, snapshot.currentAction, &extra[0]);
+  napi_create_int64(env, snapshot.comboWindowMs, &extra[1]);
+  napi_create_int64(env, snapshot.radianceCooldownMs, &extra[2]);
+  napi_create_int64(env, snapshot.currentCooldownMs, &extra[3]);
+  napi_create_int64(env, snapshot.corruptionCooldownMs, &extra[4]);
+  napi_create_int64(env, snapshot.ultimateWindowMs, &extra[5]);
+  napi_get_boolean(env, snapshot.targetPoiseBroken, &extra[6]);
+  napi_get_boolean(env, snapshot.radianceAttached, &extra[7]);
+  napi_get_boolean(env, snapshot.currentAttached, &extra[8]);
+  napi_get_boolean(env, snapshot.corruptionAttached, &extra[9]);
+  napi_get_boolean(env, snapshot.corroded, &extra[10]);
+  napi_create_int32(env, snapshot.currentReaction, &extra[11]);
+  napi_create_int32(env, snapshot.pulsePhase, &extra[12]);
+  napi_set_named_property(env, result, "currentAction", extra[0]);
+  napi_set_named_property(env, result, "comboWindowMs", extra[1]);
+  napi_set_named_property(env, result, "radianceCooldownMs", extra[2]);
+  napi_set_named_property(env, result, "currentCooldownMs", extra[3]);
+  napi_set_named_property(env, result, "corruptionCooldownMs", extra[4]);
+  napi_set_named_property(env, result, "ultimateWindowMs", extra[5]);
+  napi_set_named_property(env, result, "targetPoiseBroken", extra[6]);
+  napi_set_named_property(env, result, "radianceAttached", extra[7]);
+  napi_set_named_property(env, result, "currentAttached", extra[8]);
+  napi_set_named_property(env, result, "corruptionAttached", extra[9]);
+  napi_set_named_property(env, result, "corroded", extra[10]);
+  napi_set_named_property(env, result, "currentReaction", extra[11]);
+  napi_set_named_property(env, result, "pulsePhase", extra[12]);
   return result;
 }
 

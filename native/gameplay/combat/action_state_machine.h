@@ -55,6 +55,12 @@ class ActionStateMachine {
     resources_.recordDistinctSource(source, tick);
   }
   bool canUltimate(Tick tick) { return resources_.canUltimate(tick); }
+  ActionState state() const;
+  Tick comboWindowRemainingMs() const;
+  Tick sourceCooldownRemainingMs(SourceType source) const {
+    return resources_.sourceCooldownRemainingMs(source);
+  }
+  Tick ultimateWindowRemainingMs() const { return resources_.ultimateWindowRemainingMs(); }
 
  private:
   static constexpr Tick kAttackHitMs = 160;

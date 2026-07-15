@@ -26,5 +26,18 @@ export const pullSnapshot: () => {
   targetHp: number,
   targetPoise: number,
   pulseWarningMs: number,
-  lastRejectReason: number
+  lastRejectReason: number,
+  currentAction: number,
+  comboWindowMs: number,
+  radianceCooldownMs: number,
+  currentCooldownMs: number,
+  corruptionCooldownMs: number,
+  ultimateWindowMs: number,
+  targetPoiseBroken: boolean,
+  radianceAttached: boolean,
+  currentAttached: boolean,
+  corruptionAttached: boolean,
+  corroded: boolean,
+  currentReaction: number,
+  pulsePhase: number
 };

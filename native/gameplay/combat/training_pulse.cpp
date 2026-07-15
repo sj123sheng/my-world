@@ -2,6 +2,12 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <limits>
+
+namespace { Tick advanceCursor(Tick value, Tick period) {
+  const Tick maximum = std::numeric_limits<Tick>::max();
+  return period > 0 && value > maximum - period ? maximum : value + period;
+} }
 
 TrainingPulse::TrainingPulse(CombatConfig config) : config_(config.validated()) {}
 
@@ -14,10 +20,14 @@ std::vector<PulseEvent> TrainingPulse::advance(Tick now) {
   while (nextWarningTick_ <= now || nextHitTick_ <= now) {
     if (nextWarningTick_ <= nextHitTick_ && nextWarningTick_ <= now) {
       events.push_back({PulseEventKind::Warning, nextWarningTick_});
-      nextWarningTick_ += config_.trainingPulsePeriodMs;
+      const Tick prior = nextWarningTick_;
+      nextWarningTick_ = advanceCursor(prior, config_.trainingPulsePeriodMs);
+      if (nextWarningTick_ == prior) break;
     } else if (nextHitTick_ <= now) {
       events.push_back({PulseEventKind::Hit, nextHitTick_});
-      nextHitTick_ += config_.trainingPulsePeriodMs;
+      const Tick prior = nextHitTick_;
+      nextHitTick_ = advanceCursor(prior, config_.trainingPulsePeriodMs);
+      if (nextHitTick_ == prior) break;
     }
   }
   return events;
@@ -41,4 +51,12 @@ Tick TrainingPulse::warningRemainingMs(Tick now) const {
     return config_.trainingPulsePeriodMs - elapsedInPeriod;
   }
   return warning - now;
+}
+
+PulseEventKind TrainingPulse::phase(Tick now) const {
+  const Tick period = config_.trainingPulsePeriodMs;
+  const Tick inCycle = now >= 0 ? now % period : 0;
+  if (inCycle == config_.trainingPulseWarningMs) return PulseEventKind::Hit;
+  if (inCycle < config_.trainingPulseWarningMs) return PulseEventKind::Warning;
+  return PulseEventKind::None;
 }

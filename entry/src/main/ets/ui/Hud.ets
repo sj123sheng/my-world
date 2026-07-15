@@ -16,6 +16,19 @@ export struct Hud {
   @Prop targetPoise: number = 100;
   @Prop pulseWarningMs: number = 0;
   @Prop lastRejectReason: number = 0;
+  @Prop currentAction: number = 0;
+  @Prop comboWindowMs: number = 0;
+  @Prop radianceCooldownMs: number = 0;
+  @Prop currentCooldownMs: number = 0;
+  @Prop corruptionCooldownMs: number = 0;
+  @Prop ultimateWindowMs: number = 0;
+  @Prop targetPoiseBroken: boolean = false;
+  @Prop radianceAttached: boolean = false;
+  @Prop currentAttached: boolean = false;
+  @Prop corruptionAttached: boolean = false;
+  @Prop corroded: boolean = false;
+  @Prop currentReaction: number = -1;
+  @Prop pulsePhase: number = 0;
   @State auras: string[] = [];
 
   build() {
@@ -45,6 +58,12 @@ export struct Hud {
           Text(`脉冲 ${this.pulseWarningMs}ms · 无敌 ${this.invulnerable ? '是' : '否'} · 拒绝 ${this.lastRejectReason}`)
             .fontColor(this.pulseWarningMs < 500 ? Color.Red : Color.Gray)
             .fontSize(12)
+          Text(`动作 ${this.currentAction} · 连击窗 ${this.comboWindowMs}ms · 终结窗 ${this.ultimateWindowMs}ms`)
+            .fontColor(Color.Gray).fontSize(12)
+          Text(`冷却 ${this.radianceCooldownMs}/${this.currentCooldownMs}/${this.corruptionCooldownMs}ms`)
+            .fontColor(Color.Gray).fontSize(12)
+          Text(`附着 ${this.radianceAttached ? '辉' : '-'}${this.currentAttached ? '流' : '-'}${this.corruptionAttached ? '蚀' : '-'} · 侵蚀 ${this.corroded ? '是' : '否'} · 反应 ${this.currentReaction} · 相位 ${this.pulsePhase}`)
+            .fontColor(this.targetPoiseBroken ? Color.Red : Color.Gray).fontSize(12)
         }
         .alignItems(HorizontalAlign.Start)
         .layoutWeight(1)
