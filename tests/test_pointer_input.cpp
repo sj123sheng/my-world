@@ -1,9 +1,16 @@
 #include "native/engine/input/pointer_input.h"
+#include "native/engine/input/player_intent.h"
 
 #include <cassert>
 #include <limits>
 
 int main() {
+  PlayerIntent intent;
+  intent.actions.push_back({CombatAction::Attack, 7});
+  assert(intent.actions.size() == 1);
+  assert(intent.actions[0].action == CombatAction::Attack);
+  assert(intent.actions[0].sequence == 7);
+
   InputAction action = InputAction::Attack;
   assert(TryMapPointerAction(0, action) && action == InputAction::PointerDown);
   assert(TryMapPointerAction(1, action) && action == InputAction::PointerUp);
