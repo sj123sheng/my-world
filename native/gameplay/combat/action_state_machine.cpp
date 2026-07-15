@@ -23,9 +23,10 @@ ActionDecision ActionStateMachine::request(const ActionRequest& request,
     comboIndex_ = 0;
   }
   ++comboIndex_;
-  state_ = static_cast<ActionState>(static_cast<uint8_t>(ActionState::Attack1) + comboIndex_ - 1);
   actionActive_ = true;
   waitingForChain_ = false;
+  actionStartKnown_ = hasTimeline_;
+  actionStartTick_ = lastUpdateTick_;
   actionElapsedMs_ = 0;
   chainElapsedMs_ = 0;
   actionContext_ = context;
@@ -36,13 +37,19 @@ ActionDecision ActionStateMachine::request(const ActionRequest& request,
 std::optional<HitRequest> ActionStateMachine::update(Tick now,
                                                      int64_t dtMs,
                                                      const ActionContext& context) {
+  const Tick elapsed = std::max<int64_t>(0, dtMs);
+  lastUpdateTick_ = now;
+  hasTimeline_ = true;
   if (context.moving || context.damageTaken) {
     resetCombo();
     return std::nullopt;
   }
 
-  const Tick elapsed = std::max<int64_t>(0, dtMs);
   if (actionActive_) {
+    if (!actionStartKnown_) {
+      actionStartTick_ = now - elapsed;
+      actionStartKnown_ = true;
+    }
     actionElapsedMs_ += elapsed;
     if (actionElapsedMs_ < kAttackHitMs) {
       return std::nullopt;
@@ -50,17 +57,20 @@ std::optional<HitRequest> ActionStateMachine::update(Tick now,
 
     actionActive_ = false;
     waitingForChain_ = true;
-    chainElapsedMs_ = 0;
-    state_ = ActionState::Idle;
+    chainElapsedMs_ = actionElapsedMs_ - kAttackHitMs;
     const std::size_t index = comboIndex_ - 1;
-    return HitRequest{actionContext_.attacker,
-                      actionContext_.target,
-                      comboIndex_,
-                      std::nullopt,
-                      config_.comboDamage[index],
-                      config_.comboPoiseDamage[index],
-                      now,
-                      actionSequence_};
+    HitRequest hit{actionContext_.attacker,
+                   actionContext_.target,
+                   comboIndex_,
+                   std::nullopt,
+                   config_.comboDamage[index],
+                   config_.comboPoiseDamage[index],
+                   actionStartTick_ + kAttackHitMs,
+                   actionSequence_};
+    if (chainElapsedMs_ > config_.comboWindowMs) {
+      resetCombo();
+    }
+    return hit;
   }
 
   if (waitingForChain_) {
@@ -78,11 +88,14 @@ void ActionStateMachine::resetCombo() {
   waitingForChain_ = false;
   actionElapsedMs_ = 0;
   chainElapsedMs_ = 0;
-  state_ = ActionState::Idle;
+  actionStartKnown_ = false;
 }
 
 void ActionStateMachine::reset() {
   resetCombo();
+  hasTimeline_ = false;
+  lastUpdateTick_ = 0;
+  actionStartTick_ = 0;
   actionContext_ = {};
   actionSequence_ = 0;
 }

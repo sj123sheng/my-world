@@ -100,6 +100,47 @@ void testInvalidTargetDoesNotChangeState() {
   assert(hit.ability == 1 && hit.sequence == 3);
 }
 
+void testLargeTickUsesFixedHitTimeAndCarriesRemainder() {
+  ActionStateMachine machine(CombatConfig::defaults());
+  assert(machine.request({CombatAction::Attack, 1}, targetContext()).accepted);
+
+  const auto hit = machine.update(200, 200, targetContext());
+  assert(hit.has_value());
+  assert(hit->tick == 160);
+
+  assert(!machine.update(640, 440, targetContext()).has_value());
+  assert(machine.request({CombatAction::Attack, 2}, targetContext()).accepted);
+  const auto second = machine.update(800, 160, targetContext());
+  assert(second.has_value() && second->ability == 2 && second->tick == 800);
+}
+
+void testSingleTickCanHitAndExpireChainWindow() {
+  ActionStateMachine machine(CombatConfig::defaults());
+  assert(machine.request({CombatAction::Attack, 1}, targetContext()).accepted);
+
+  const auto hit = machine.update(641, 641, targetContext());
+  assert(hit.has_value() && hit->tick == 160);
+  assert(machine.request({CombatAction::Attack, 2}, targetContext()).accepted);
+  const auto next = machine.update(801, 160, targetContext());
+  assert(next.has_value() && next->ability == 1);
+}
+
+void testChainWindowIncludesExactly480ButExcludes481() {
+  ActionStateMachine atBoundary(CombatConfig::defaults());
+  assert(atBoundary.request({CombatAction::Attack, 1}, targetContext()).accepted);
+  assert(atBoundary.update(640, 640, targetContext()).has_value());
+  assert(atBoundary.request({CombatAction::Attack, 2}, targetContext()).accepted);
+  const auto chained = atBoundary.update(800, 160, targetContext());
+  assert(chained.has_value() && chained->ability == 2);
+
+  ActionStateMachine pastBoundary(CombatConfig::defaults());
+  assert(pastBoundary.request({CombatAction::Attack, 1}, targetContext()).accepted);
+  assert(pastBoundary.update(641, 641, targetContext()).has_value());
+  assert(pastBoundary.request({CombatAction::Attack, 2}, targetContext()).accepted);
+  const auto reset = pastBoundary.update(801, 160, targetContext());
+  assert(reset.has_value() && reset->ability == 1);
+}
+
 }  // namespace
 
 int main() {
@@ -108,5 +149,8 @@ int main() {
   testComboResetsOnDamageTaken();
   testComboResetsAfterWindowExpires();
   testInvalidTargetDoesNotChangeState();
+  testLargeTickUsesFixedHitTimeAndCarriesRemainder();
+  testSingleTickCanHitAndExpireChainWindow();
+  testChainWindowIncludesExactly480ButExcludes481();
   return 0;
 }

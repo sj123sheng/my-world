@@ -44,10 +44,13 @@ class ActionStateMachine {
   static constexpr Tick kAttackHitMs = 160;
 
   CombatConfig config_;
-  ActionState state_ = ActionState::Idle;
   uint8_t comboIndex_ = 0;
   bool actionActive_ = false;
   bool waitingForChain_ = false;
+  bool hasTimeline_ = false;
+  bool actionStartKnown_ = false;
+  Tick lastUpdateTick_ = 0;
+  Tick actionStartTick_ = 0;
   Tick actionElapsedMs_ = 0;
   Tick chainElapsedMs_ = 0;
   ActionContext actionContext_;
