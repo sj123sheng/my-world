@@ -30,8 +30,8 @@
 - HarmonyOS Stage 模型应用工程与 API 23 配置。
 - ArkTS + ArkUI 页面、HUD 和应用生命周期管理。
 - XComponent Surface 与 Native C++ 回调注册。
-- Native XComponent `DispatchTouchEvent` 是真机生产触控的单一来源；回调逐点读取
-  `touchPoints` 的动作、ID 与局部坐标并注入输入队列，ArkTS 页面不再重复生产触控。
+- Native XComponent `DispatchTouchEvent` 是真机生产触控的单一来源；每次回调只转发
+  顶层 changed pointer 的动作、ID 与局部坐标，ArkTS 页面不再重复生产触控。
 - HarmonyOS NDK C++ 游戏帧循环。
 - EGL 1.4 与 OpenGL ES 3 原生渲染上下文。
 - 基础网格、玩家、目标、场景物件和粒子绘制。
@@ -191,7 +191,7 @@ my-world/
 
 2026-07-15 的阶段 2 收口验证结果如下，各层结果彼此独立：
 
-- 自动化测试：20/20 个 `tests/test_*.cpp` 编译并运行通过，Node 桥接契约 1/1 通过。
+- 自动化测试：21/21 个 `tests/test_*.cpp` 编译并运行通过，Node 桥接契约 1/1 通过。
 - Native 生产目标：OHOS arm64-v8a `native_game` 完整编译及链接通过。
 - HAP：Hvigor `assembleHap` 显示 `BUILD SUCCESSFUL`，生成
   `entry-default-unsigned.hap`；当前未配置签名，不能据此宣称可安装真机。

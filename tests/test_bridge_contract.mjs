@@ -69,24 +69,13 @@ const dispatchTouchBody = functionBody(nativeBridge, 'static void OnDispatchTouc
 assert.match(dispatchTouchBody,
   /OH_NativeXComponent_GetTouchEvent\(component, window, &touchEvent\)/,
   'Native callback must read the touch event for this component and window');
+assert.doesNotMatch(dispatchTouchBody, /touchEvent\.touchPoints|\bpointCount\b/,
+  'Native callback must not reinterpret the active-point snapshot as changed pointers');
+assert.doesNotMatch(dispatchTouchBody, /touchEvent\.numPoints\s*==/,
+  'Native callback must not branch input semantics on snapshot point count');
 assert.match(dispatchTouchBody,
-  /touchEvent\.numPoints\s*==\s*0[\s\S]*?MapTouchAction\(touchEvent\.type, action\)[\s\S]*?g_loop\.enqueueInput\(action, touchEvent\.id, touchEvent\.x, touchEvent\.y\)/,
-  'zero-point events must fall back to the top-level type/id/x/y fields');
-assert.match(dispatchTouchBody,
-  /OH_NATIVE_XCOMPONENT_MAX_TOUCH_POINTS_NUMBER/,
-  'Native callback must cap the reported point count at the SDK array capacity');
-assert.match(dispatchTouchBody,
-  /for\s*\([\s\S]*?<\s*(?:pointCount|touchEvent\.numPoints)[\s\S]*?\)/,
-  'Native callback must iterate all reported touch points');
-assert.match(dispatchTouchBody, /touchEvent\.touchPoints\[/,
-  'Native callback must read every point from touchEvent.touchPoints');
-for (const field of ['type', 'id', 'x', 'y']) {
-  assert.match(dispatchTouchBody, new RegExp(`point\\.${field}`),
-    `Native callback must preserve per-point ${field}`);
-}
-assert.match(dispatchTouchBody,
-  /MapTouchAction\(point\.type, action\)[\s\S]*?g_loop\.enqueueInput\(action, point\.id, point\.x, point\.y\)/,
-  'Native callback must map and enqueue each point with its own type/id/x/y');
+  /ForwardChangedPointer\([\s\S]*?touchEvent\.type[\s\S]*?touchEvent\.id[\s\S]*?touchEvent\.x[\s\S]*?touchEvent\.y/,
+  'Native callback must forward only the top-level changed pointer fields');
 
 assert.match(bridge, /interface InputEvent \{[\s\S]*?pointerId:\s*number;/,
   'Bridge InputEvent must require pointerId');

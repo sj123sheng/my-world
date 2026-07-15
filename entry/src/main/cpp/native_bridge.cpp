@@ -5,6 +5,7 @@
 #include <cmath>
 #include <atomic>
 #include "engine/core/loop.h"
+#include "engine/input/changed_pointer_forwarder.h"
 #include "engine/input/pointer_input.h"
 
 #define LOGI(...) OH_LOG_Print(LOG_APP, LOG_INFO, 0xFF00, "Ethelan", __VA_ARGS__)
@@ -92,11 +93,6 @@ static void OnSurfaceDestroyed(OH_NativeXComponent* component, void* window) {
   });
 }
 
-static bool MapTouchAction(OH_NativeXComponent_TouchEventType type,
-                           InputAction& action) {
-  return TryMapPointerAction(static_cast<int32_t>(type), action);
-}
-
 static void OnDispatchTouchEvent(OH_NativeXComponent* component, void* window) {
   OH_NativeXComponent_TouchEvent touchEvent{};
   if (OH_NativeXComponent_GetTouchEvent(component, window, &touchEvent) !=
@@ -104,26 +100,12 @@ static void OnDispatchTouchEvent(OH_NativeXComponent* component, void* window) {
     LOGE("OH_NativeXComponent_GetTouchEvent failed");
     return;
   }
-
-  if (touchEvent.numPoints == 0) {
-    InputAction action = InputAction::PointerCancel;
-    if (MapTouchAction(touchEvent.type, action)) {
-      g_loop.enqueueInput(action, touchEvent.id, touchEvent.x, touchEvent.y);
-    }
-    return;
-  }
-
-  const uint32_t pointCount =
-      touchEvent.numPoints > OH_NATIVE_XCOMPONENT_MAX_TOUCH_POINTS_NUMBER
-          ? OH_NATIVE_XCOMPONENT_MAX_TOUCH_POINTS_NUMBER
-          : touchEvent.numPoints;
-  for (uint32_t index = 0; index < pointCount; ++index) {
-    const OH_NativeXComponent_TouchPoint& point = touchEvent.touchPoints[index];
-    InputAction action = InputAction::PointerCancel;
-    if (MapTouchAction(point.type, action)) {
-      g_loop.enqueueInput(action, point.id, point.x, point.y);
-    }
-  }
+  ForwardChangedPointer(
+      static_cast<int32_t>(touchEvent.type), touchEvent.id, touchEvent.x,
+      touchEvent.y,
+      [](InputAction action, int32_t pointerId, float x, float y) {
+        return g_loop.enqueueInput(action, pointerId, x, y);
+      });
 }
 
 static napi_value NativeStart(napi_env env, napi_callback_info) {

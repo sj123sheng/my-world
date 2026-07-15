@@ -38,8 +38,11 @@
 
 - 真机复验确认单指 UI Test 与双指 uinput 均能稳定注入，但带 `libraryname` 的 Native
   XComponent 不触发页面 `.onTouch`，旧 ArkTS 单一生产者方案因此无法驱动画面。
-- 生产输入改为 Native `DispatchTouchEvent` 单一来源：逐个处理 `touchPoints`，每点使用
-  自身 `type/id/x/y`；`numPoints == 0` 时兼容回退到事件顶层字段。
+- 生产输入改为 Native `DispatchTouchEvent` 单一来源：每次成功取事件后只转发顶层
+  changed pointer 的 `type/id/x/y`。`touchPoints/numPoints` 是活动触点快照，不作为本次
+  动作列表遍历，避免第二指按下时重复生成第一指 Down 等错误事件。
 - ArkTS 页面删除 `.onTouch` 与 `pushInput` 调用；N-API `pushInput` 仅保留为测试或未来外部
   输入入口，不参与当前页面生产链路，避免双重生产。
+- 纯 C++ 序列测试覆盖两指活动快照下的 Down/Move/Up/Cancel，确认每次只生产一条事件、
+  单指释放不清理另一指职责、未知动作不入队；最新矩阵为 C++ 21/21、Node 1/1。
 - 自动化、Native 链接与 signed HAP 构建完成后，仍需在设备上复验 HUD 移动/相机值与画面。
