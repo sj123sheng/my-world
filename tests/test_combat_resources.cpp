@@ -22,10 +22,10 @@ int main() {
 
   CombatResources insightBoundary(CombatConfig::defaults());
   insightBoundary.grantInsight(1200);
-  assert(insightBoundary.consumeInsight(6199));
+  assert(insightBoundary.consumeInsight(16199));
   CombatResources insightExpired(CombatConfig::defaults());
   insightExpired.grantInsight(1200);
-  assert(!insightExpired.consumeInsight(6200));
+  assert(!insightExpired.consumeInsight(16200));
 
   CombatResources insightOnce(CombatConfig::defaults());
   insightOnce.grantInsight(50);

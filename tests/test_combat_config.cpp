@@ -12,6 +12,9 @@ int main() {
          (std::array<FixedPoint, 4>{fp(4), fp(5), fp(6), fp(10)}));
   assert(defaults.comboWindowMs == 480);
   assert(defaults.dodgeCost == fp(30));
+  assert(defaults.preciseDodgeWindowMinMs == 100);
+  assert(defaults.preciseDodgeWindowMaxMs == 500);
+  assert(defaults.insightDurationMs == 15000);
   assert(defaults.sourceCooldownMs == (std::array<Tick, 3>{3000, 4000, 5000}));
   assert(defaults.sourceDamage ==
          (std::array<FixedPoint, 3>{fp(20), fp(16), fp(12)}));
@@ -27,6 +30,13 @@ int main() {
   invalid.dodgeCost = fp(-1);
   const CombatConfig safe = invalid.validated();
   assert(safe.maxStamina == fp(100) && safe.dodgeCost == fp(30));
+
+  invalid = defaults;
+  invalid.preciseDodgeWindowMinMs = 501;
+  invalid.preciseDodgeWindowMaxMs = 500;
+  const CombatConfig safeDodgeWindow = invalid.validated();
+  assert(safeDodgeWindow.preciseDodgeWindowMinMs == 100);
+  assert(safeDodgeWindow.preciseDodgeWindowMaxMs == 500);
 
   invalid = defaults;
   invalid.comboWindowMs = -1;

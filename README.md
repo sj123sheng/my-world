@@ -162,6 +162,12 @@ Shader Program 链接和帧循环日志。
 3. 优先使用真机验证，不要在 GLES 失败后直接操作 NativeWindow CPU Buffer。
 4. 查看[NativeWindow 崩溃修复设计](docs/superpowers/specs/2026-07-13-native-window-crash-fix-design.md)。
 
+### 精准闪避验证
+
+观察 HUD 的“脉冲”倒计时，在剩余 `100–500ms`（含边界）时只点击一次“闪避”。成功后
+该次脉冲不会造成伤害，HUD 会立即显示接近 `洞察 15000ms`。`>500ms`、`<100ms` 或脉冲
+已经命中后点击只按普通闪避处理；普通闪避仍为 `300ms` 总时长和前 `200ms` 无敌。
+
 ## 项目结构
 
 ```text

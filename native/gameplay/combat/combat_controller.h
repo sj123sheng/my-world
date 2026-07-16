@@ -6,6 +6,7 @@
 #include "training_pulse.h"
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 struct CombatFrameInput {
@@ -90,5 +91,6 @@ class CombatController {
   Tick currentTick_ = 0;
   int32_t currentReaction_ = -1;
   PulseEventKind pulsePhase_ = PulseEventKind::None;
+  std::optional<Tick> preciseDodgedPulseTick_;
   AbilityId lastAbility_ = 0;
 };

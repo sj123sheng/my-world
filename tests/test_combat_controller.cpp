@@ -58,10 +58,23 @@ int main() {
   CombatController pulse(CombatConfig::defaults());
   pulse.update({0, 1, false, CombatController::kTrainingTargetId, true});
   pulse.enqueue({CombatAction::Dodge, 1});
-  pulse.update({750, 1, false, CombatController::kTrainingTargetId, true});
-  pulse.update({800, 50, false, CombatController::kTrainingTargetId, true});
+  pulse.update({700, 1, false, CombatController::kTrainingTargetId, true});
+  pulse.update({800, 100, false, CombatController::kTrainingTargetId, true});
   assert(pulse.snapshot().playerHp == fp(100));
   assert(pulse.snapshot().hasInsight);
+
+  CombatController earlyPrecisePulse(CombatConfig::defaults());
+  earlyPrecisePulse.update({0, 1, false, CombatController::kTrainingTargetId, true});
+  earlyPrecisePulse.enqueue({CombatAction::Dodge, 1});
+  earlyPrecisePulse.update({300, 1, false, CombatController::kTrainingTargetId, true});
+  assert(earlyPrecisePulse.snapshot().hasInsight);
+  assert(earlyPrecisePulse.snapshot().insightMs == 15000);
+  earlyPrecisePulse.update({799, 499, false, CombatController::kTrainingTargetId, true});
+  assert(!earlyPrecisePulse.snapshot().invulnerable);
+  earlyPrecisePulse.update({800, 1, false, CombatController::kTrainingTargetId, true});
+  assert(earlyPrecisePulse.snapshot().playerHp == fp(100));
+  earlyPrecisePulse.update({3800, 3000, false, CombatController::kTrainingTargetId, true});
+  assert(earlyPrecisePulse.snapshot().playerHp == fp(90));
 
   CombatController historicalPulse(CombatConfig::defaults());
   historicalPulse.update(

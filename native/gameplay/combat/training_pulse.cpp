@@ -1,7 +1,5 @@
 #include "training_pulse.h"
 
-#include <algorithm>
-#include <cstdlib>
 #include <limits>
 
 namespace { Tick advanceCursor(Tick value, Tick period) {
@@ -34,20 +32,26 @@ std::vector<PulseEvent> TrainingPulse::advance(Tick now) {
 }
 
 DodgeGrade TrainingPulse::classifyDodge(Tick tick) const {
-  if (tick < epochTick_) return DodgeGrade::Normal;
+  return preciseDodgeHitTick(tick) ? DodgeGrade::Precise : DodgeGrade::Normal;
+}
+
+std::optional<Tick> TrainingPulse::preciseDodgeHitTick(Tick tick) const {
+  if (tick < epochTick_) return std::nullopt;
   const __int128 elapsed = static_cast<__int128>(tick) - epochTick_;
   const __int128 firstHit = config_.trainingPulseWarningMs;
-  const __int128 window = config_.preciseDodgeWindowMs;
-  if (elapsed + window < firstHit) return DodgeGrade::Normal;
-
   const __int128 period = config_.trainingPulsePeriodMs;
-  const __int128 fromFirstHit = elapsed - firstHit;
-  if (fromFirstHit < 0) {
-    return -fromFirstHit <= window ? DodgeGrade::Precise : DodgeGrade::Normal;
+  __int128 hitOffset = firstHit;
+  if (elapsed >= firstHit) {
+    hitOffset += ((elapsed - firstHit) / period + 1) * period;
   }
-  const __int128 remainder = fromFirstHit % period;
-  const __int128 distance = std::min(remainder, period - remainder);
-  return distance <= window ? DodgeGrade::Precise : DodgeGrade::Normal;
+  const __int128 remaining = hitOffset - elapsed;
+  if (remaining < config_.preciseDodgeWindowMinMs ||
+      remaining > config_.preciseDodgeWindowMaxMs) {
+    return std::nullopt;
+  }
+  const __int128 hitTick = static_cast<__int128>(epochTick_) + hitOffset;
+  if (hitTick > std::numeric_limits<Tick>::max()) return std::nullopt;
+  return static_cast<Tick>(hitTick);
 }
 
 Tick TrainingPulse::warningRemainingMs(Tick now) const {

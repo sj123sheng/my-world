@@ -50,8 +50,10 @@ void CombatController::update(const CombatFrameInput& input) {
     } else {
       comboSegment_ = 0;
     }
-    if (request.action == CombatAction::Dodge &&
-        pulse_.classifyDodge(input.tick) == DodgeGrade::Precise) {
+    if (request.action == CombatAction::Dodge) {
+      const std::optional<Tick> preciseHit = pulse_.preciseDodgeHitTick(input.tick);
+      if (!preciseHit) continue;
+      preciseDodgedPulseTick_ = preciseHit;
       actions_.grantInsight(input.tick);
     }
   }
@@ -63,7 +65,9 @@ void CombatController::update(const CombatFrameInput& input) {
   for (const PulseEvent& pulseEvent : pulse_.advance(input.tick)) {
     pulsePhase_ = pulseEvent.kind;
     if (pulseEvent.kind != PulseEventKind::Hit) continue;
-    if (actions_.wasInvulnerableAt(pulseEvent.tick)) {
+    const bool preciselyDodged = preciseDodgedPulseTick_ == pulseEvent.tick;
+    if (preciselyDodged) preciseDodgedPulseTick_.reset();
+    if (preciselyDodged || actions_.wasInvulnerableAt(pulseEvent.tick)) {
       events_.gameplay.push_back({pulseEvent.tick, kPlayerId, kPlayerId,
                                   GameplayEventType::Dodge, 0, 0});
       events_.presentation.push_back({pulseEvent.tick, kPlayerId, kPlayerId,
@@ -195,6 +199,7 @@ void CombatController::reset() {
   currentTick_ = 0;
   currentReaction_ = -1;
   pulsePhase_ = PulseEventKind::None;
+  preciseDodgedPulseTick_.reset();
   lastAbility_ = 0;
   refreshSnapshot();
 }
@@ -211,6 +216,7 @@ void CombatController::resetTrainingEncounter() {
   lastRejectReason_ = ActionRejectReason::None;
   currentReaction_ = -1;
   pulsePhase_ = PulseEventKind::None;
+  preciseDodgedPulseTick_.reset();
   lastAbility_ = 0;
 }
 

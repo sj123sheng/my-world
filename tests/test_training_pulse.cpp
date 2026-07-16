@@ -12,10 +12,14 @@ int main() {
   const auto firstHit = pulse.advance(800);
   assert(firstHit.size() == 1);
   assert(firstHit[0].kind == PulseEventKind::Hit && firstHit[0].tick == 800);
+  assert(pulse.classifyDodge(299) == DodgeGrade::Normal);
+  assert(pulse.classifyDodge(300) == DodgeGrade::Precise);
   assert(pulse.classifyDodge(700) == DodgeGrade::Precise);
-  assert(pulse.classifyDodge(900) == DodgeGrade::Precise);
-  assert(pulse.classifyDodge(599) == DodgeGrade::Normal);
-  assert(pulse.classifyDodge(901) == DodgeGrade::Normal);
+  assert(pulse.classifyDodge(701) == DodgeGrade::Normal);
+  assert(pulse.classifyDodge(800) == DodgeGrade::Normal);
+  assert(pulse.classifyDodge(900) == DodgeGrade::Normal);
+  assert(pulse.preciseDodgeHitTick(300) == 800);
+  assert(!pulse.preciseDodgeHitTick(299));
 
   const auto nextWarning = pulse.advance(3000);
   assert(nextWarning.size() == 1);
@@ -54,10 +58,13 @@ int main() {
   TrainingPulse resetEpoch(CombatConfig::defaults());
   resetEpoch.resetAt(27800);
   assert(resetEpoch.classifyDodge(27800) == DodgeGrade::Normal);
-  assert(resetEpoch.classifyDodge(28499) == DodgeGrade::Normal);
+  assert(resetEpoch.classifyDodge(28099) == DodgeGrade::Normal);
+  assert(resetEpoch.classifyDodge(28100) == DodgeGrade::Precise);
   assert(resetEpoch.classifyDodge(28500) == DodgeGrade::Precise);
-  assert(resetEpoch.classifyDodge(28700) == DodgeGrade::Precise);
-  assert(resetEpoch.classifyDodge(28701) == DodgeGrade::Normal);
+  assert(resetEpoch.classifyDodge(28501) == DodgeGrade::Normal);
+  assert(resetEpoch.classifyDodge(28600) == DodgeGrade::Normal);
+  assert(resetEpoch.classifyDodge(28700) == DodgeGrade::Normal);
+  assert(resetEpoch.preciseDodgeHitTick(28100) == 28600);
   assert(resetEpoch.advance(27801).empty());
   assert(resetEpoch.advance(28599).empty());
   const auto epochHit = resetEpoch.advance(28600);

@@ -17,8 +17,9 @@ struct CombatConfig {
   FixedPoint staminaRecoveryPerSecond = fp(20);
   Tick dodgeDurationMs = 300;
   Tick dodgeInvulnerabilityMs = 200;
-  Tick preciseDodgeWindowMs = 100;
-  Tick insightDurationMs = 5000;
+  Tick preciseDodgeWindowMinMs = 100;
+  Tick preciseDodgeWindowMaxMs = 500;
+  Tick insightDurationMs = 15000;
   FixedPoint insightDamageMultiplier = fp(1.5);
 
   std::array<Tick, 3> sourceCooldownMs{3000, 4000, 5000};
@@ -67,14 +68,17 @@ struct CombatConfig {
     if (maxStamina <= 0 || dodgeCost < 0 || dodgeCost > maxStamina ||
         staminaRecoveryDelayMs < 0 || staminaRecoveryPerSecond <= 0 || dodgeDurationMs < 0 ||
         dodgeInvulnerabilityMs < 0 || dodgeInvulnerabilityMs > dodgeDurationMs ||
-        preciseDodgeWindowMs < 0 || insightDurationMs < 0 || insightDamageMultiplier < FP_ONE) {
+        preciseDodgeWindowMinMs < 0 ||
+        preciseDodgeWindowMaxMs < preciseDodgeWindowMinMs || insightDurationMs < 0 ||
+        insightDamageMultiplier < FP_ONE) {
       safe.maxStamina = fallback.maxStamina;
       safe.dodgeCost = fallback.dodgeCost;
       safe.staminaRecoveryDelayMs = fallback.staminaRecoveryDelayMs;
       safe.staminaRecoveryPerSecond = fallback.staminaRecoveryPerSecond;
       safe.dodgeDurationMs = fallback.dodgeDurationMs;
       safe.dodgeInvulnerabilityMs = fallback.dodgeInvulnerabilityMs;
-      safe.preciseDodgeWindowMs = fallback.preciseDodgeWindowMs;
+      safe.preciseDodgeWindowMinMs = fallback.preciseDodgeWindowMinMs;
+      safe.preciseDodgeWindowMaxMs = fallback.preciseDodgeWindowMaxMs;
       safe.insightDurationMs = fallback.insightDurationMs;
       safe.insightDamageMultiplier = fallback.insightDamageMultiplier;
     }
