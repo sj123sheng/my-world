@@ -54,14 +54,14 @@ std::optional<Tick> TrainingPulse::preciseDodgeHitTick(Tick tick) const {
   return static_cast<Tick>(hitTick);
 }
 
-Tick TrainingPulse::warningRemainingMs(Tick now) const {
-  Tick warning = nextWarningTick_;
-  if (warning <= now) {
-    const Tick elapsed = now - warning;
-    const Tick elapsedInPeriod = elapsed % config_.trainingPulsePeriodMs;
-    return config_.trainingPulsePeriodMs - elapsedInPeriod;
-  }
-  return warning - now;
+Tick TrainingPulse::hitRemainingMs(Tick now) const {
+  if (now < epochTick_) return config_.trainingPulseWarningMs;
+  const __int128 elapsed = static_cast<__int128>(now) - epochTick_;
+  const __int128 firstHit = config_.trainingPulseWarningMs;
+  if (elapsed < firstHit) return static_cast<Tick>(firstHit - elapsed);
+  const __int128 elapsedSinceHit = elapsed - firstHit;
+  const __int128 remainder = elapsedSinceHit % config_.trainingPulsePeriodMs;
+  return static_cast<Tick>(config_.trainingPulsePeriodMs - remainder);
 }
 
 PulseEventKind TrainingPulse::phase(Tick now) const {

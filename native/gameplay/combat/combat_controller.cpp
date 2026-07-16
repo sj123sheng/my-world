@@ -160,7 +160,7 @@ void CombatController::refreshSnapshot() {
   snapshot_.hasInsight = actions_.hasInsight();
   snapshot_.invulnerable = actions_.isInvulnerable();
   snapshot_.insightMs = actions_.insightRemainingMs();
-  snapshot_.pulseWarningMs = pulse_.warningRemainingMs(currentTick_);
+  snapshot_.pulseHitRemainingMs = pulse_.hitRemainingMs(currentTick_);
   snapshot_.lastRejectReason = lastRejectReason_;
   snapshot_.targetAlive = target_.alive();
   snapshot_.lastAcceptedSequence = lastAcceptedSequence_;

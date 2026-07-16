@@ -28,7 +28,7 @@ struct CombatSnapshot {
   bool hasInsight = false;
   bool invulnerable = false;
   Tick insightMs = 0;
-  Tick pulseWarningMs = 0;
+  Tick pulseHitRemainingMs = 0;
   ActionRejectReason lastRejectReason = ActionRejectReason::None;
   bool targetAlive = false;
   uint64_t lastAcceptedSequence = 0;

@@ -26,7 +26,7 @@ struct GameSnapshot {
   bool hasInsight = false;
   bool invulnerable = false;
   Tick insightMs = 0;
-  Tick pulseWarningMs = 0;
+  Tick pulseHitRemainingMs = 0;
   int32_t lastRejectReason = 0;
   uint8_t currentAction = 0;
   Tick comboWindowMs = 0;

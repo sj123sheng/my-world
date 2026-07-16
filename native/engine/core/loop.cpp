@@ -25,7 +25,7 @@ void ApplyCombatSnapshot(GameSnapshot& output, const CombatSnapshot& combat) {
   output.hasInsight = combat.hasInsight;
   output.invulnerable = combat.invulnerable;
   output.insightMs = combat.insightMs;
-  output.pulseWarningMs = combat.pulseWarningMs;
+  output.pulseHitRemainingMs = combat.pulseHitRemainingMs;
   output.lastRejectReason = static_cast<int32_t>(combat.lastRejectReason);
   output.currentAction = combat.currentAction;
   output.comboWindowMs = combat.comboWindowMs;

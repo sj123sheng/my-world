@@ -65,8 +65,10 @@ int main() {
 
   CombatController earlyPrecisePulse(CombatConfig::defaults());
   earlyPrecisePulse.update({0, 1, false, CombatController::kTrainingTargetId, true});
+  assert(earlyPrecisePulse.snapshot().pulseHitRemainingMs == 800);
   earlyPrecisePulse.enqueue({CombatAction::Dodge, 1});
   earlyPrecisePulse.update({300, 1, false, CombatController::kTrainingTargetId, true});
+  assert(earlyPrecisePulse.snapshot().pulseHitRemainingMs == 500);
   assert(earlyPrecisePulse.snapshot().hasInsight);
   assert(earlyPrecisePulse.snapshot().insightMs == 15000);
   earlyPrecisePulse.update({799, 499, false, CombatController::kTrainingTargetId, true});

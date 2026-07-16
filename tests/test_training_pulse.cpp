@@ -20,6 +20,11 @@ int main() {
   assert(pulse.classifyDodge(900) == DodgeGrade::Normal);
   assert(pulse.preciseDodgeHitTick(300) == 800);
   assert(!pulse.preciseDodgeHitTick(299));
+  assert(pulse.hitRemainingMs(299) == 501);
+  assert(pulse.hitRemainingMs(300) == 500);
+  assert(pulse.hitRemainingMs(700) == 100);
+  assert(pulse.hitRemainingMs(701) == 99);
+  assert(pulse.hitRemainingMs(800) == 3000);
 
   const auto nextWarning = pulse.advance(3000);
   assert(nextWarning.size() == 1);
@@ -50,8 +55,8 @@ int main() {
 
   TrainingPulse nearLimit(CombatConfig::defaults());
   const Tick maximum = std::numeric_limits<Tick>::max();
-  const Tick atMaximum = nearLimit.warningRemainingMs(maximum);
-  const Tick beforeMaximum = nearLimit.warningRemainingMs(maximum - 1);
+  const Tick atMaximum = nearLimit.hitRemainingMs(maximum);
+  const Tick beforeMaximum = nearLimit.hitRemainingMs(maximum - 1);
   assert(atMaximum >= 1 && atMaximum <= 3000);
   assert(beforeMaximum >= 1 && beforeMaximum <= 3000);
 
