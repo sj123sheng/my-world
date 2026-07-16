@@ -10,7 +10,7 @@ struct GamePage {
     moveX: 0, moveY: 0, cameraYaw: 0, cameraPitch: 0,
     targetDist: 0, targetId: 0, bossPhase: 0, rendererReady: true,
     stamina: 100, comboSegment: 0, invulnerable: false, insightMs: 0,
-    resonance: 0, targetHp: 300, targetPoise: 100, pulseWarningMs: 0,
+    resonance: 0, targetHp: 300, targetPoise: 100, pulseHitRemainingMs: 0,
     lastRejectReason: 0, currentAction: 0, comboWindowMs: 0,
     radianceCooldownMs: 0, currentCooldownMs: 0, corruptionCooldownMs: 0,
     ultimateWindowMs: 0, targetPoiseBroken: false, radianceAttached: false,
@@ -39,7 +39,7 @@ struct GamePage {
   @State resonance: number = 0;
   @State targetHp: number = 300;
   @State targetPoise: number = 100;
-  @State pulseWarningMs: number = 0;
+  @State pulseHitRemainingMs: number = 0;
   @State lastRejectReason: number = 0;
   @State currentAction: number = 0;
   @State comboWindowMs: number = 0;
@@ -90,7 +90,7 @@ struct GamePage {
         stamina: this.stamina, comboSegment: this.comboSegment,
         invulnerable: this.invulnerable, insightMs: this.insightMs,
         resonance: this.resonance, targetHp: this.targetHp,
-        targetPoise: this.targetPoise, pulseWarningMs: this.pulseWarningMs,
+        targetPoise: this.targetPoise, pulseHitRemainingMs: this.pulseHitRemainingMs,
         lastRejectReason: this.lastRejectReason, currentAction: this.currentAction,
         comboWindowMs: this.comboWindowMs, radianceCooldownMs: this.radianceCooldownMs,
         currentCooldownMs: this.currentCooldownMs, corruptionCooldownMs: this.corruptionCooldownMs,
@@ -132,7 +132,7 @@ struct GamePage {
         this.resonance = this.snapshot.resonance;
         this.targetHp = this.snapshot.targetHp;
         this.targetPoise = this.snapshot.targetPoise;
-        this.pulseWarningMs = this.snapshot.pulseWarningMs;
+        this.pulseHitRemainingMs = this.snapshot.pulseHitRemainingMs;
         this.lastRejectReason = this.snapshot.lastRejectReason;
         this.currentAction = this.snapshot.currentAction;
         this.comboWindowMs = this.snapshot.comboWindowMs;

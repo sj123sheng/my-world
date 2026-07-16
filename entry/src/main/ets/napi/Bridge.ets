@@ -30,7 +30,7 @@ export interface Snapshot {
   resonance: number;
   targetHp: number;
   targetPoise: number;
-  pulseWarningMs: number;
+  pulseHitRemainingMs: number;
   lastRejectReason: number;
   currentAction: number;
   comboWindowMs: number;

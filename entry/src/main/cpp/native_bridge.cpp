@@ -193,7 +193,7 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_value moveXVal, moveYVal, cameraYawVal, cameraPitchVal, distVal;
   napi_value targetIdVal, bossPhaseVal, rendererReadyVal;
   napi_value staminaVal, comboSegmentVal, invulnerableVal, insightMsVal;
-  napi_value resonanceVal, targetHpVal, targetPoiseVal, pulseWarningMsVal;
+  napi_value resonanceVal, targetHpVal, targetPoiseVal, pulseHitRemainingMsVal;
   napi_value lastRejectReasonVal;
   napi_create_int64(env, static_cast<int64_t>(snapshot.tick), &tickVal);
   napi_create_double(env, static_cast<double>(snapshot.hp) / FP_ONE, &hpVal);
@@ -217,7 +217,7 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_create_double(env, static_cast<double>(snapshot.resonance) / FP_ONE, &resonanceVal);
   napi_create_double(env, static_cast<double>(snapshot.targetHp) / FP_ONE, &targetHpVal);
   napi_create_double(env, static_cast<double>(snapshot.targetPoise) / FP_ONE, &targetPoiseVal);
-  napi_create_int64(env, snapshot.pulseWarningMs, &pulseWarningMsVal);
+  napi_create_int64(env, snapshot.pulseHitRemainingMs, &pulseHitRemainingMsVal);
   napi_create_int32(env, snapshot.lastRejectReason, &lastRejectReasonVal);
   napi_set_named_property(env, result, "tick", tickVal);
   napi_set_named_property(env, result, "hp", hpVal);
@@ -241,7 +241,7 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_set_named_property(env, result, "resonance", resonanceVal);
   napi_set_named_property(env, result, "targetHp", targetHpVal);
   napi_set_named_property(env, result, "targetPoise", targetPoiseVal);
-  napi_set_named_property(env, result, "pulseWarningMs", pulseWarningMsVal);
+  napi_set_named_property(env, result, "pulseHitRemainingMs", pulseHitRemainingMsVal);
   napi_set_named_property(env, result, "lastRejectReason", lastRejectReasonVal);
   napi_value extra[13];
   napi_create_int32(env, snapshot.currentAction, &extra[0]);

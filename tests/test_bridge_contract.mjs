@@ -4,6 +4,7 @@ import fs from 'node:fs';
 const bridge = fs.readFileSync('entry/src/main/ets/napi/Bridge.ets', 'utf8');
 const declarations = fs.readFileSync('entry/src/main/cpp/types/libnative_game/Index.d.ts', 'utf8');
 const page = fs.readFileSync('entry/src/main/ets/pages/GamePage.ets', 'utf8');
+const hud = fs.readFileSync('entry/src/main/ets/ui/Hud.ets', 'utf8');
 const ability = fs.readFileSync('entry/src/main/ets/EntryAbility.ets', 'utf8');
 const nativeBridge = fs.readFileSync('entry/src/main/cpp/native_bridge.cpp', 'utf8');
 const loop = fs.readFileSync('native/engine/core/loop.cpp', 'utf8');
@@ -20,9 +21,16 @@ assert.match(bridge, /export const pushAction/, 'Bridge must export pushAction')
 assert.doesNotMatch(page, /\.onTouch\s*\(/,
   'GamePage must not register an ArkTS touch producer');
 for (const field of ['stamina', 'comboSegment', 'invulnerable', 'insightMs',
-  'resonance', 'targetHp', 'targetPoise', 'pulseWarningMs', 'lastRejectReason']) {
+  'resonance', 'targetHp', 'targetPoise', 'pulseHitRemainingMs', 'lastRejectReason']) {
   assert.match(bridge, new RegExp(`\\b${field}\\b`), `Bridge Snapshot missing ${field}`);
 }
+for (const source of [bridge, declarations, page, nativeBridge, loop, hud]) {
+  assert.doesNotMatch(source, /\bpulseWarningMs\b/,
+    'production snapshot chain must not retain the misleading pulseWarningMs name');
+}
+assert.match(hud,
+  /pulseHitRemainingMs\s*>=\s*100\s*&&\s*this\.pulseHitRemainingMs\s*<=\s*500/,
+  'HUD must highlight exactly the closed 100..500ms precision window');
 
 assert.doesNotMatch(page, /\.onTouch\s*\(/,
   'GamePage must not register an ArkTS touch producer for a library-backed XComponent');

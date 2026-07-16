@@ -25,7 +25,7 @@ export const pullSnapshot: () => {
   resonance: number,
   targetHp: number,
   targetPoise: number,
-  pulseWarningMs: number,
+  pulseHitRemainingMs: number,
   lastRejectReason: number,
   currentAction: number,
   comboWindowMs: number,
