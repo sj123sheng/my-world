@@ -26,6 +26,10 @@ EnemyAbility validSampleAbility() {
 }  // namespace
 
 int main() {
+  static_assert(static_cast<unsigned>(EnemyArchetype::RiftClaw) == 0U);
+  static_assert(static_cast<unsigned>(EnemyArchetype::Priest) == 1U);
+  static_assert(static_cast<unsigned>(EnemyArchetype::Guard) == 2U);
+
   EnemyAiConfig config = EnemyAiConfig::defaults();
   assert(config.maxEnemies == 3);
   assert(config.abilities.empty());

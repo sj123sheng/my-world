@@ -62,6 +62,10 @@ add_library(native_game SHARED
     # gameplay AI contracts
     ${NATIVE_ROOT}/gameplay/ai/enemy_ai_types.h
     ${NATIVE_ROOT}/gameplay/ai/enemy_ai_config.h
+    ${NATIVE_ROOT}/gameplay/ai/perception_system.cpp
+    ${NATIVE_ROOT}/gameplay/ai/perception_system.h
+    ${NATIVE_ROOT}/gameplay/ai/decision_policy.cpp
+    ${NATIVE_ROOT}/gameplay/ai/decision_policy.h
 
     # gameplay player
     ${NATIVE_ROOT}/gameplay/player/character.cpp

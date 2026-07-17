@@ -9,17 +9,19 @@
 #include <string>
 
 enum class EnemyArchetype : uint8_t {
-  Melee,
-  Ranged,
-  Support,
+  RiftClaw,
+  Priest,
+  Guard,
 };
 
 enum class EnemyIntent : uint8_t {
   Idle,
-  Engage,
-  Reposition,
-  UseAbility,
-  Recover,
+  Chase,
+  Attack,
+  Retreat,
+  ReturnToArea,
+  BreakFree,
+  Support,
 };
 
 enum class EnemyAiState : uint8_t {
@@ -67,14 +69,39 @@ struct EnemyAbility {
   EnemyAbilityEffect effect = EnemyAbilityEffect::Damage;
 };
 
+struct AllyPerception {
+  EntityId id = 0;
+  EnemyArchetype archetype = EnemyArchetype::RiftClaw;
+  FixedPoint health = 0;
+  FixedPoint shield = 0;
+  Vec2 position;
+  float distanceToSelf = 0.0f;
+  bool alive = false;
+  bool insideRegion = false;
+};
+
 struct PerceptionSnapshot {
   Tick tick = 0;
   EntityId selfId = 0;
   Vec2 selfPosition;
-  std::optional<EntityId> targetId;
-  Vec2 targetPosition;
-  float targetDistance = 0.0f;
-  bool targetVisible = false;
+  bool selfAlive = true;
+  Vec2 playerPosition;
+  float playerDistance = 0.0f;
+  float playerAngleRadians = 0.0f;
+  float playerFacingAngleDeltaRadians = 0.0f;
+  bool playerVisible = false;
+  Tick lastPlayerVisibleTick = 0;
+  FixedPoint playerThreat = 0;
+  bool playerReachable = true;
+  bool selfInsideRegion = true;
+  bool playerInsideRegion = true;
+  Vec2 safeReturnPosition;
+  float distanceToSpawn = 0.0f;
+  bool recentlyHit = false;
+  FixedPoint poise = 0;
+  bool staggered = false;
+  EnemyActionPhase actionPhase = EnemyActionPhase::None;
+  std::vector<AllyPerception> allies;
 };
 
 struct EnemyActionPlan {
