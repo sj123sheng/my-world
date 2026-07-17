@@ -45,7 +45,9 @@ struct EnemyAiConfig {
     return ability.id != 0 && !ability.tag.empty() && ability.range > 0 &&
            ability.cooldownMs >= 0 && ability.windupMs >= 0 && ability.activeMs >= 0 &&
            ability.recoveryMs >= 0 && ability.weight > 0 && validCategory(ability.category) &&
-           validTargetPolicy(ability.targetPolicy) && validEffect(ability.effect);
+           validTargetPolicy(ability.targetPolicy) && validCategoryTargetPolicy(ability.category,
+                                                                                ability.targetPolicy) &&
+           validEffect(ability.effect);
   }
 
   static bool validTargetPolicy(EnemyTargetPolicy policy) {
@@ -65,6 +67,17 @@ struct EnemyAiConfig {
       case EnemyAbilityCategory::Attack:
       case EnemyAbilityCategory::Support:
         return true;
+    }
+    return false;
+  }
+
+  static bool validCategoryTargetPolicy(EnemyAbilityCategory category,
+                                        EnemyTargetPolicy targetPolicy) {
+    switch (category) {
+      case EnemyAbilityCategory::Support:
+        return targetPolicy == EnemyTargetPolicy::LowestShieldAlly;
+      case EnemyAbilityCategory::Attack:
+        return targetPolicy != EnemyTargetPolicy::LowestShieldAlly;
     }
     return false;
   }

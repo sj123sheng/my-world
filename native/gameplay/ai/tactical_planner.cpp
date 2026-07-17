@@ -35,7 +35,10 @@ std::optional<TargetChoice> chooseLowestShieldAlly(const EnemyAbility& ability,
   std::optional<TargetChoice> selected;
   FixedPoint selectedShield = 0;
   for (const AllyPerception& ally : facts.allies) {
-    if (!ally.alive || !ally.insideRegion || ally.shield > 0 || !ally.position.finite()) continue;
+    if (ally.id == 0 || ally.id == facts.selfId || !ally.alive || !ally.insideRegion ||
+        ally.shield > 0 || !ally.position.finite()) {
+      continue;
+    }
     const std::optional<FixedPoint> distance = fixedDistance(ally.distanceToSelf);
     if (!distance.has_value() || *distance > ability.range) continue;
 

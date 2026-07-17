@@ -114,6 +114,24 @@ int main() {
   assert(support.desiredPosition == (Vec2{0.5f, 0.0f}));
   assert(support.fallbackReason == EnemyPlanFallbackReason::None);
 
+  PerceptionSnapshot selfAndZero = facts();
+  selfAndZero.playerVisible = false;
+  selfAndZero.targetVisible = false;
+  selfAndZero.allies = {
+      {1, EnemyArchetype::Priest, fp(80), 0, {0.1f, 0.0f}, 0.1f, true, true},
+      {0, EnemyArchetype::RiftClaw, fp(80), 0, {0.2f, 0.0f}, 0.2f, true, true},
+      {8, EnemyArchetype::Guard, fp(80), 0, {0.3f, 0.0f}, 0.3f, true, true},
+  };
+  const EnemyActionPlan excludesSelfAndZero =
+      planner.plan(EnemyIntent::Support, selfAndZero, {supportAbility(99)});
+  assert(excludesSelfAndZero.targetId == 8);
+
+  selfAndZero.allies.pop_back();
+  const EnemyActionPlan onlySelfAndZero =
+      planner.plan(EnemyIntent::Support, selfAndZero, {supportAbility(99)});
+  assert(onlySelfAndZero.intent == EnemyIntent::Retreat);
+  assert(onlySelfAndZero.fallbackReason == EnemyPlanFallbackReason::NoLegalAbility);
+
   for (const AllyPerception& invalid : std::vector<AllyPerception>{
            snapshot.allies[2], snapshot.allies[3], snapshot.allies[4], snapshot.allies[5]}) {
     PerceptionSnapshot filtered = facts();

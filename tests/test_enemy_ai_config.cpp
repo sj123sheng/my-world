@@ -61,4 +61,22 @@ int main() {
   support.targetPolicy = EnemyTargetPolicy::LowestShieldAlly;
   supportConfig.abilities.push_back(support);
   assert(supportConfig.validated().has_value());
+
+  EnemyAiConfig incompatible = supportConfig;
+  incompatible.abilities[0].targetPolicy = EnemyTargetPolicy::Self;
+  assert(!incompatible.validated().has_value());
+  incompatible.abilities[0].targetPolicy = EnemyTargetPolicy::CurrentTarget;
+  assert(!incompatible.validated().has_value());
+  incompatible.abilities[0].targetPolicy = EnemyTargetPolicy::NearestHostile;
+  assert(!incompatible.validated().has_value());
+
+  incompatible = config;
+  incompatible.abilities[0].targetPolicy = EnemyTargetPolicy::LowestShieldAlly;
+  assert(!incompatible.validated().has_value());
+
+  EnemyAiConfig selfAttackConfig = EnemyAiConfig::defaults();
+  EnemyAbility selfAttack = validSampleAbility();
+  selfAttack.targetPolicy = EnemyTargetPolicy::Self;
+  selfAttackConfig.abilities.push_back(selfAttack);
+  assert(selfAttackConfig.validated().has_value());
 }
