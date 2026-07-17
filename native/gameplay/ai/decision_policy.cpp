@@ -1,5 +1,7 @@
 #include "decision_policy.h"
 
+#include <cmath>
+
 namespace {
 
 constexpr float kMeleeAttackDistance = 0.25f;
@@ -9,8 +11,9 @@ constexpr float kPriestSupportDistance = 4.0f;
 
 bool hasSupportTarget(const PerceptionSnapshot& facts) {
   for (const AllyPerception& ally : facts.allies) {
-    if (ally.alive && ally.insideRegion && ally.shield <= 0 &&
-        ally.distanceToSelf <= kPriestSupportDistance) {
+    if (ally.id != 0 && ally.id != facts.selfId && ally.alive && ally.insideRegion &&
+        ally.shield <= 0 && std::isfinite(ally.distanceToSelf) &&
+        ally.distanceToSelf >= 0.0f && ally.distanceToSelf <= kPriestSupportDistance) {
       return true;
     }
   }

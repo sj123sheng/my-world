@@ -19,11 +19,13 @@ struct EnemyAiConfig {
   std::size_t maxEnemies = 3;
   std::vector<EnemyAbility> abilities;
   CombatRegionConfig region;
+  Tick staggerRecoveryMs = 0;
 
   static EnemyAiConfig defaults() { return {}; }
 
   std::optional<EnemyAiConfig> validated() const {
-    if (maxEnemies == 0 || maxEnemies > kMaxEnemies || !validRegion(region)) {
+    if (maxEnemies == 0 || maxEnemies > kMaxEnemies || !validRegion(region) ||
+        staggerRecoveryMs < 0) {
       return std::nullopt;
     }
 
@@ -48,7 +50,7 @@ struct EnemyAiConfig {
            validTargetPolicy(ability.targetPolicy) && validCategoryTargetPolicy(ability.category,
                                                                                 ability.targetPolicy) &&
            validEffect(ability.effect) && validCancelPolicy(ability.cancelPolicy) &&
-           ability.interruptThreshold >= 0;
+           validTelegraph(ability.telegraph) && ability.interruptThreshold >= 0;
   }
 
   static bool validTargetPolicy(EnemyTargetPolicy policy) {
@@ -89,6 +91,7 @@ struct EnemyAiConfig {
       case EnemyAbilityEffect::AreaDamage:
       case EnemyAbilityEffect::Move:
       case EnemyAbilityEffect::Control:
+      case EnemyAbilityEffect::Shield:
         return true;
     }
     return false;
@@ -99,6 +102,15 @@ struct EnemyAiConfig {
       case EnemyAbilityCancelPolicy::Uninterruptible:
       case EnemyAbilityCancelPolicy::WindupOnly:
       case EnemyAbilityCancelPolicy::WindupAndActive:
+        return true;
+    }
+    return false;
+  }
+
+  static bool validTelegraph(EnemyAbilityTelegraph telegraph) {
+    switch (telegraph) {
+      case EnemyAbilityTelegraph::Neutral:
+      case EnemyAbilityTelegraph::WarningYellow:
         return true;
     }
     return false;

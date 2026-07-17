@@ -58,6 +58,14 @@ int main() {
   assert(!invalid.validated().has_value());
 
   invalid = config;
+  invalid.abilities[0].telegraph = static_cast<EnemyAbilityTelegraph>(99);
+  assert(!invalid.validated().has_value());
+
+  invalid = config;
+  invalid.staggerRecoveryMs = -1;
+  assert(!invalid.validated().has_value());
+
+  invalid = config;
   invalid.region.radius = 0.0f;
   assert(!invalid.validated().has_value());
 

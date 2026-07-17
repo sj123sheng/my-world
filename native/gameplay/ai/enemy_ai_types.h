@@ -60,6 +60,12 @@ enum class EnemyAbilityEffect : uint8_t {
   AreaDamage,
   Move,
   Control,
+  Shield,
+};
+
+enum class EnemyAbilityTelegraph : uint8_t {
+  Neutral,
+  WarningYellow,
 };
 
 enum class EnemyAbilityCancelPolicy : uint8_t {
@@ -82,6 +88,7 @@ struct EnemyAbility {
   EnemyAbilityCategory category = EnemyAbilityCategory::Attack;
   EnemyTargetPolicy targetPolicy = EnemyTargetPolicy::CurrentTarget;
   EnemyAbilityEffect effect = EnemyAbilityEffect::Damage;
+  EnemyAbilityTelegraph telegraph = EnemyAbilityTelegraph::Neutral;
   EnemyAbilityCancelPolicy cancelPolicy = EnemyAbilityCancelPolicy::Uninterruptible;
   FixedPoint interruptThreshold = 0;
 };

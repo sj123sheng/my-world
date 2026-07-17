@@ -241,6 +241,33 @@ EnemyActionPlan EnemyAgent::constrainedPlan(EnemyActionPlan plan, Vec2 selfPosit
   return plan;
 }
 
+void EnemyAgent::advanceCooldowns(int64_t dtMs) {
+  if (dtMs <= 0) return;
+  for (EnemyAbilityState& state : abilities_) {
+    if (state.cooldownRemainingMs <= 0) continue;
+    state.cooldownRemainingMs =
+        dtMs >= state.cooldownRemainingMs ? 0 : state.cooldownRemainingMs - dtMs;
+  }
+}
+
+void EnemyAgent::startCooldown(const EnemyAbility& ability) {
+  for (EnemyAbilityState& state : abilities_) {
+    if (state.ability.id == ability.id) {
+      state.cooldownRemainingMs = ability.cooldownMs;
+      return;
+    }
+  }
+}
+
+void EnemyAgent::clearCooldowns() {
+  for (EnemyAbilityState& state : abilities_) state.cooldownRemainingMs = 0;
+}
+
+void EnemyAgent::clearStaggerDeadline() {
+  staggerDeadlineSet_ = false;
+  staggerReleaseTick_ = 0;
+}
+
 EnemyUpdateResult EnemyAgent::update(const EnemyUpdateInput& input) {
   EnemyUpdateResult result;
   const EnemyWorldView world = stableWorldView(input.world);
@@ -250,6 +277,8 @@ EnemyUpdateResult EnemyAgent::update(const EnemyUpdateInput& input) {
     return result;
   }
 
+  advanceCooldowns(input.dtMs);
+
   PerceptionSnapshot facts = perception_.observe(world);
   facts.selfInsideRegion = region_.contains(world.selfPosition);
   facts.playerInsideRegion = region_.contains(world.playerPosition, tuning_.chaseTolerance);
@@ -258,6 +287,17 @@ EnemyUpdateResult EnemyAgent::update(const EnemyUpdateInput& input) {
   if (facts.staggered && !staggerLatched_) {
     executor_.interrupt(world.tick, 0, EnemyInterruptCause::PoiseBreak);
     staggerLatched_ = true;
+    if (config_.staggerRecoveryMs > 0) {
+      staggerDeadlineSet_ = true;
+      staggerReleaseTick_ = saturatingAdd(world.tick, config_.staggerRecoveryMs);
+    }
+  }
+  if (staggerLatched_ && !facts.staggered && staggerDeadlineSet_ &&
+      world.tick >= staggerReleaseTick_) {
+    executor_.reset();
+    staggerLatched_ = false;
+    clearStaggerDeadline();
+    lastPlan_.reset();
   }
 
   const bool arrivedAtSafePoint =
@@ -301,7 +341,8 @@ EnemyUpdateResult EnemyAgent::update(const EnemyUpdateInput& input) {
     executor_.cancel();
   }
   lastPlan_ = plan;
-  executor_.start(plan, world.tick);
+  const bool started = executor_.start(plan, world.tick);
+  if (started && plan.ability.has_value()) startCooldown(*plan.ability);
   EnemyExecutionContext executionContext = input.execution;
   executionContext.attacker = world.selfId;
   const EnemyExecutionResult execution =
@@ -329,6 +370,7 @@ void EnemyAgent::releaseStagger() {
   if (!staggerLatched_) return;
   executor_.reset();
   staggerLatched_ = false;
+  clearStaggerDeadline();
   lastPlan_.reset();
 }
 
@@ -336,6 +378,8 @@ void EnemyAgent::reset() {
   executor_.reset();
   perceptionMemory_.reset();
   lastPlan_.reset();
+  clearCooldowns();
   clearEscapeTracking();
   staggerLatched_ = false;
+  clearStaggerDeadline();
 }

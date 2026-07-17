@@ -74,6 +74,8 @@ add_library(native_game SHARED
     ${NATIVE_ROOT}/gameplay/ai/combat_region.h
     ${NATIVE_ROOT}/gameplay/ai/enemy_agent.cpp
     ${NATIVE_ROOT}/gameplay/ai/enemy_agent.h
+    ${NATIVE_ROOT}/gameplay/ai/enemy_archetypes.cpp
+    ${NATIVE_ROOT}/gameplay/ai/enemy_archetypes.h
 
     # gameplay player
     ${NATIVE_ROOT}/gameplay/player/character.cpp

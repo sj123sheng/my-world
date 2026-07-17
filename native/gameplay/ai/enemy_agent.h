@@ -68,6 +68,10 @@ class EnemyAgent {
   void clearEscapeTracking();
   EnemyActionPlan constrainedPlan(EnemyActionPlan plan, Vec2 selfPosition,
                                   Vec2 separation) const;
+  void advanceCooldowns(int64_t dtMs);
+  void startCooldown(const EnemyAbility& ability);
+  void clearCooldowns();
+  void clearStaggerDeadline();
 
   EnemyArchetype archetype_;
   EnemyAiConfig config_;
@@ -90,4 +94,6 @@ class EnemyAgent {
   std::size_t noProgressDecisions_ = 0;
   bool hasProgressSample_ = false;
   bool staggerLatched_ = false;
+  bool staggerDeadlineSet_ = false;
+  Tick staggerReleaseTick_ = 0;
 };
