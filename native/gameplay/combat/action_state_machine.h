@@ -21,19 +21,6 @@ struct ActionDecision {
   ActionRejectReason reason = ActionRejectReason::InvalidAction;
 };
 
-struct HitRequest {
-  EntityId attacker = 0;
-  EntityId target = 0;
-  AbilityId ability = 0;
-  std::optional<SourceType> source;
-  FixedPoint baseDamage = 0;
-  FixedPoint poiseDamage = 0;
-  Tick tick = 0;
-  uint64_t sequence = 0;
-  FixedPoint sourceAmount = FP_ONE;
-  uint64_t transactionId = 0;
-};
-
 class ActionStateMachine {
  public:
   explicit ActionStateMachine(CombatConfig config);

@@ -19,6 +19,8 @@ EnemyAbility validSampleAbility() {
   ability.activeMs = 10;
   ability.recoveryMs = 10;
   ability.weight = fp(1);
+  ability.cancelPolicy = EnemyAbilityCancelPolicy::WindupOnly;
+  ability.interruptThreshold = fp(5);
   ability.targetPolicy = EnemyTargetPolicy::CurrentTarget;
   ability.effect = EnemyAbilityEffect::Damage;
   return ability;
@@ -45,6 +47,14 @@ int main() {
 
   EnemyAiConfig invalid = config;
   invalid.abilities[0].windupMs = -1;
+  assert(!invalid.validated().has_value());
+
+  invalid = config;
+  invalid.abilities[0].cancelPolicy = static_cast<EnemyAbilityCancelPolicy>(99);
+  assert(!invalid.validated().has_value());
+
+  invalid = config;
+  invalid.abilities[0].interruptThreshold = -1;
   assert(!invalid.validated().has_value());
 
   invalid = config;

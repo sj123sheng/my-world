@@ -31,6 +31,7 @@ enum class EnemyAiState : uint8_t {
   Moving,
   Acting,
   Recovering,
+  Staggered,
   Defeated,
 };
 
@@ -61,6 +62,12 @@ enum class EnemyAbilityEffect : uint8_t {
   Control,
 };
 
+enum class EnemyAbilityCancelPolicy : uint8_t {
+  Uninterruptible,
+  WindupOnly,
+  WindupAndActive,
+};
+
 using EnemyAbilityId = uint32_t;
 
 struct EnemyAbility {
@@ -75,6 +82,8 @@ struct EnemyAbility {
   EnemyAbilityCategory category = EnemyAbilityCategory::Attack;
   EnemyTargetPolicy targetPolicy = EnemyTargetPolicy::CurrentTarget;
   EnemyAbilityEffect effect = EnemyAbilityEffect::Damage;
+  EnemyAbilityCancelPolicy cancelPolicy = EnemyAbilityCancelPolicy::Uninterruptible;
+  FixedPoint interruptThreshold = 0;
 };
 
 struct EnemyAbilityState {
@@ -134,7 +143,7 @@ struct EnemyActionPlan {
   EnemyIntent intent = EnemyIntent::Idle;
   EnemyAiState state = EnemyAiState::Idle;
   EnemyActionPhase phase = EnemyActionPhase::None;
-  std::optional<EnemyAbilityId> abilityId;
+  std::optional<EnemyAbility> ability;
   std::optional<EntityId> targetId;
   std::optional<Vec2> desiredPosition;
   EnemyPlanFallbackReason fallbackReason = EnemyPlanFallbackReason::None;

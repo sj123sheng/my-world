@@ -47,7 +47,8 @@ struct EnemyAiConfig {
            ability.recoveryMs >= 0 && ability.weight > 0 && validCategory(ability.category) &&
            validTargetPolicy(ability.targetPolicy) && validCategoryTargetPolicy(ability.category,
                                                                                 ability.targetPolicy) &&
-           validEffect(ability.effect);
+           validEffect(ability.effect) && validCancelPolicy(ability.cancelPolicy) &&
+           ability.interruptThreshold >= 0;
   }
 
   static bool validTargetPolicy(EnemyTargetPolicy policy) {
@@ -88,6 +89,16 @@ struct EnemyAiConfig {
       case EnemyAbilityEffect::AreaDamage:
       case EnemyAbilityEffect::Move:
       case EnemyAbilityEffect::Control:
+        return true;
+    }
+    return false;
+  }
+
+  static bool validCancelPolicy(EnemyAbilityCancelPolicy policy) {
+    switch (policy) {
+      case EnemyAbilityCancelPolicy::Uninterruptible:
+      case EnemyAbilityCancelPolicy::WindupOnly:
+      case EnemyAbilityCancelPolicy::WindupAndActive:
         return true;
     }
     return false;

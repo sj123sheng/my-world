@@ -190,7 +190,7 @@ EnemyActionPlan TacticalPlanner::plan(EnemyIntent intent, const PerceptionSnapsh
   plan.createdAt = facts.tick;
   plan.intent = intent;
   plan.state = EnemyAiState::Acting;
-  plan.abilityId = selectedAbility->id;
+  plan.ability = *selectedAbility;
   plan.targetId = selectedTarget->id;
   plan.desiredPosition = selectedTarget->position;
   plan.movement = selectedTarget->position - facts.selfPosition;

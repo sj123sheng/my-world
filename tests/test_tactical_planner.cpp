@@ -43,9 +43,26 @@ PerceptionSnapshot facts() {
 }
 
 bool samePlan(const EnemyActionPlan& left, const EnemyActionPlan& right) {
+  const auto sameAbility = [](const std::optional<EnemyAbility>& leftAbility,
+                              const std::optional<EnemyAbility>& rightAbility) {
+    if (leftAbility.has_value() != rightAbility.has_value()) return false;
+    if (!leftAbility.has_value()) return true;
+    return leftAbility->id == rightAbility->id && leftAbility->tag == rightAbility->tag &&
+           leftAbility->range == rightAbility->range &&
+           leftAbility->cooldownMs == rightAbility->cooldownMs &&
+           leftAbility->windupMs == rightAbility->windupMs &&
+           leftAbility->activeMs == rightAbility->activeMs &&
+           leftAbility->recoveryMs == rightAbility->recoveryMs &&
+           leftAbility->weight == rightAbility->weight &&
+           leftAbility->category == rightAbility->category &&
+           leftAbility->targetPolicy == rightAbility->targetPolicy &&
+           leftAbility->effect == rightAbility->effect &&
+           leftAbility->cancelPolicy == rightAbility->cancelPolicy &&
+           leftAbility->interruptThreshold == rightAbility->interruptThreshold;
+  };
   return left.createdAt == right.createdAt && left.intent == right.intent &&
          left.state == right.state && left.phase == right.phase &&
-         left.abilityId == right.abilityId && left.targetId == right.targetId &&
+         sameAbility(left.ability, right.ability) && left.targetId == right.targetId &&
          left.desiredPosition == right.desiredPosition &&
          left.fallbackReason == right.fallbackReason && left.movement == right.movement;
 }
@@ -63,7 +80,7 @@ int main() {
   const EnemyActionPlan first =
       planner.plan(EnemyIntent::Attack, snapshot, equalWeightAttacks);
   assert(first.intent == EnemyIntent::Attack);
-  assert(first.abilityId == 10);
+  assert(first.ability.has_value() && first.ability->id == 10);
   assert(first.targetId == 7);
   assert(first.desiredPosition == snapshot.targetPosition);
   assert(first.fallbackReason == EnemyPlanFallbackReason::None);
@@ -75,21 +92,21 @@ int main() {
   const EnemyActionPlan second =
       planner.plan(EnemyIntent::Attack, snapshot, firstOnCooldown);
   assert(second.intent == EnemyIntent::Attack);
-  assert(second.abilityId == 20);
+  assert(second.ability.has_value() && second.ability->id == 20);
 
   const EnemyActionPlan higherWeight = planner.plan(
       EnemyIntent::Attack, snapshot,
       {attackAbility(10, fp(1.0)), attackAbility(20, fp(2.0))});
-  assert(higherWeight.abilityId == 20);
+  assert(higherWeight.ability.has_value() && higherWeight.ability->id == 20);
 
   const EnemyActionPlan closerRange = planner.plan(
       EnemyIntent::Attack, snapshot,
       {attackAbility(10, fp(1.0), fp(2.0)), attackAbility(20, fp(1.0), fp(1.25))});
-  assert(closerRange.abilityId == 20);
+  assert(closerRange.ability.has_value() && closerRange.ability->id == 20);
 
   const EnemyActionPlan noAttack = planner.plan(EnemyIntent::Attack, snapshot, {});
   assert(noAttack.intent == EnemyIntent::Chase);
-  assert(!noAttack.abilityId.has_value());
+  assert(!noAttack.ability.has_value());
   assert(noAttack.fallbackReason == EnemyPlanFallbackReason::NoLegalAbility);
 
   const EnemyActionPlan noSupport = planner.plan(EnemyIntent::Support, snapshot, {});
@@ -109,7 +126,7 @@ int main() {
   const EnemyActionPlan support =
       planner.plan(EnemyIntent::Support, snapshot, {supportAbility(99)});
   assert(support.intent == EnemyIntent::Support);
-  assert(support.abilityId == 99);
+  assert(support.ability.has_value() && support.ability->id == 99);
   assert(support.targetId == 10);
   assert(support.desiredPosition == (Vec2{0.5f, 0.0f}));
   assert(support.fallbackReason == EnemyPlanFallbackReason::None);
@@ -174,7 +191,7 @@ int main() {
   const EnemyActionPlan outside =
       planner.plan(EnemyIntent::Attack, snapshot, equalWeightAttacks);
   assert(outside.intent == EnemyIntent::ReturnToArea);
-  assert(!outside.abilityId.has_value());
+  assert(!outside.ability.has_value());
   assert(outside.desiredPosition == snapshot.safeReturnPosition);
   assert(outside.fallbackReason == EnemyPlanFallbackReason::OutsideRegion);
 

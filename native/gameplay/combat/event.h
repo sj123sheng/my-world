@@ -1,5 +1,6 @@
 #pragma once
 #include "engine/core/tick_clock.h"
+#include <optional>
 #include <vector>
 enum class SourceType { Radiance, Current, Corruption };
 enum class ResonanceType { Refraction, Stasis, Collapse, Burst }; // 折光/凝滞/崩解/共鸣爆发
@@ -11,6 +12,19 @@ struct HitEvent { EntityId attacker, target; AbilityId ability; SourceType sourc
   bool operator==(const HitEvent& o) const { return attacker==o.attacker && target==o.target
     && ability==o.ability && source==o.source && sourceAmount==o.sourceAmount
     && baseDamage==o.baseDamage && tick==o.tick && sequence==o.sequence; } };
+
+struct HitRequest {
+  EntityId attacker = 0;
+  EntityId target = 0;
+  AbilityId ability = 0;
+  std::optional<SourceType> source;
+  FixedPoint baseDamage = 0;
+  FixedPoint poiseDamage = 0;
+  Tick tick = 0;
+  uint64_t sequence = 0;
+  FixedPoint sourceAmount = FP_ONE;
+  uint64_t transactionId = 0;
+};
 
 enum class GameplayEventType : uint8_t {
   Hit,

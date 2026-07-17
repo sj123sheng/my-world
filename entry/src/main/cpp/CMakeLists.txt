@@ -68,6 +68,8 @@ add_library(native_game SHARED
     ${NATIVE_ROOT}/gameplay/ai/decision_policy.h
     ${NATIVE_ROOT}/gameplay/ai/tactical_planner.cpp
     ${NATIVE_ROOT}/gameplay/ai/tactical_planner.h
+    ${NATIVE_ROOT}/gameplay/ai/action_executor.cpp
+    ${NATIVE_ROOT}/gameplay/ai/action_executor.h
 
     # gameplay player
     ${NATIVE_ROOT}/gameplay/player/character.cpp
