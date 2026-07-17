@@ -31,18 +31,25 @@ EnemyWorldView EnemyWorldView::testDefaults() {
 
 PerceptionSnapshot PerceptionSystem::observe(const EnemyWorldView& world) const {
   const Vec2 playerOffset = world.playerPosition - world.selfPosition;
+  const float playerDistance = playerOffset.length();
+  const bool playerVisible = world.playerVisible;
   PerceptionSnapshot snapshot;
   snapshot.tick = world.tick;
   snapshot.selfId = world.selfId;
   snapshot.selfPosition = world.selfPosition;
   snapshot.selfAlive = world.selfAlive;
   snapshot.playerPosition = world.playerPosition;
-  snapshot.playerDistance = playerOffset.length();
+  snapshot.playerDistance = playerDistance;
+  snapshot.targetId = world.playerId == 0 ? std::nullopt
+                                          : std::optional<EntityId>{world.playerId};
+  snapshot.targetPosition = world.playerPosition;
+  snapshot.targetDistance = playerDistance;
+  snapshot.targetVisible = playerVisible;
   snapshot.playerAngleRadians = angleOf(playerOffset);
   snapshot.playerFacingAngleDeltaRadians =
       normalizedAngle(snapshot.playerAngleRadians - angleOf(world.selfFacing));
-  snapshot.playerVisible = world.playerVisible;
-  snapshot.lastPlayerVisibleTick = world.playerVisible ? world.tick : world.lastPlayerVisibleTick;
+  snapshot.playerVisible = playerVisible;
+  snapshot.lastPlayerVisibleTick = playerVisible ? world.tick : world.lastPlayerVisibleTick;
   snapshot.playerThreat = world.playerThreat;
   snapshot.playerReachable = world.playerReachable;
   snapshot.selfInsideRegion = insideRegion(world.selfPosition, world.region);

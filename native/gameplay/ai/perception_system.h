@@ -23,6 +23,7 @@ struct EnemyWorldView {
   Vec2 spawnPosition;
   Vec2 safeReturnPosition;
   CombatRegionConfig region;
+  EntityId playerId = 1;
   Vec2 playerPosition;
   bool playerVisible = true;
   Tick lastPlayerVisibleTick = 0;

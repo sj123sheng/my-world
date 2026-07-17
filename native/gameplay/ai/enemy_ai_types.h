@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 enum class EnemyArchetype : uint8_t {
   RiftClaw,
@@ -87,6 +88,10 @@ struct PerceptionSnapshot {
   bool selfAlive = true;
   Vec2 playerPosition;
   float playerDistance = 0.0f;
+  std::optional<EntityId> targetId;
+  Vec2 targetPosition;
+  float targetDistance = 0.0f;
+  bool targetVisible = false;
   float playerAngleRadians = 0.0f;
   float playerFacingAngleDeltaRadians = 0.0f;
   bool playerVisible = false;

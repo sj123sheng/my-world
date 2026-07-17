@@ -26,12 +26,21 @@ int main() {
   facts.selfAlive = false;
   assert(policy.choose(facts, EnemyArchetype::RiftClaw) == EnemyIntent::Idle);
 
+  facts.selfInsideRegion = false;
+  assert(policy.choose(facts, EnemyArchetype::RiftClaw) == EnemyIntent::Idle);
+
   facts = observeDefaults();
   facts.selfInsideRegion = false;
   assert(policy.choose(facts, EnemyArchetype::RiftClaw) == EnemyIntent::ReturnToArea);
 
+  facts.playerReachable = false;
+  assert(policy.choose(facts, EnemyArchetype::RiftClaw) == EnemyIntent::ReturnToArea);
+
   facts = observeDefaults();
   facts.playerReachable = false;
+  assert(policy.choose(facts, EnemyArchetype::Guard) == EnemyIntent::BreakFree);
+
+  facts.staggered = true;
   assert(policy.choose(facts, EnemyArchetype::Guard) == EnemyIntent::BreakFree);
 
   facts = observeDefaults();
@@ -47,6 +56,10 @@ int main() {
   };
   assert(policy.choose(facts, EnemyArchetype::Priest) == EnemyIntent::Support);
 
+  facts.staggered = true;
+  assert(policy.choose(facts, EnemyArchetype::Priest) == EnemyIntent::Idle);
+  facts.staggered = false;
+
   facts.allies[0].shield = fp(10);
   facts.allies[1].shield = fp(10);
   facts.playerDistance = 0.5f;
@@ -57,4 +70,9 @@ int main() {
 
   facts.playerDistance = 5.0f;
   assert(policy.choose(facts, EnemyArchetype::Guard) == EnemyIntent::Chase);
+
+  const EnemyIntent expected = policy.choose(facts, EnemyArchetype::Guard);
+  for (int iteration = 0; iteration < 100; ++iteration) {
+    assert(policy.choose(facts, EnemyArchetype::Guard) == expected);
+  }
 }
