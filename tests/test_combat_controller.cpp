@@ -49,6 +49,20 @@ int main() {
   ordered.update({16, 16, true, CombatController::kTrainingTargetId, true});
   assert(ordered.snapshot().comboSegment == 0);
 
+  CombatController timeoutCombo(CombatConfig::defaults());
+  timeoutCombo.enqueue({CombatAction::Attack, 1});
+  timeoutCombo.update({0, 160, false,
+                       CombatController::kTrainingTargetId, true});
+  assert(timeoutCombo.snapshot().comboSegment == 1);
+  timeoutCombo.update({641, 481, false,
+                       CombatController::kTrainingTargetId, true});
+  assert(timeoutCombo.snapshot().comboSegment == 0);
+  timeoutCombo.enqueue({CombatAction::Attack, 2});
+  timeoutCombo.update({641, 160, false,
+                       CombatController::kTrainingTargetId, true});
+  assert(timeoutCombo.snapshot().comboSegment == 1);
+  assert(timeoutCombo.snapshot().targetHp == fp(284));
+
   CombatController invalidTarget(CombatConfig::defaults());
   invalidTarget.enqueue({CombatAction::Attack, 1});
   invalidTarget.update({0, 16, false, 999, true});

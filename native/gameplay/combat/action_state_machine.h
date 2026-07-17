@@ -56,6 +56,7 @@ class ActionStateMachine {
   }
   bool canUltimate(Tick tick) { return resources_.canUltimate(tick); }
   ActionState state() const;
+  uint8_t comboSegment() const { return comboIndex_; }
   Tick comboWindowRemainingMs() const;
   Tick sourceCooldownRemainingMs(SourceType source) const {
     return resources_.sourceCooldownRemainingMs(source);

@@ -85,7 +85,6 @@ class CombatController {
   CombatEventBatch events_;
   FixedPoint playerHp_ = 0;
   FixedPoint playerPoise_ = 0;
-  uint8_t comboSegment_ = 0;
   uint64_t lastAcceptedSequence_ = 0;
   ActionRejectReason lastRejectReason_ = ActionRejectReason::None;
   Tick currentTick_ = 0;

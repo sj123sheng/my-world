@@ -202,15 +202,17 @@ my-world/
   SDK 内 `usr/include/c++/v1`、`-I. -Inative` 编译并运行通过；Node 桥接契约 1/1 通过，
   `git diff --check` 通过。
 - 生产构建：指定 `DEVECO_SDK_HOME=/Applications/DevEco-Studio.app/Contents/sdk` 的
-  Hvigor `assembleHap` 返回 `BUILD SUCCESSFUL`；signed HAP 为
-  `entry/build/default/outputs/default/entry-default-signed.hap`（4,081,455 bytes，
-  SHA-256 `8f91fe68540c33a99483fd76d5b3fef1f23a78daf8724a7e4665377c26c6db7f`）。
+  Hvigor `assembleHap` 返回 `BUILD SUCCESSFUL`；最新 signed HAP 为
+  `entry/build/default/outputs/default/entry-default-signed.hap`（4,067,839 bytes，
+  SHA-256 `050a144b4d032925161eafffe4336befaecd1fff89a278cef11c551a6962c9f8`）。
   构建前后 `build-profile.json5` SHA-256 均为
   `b1dfc54516dff5408c530d16745175c956df9415d3bb1ce6bd39ee6b06788390`。
-- 真机验收：未完成。目标设备 `2MN0224C12000754` 首次探测为 `USB Offline`，重启 hdc
-  后目标列表为空，无法确认设备连接、解锁，亦无法安装 HAP、定位按钮、采集 UITest dump、
-  截图或 HUD 数值。因此阶段 3 的九项真机出口均保持未验收，包括移动/相机/战斗并发回归；
-  自动化通过不替代真机证据。
+- 真机验收：设备 `2MN0224C12000754` 恢复在线后完成 signed HAP 安装、启动、UITest
+  输入、布局 dump 和截图采证。精准闪避保持 `HP 100` 并获得接近 `15000ms` 洞察；三种
+  反应、三源共鸣、终结技、破韧、死亡复位、三指移动/相机/闪避并发及停止重启清理均通过。
+  普攻诊断快照改为直接读取动作状态机的唯一连击状态后，真机即时截图确认四段显示
+  `连击 4`，超时后的第二击显示 `连击 1`；移动和受击重置也保持第一段伤害。阶段 3 的
+  九项真机出口至此全部通过。
 
 ### 阶段 2 自动化与构建状态
 

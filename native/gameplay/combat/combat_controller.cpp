@@ -45,11 +45,6 @@ void CombatController::update(const CombatFrameInput& input) {
       continue;
     }
     lastAcceptedSequence_ = request.sequence;
-    if (request.action == CombatAction::Attack) {
-      comboSegment_ = static_cast<uint8_t>(comboSegment_ % 4 + 1);
-    } else {
-      comboSegment_ = 0;
-    }
     if (request.action == CombatAction::Dodge) {
       const std::optional<Tick> preciseHit = pulse_.preciseDodgeHitTick(input.tick);
       if (!preciseHit) continue;
@@ -59,7 +54,6 @@ void CombatController::update(const CombatFrameInput& input) {
   }
   pendingActions_.clear();
 
-  if (input.moving) comboSegment_ = 0;
   const std::optional<HitRequest> hit = actions_.update(input.tick, input.dtMs, context);
   bool encounterReset = false;
   for (const PulseEvent& pulseEvent : pulse_.advance(input.tick)) {
@@ -76,7 +70,6 @@ void CombatController::update(const CombatFrameInput& input) {
     }
     const FixedPoint applied = std::min(playerHp_, config_.trainingPulseDamage);
     playerHp_ -= applied;
-    comboSegment_ = 0;
     actions_.resetCombo();
     events_.gameplay.push_back({pulseEvent.tick, kTrainingTargetId, kPlayerId,
                                 GameplayEventType::Damage, applied, 0});
@@ -150,7 +143,7 @@ void CombatController::emitDamageEvents(const HitRequest& hit,
 }
 
 void CombatController::refreshSnapshot() {
-  snapshot_.comboSegment = comboSegment_;
+  snapshot_.comboSegment = actions_.comboSegment();
   snapshot_.playerHp = playerHp_;
   snapshot_.playerPoise = playerPoise_;
   snapshot_.targetHp = target_.hp();
@@ -193,7 +186,6 @@ void CombatController::reset() {
   events_ = {};
   playerHp_ = config_.trainingPlayerHp;
   playerPoise_ = config_.trainingPlayerPoise;
-  comboSegment_ = 0;
   lastAcceptedSequence_ = 0;
   lastRejectReason_ = ActionRejectReason::None;
   currentTick_ = 0;
@@ -211,7 +203,6 @@ void CombatController::resetTrainingEncounter() {
   pendingActions_.clear();
   playerHp_ = config_.trainingPlayerHp;
   playerPoise_ = config_.trainingPlayerPoise;
-  comboSegment_ = 0;
   lastAcceptedSequence_ = 0;
   lastRejectReason_ = ActionRejectReason::None;
   currentReaction_ = -1;
