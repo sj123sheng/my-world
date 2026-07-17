@@ -13,6 +13,7 @@ include_directories(
     ${NATIVE_ROOT}/engine/render
     ${NATIVE_ROOT}/engine/resource
     ${NATIVE_ROOT}/gameplay/combat
+    ${NATIVE_ROOT}/gameplay/ai
     ${NATIVE_ROOT}/gameplay/entities
     ${NATIVE_ROOT}/gameplay/growth
     ${NATIVE_ROOT}/gameplay/player
@@ -57,6 +58,10 @@ add_library(native_game SHARED
     ${NATIVE_ROOT}/gameplay/combat/damage_resolver.cpp
     ${NATIVE_ROOT}/gameplay/combat/source_reaction_system.cpp
     ${NATIVE_ROOT}/gameplay/combat/combat_controller.cpp
+
+    # gameplay AI contracts
+    ${NATIVE_ROOT}/gameplay/ai/enemy_ai_types.h
+    ${NATIVE_ROOT}/gameplay/ai/enemy_ai_config.h
 
     # gameplay player
     ${NATIVE_ROOT}/gameplay/player/character.cpp
