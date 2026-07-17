@@ -34,6 +34,7 @@ class ActionExecutor {
   bool start(const EnemyActionPlan& plan, Tick tick);
   EnemyExecutionResult update(Tick tick, int64_t dtMs,
                               const EnemyExecutionContext& context);
+  bool cancel();
   bool interrupt(Tick tick, FixedPoint poiseDamage,
                  EnemyInterruptCause cause = EnemyInterruptCause::PoiseDamage);
   void reset();

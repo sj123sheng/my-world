@@ -1,8 +1,10 @@
 #include "gameplay/ai/enemy_agent.h"
+#include "gameplay/entities/enemy.h"
 
 #include <algorithm>
 #include <cassert>
 #include <limits>
+#include <vector>
 
 namespace {
 
@@ -54,6 +56,19 @@ EnemyAgentTuning fastTuning() {
   tuning.safePointTolerance = 0.1f;
   tuning.separationDistance = 1.0f;
   return tuning;
+}
+
+void testEnemyTakeHitKeepsLegacyArithmetic() {
+  Enemy enemy;
+  enemy.id = 10;
+  enemy.hp = fp(1);
+  enemy.poise = fp(1);
+  const HitEvent hit = {7, 10, 17, SourceType::Radiance, FP_ONE, fp(2), 0, 1};
+
+  enemy.takeHit(hit);
+
+  assert(enemy.hp == -fp(1));
+  assert(enemy.poise == -fp(1));
 }
 
 void testChaseToleranceAndProjection() {
@@ -137,6 +152,28 @@ void testStableSortedWorldViewProducesStableSeparation() {
   assert(firstResult.separation.finite());
 }
 
+void testDuplicateAllyIdsAreRemovedAsAWholeDeterministically() {
+  EnemyUpdateInput firstInput = inputDefaults();
+  firstInput.world.playerVisible = false;
+  firstInput.world.allies = {
+      {20, EnemyArchetype::Guard, fp(10), 0, {0.0f, 0.0f}, true, true},
+      {30, EnemyArchetype::Guard, fp(10), 0, {0.0f, 0.0f}, true, true},
+      {20, EnemyArchetype::Guard, fp(20), 0, {0.5f, 0.0f}, true, true},
+  };
+  EnemyUpdateInput secondInput = firstInput;
+  std::reverse(secondInput.world.allies.begin(), secondInput.world.allies.end());
+
+  EnemyAgent first(EnemyArchetype::Guard, configWithRegion(), fastTuning());
+  EnemyAgent second(EnemyArchetype::Guard, configWithRegion(), fastTuning());
+  const EnemyUpdateResult firstResult = first.update(firstInput);
+  const EnemyUpdateResult secondResult = second.update(secondInput);
+  const Vec2 onlyUnique =
+      stableSeparation(10, {0.0f, 0.0f}, 30, {0.0f, 0.0f}, 1.0f);
+  assert(firstResult.separation == onlyUnique);
+  assert(secondResult.separation == onlyUnique);
+  assert(firstResult.movement == secondResult.movement);
+}
+
 void testDeathStopsIntentHitAndTargetCandidate() {
   EnemyAiConfig config = configWithRegion();
   config.abilities = {attackAbility(100)};
@@ -166,6 +203,31 @@ void testDeathStopsIntentHitAndTargetCandidate() {
   input.world.playerVisible = false;
   const EnemyUpdateResult revived = agent.update(input);
   assert(!revived.hit.has_value());
+}
+
+void testLeavingChaseToleranceCancelsPendingAttack() {
+  EnemyAiConfig config = configWithRegion();
+  config.abilities = {attackAbility(200)};
+  EnemyAgent agent(EnemyArchetype::RiftClaw, config, fastTuning());
+  EnemyUpdateInput input = inputDefaults();
+  input.world.playerPosition = {0.1f, 0.0f};
+
+  input.world.tick = 0;
+  const EnemyUpdateResult windingUp = agent.update(input);
+  assert(windingUp.intent == EnemyIntent::Attack);
+  assert(windingUp.phase == EnemyActionPhase::Windup);
+  assert(!windingUp.hit.has_value());
+
+  input.world.tick = 100;
+  input.world.playerPosition = {5.6f, 0.0f};
+  const EnemyUpdateResult returning = agent.update(input);
+  assert(returning.intent == EnemyIntent::ReturnToArea);
+  assert(!returning.hit.has_value());
+
+  input.world.tick = 250;
+  const EnemyUpdateResult afterOriginalHitTick = agent.update(input);
+  assert(afterOriginalHitTick.intent == EnemyIntent::ReturnToArea);
+  assert(!afterOriginalHitTick.hit.has_value());
 }
 
 void testStaggerRemainsLatchedUntilExplicitRelease() {
@@ -212,6 +274,36 @@ void testStaggerSuppressesAnExistingEscapeIntent() {
   assert(!staggered.hit.has_value());
 }
 
+void testSafePointArrivalDoesNotReleaseStagger() {
+  EnemyAgent agent(EnemyArchetype::Guard, configWithRegion(), fastTuning());
+  EnemyUpdateInput input = inputDefaults();
+  for (const Tick tick : {0, 100, 200, 300}) {
+    input.world.tick = tick;
+    agent.update(input);
+  }
+  assert(agent.escapeState() == EnemyEscapeState::ReturningToSafePoint);
+
+  input.world.tick = 400;
+  input.world.selfPosition = input.world.safeReturnPosition;
+  input.world.staggered = true;
+  const EnemyUpdateResult arrivedStaggered = agent.update(input);
+  assert(arrivedStaggered.escapeState == EnemyEscapeState::None);
+  assert(arrivedStaggered.intent == EnemyIntent::Idle);
+  assert(arrivedStaggered.state == EnemyAiState::Staggered);
+  assert(!arrivedStaggered.hit.has_value());
+
+  input.world.tick = 500;
+  input.world.staggered = false;
+  const EnemyUpdateResult stillStaggered = agent.update(input);
+  assert(stillStaggered.intent == EnemyIntent::Idle);
+  assert(stillStaggered.state == EnemyAiState::Staggered);
+  assert(!stillStaggered.hit.has_value());
+
+  agent.releaseStagger();
+  input.world.tick = 600;
+  assert(agent.update(input).state != EnemyAiState::Staggered);
+}
+
 void testMaximumTickCannotCountTheSameDecisionMoreThanOnce() {
   EnemyAgent agent(EnemyArchetype::Guard, configWithRegion(), fastTuning());
   EnemyUpdateInput input = inputDefaults();
@@ -220,6 +312,103 @@ void testMaximumTickCannotCountTheSameDecisionMoreThanOnce() {
   for (int update = 0; update < 10; ++update) {
     assert(agent.update(input).escapeState == EnemyEscapeState::None);
   }
+}
+
+void testApproachingDestinationCountsAsProgress() {
+  EnemyAgent agent(EnemyArchetype::Guard, configWithRegion(), fastTuning());
+  EnemyUpdateInput input = inputDefaults();
+  input.world.playerPosition = {4.0f, 0.0f};
+  const std::vector<Vec2> positions = {
+      {0.0f, 0.0f}, {0.2f, 0.0f}, {0.4f, 0.0f}, {0.6f, 0.0f},
+  };
+
+  for (std::size_t index = 0; index < positions.size(); ++index) {
+    input.world.tick = static_cast<Tick>(index * 100);
+    input.world.selfPosition = positions[index];
+    assert(agent.update(input).escapeState == EnemyEscapeState::None);
+  }
+}
+
+void testSidewaysAndAwayMovementDoNotCountAsProgress() {
+  const auto reachesEscape = [](const std::vector<Vec2>& positions) {
+    EnemyAgent agent(EnemyArchetype::Guard, configWithRegion(), fastTuning());
+    EnemyUpdateInput input = inputDefaults();
+    input.world.playerPosition = {4.0f, 0.0f};
+    EnemyUpdateResult result;
+    for (std::size_t index = 0; index < positions.size(); ++index) {
+      input.world.tick = static_cast<Tick>(index * 100);
+      input.world.selfPosition = positions[index];
+      result = agent.update(input);
+    }
+    return result.escapeState;
+  };
+
+  assert(reachesEscape({{0.0f, 0.0f}, {0.0f, 0.2f}, {0.0f, 0.4f},
+                        {0.0f, 0.6f}}) ==
+         EnemyEscapeState::ReturningToSafePoint);
+  assert(reachesEscape({{0.0f, 0.0f}, {-0.2f, 0.0f}, {-0.4f, 0.0f},
+                        {-0.6f, 0.0f}}) ==
+         EnemyEscapeState::ReturningToSafePoint);
+}
+
+void testOscillationDoesNotCountAsProgress() {
+  EnemyAgent agent(EnemyArchetype::Guard, configWithRegion(), fastTuning());
+  EnemyUpdateInput input = inputDefaults();
+  input.world.playerPosition = {4.0f, 0.0f};
+  const std::vector<Vec2> positions = {
+      {0.0f, 0.0f}, {0.2f, 0.0f}, {0.0f, 0.0f}, {0.2f, 0.0f}, {0.0f, 0.0f},
+  };
+
+  EnemyUpdateResult result;
+  for (std::size_t index = 0; index < positions.size(); ++index) {
+    input.world.tick = static_cast<Tick>(index * 100);
+    input.world.selfPosition = positions[index];
+    result = agent.update(input);
+  }
+  assert(result.escapeState == EnemyEscapeState::ReturningToSafePoint);
+}
+
+void testDestinationChangeRestartsProgressBaseline() {
+  EnemyAgent agent(EnemyArchetype::Guard, configWithRegion(), fastTuning());
+  EnemyUpdateInput input = inputDefaults();
+  input.world.playerPosition = {4.0f, 0.0f};
+
+  for (const Tick tick : {0, 100, 200}) {
+    input.world.tick = tick;
+    assert(agent.update(input).escapeState == EnemyEscapeState::None);
+  }
+
+  input.world.tick = 300;
+  input.world.playerPosition = {3.0f, 0.0f};
+  assert(agent.update(input).escapeState == EnemyEscapeState::None);
+  for (const Tick tick : {400, 500}) {
+    input.world.tick = tick;
+    assert(agent.update(input).escapeState == EnemyEscapeState::None);
+  }
+  input.world.tick = 600;
+  assert(agent.update(input).escapeState ==
+         EnemyEscapeState::ReturningToSafePoint);
+}
+
+void testAttackFallbackChaseParticipatesInProgressTracking() {
+  EnemyAgent agent(EnemyArchetype::RiftClaw, configWithRegion(), fastTuning());
+  EnemyUpdateInput input = inputDefaults();
+  input.world.playerPosition = {0.2f, 0.0f};
+
+  input.world.tick = 0;
+  const EnemyUpdateResult fallback = agent.update(input);
+  assert(fallback.intent == EnemyIntent::Attack);
+  assert(fallback.plan.has_value());
+  assert(fallback.plan->intent == EnemyIntent::Chase);
+  assert(fallback.plan->state == EnemyAiState::Moving);
+
+  for (const Tick tick : {100, 200}) {
+    input.world.tick = tick;
+    assert(agent.update(input).escapeState == EnemyEscapeState::None);
+  }
+  input.world.tick = 300;
+  assert(agent.update(input).escapeState ==
+         EnemyEscapeState::ReturningToSafePoint);
 }
 
 void testInvalidEntityIdDoesNotBecomeTargetCandidate() {
@@ -272,14 +461,23 @@ void testResetClearsActionAndNoProgressMemory() {
 }  // namespace
 
 int main() {
+  testEnemyTakeHitKeepsLegacyArithmetic();
   testChaseToleranceAndProjection();
   testNoProgressEntersEscapeAndSafePointClearsIt();
   testUnreachableStartsRepositioningDeterministically();
   testStableSortedWorldViewProducesStableSeparation();
+  testDuplicateAllyIdsAreRemovedAsAWholeDeterministically();
   testDeathStopsIntentHitAndTargetCandidate();
+  testLeavingChaseToleranceCancelsPendingAttack();
   testStaggerRemainsLatchedUntilExplicitRelease();
   testStaggerSuppressesAnExistingEscapeIntent();
+  testSafePointArrivalDoesNotReleaseStagger();
   testMaximumTickCannotCountTheSameDecisionMoreThanOnce();
+  testApproachingDestinationCountsAsProgress();
+  testSidewaysAndAwayMovementDoNotCountAsProgress();
+  testOscillationDoesNotCountAsProgress();
+  testDestinationChangeRestartsProgressBaseline();
+  testAttackFallbackChaseParticipatesInProgressTracking();
   testInvalidEntityIdDoesNotBecomeTargetCandidate();
   testInvalidGeometryNeverLeaksNan();
   testResetClearsActionAndNoProgressMemory();

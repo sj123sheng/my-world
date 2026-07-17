@@ -58,13 +58,13 @@ class EnemyAgent {
 
  private:
   static Tick saturatingAdd(Tick tick, Tick duration);
-  static bool movementIntent(EnemyIntent intent);
   static EnemyAgentTuning sanitizedTuning(EnemyAgentTuning tuning);
 
   EnemyWorldView stableWorldView(const EnemyWorldView& source) const;
   Vec2 separationFor(const EnemyWorldView& world) const;
-  bool updateEscapeTracking(EnemyIntent intent, Tick tick, Vec2 position,
-                            Vec2 safeReturnPosition);
+  bool finishSafePointReturn(Vec2 position, Vec2 safeReturnPosition);
+  bool updateEscapeTracking(const EnemyActionPlan& plan, Tick tick, Vec2 position);
+  void clearProgressTracking();
   void clearEscapeTracking();
   EnemyActionPlan constrainedPlan(EnemyActionPlan plan, Vec2 selfPosition,
                                   Vec2 separation) const;
@@ -81,7 +81,10 @@ class EnemyAgent {
   std::optional<PerceptionSnapshot> perceptionMemory_;
   std::optional<EnemyActionPlan> lastPlan_;
   EnemyEscapeState escapeState_ = EnemyEscapeState::None;
-  Vec2 lastProgressPosition_;
+  EnemyIntent progressIntent_ = EnemyIntent::Idle;
+  std::optional<EntityId> progressTargetId_;
+  Vec2 progressDestination_;
+  float bestRemainingDistance_ = 0.0f;
   Tick nextProgressDecisionTick_ = 0;
   Tick lastProgressDecisionTick_ = 0;
   std::size_t noProgressDecisions_ = 0;

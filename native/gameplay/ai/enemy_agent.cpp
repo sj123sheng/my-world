@@ -68,21 +68,6 @@ Tick EnemyAgent::saturatingAdd(Tick tick, Tick duration) {
   return tick + duration;
 }
 
-bool EnemyAgent::movementIntent(EnemyIntent intent) {
-  switch (intent) {
-    case EnemyIntent::Chase:
-    case EnemyIntent::Retreat:
-    case EnemyIntent::ReturnToArea:
-    case EnemyIntent::BreakFree:
-      return true;
-    case EnemyIntent::Idle:
-    case EnemyIntent::Attack:
-    case EnemyIntent::Support:
-      return false;
-  }
-  return false;
-}
-
 EnemyAgentTuning EnemyAgent::sanitizedTuning(EnemyAgentTuning tuning) {
   const EnemyAgentTuning defaults;
   if (tuning.decisionPeriodMs <= 0) tuning.decisionPeriodMs = defaults.decisionPeriodMs;
@@ -159,59 +144,87 @@ Vec2 EnemyAgent::separationFor(const EnemyWorldView& world) const {
   return combined.finite() ? combined : Vec2{};
 }
 
-bool EnemyAgent::updateEscapeTracking(EnemyIntent intent, Tick tick, Vec2 position,
-                                      Vec2 safeReturnPosition) {
+bool EnemyAgent::finishSafePointReturn(Vec2 position, Vec2 safeReturnPosition) {
   if (escapeState_ == EnemyEscapeState::ReturningToSafePoint &&
       distanceBetween(position, safeReturnPosition) <= tuning_.safePointTolerance) {
     clearEscapeTracking();
-    executor_.reset();
-    staggerLatched_ = false;
+    executor_.cancel();
     lastPlan_.reset();
     perceptionMemory_.reset();
     return true;
   }
+  return false;
+}
 
-  if (!movementIntent(intent)) {
-    if (escapeState_ != EnemyEscapeState::ReturningToSafePoint) clearEscapeTracking();
+bool EnemyAgent::updateEscapeTracking(const EnemyActionPlan& plan, Tick tick,
+                                      Vec2 position) {
+  if (plan.state != EnemyAiState::Moving || !plan.desiredPosition.has_value() ||
+      !plan.desiredPosition->finite()) {
+    if (escapeState_ == EnemyEscapeState::ReturningToSafePoint) {
+      clearProgressTracking();
+    } else {
+      clearEscapeTracking();
+    }
     return false;
   }
 
-  if (intent == EnemyIntent::BreakFree && escapeState_ == EnemyEscapeState::None) {
+  if (plan.intent == EnemyIntent::BreakFree &&
+      escapeState_ == EnemyEscapeState::None) {
     escapeState_ = EnemyEscapeState::Repositioning;
-  } else if (intent != EnemyIntent::BreakFree &&
+  } else if (plan.intent != EnemyIntent::BreakFree &&
              escapeState_ == EnemyEscapeState::Repositioning) {
     escapeState_ = EnemyEscapeState::None;
   }
 
-  if (!hasProgressSample_) {
+  const Vec2 destination = *plan.desiredPosition;
+  const float remainingDistance = distanceBetween(position, destination);
+  const bool goalChanged = !hasProgressSample_ || progressIntent_ != plan.intent ||
+                           progressTargetId_ != plan.targetId ||
+                           progressDestination_.x != destination.x ||
+                           progressDestination_.y != destination.y;
+  if (goalChanged) {
     hasProgressSample_ = true;
-    lastProgressPosition_ = position;
+    progressIntent_ = plan.intent;
+    progressTargetId_ = plan.targetId;
+    progressDestination_ = destination;
+    bestRemainingDistance_ = remainingDistance;
+    noProgressDecisions_ = 0;
     lastProgressDecisionTick_ = tick;
     nextProgressDecisionTick_ = saturatingAdd(tick, tuning_.decisionPeriodMs);
     return false;
   }
   if (tick < nextProgressDecisionTick_ || tick <= lastProgressDecisionTick_) return false;
 
-  const float progress = distanceBetween(position, lastProgressPosition_);
-  noProgressDecisions_ = progress < tuning_.minimumProgress
-                             ? noProgressDecisions_ + 1
-                             : 0;
-  lastProgressPosition_ = position;
+  const float progress = bestRemainingDistance_ - remainingDistance;
+  if (progress >= tuning_.minimumProgress) {
+    bestRemainingDistance_ = remainingDistance;
+    noProgressDecisions_ = 0;
+  } else if (noProgressDecisions_ < tuning_.noProgressDecisionLimit) {
+    ++noProgressDecisions_;
+  }
   lastProgressDecisionTick_ = tick;
   nextProgressDecisionTick_ = saturatingAdd(tick, tuning_.decisionPeriodMs);
   if (noProgressDecisions_ >= tuning_.noProgressDecisionLimit) {
     escapeState_ = EnemyEscapeState::ReturningToSafePoint;
+    return true;
   }
   return false;
 }
 
-void EnemyAgent::clearEscapeTracking() {
-  escapeState_ = EnemyEscapeState::None;
-  lastProgressPosition_ = {};
+void EnemyAgent::clearProgressTracking() {
+  progressIntent_ = EnemyIntent::Idle;
+  progressTargetId_.reset();
+  progressDestination_ = {};
+  bestRemainingDistance_ = 0.0f;
   nextProgressDecisionTick_ = 0;
   lastProgressDecisionTick_ = 0;
   noProgressDecisions_ = 0;
   hasProgressSample_ = false;
+}
+
+void EnemyAgent::clearEscapeTracking() {
+  escapeState_ = EnemyEscapeState::None;
+  clearProgressTracking();
 }
 
 EnemyActionPlan EnemyAgent::constrainedPlan(EnemyActionPlan plan, Vec2 selfPosition,
@@ -247,11 +260,10 @@ EnemyUpdateResult EnemyAgent::update(const EnemyUpdateInput& input) {
     staggerLatched_ = true;
   }
 
+  const bool arrivedAtSafePoint =
+      finishSafePointReturn(world.selfPosition, world.safeReturnPosition);
   EnemyIntent intent = staggerLatched_ ? EnemyIntent::Idle
                                        : policy_.choose(facts, archetype_);
-  const bool arrivedAtSafePoint =
-      updateEscapeTracking(intent, world.tick, world.selfPosition,
-                           world.safeReturnPosition);
   if (arrivedAtSafePoint) {
     intent = EnemyIntent::Idle;
   } else if (!staggerLatched_ &&
@@ -260,16 +272,35 @@ EnemyUpdateResult EnemyAgent::update(const EnemyUpdateInput& input) {
   }
 
   const Vec2 separation = separationFor(world);
-  EnemyActionPlan plan = planner_.plan(intent, facts, abilities_);
-  if (arrivedAtSafePoint) {
+  EnemyActionPlan plan;
+  if (arrivedAtSafePoint || staggerLatched_) {
     plan = EnemyActionPlan{};
     plan.createdAt = facts.tick;
     plan.intent = EnemyIntent::Idle;
     plan.desiredPosition = facts.selfPosition;
+  } else {
+    plan = planner_.plan(intent, facts, abilities_);
   }
   plan = constrainedPlan(std::move(plan), world.selfPosition, separation);
-  lastPlan_ = plan;
 
+  bool enteredSafePointReturn = false;
+  if (staggerLatched_) {
+    clearProgressTracking();
+  } else if (!arrivedAtSafePoint) {
+    enteredSafePointReturn =
+        updateEscapeTracking(plan, world.tick, world.selfPosition);
+  }
+  if (enteredSafePointReturn) {
+    intent = EnemyIntent::BreakFree;
+    plan = constrainedPlan(planner_.plan(intent, facts, abilities_),
+                           world.selfPosition, separation);
+  }
+
+  if (plan.intent == EnemyIntent::ReturnToArea ||
+      plan.intent == EnemyIntent::BreakFree) {
+    executor_.cancel();
+  }
+  lastPlan_ = plan;
   executor_.start(plan, world.tick);
   EnemyExecutionContext executionContext = input.execution;
   executionContext.attacker = world.selfId;

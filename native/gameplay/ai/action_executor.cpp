@@ -152,6 +152,12 @@ EnemyExecutionResult ActionExecutor::update(
   return result;
 }
 
+bool ActionExecutor::cancel() {
+  const bool hadAction = ability_.has_value();
+  clearAction();
+  return hadAction;
+}
+
 void ActionExecutor::clearAction() {
   ability_.reset();
   targetId_.reset();

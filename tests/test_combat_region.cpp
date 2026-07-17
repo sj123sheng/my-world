@@ -40,6 +40,19 @@ void testOverlappingEntitiesSeparateByStableIdDirection() {
          lower);
 }
 
+void testPartialOverlapIsAntisymmetricAndRejectsZeroId() {
+  const Vec2 first =
+      stableSeparation(10, {0.0f, 0.0f}, 20, {0.5f, 0.0f}, 1.0f);
+  const Vec2 second =
+      stableSeparation(20, {0.5f, 0.0f}, 10, {0.0f, 0.0f}, 1.0f);
+  assert(first == (Vec2{-0.25f, 0.0f}));
+  assert(second == first * -1.0f);
+  assert(stableSeparation(0, {0.0f, 0.0f}, 20, {0.0f, 0.0f}, 1.0f) ==
+         (Vec2{}));
+  assert(stableSeparation(10, {0.0f, 0.0f}, 0, {0.0f, 0.0f}, 1.0f) ==
+         (Vec2{}));
+}
+
 void testSeparationRejectsInvalidGeometryWithoutNan() {
   assert(stableSeparation(1, {0.0f, 0.0f}, 2, {2.0f, 0.0f}, 1.0f) ==
          (Vec2{}));
@@ -62,5 +75,6 @@ void testSeparationRejectsInvalidGeometryWithoutNan() {
 int main() {
   testContainsAndProjection();
   testOverlappingEntitiesSeparateByStableIdDirection();
+  testPartialOverlapIsAntisymmetricAndRejectsZeroId();
   testSeparationRejectsInvalidGeometryWithoutNan();
 }

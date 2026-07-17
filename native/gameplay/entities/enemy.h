@@ -17,8 +17,7 @@ struct Enemy {
   bool alive() const { return id != 0 && hp > 0; }
 
   void takeHit(const HitEvent& hit) {
-    if (hit.baseDamage > 0) hp = hp > hit.baseDamage ? hp - hit.baseDamage : 0;
-    const FixedPoint poiseDamage = fp(2);
-    poise = poise > poiseDamage ? poise - poiseDamage : 0;
+    hp -= hit.baseDamage;
+    poise -= fp(2);
   }
 };
