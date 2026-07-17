@@ -70,6 +70,11 @@ struct EnemyAbility {
   EnemyAbilityEffect effect = EnemyAbilityEffect::Damage;
 };
 
+struct EnemyAbilityState {
+  EnemyAbility ability;
+  Tick cooldownRemainingMs = 0;
+};
+
 struct AllyPerception {
   EntityId id = 0;
   EnemyArchetype archetype = EnemyArchetype::RiftClaw;
@@ -109,6 +114,14 @@ struct PerceptionSnapshot {
   std::vector<AllyPerception> allies;
 };
 
+enum class EnemyPlanFallbackReason : uint8_t {
+  None,
+  NoLegalAbility,
+  OutsideRegion,
+  NoTarget,
+  UnsupportedIntent,
+};
+
 struct EnemyActionPlan {
   Tick createdAt = 0;
   EnemyIntent intent = EnemyIntent::Idle;
@@ -116,5 +129,7 @@ struct EnemyActionPlan {
   EnemyActionPhase phase = EnemyActionPhase::None;
   std::optional<EnemyAbilityId> abilityId;
   std::optional<EntityId> targetId;
+  std::optional<Vec2> desiredPosition;
+  EnemyPlanFallbackReason fallbackReason = EnemyPlanFallbackReason::None;
   Vec2 movement;
 };
