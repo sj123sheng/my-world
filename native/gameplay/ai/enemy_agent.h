@@ -26,10 +26,15 @@ struct EnemyAgentTuning {
   float separationDistance = 1.0f;
 };
 
+struct EnemyAgentInterrupt {
+  FixedPoint poiseDamage = 0;
+};
+
 struct EnemyUpdateInput {
   EnemyWorldView world;
   int64_t dtMs = 0;
   EnemyExecutionContext execution;
+  std::optional<EnemyAgentInterrupt> interrupt;
 };
 
 struct EnemyUpdateResult {
@@ -41,6 +46,8 @@ struct EnemyUpdateResult {
   Vec2 movement;
   Vec2 separation;
   std::optional<HitRequest> hit;
+  std::optional<CombatEffectRequest> effect;
+  bool interrupted = false;
   std::optional<TargetCandidate> targetCandidate;
   EnemyEscapeState escapeState = EnemyEscapeState::None;
 };

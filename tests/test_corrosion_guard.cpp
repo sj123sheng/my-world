@@ -15,7 +15,7 @@ HitRequest guardHit() {
 void testDefaultConfigIsLegalAndHasLongStagger() {
   const EnemyAiConfig config = corrosionGuardDefaults();
   assert(config.validated().has_value());
-  assert(config.staggerRecoveryMs >= 1000);
+  assert(config.staggerRecoveryMs == 1200);
   assert(config.abilities.size() == 1);
   assert(config.abilities.front().id == enemy_ability_ids::kCorrosionGuardBash);
   assert(config.abilities.front().cancelPolicy ==
@@ -65,22 +65,17 @@ void testPoiseBreakCancelsAndLongStaggerExpiresDeterministically() {
   assert(!broken.hit.has_value());
 
   input.world.staggered = false;
-  input.world.tick = config.staggerRecoveryMs;
-  input.dtMs = config.staggerRecoveryMs - 10;
+  input.world.tick = 1209;
+  input.dtMs = 1199;
   assert(agent.update(input).state == EnemyAiState::Staggered);
 
   input.world.staggered = true;
-  input.world.tick = config.staggerRecoveryMs + 10;
-  input.dtMs = 10;
-  assert(agent.update(input).state == EnemyAiState::Staggered);
-
-  input.world.tick = config.staggerRecoveryMs + 100;
-  input.dtMs = 90;
+  input.world.tick = 1210;
+  input.dtMs = 1;
   assert(agent.update(input).state == EnemyAiState::Staggered);
 
   input.world.staggered = false;
-  input.world.tick = config.staggerRecoveryMs + 101;
-  input.dtMs = 1;
+  input.dtMs = 0;
   const EnemyUpdateResult recovered = agent.update(input);
   assert(recovered.state != EnemyAiState::Staggered);
   assert(!recovered.plan->ability.has_value());

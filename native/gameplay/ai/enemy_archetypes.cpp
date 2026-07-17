@@ -48,6 +48,7 @@ EnemyAiConfig radiantPriestDefaults() {
   shield.category = EnemyAbilityCategory::Support;
   shield.targetPolicy = EnemyTargetPolicy::LowestShieldAlly;
   shield.effect = EnemyAbilityEffect::Shield;
+  shield.effectAmount = fp(40);
   shield.telegraph = EnemyAbilityTelegraph::WarningYellow;
   shield.cancelPolicy = EnemyAbilityCancelPolicy::WindupOnly;
   shield.interruptThreshold = fp(10);

@@ -3,6 +3,23 @@
 #include <algorithm>
 #include <limits>
 
+namespace {
+
+bool validEffectPayload(const EnemyAbility& ability) {
+  switch (ability.effect) {
+    case EnemyAbilityEffect::Shield:
+      return ability.effectAmount > 0;
+    case EnemyAbilityEffect::Damage:
+    case EnemyAbilityEffect::AreaDamage:
+    case EnemyAbilityEffect::Move:
+    case EnemyAbilityEffect::Control:
+      return ability.effectAmount == 0;
+  }
+  return false;
+}
+
+}  // namespace
+
 Tick ActionExecutor::saturatingAdd(Tick tick, Tick duration) {
   const Tick maximum = std::numeric_limits<Tick>::max();
   if (duration > 0 && tick > maximum - duration) return maximum;
@@ -28,7 +45,7 @@ bool ActionExecutor::start(const EnemyActionPlan& plan, Tick tick) {
   const EnemyAbility& ability = *plan.ability;
   if (ability.id == 0 || ability.windupMs < 0 || ability.activeMs < 0 ||
       ability.recoveryMs < 0 || ability.interruptThreshold < 0 ||
-      !validCancelPolicy(ability.cancelPolicy)) {
+      !validCancelPolicy(ability.cancelPolicy) || !validEffectPayload(ability)) {
     return false;
   }
 
@@ -39,7 +56,7 @@ bool ActionExecutor::start(const EnemyActionPlan& plan, Tick tick) {
   activeEndTick_ = saturatingAdd(hitTick_, ability_->activeMs);
   recoveryEndTick_ = saturatingAdd(activeEndTick_, ability_->recoveryMs);
   lastTick_ = tick;
-  hitEmitted_ = false;
+  transactionEmitted_ = false;
   interrupted_ = false;
   recoveryOnly_ = false;
   transactionId_ = nextTransactionId_;
@@ -77,7 +94,7 @@ bool ActionExecutor::allowsInterrupt(EnemyActionPhase phase) const {
 }
 
 void ActionExecutor::enterInterruptedRecovery(Tick tick) {
-  hitEmitted_ = true;
+  transactionEmitted_ = true;
   interrupted_ = true;
   recoveryOnly_ = true;
   recoveryEndTick_ = saturatingAdd(tick, ability_->recoveryMs);
@@ -118,24 +135,44 @@ EnemyExecutionResult ActionExecutor::update(
   const Tick effectiveTick = std::max(tick, lastTick_);
   lastTick_ = effectiveTick;
 
-  if (!context.targetAlive && !hitEmitted_ && !recoveryOnly_) {
+  if (!context.targetAlive && !transactionEmitted_ && !recoveryOnly_) {
     enterInterruptedRecovery(effectiveTick);
   }
 
-  if (!hitEmitted_ && effectiveTick >= hitTick_) {
-    hitEmitted_ = true;
-    HitRequest hit;
-    hit.attacker = context.attacker;
-    hit.target = *targetId_;
-    hit.ability = ability_->id;
-    hit.source = context.source;
-    hit.baseDamage = context.baseDamage;
-    hit.poiseDamage = context.poiseDamage;
-    hit.tick = hitTick_;
-    hit.sequence = context.sequence;
-    hit.sourceAmount = context.sourceAmount;
-    hit.transactionId = transactionId_;
-    result.hit = hit;
+  if (!transactionEmitted_ && effectiveTick >= hitTick_) {
+    transactionEmitted_ = true;
+    switch (ability_->effect) {
+      case EnemyAbilityEffect::Damage:
+      case EnemyAbilityEffect::AreaDamage: {
+        HitRequest hit;
+        hit.attacker = context.attacker;
+        hit.target = *targetId_;
+        hit.ability = ability_->id;
+        hit.source = context.source;
+        hit.baseDamage = context.baseDamage;
+        hit.poiseDamage = context.poiseDamage;
+        hit.tick = hitTick_;
+        hit.sequence = context.sequence;
+        hit.sourceAmount = context.sourceAmount;
+        hit.transactionId = transactionId_;
+        result.hit = hit;
+        break;
+      }
+      case EnemyAbilityEffect::Shield: {
+        CombatEffectRequest effect;
+        effect.target = *targetId_;
+        effect.type = CombatEffectType::Shield;
+        effect.amount = ability_->effectAmount;
+        effect.tick = hitTick_;
+        effect.sequence = context.sequence;
+        effect.transactionId = transactionId_;
+        result.effect = effect;
+        break;
+      }
+      case EnemyAbilityEffect::Move:
+      case EnemyAbilityEffect::Control:
+        break;
+    }
   }
 
   result.phase = phaseAt(effectiveTick);
@@ -162,7 +199,7 @@ void ActionExecutor::clearAction() {
   ability_.reset();
   targetId_.reset();
   transactionId_ = 0;
-  hitEmitted_ = false;
+  transactionEmitted_ = false;
   interrupted_ = false;
   recoveryOnly_ = false;
 }

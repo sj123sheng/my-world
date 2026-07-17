@@ -299,6 +299,10 @@ EnemyUpdateResult EnemyAgent::update(const EnemyUpdateInput& input) {
     clearStaggerDeadline();
     lastPlan_.reset();
   }
+  if (!staggerLatched_ && input.interrupt.has_value()) {
+    executor_.interrupt(world.tick, input.interrupt->poiseDamage,
+                        EnemyInterruptCause::PoiseDamage);
+  }
 
   const bool arrivedAtSafePoint =
       finishSafePointReturn(world.selfPosition, world.safeReturnPosition);
@@ -357,6 +361,8 @@ EnemyUpdateResult EnemyAgent::update(const EnemyUpdateInput& input) {
   result.movement = plan.movement.finite() ? plan.movement : Vec2{};
   result.separation = separation;
   result.hit = execution.hit;
+  result.effect = execution.effect;
+  result.interrupted = execution.interrupted;
   result.escapeState = escapeState_;
   if (world.selfId != 0 &&
       world.selfId <= static_cast<EntityId>(std::numeric_limits<int32_t>::max())) {

@@ -24,6 +24,7 @@ struct EnemyExecutionResult {
   EnemyAiState state = EnemyAiState::Idle;
   EnemyActionPhase phase = EnemyActionPhase::None;
   std::optional<HitRequest> hit;
+  std::optional<CombatEffectRequest> effect;
   bool actionCompleted = false;
   bool interrupted = false;
   bool staggered = false;
@@ -58,7 +59,7 @@ class ActionExecutor {
   uint64_t transactionId_ = 0;
   uint64_t nextTransactionId_ = 1;
   bool transactionIdsExhausted_ = false;
-  bool hitEmitted_ = false;
+  bool transactionEmitted_ = false;
   bool interrupted_ = false;
   bool recoveryOnly_ = false;
   bool staggered_ = false;

@@ -88,6 +88,7 @@ struct EnemyAbility {
   EnemyAbilityCategory category = EnemyAbilityCategory::Attack;
   EnemyTargetPolicy targetPolicy = EnemyTargetPolicy::CurrentTarget;
   EnemyAbilityEffect effect = EnemyAbilityEffect::Damage;
+  FixedPoint effectAmount = 0;
   EnemyAbilityTelegraph telegraph = EnemyAbilityTelegraph::Neutral;
   EnemyAbilityCancelPolicy cancelPolicy = EnemyAbilityCancelPolicy::Uninterruptible;
   FixedPoint interruptThreshold = 0;

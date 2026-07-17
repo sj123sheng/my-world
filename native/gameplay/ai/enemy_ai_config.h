@@ -47,8 +47,9 @@ struct EnemyAiConfig {
     return ability.id != 0 && !ability.tag.empty() && ability.range > 0 &&
            ability.cooldownMs >= 0 && ability.windupMs >= 0 && ability.activeMs >= 0 &&
            ability.recoveryMs >= 0 && ability.weight > 0 && validCategory(ability.category) &&
-           validTargetPolicy(ability.targetPolicy) && validCategoryTargetPolicy(ability.category,
-                                                                                ability.targetPolicy) &&
+           validTargetPolicy(ability.targetPolicy) &&
+           validCategoryTargetEffect(ability.category, ability.targetPolicy,
+                                     ability.effect, ability.effectAmount) &&
            validEffect(ability.effect) && validCancelPolicy(ability.cancelPolicy) &&
            validTelegraph(ability.telegraph) && ability.interruptThreshold >= 0;
   }
@@ -74,13 +75,17 @@ struct EnemyAiConfig {
     return false;
   }
 
-  static bool validCategoryTargetPolicy(EnemyAbilityCategory category,
-                                        EnemyTargetPolicy targetPolicy) {
+  static bool validCategoryTargetEffect(EnemyAbilityCategory category,
+                                        EnemyTargetPolicy targetPolicy,
+                                        EnemyAbilityEffect effect,
+                                        FixedPoint effectAmount) {
     switch (category) {
       case EnemyAbilityCategory::Support:
-        return targetPolicy == EnemyTargetPolicy::LowestShieldAlly;
+        return targetPolicy == EnemyTargetPolicy::LowestShieldAlly &&
+               effect == EnemyAbilityEffect::Shield && effectAmount > 0;
       case EnemyAbilityCategory::Attack:
-        return targetPolicy != EnemyTargetPolicy::LowestShieldAlly;
+        return targetPolicy != EnemyTargetPolicy::LowestShieldAlly &&
+               effect != EnemyAbilityEffect::Shield && effectAmount == 0;
     }
     return false;
   }

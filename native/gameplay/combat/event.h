@@ -26,6 +26,19 @@ struct HitRequest {
   uint64_t transactionId = 0;
 };
 
+enum class CombatEffectType : uint8_t {
+  Shield,
+};
+
+struct CombatEffectRequest {
+  EntityId target = 0;
+  CombatEffectType type = CombatEffectType::Shield;
+  FixedPoint amount = 0;
+  Tick tick = 0;
+  uint64_t sequence = 0;
+  uint64_t transactionId = 0;
+};
+
 enum class GameplayEventType : uint8_t {
   Hit,
   Damage,

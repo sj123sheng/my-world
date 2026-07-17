@@ -22,6 +22,16 @@ EnemyAbility abilityWithTimings(
   return ability;
 }
 
+EnemyAbility shieldAbility() {
+  EnemyAbility ability = abilityWithTimings(200, 16, 300);
+  ability.id = 18;
+  ability.category = EnemyAbilityCategory::Support;
+  ability.targetPolicy = EnemyTargetPolicy::LowestShieldAlly;
+  ability.effect = EnemyAbilityEffect::Shield;
+  ability.effectAmount = fp(40);
+  return ability;
+}
+
 EnemyActionPlan planFor(const EnemyAbility& ability) {
   EnemyActionPlan plan;
   plan.createdAt = 900;
@@ -55,6 +65,7 @@ void testFixedTimelineAndSingleHit() {
   const EnemyExecutionResult onHit = executor.update(1200, 1, updateContext);
   assert(onHit.phase == EnemyActionPhase::Active);
   assert(onHit.hit.has_value());
+  assert(!onHit.effect.has_value());
   assert(onHit.hit->attacker == 3);
   assert(onHit.hit->target == 7);
   assert(onHit.hit->ability == 17);
@@ -66,6 +77,37 @@ void testFixedTimelineAndSingleHit() {
 
   const EnemyExecutionResult repeated = executor.update(1200, 0, updateContext);
   assert(!repeated.hit.has_value());
+  assert(!repeated.effect.has_value());
+}
+
+void testShieldProducesOneEffectAndNeverAHit() {
+  EnemyAbility emptyShield = shieldAbility();
+  emptyShield.effectAmount = 0;
+  ActionExecutor invalidExecutor;
+  assert(!invalidExecutor.start(planFor(emptyShield), 1000));
+
+  ActionExecutor executor;
+  const EnemyActionPlan plan = planFor(shieldAbility());
+  const EnemyExecutionContext updateContext = context();
+
+  assert(executor.start(plan, 1000));
+  const EnemyExecutionResult beforeEffect = executor.update(1199, 199, updateContext);
+  assert(!beforeEffect.hit.has_value());
+  assert(!beforeEffect.effect.has_value());
+
+  const EnemyExecutionResult onEffect = executor.update(1200, 1, updateContext);
+  assert(!onEffect.hit.has_value());
+  assert(onEffect.effect.has_value());
+  assert(onEffect.effect->type == CombatEffectType::Shield);
+  assert(onEffect.effect->target == 7);
+  assert(onEffect.effect->amount == fp(40));
+  assert(onEffect.effect->tick == 1200);
+  assert(onEffect.effect->sequence == 99);
+  assert(onEffect.effect->transactionId != 0);
+
+  const EnemyExecutionResult repeated = executor.update(1200, 0, updateContext);
+  assert(!repeated.hit.has_value());
+  assert(!repeated.effect.has_value());
 }
 
 void testLargeTickKeepsOriginalHitTickAndCrossesAllPhases() {
@@ -170,6 +212,7 @@ void testNoAbilityAndDeadTargetCannotProduceTransaction() {
   deadTarget.targetAlive = false;
   const EnemyExecutionResult cancelled = executor.update(1200, 200, deadTarget);
   assert(!cancelled.hit.has_value());
+  assert(!cancelled.effect.has_value());
   assert(cancelled.phase == EnemyActionPhase::Recovery);
 }
 
@@ -200,6 +243,7 @@ void testSaturatedDeadlinesDoNotOverflowUnderUbsan() {
 
 int main() {
   testFixedTimelineAndSingleHit();
+  testShieldProducesOneEffectAndNeverAHit();
   testLargeTickKeepsOriginalHitTickAndCrossesAllPhases();
   testRecoveryRejectsNewAction();
   testOrdinaryInterruptNeedsPolicyPhaseAndThreshold();

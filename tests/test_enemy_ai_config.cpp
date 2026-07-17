@@ -77,8 +77,38 @@ int main() {
   EnemyAbility support = validSampleAbility();
   support.category = EnemyAbilityCategory::Support;
   support.targetPolicy = EnemyTargetPolicy::LowestShieldAlly;
+  support.effect = EnemyAbilityEffect::Shield;
+  support.effectAmount = fp(40);
   supportConfig.abilities.push_back(support);
   assert(supportConfig.validated().has_value());
+
+  EnemyAiConfig damageSupport = supportConfig;
+  damageSupport.abilities[0].effect = EnemyAbilityEffect::Damage;
+  damageSupport.abilities[0].effectAmount = 0;
+  assert(!damageSupport.validated().has_value());
+
+  EnemyAiConfig shieldAttack = config;
+  shieldAttack.abilities[0].effect = EnemyAbilityEffect::Shield;
+  shieldAttack.abilities[0].effectAmount = fp(40);
+  assert(!shieldAttack.validated().has_value());
+
+  EnemyAiConfig emptyShield = supportConfig;
+  emptyShield.abilities[0].effectAmount = 0;
+  assert(!emptyShield.validated().has_value());
+
+  EnemyAiConfig damageWithEffectAmount = config;
+  damageWithEffectAmount.abilities[0].effectAmount = fp(1);
+  assert(!damageWithEffectAmount.validated().has_value());
+
+  for (const EnemyAbilityEffect attackEffect : {
+           EnemyAbilityEffect::AreaDamage,
+           EnemyAbilityEffect::Move,
+           EnemyAbilityEffect::Control,
+       }) {
+    EnemyAiConfig existingAttackEffect = config;
+    existingAttackEffect.abilities[0].effect = attackEffect;
+    assert(existingAttackEffect.validated().has_value());
+  }
 
   EnemyAiConfig incompatible = supportConfig;
   incompatible.abilities[0].targetPolicy = EnemyTargetPolicy::Self;
