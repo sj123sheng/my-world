@@ -45,7 +45,13 @@ enum class EnemyTargetPolicy : uint8_t {
   CurrentTarget,
   NearestHostile,
   LowestHealthHostile,
+  LowestShieldAlly,
   Self,
+};
+
+enum class EnemyAbilityCategory : uint8_t {
+  Attack,
+  Support,
 };
 
 enum class EnemyAbilityEffect : uint8_t {
@@ -66,6 +72,7 @@ struct EnemyAbility {
   Tick activeMs = 0;
   Tick recoveryMs = 0;
   FixedPoint weight = 0;
+  EnemyAbilityCategory category = EnemyAbilityCategory::Attack;
   EnemyTargetPolicy targetPolicy = EnemyTargetPolicy::CurrentTarget;
   EnemyAbilityEffect effect = EnemyAbilityEffect::Damage;
 };

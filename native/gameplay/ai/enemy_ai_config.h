@@ -44,8 +44,8 @@ struct EnemyAiConfig {
   static bool validAbility(const EnemyAbility& ability) {
     return ability.id != 0 && !ability.tag.empty() && ability.range > 0 &&
            ability.cooldownMs >= 0 && ability.windupMs >= 0 && ability.activeMs >= 0 &&
-           ability.recoveryMs >= 0 && ability.weight > 0 && validTargetPolicy(ability.targetPolicy) &&
-           validEffect(ability.effect);
+           ability.recoveryMs >= 0 && ability.weight > 0 && validCategory(ability.category) &&
+           validTargetPolicy(ability.targetPolicy) && validEffect(ability.effect);
   }
 
   static bool validTargetPolicy(EnemyTargetPolicy policy) {
@@ -53,7 +53,17 @@ struct EnemyAiConfig {
       case EnemyTargetPolicy::CurrentTarget:
       case EnemyTargetPolicy::NearestHostile:
       case EnemyTargetPolicy::LowestHealthHostile:
+      case EnemyTargetPolicy::LowestShieldAlly:
       case EnemyTargetPolicy::Self:
+        return true;
+    }
+    return false;
+  }
+
+  static bool validCategory(EnemyAbilityCategory category) {
+    switch (category) {
+      case EnemyAbilityCategory::Attack:
+      case EnemyAbilityCategory::Support:
         return true;
     }
     return false;

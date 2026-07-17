@@ -56,6 +56,12 @@ int main() {
   };
   assert(policy.choose(facts, EnemyArchetype::Priest) == EnemyIntent::Support);
 
+  facts.playerVisible = false;
+  facts.targetVisible = false;
+  assert(policy.choose(facts, EnemyArchetype::Priest) == EnemyIntent::Support);
+  facts.playerVisible = true;
+  facts.targetVisible = true;
+
   facts.staggered = true;
   assert(policy.choose(facts, EnemyArchetype::Priest) == EnemyIntent::Idle);
   facts.staggered = false;

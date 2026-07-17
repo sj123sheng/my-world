@@ -11,28 +11,15 @@ struct TargetChoice {
   float distance = 0.0f;
 };
 
-const char* requiredTag(EnemyIntent intent) {
+std::optional<EnemyAbilityCategory> requiredCategory(EnemyIntent intent) {
   switch (intent) {
     case EnemyIntent::Attack:
-      return "attack";
+      return EnemyAbilityCategory::Attack;
     case EnemyIntent::Support:
-      return "support";
+      return EnemyAbilityCategory::Support;
     default:
-      return nullptr;
+      return std::nullopt;
   }
-}
-
-std::optional<TargetChoice> chooseTarget(const EnemyAbility& ability,
-                                         const PerceptionSnapshot& facts) {
-  if (ability.targetPolicy == EnemyTargetPolicy::Self) {
-    return TargetChoice{facts.selfId, facts.selfPosition, 0.0f};
-  }
-
-  if (!facts.targetId.has_value() || !facts.targetVisible ||
-      !std::isfinite(facts.targetDistance) || facts.targetDistance < 0.0f) {
-    return std::nullopt;
-  }
-  return TargetChoice{*facts.targetId, facts.targetPosition, facts.targetDistance};
 }
 
 std::optional<FixedPoint> fixedDistance(float distance) {
@@ -41,6 +28,49 @@ std::optional<FixedPoint> fixedDistance(float distance) {
     return std::nullopt;
   }
   return fp(distance);
+}
+
+std::optional<TargetChoice> chooseLowestShieldAlly(const EnemyAbility& ability,
+                                                    const PerceptionSnapshot& facts) {
+  std::optional<TargetChoice> selected;
+  FixedPoint selectedShield = 0;
+  for (const AllyPerception& ally : facts.allies) {
+    if (!ally.alive || !ally.insideRegion || ally.shield > 0 || !ally.position.finite()) continue;
+    const std::optional<FixedPoint> distance = fixedDistance(ally.distanceToSelf);
+    if (!distance.has_value() || *distance > ability.range) continue;
+
+    if (!selected.has_value() || ally.shield < selectedShield ||
+        (ally.shield == selectedShield && ally.id < selected->id)) {
+      selected = TargetChoice{ally.id, ally.position, ally.distanceToSelf};
+      selectedShield = ally.shield;
+    }
+  }
+  return selected;
+}
+
+std::optional<TargetChoice> chooseTarget(const EnemyAbility& ability,
+                                         const PerceptionSnapshot& facts) {
+  if (ability.category == EnemyAbilityCategory::Support) {
+    if (ability.targetPolicy != EnemyTargetPolicy::LowestShieldAlly) return std::nullopt;
+    return chooseLowestShieldAlly(ability, facts);
+  }
+
+  if (ability.category != EnemyAbilityCategory::Attack) return std::nullopt;
+  if (ability.targetPolicy == EnemyTargetPolicy::Self) {
+    return facts.selfPosition.finite()
+               ? std::optional<TargetChoice>(TargetChoice{facts.selfId, facts.selfPosition, 0.0f})
+               : std::nullopt;
+  }
+  if (ability.targetPolicy != EnemyTargetPolicy::CurrentTarget &&
+      ability.targetPolicy != EnemyTargetPolicy::NearestHostile &&
+      ability.targetPolicy != EnemyTargetPolicy::LowestHealthHostile) {
+    return std::nullopt;
+  }
+  if (!facts.targetId.has_value() || !facts.targetVisible || !facts.targetPosition.finite() ||
+      !std::isfinite(facts.targetDistance) || facts.targetDistance < 0.0f) {
+    return std::nullopt;
+  }
+  return TargetChoice{*facts.targetId, facts.targetPosition, facts.targetDistance};
 }
 
 bool isBetter(const EnemyAbility& candidate, FixedPoint candidateExcessRange,
@@ -100,13 +130,20 @@ EnemyActionPlan TacticalPlanner::plan(EnemyIntent intent, const PerceptionSnapsh
                         EnemyPlanFallbackReason::None);
   }
 
-  const char* tag = requiredTag(intent);
-  if (tag == nullptr) {
+  const std::optional<EnemyAbilityCategory> category = requiredCategory(intent);
+  if (!category.has_value()) {
     if (intent == EnemyIntent::Chase && facts.targetVisible) {
       return movementPlan(intent, facts, facts.targetPosition, EnemyPlanFallbackReason::None);
     }
     if (intent == EnemyIntent::Retreat) {
       return movementPlan(intent, facts, retreatDestination(facts), EnemyPlanFallbackReason::None);
+    }
+    if (intent == EnemyIntent::Idle) {
+      return idlePlan(intent, facts, EnemyPlanFallbackReason::None);
+    }
+    if (intent == EnemyIntent::BreakFree) {
+      return movementPlan(intent, facts, facts.safeReturnPosition,
+                          EnemyPlanFallbackReason::None);
     }
     return idlePlan(intent, facts, EnemyPlanFallbackReason::UnsupportedIntent);
   }
@@ -116,7 +153,7 @@ EnemyActionPlan TacticalPlanner::plan(EnemyIntent intent, const PerceptionSnapsh
   FixedPoint selectedExcessRange = 0;
   for (const EnemyAbilityState& state : abilities) {
     const EnemyAbility& ability = state.ability;
-    if (state.cooldownRemainingMs > 0 || ability.id == 0 || ability.tag != tag ||
+    if (state.cooldownRemainingMs > 0 || ability.id == 0 || ability.category != *category ||
         ability.range <= 0) {
       continue;
     }

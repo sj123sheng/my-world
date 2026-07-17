@@ -12,6 +12,7 @@ EnemyAbility validSampleAbility() {
   EnemyAbility ability;
   ability.id = 1;
   ability.tag = "test";
+  ability.category = EnemyAbilityCategory::Attack;
   ability.range = fp(1);
   ability.cooldownMs = 100;
   ability.windupMs = 10;
@@ -49,4 +50,15 @@ int main() {
   invalid = config;
   invalid.region.radius = 0.0f;
   assert(!invalid.validated().has_value());
+
+  invalid = config;
+  invalid.abilities[0].category = static_cast<EnemyAbilityCategory>(99);
+  assert(!invalid.validated().has_value());
+
+  EnemyAiConfig supportConfig = EnemyAiConfig::defaults();
+  EnemyAbility support = validSampleAbility();
+  support.category = EnemyAbilityCategory::Support;
+  support.targetPolicy = EnemyTargetPolicy::LowestShieldAlly;
+  supportConfig.abilities.push_back(support);
+  assert(supportConfig.validated().has_value());
 }
