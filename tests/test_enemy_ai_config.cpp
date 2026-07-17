@@ -1,19 +1,23 @@
 #include "gameplay/ai/enemy_ai_config.h"
 
 #include <cassert>
+#include <type_traits>
 
 namespace {
 
 EnemyAbility validSampleAbility() {
+  static_assert(std::is_same_v<decltype(EnemyAbility::range), FixedPoint>);
+  static_assert(std::is_same_v<decltype(EnemyAbility::weight), FixedPoint>);
+
   EnemyAbility ability;
   ability.id = 1;
   ability.tag = "test";
-  ability.range = 1.0f;
+  ability.range = fp(1);
   ability.cooldownMs = 100;
   ability.windupMs = 10;
   ability.activeMs = 10;
   ability.recoveryMs = 10;
-  ability.weight = 1.0f;
+  ability.weight = fp(1);
   ability.targetPolicy = EnemyTargetPolicy::CurrentTarget;
   ability.effect = EnemyAbilityEffect::Damage;
   return ability;
@@ -25,6 +29,11 @@ int main() {
   EnemyAiConfig config = EnemyAiConfig::defaults();
   assert(config.maxEnemies == 3);
   assert(config.abilities.empty());
+
+  assert(config.validated().has_value());
+  EnemyAiConfig overCapacity = config;
+  overCapacity.maxEnemies = 4;
+  assert(!overCapacity.validated().has_value());
 
   config.abilities.push_back(validSampleAbility());
   assert(config.validated().has_value());

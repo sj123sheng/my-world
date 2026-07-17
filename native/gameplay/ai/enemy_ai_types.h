@@ -57,12 +57,12 @@ using EnemyAbilityId = uint32_t;
 struct EnemyAbility {
   EnemyAbilityId id = 0;
   std::string tag;
-  float range = 0.0f;
+  FixedPoint range = 0;
   Tick cooldownMs = 0;
   Tick windupMs = 0;
   Tick activeMs = 0;
   Tick recoveryMs = 0;
-  float weight = 0.0f;
+  FixedPoint weight = 0;
   EnemyTargetPolicy targetPolicy = EnemyTargetPolicy::CurrentTarget;
   EnemyAbilityEffect effect = EnemyAbilityEffect::Damage;
 };

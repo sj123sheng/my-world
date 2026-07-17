@@ -14,6 +14,8 @@ struct CombatRegionConfig {
 };
 
 struct EnemyAiConfig {
+  static constexpr std::size_t kMaxEnemies = 3;
+
   std::size_t maxEnemies = 3;
   std::vector<EnemyAbility> abilities;
   CombatRegionConfig region;
@@ -21,7 +23,9 @@ struct EnemyAiConfig {
   static EnemyAiConfig defaults() { return {}; }
 
   std::optional<EnemyAiConfig> validated() const {
-    if (maxEnemies == 0 || !validRegion(region)) return std::nullopt;
+    if (maxEnemies == 0 || maxEnemies > kMaxEnemies || !validRegion(region)) {
+      return std::nullopt;
+    }
 
     std::unordered_set<EnemyAbilityId> abilityIds;
     for (const EnemyAbility& ability : abilities) {
@@ -38,10 +42,9 @@ struct EnemyAiConfig {
   }
 
   static bool validAbility(const EnemyAbility& ability) {
-    return ability.id != 0 && !ability.tag.empty() && std::isfinite(ability.range) &&
-           ability.range > 0.0f && ability.cooldownMs >= 0 && ability.windupMs >= 0 &&
-           ability.activeMs >= 0 && ability.recoveryMs >= 0 && std::isfinite(ability.weight) &&
-           ability.weight > 0.0f && validTargetPolicy(ability.targetPolicy) &&
+    return ability.id != 0 && !ability.tag.empty() && ability.range > 0 &&
+           ability.cooldownMs >= 0 && ability.windupMs >= 0 && ability.activeMs >= 0 &&
+           ability.recoveryMs >= 0 && ability.weight > 0 && validTargetPolicy(ability.targetPolicy) &&
            validEffect(ability.effect);
   }
 
