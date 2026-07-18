@@ -18,10 +18,14 @@ for (const [label, type] of buttonActions) {
     `CombatControls must pair ${label} with pushAction(${type})`);
 }
 assert.match(bridge, /export const pushAction/, 'Bridge must export pushAction');
+assert.match(bridge, /export const startEncounter/, 'Bridge must export startEncounter');
+assert.match(declarations, /startEncounter: \(mode: number\) => boolean;/,
+  'Index.d.ts must declare startEncounter(mode)');
 assert.doesNotMatch(page, /\.onTouch\s*\(/,
   'GamePage must not register an ArkTS touch producer');
 for (const field of ['stamina', 'comboSegment', 'invulnerable', 'insightMs',
-  'resonance', 'targetHp', 'targetPoise', 'pulseHitRemainingMs', 'lastRejectReason']) {
+  'resonance', 'targetHp', 'targetPoise', 'pulseHitRemainingMs', 'lastRejectReason',
+  'encounterMode', 'encounterState']) {
   assert.match(bridge, new RegExp(`\\b${field}\\b`), `Bridge Snapshot missing ${field}`);
 }
 for (const source of [bridge, declarations, page, nativeBridge, loop, hud]) {
@@ -68,6 +72,24 @@ assert.match(pushActionBody,
 assert.match(pushActionBody, /g_loop\.enqueueInput\(action, -1, 0\.0f, 0\.0f\)/,
   'NativePushAction must enqueue through Loop');
 
+const startEncounterBody = functionBody(nativeBridge, 'static napi_value NativeStartEncounter');
+assert.match(startEncounterBody, /argc != 1/,
+  'NativeStartEncounter must require exactly one argument');
+assert.match(startEncounterBody, /argumentType != napi_number/,
+  'NativeStartEncounter must require a number');
+assert.match(startEncounterBody, /!std::isfinite\(modeNumber\)/,
+  'NativeStartEncounter must reject non-finite numbers');
+assert.match(startEncounterBody, /!TryConvertInt32\(modeNumber, mode\)/,
+  'NativeStartEncounter must reject fractional numbers');
+assert.match(startEncounterBody, /mode < 0 \|\| mode > 3/,
+  'NativeStartEncounter must reject encounter modes outside 0..3');
+assert.match(startEncounterBody, /g_loop\.startEncounter\(static_cast<EncounterMode>\(mode\)\)/,
+  'NativeStartEncounter must delegate to Loop::startEncounter');
+assert.match(startEncounterBody, /napi_get_boolean\(env, started, &result\)/,
+  'NativeStartEncounter must return whether the encounter started');
+assert.match(nativeBridge, /"startEncounter", nullptr, NativeStartEncounter/,
+  'native bridge must export startEncounter');
+
 const snapshotInterface = bridge.match(/export interface Snapshot \{([\s\S]*?)\n\}/);
 assert(snapshotInterface, 'Bridge must declare Snapshot');
 const fields = [...snapshotInterface[1].matchAll(/^\s{2}(\w+): [^;]+;/gm)].map((match) => match[1]);
@@ -89,11 +111,18 @@ for (const field of fields) {
 }
 
 for (const field of ['tick', 'moveX', 'moveY', 'cameraYaw', 'cameraPitch',
-  'targetDist', 'targetId', 'bossPhase']) {
+  'targetDist', 'targetId', 'bossPhase', 'encounterMode', 'encounterState']) {
   assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
     `GamePage polling must assign ${field}`);
   assert.match(nativeBridge, new RegExp(`"${field}"`));
 }
+
+assert.match(hud, /@Prop encounterMode: number = 0;/,
+  'HUD must accept encounterMode');
+assert.match(hud, /@Prop encounterState: number = 0;/,
+  'HUD must accept encounterState');
+assert.match(hud, /遭遇.*\$\{this\.encounterMode\}.*状态.*\$\{this\.encounterState\}/,
+  'HUD must render encounter mode and state');
 
 for (const field of ['moveX', 'moveY', 'cameraYaw', 'cameraPitch', 'targetDist']) {
   const create = nativeSnapshotBody.match(new RegExp(
@@ -156,6 +185,13 @@ assert.match(functionBody(nativeBridge, 'static napi_value NativeStop'),
 assert.match(functionBody(nativeBridge, 'static napi_value NativePushInput'),
   /g_loop\.enqueueInput\(/,
   'pushInput remains a validated external/test bridge even though GamePage does not call it');
+assert.match(controls, /import \{ pushAction, startEncounter \} from ['"]\.\.\/napi\/Bridge['"];/,
+  'CombatControls must import startEncounter with pushAction');
+for (const [label, mode] of [['训练', 0], ['兽群', 1], ['混战', 2], ['守卫', 3]]) {
+  assert.match(controls,
+    new RegExp(`Button\\(['"]${label}['"]\\)(?:(?!Button\\().)*startEncounter\\(${mode}\\)`, 's'),
+    `CombatControls must pair ${label} with startEncounter(${mode})`);
+}
 for (const callback of ['OnSurfaceCreated', 'OnSurfaceChanged']) {
   assert.match(functionBody(nativeBridge, `static void ${callback}`),
     /if \(g_foregroundRequested\.load\(\)\)[\s\S]*?g_loop\.start\(\);/,

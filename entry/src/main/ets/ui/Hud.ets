@@ -16,6 +16,8 @@ export struct Hud {
   @Prop targetPoise: number = 100;
   @Prop pulseHitRemainingMs: number = 0;
   @Prop lastRejectReason: number = 0;
+  @Prop encounterMode: number = 0;
+  @Prop encounterState: number = 0;
   @Prop currentAction: number = 0;
   @Prop comboWindowMs: number = 0;
   @Prop radianceCooldownMs: number = 0;
@@ -58,6 +60,8 @@ export struct Hud {
           Text(`脉冲 ${this.pulseHitRemainingMs}ms · 无敌 ${this.invulnerable ? '是' : '否'} · 拒绝 ${this.lastRejectReason}`)
             .fontColor(this.pulseHitRemainingMs >= 100 && this.pulseHitRemainingMs <= 500 ? Color.Red : Color.Gray)
             .fontSize(12)
+          Text(`遭遇 ${this.encounterMode} · 状态 ${this.encounterState}`)
+            .fontColor(Color.Gray).fontSize(12)
           Text(`动作 ${this.currentAction} · 连击窗 ${this.comboWindowMs}ms · 终结窗 ${this.ultimateWindowMs}ms`)
             .fontColor(Color.Gray).fontSize(12)
           Text(`冷却 ${this.radianceCooldownMs}/${this.currentCooldownMs}/${this.corruptionCooldownMs}ms`)

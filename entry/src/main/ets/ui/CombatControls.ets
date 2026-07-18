@@ -1,9 +1,15 @@
-import { pushAction } from '../napi/Bridge';
+import { pushAction, startEncounter } from '../napi/Bridge';
 
 @Component
 export struct CombatControls {
   build() {
     Column({ space: 8 }) {
+      Row({ space: 8 }) {
+        Button('训练').onClick(() => { startEncounter(0); })
+        Button('兽群').onClick(() => { startEncounter(1); })
+        Button('混战').onClick(() => { startEncounter(2); })
+        Button('守卫').onClick(() => { startEncounter(3); })
+      }
       Row({ space: 8 }) {
         Button('普攻').onClick(() => { pushAction(0); })
         Button('闪避').onClick(() => { pushAction(1); })

@@ -12,6 +12,8 @@ struct GameSnapshot {
   bool moving = false;
   int32_t targetId = 0;
   int32_t bossPhase = 0;
+  int32_t encounterMode = 0;
+  int32_t encounterState = 0;
   bool rendererReady = false;
   float moveX = 0.0f;
   float moveY = 0.0f;

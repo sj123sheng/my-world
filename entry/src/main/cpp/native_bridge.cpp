@@ -185,13 +185,36 @@ static napi_value NativePushAction(napi_env env, napi_callback_info info) {
   return nullptr;
 }
 
+static napi_value NativeStartEncounter(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value args[1] = {nullptr};
+  if (napi_get_cb_info(env, info, &argc, args, nullptr, nullptr) != napi_ok || argc != 1) {
+    return ThrowInputTypeError(env, "startEncounter expects exactly one mode");
+  }
+  napi_valuetype argumentType = napi_undefined;
+  double modeNumber = 0.0;
+  if (args[0] == nullptr || napi_typeof(env, args[0], &argumentType) != napi_ok ||
+      argumentType != napi_number || napi_get_value_double(env, args[0], &modeNumber) != napi_ok ||
+      !std::isfinite(modeNumber)) {
+    return ThrowInputTypeError(env, "startEncounter mode must be a finite integer from 0 to 3");
+  }
+  int32_t mode = 0;
+  if (!TryConvertInt32(modeNumber, mode) || mode < 0 || mode > 3) {
+    return ThrowInputTypeError(env, "startEncounter mode must be an integer from 0 to 3");
+  }
+  const bool started = g_loop.startEncounter(static_cast<EncounterMode>(mode));
+  napi_value result = nullptr;
+  napi_get_boolean(env, started, &result);
+  return result;
+}
+
 static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   const GameSnapshot snapshot = g_loop.snapshot();
   napi_value result;
   napi_create_object(env, &result);
   napi_value tickVal, hpVal, poiseVal, xVal, yVal, fpsVal, movingVal;
   napi_value moveXVal, moveYVal, cameraYawVal, cameraPitchVal, distVal;
-  napi_value targetIdVal, bossPhaseVal, rendererReadyVal;
+  napi_value targetIdVal, bossPhaseVal, encounterModeVal, encounterStateVal, rendererReadyVal;
   napi_value staminaVal, comboSegmentVal, invulnerableVal, insightMsVal;
   napi_value resonanceVal, targetHpVal, targetPoiseVal, pulseHitRemainingMsVal;
   napi_value lastRejectReasonVal;
@@ -208,6 +231,8 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_create_double(env, snapshot.targetDist, &distVal);
   napi_create_int32(env, snapshot.targetId, &targetIdVal);
   napi_create_int32(env, snapshot.bossPhase, &bossPhaseVal);
+  napi_create_int32(env, snapshot.encounterMode, &encounterModeVal);
+  napi_create_int32(env, snapshot.encounterState, &encounterStateVal);
   napi_get_boolean(env, snapshot.moving, &movingVal);
   napi_get_boolean(env, snapshot.rendererReady, &rendererReadyVal);
   napi_create_double(env, static_cast<double>(snapshot.stamina) / FP_ONE, &staminaVal);
@@ -233,6 +258,8 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_set_named_property(env, result, "targetDist", distVal);
   napi_set_named_property(env, result, "targetId", targetIdVal);
   napi_set_named_property(env, result, "bossPhase", bossPhaseVal);
+  napi_set_named_property(env, result, "encounterMode", encounterModeVal);
+  napi_set_named_property(env, result, "encounterState", encounterStateVal);
   napi_set_named_property(env, result, "rendererReady", rendererReadyVal);
   napi_set_named_property(env, result, "stamina", staminaVal);
   napi_set_named_property(env, result, "comboSegment", comboSegmentVal);
@@ -280,6 +307,7 @@ static napi_value Init(napi_env env, napi_value exports) {
     {"nativeStop", nullptr, NativeStop, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pushInput", nullptr, NativePushInput, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pushAction", nullptr, NativePushAction, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"startEncounter", nullptr, NativeStartEncounter, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pullSnapshot", nullptr, NativePullSnapshot, nullptr, nullptr, nullptr, napi_default, nullptr},
   };
   napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);

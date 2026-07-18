@@ -247,6 +247,8 @@ void Loop::tickOnce(int64_t elapsedMs) {
   snapshot.moving = surface.player.moving;
   snapshot.targetId = currentTarget ? currentTarget->id : 0;
   snapshot.rendererReady = surface.ready;
+  snapshot.encounterMode = static_cast<int32_t>(encounter.snapshot().mode);
+  snapshot.encounterState = static_cast<int32_t>(encounter.snapshot().state);
   snapshot.moveX = intent.move.x;
   snapshot.moveY = intent.move.y;
   snapshot.cameraYaw = camera.yaw();
@@ -334,6 +336,8 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
 
   GameSnapshot updated = snapshots.read();
   ApplyCombatSnapshot(updated, combat.snapshot());
+  updated.encounterMode = static_cast<int32_t>(encounter.snapshot().mode);
+  updated.encounterState = static_cast<int32_t>(encounter.snapshot().state);
   snapshots.publish(updated);
 }
 
