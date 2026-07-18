@@ -9,6 +9,10 @@
 struct TargetCandidate {
   int32_t id = 0;
   Vec2 position;
+
+  bool operator==(const TargetCandidate& other) const {
+    return id == other.id && position == other.position;
+  }
 };
 
 struct TargetSelection {
@@ -29,7 +33,8 @@ class SoftTargeting {
 
   std::optional<TargetSelection> select(
       Vec2 player, float cameraYaw,
-      const std::vector<TargetCandidate>& candidates) const;
+      const std::vector<TargetCandidate>& candidates,
+      std::optional<int32_t> preferredId = std::nullopt) const;
 
  private:
   SoftTargetingConfig config_;

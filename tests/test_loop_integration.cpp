@@ -206,6 +206,33 @@ int main() {
   targetingLoop.tickOnce(16);
   assert(targetingLoop.snapshot().targetId ==
          static_cast<int32_t>(CombatController::kTrainingTargetId));
+
+  Loop enemyEncounterLoop;
+  enemyEncounterLoop.surface.width = 1000;
+  enemyEncounterLoop.surface.height = 800;
+  enemyEncounterLoop.surface.ready = true;
+  assert(enemyEncounterLoop.encounter.snapshot().mode == EncounterMode::Training);
+  assert(enemyEncounterLoop.startEncounter(EncounterMode::Mixed));
+  enemyEncounterLoop.tickOnce(16);
+  const EntityId selectedEnemy =
+      static_cast<EntityId>(enemyEncounterLoop.snapshot().targetId);
+  assert(selectedEnemy != 0 &&
+         selectedEnemy != CombatController::kTrainingTargetId);
+  assert(enemyEncounterLoop.encounter.snapshot().enemies.size() ==
+         EnemyAiConfig::kMaxEnemies);
+  assert(enemyEncounterLoop.enqueueInput(InputAction::Attack, -1, 0.0f, 0.0f));
+  for (int frame = 0; frame < 10; ++frame) enemyEncounterLoop.tickOnce(16);
+  const auto damagedEnemy = std::find_if(
+      enemyEncounterLoop.encounter.snapshot().enemies.begin(),
+      enemyEncounterLoop.encounter.snapshot().enemies.end(),
+      [selectedEnemy](const EncounterEnemySnapshot& enemy) {
+        return enemy.id == selectedEnemy;
+      });
+  assert(damagedEnemy != enemyEncounterLoop.encounter.snapshot().enemies.end());
+  assert(damagedEnemy->hp < fp(300));
+  enemyEncounterLoop.stop();
+  assert(enemyEncounterLoop.combatEvents().gameplay.empty());
+  assert(enemyEncounterLoop.encounter.snapshot().state == EncounterState::Stopped);
   GameSnapshot activeRenderer = targetingLoop.snapshot();
   activeRenderer.moving = true;
   activeRenderer.moveX = 0.75f;

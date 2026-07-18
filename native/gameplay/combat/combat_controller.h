@@ -53,6 +53,13 @@ struct CombatEventBatch {
   std::vector<PresentationEvent> presentation;
 };
 
+struct CombatTargetBinding {
+  EntityId id = 0;
+  TrainingTarget* target = nullptr;
+  FixedPoint* shield = nullptr;
+  DamageResolutionContext damageContext;
+};
+
 class CombatController {
  public:
   static constexpr EntityId kPlayerId = 1;
@@ -62,15 +69,24 @@ class CombatController {
 
   void enqueue(ActionRequest request);
   void update(const CombatFrameInput& input);
+  void updateEnemy(const CombatFrameInput& input,
+                   const CombatTargetBinding& target = {});
+  void applyEnemyHit(const HitRequest& hit);
   void reset();
 
   const CombatSnapshot& snapshot() const { return snapshot_; }
   const CombatEventBatch& events() const { return events_; }
 
  private:
-  ActionContext contextFor(const CombatFrameInput& input) const;
+  ActionContext contextFor(const CombatFrameInput& input, EntityId expectedTarget,
+                           bool targetAlive) const;
+  void updateAgainst(const CombatFrameInput& input, TrainingTarget* target,
+                     EntityId expectedTarget, bool trainingPulse,
+                     FixedPoint* shield,
+                     const DamageResolutionContext& damageContext);
   void emitDamageEvents(const HitRequest& hit, const DamageOutcome& damage);
-  void refreshSnapshot();
+  void refreshSnapshot(const TrainingTarget* target = nullptr,
+                       bool trainingEncounter = true);
   void resetTrainingEncounter();
   void sortEvents();
 

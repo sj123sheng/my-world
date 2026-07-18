@@ -17,8 +17,11 @@
 #include "../../gameplay/player/player_controller.h"
 #include "../../gameplay/targeting/soft_targeting.h"
 #include "../../gameplay/combat/combat_controller.h"
+#include "../../gameplay/ai/encounter_controller.h"
 
 struct Loop {
+  Loop() { (void)encounter.start(EncounterMode::Training); }
+
   Surface surface;
   InputQueue input;
   TouchRouter touchRouter;
@@ -29,6 +32,7 @@ struct Loop {
   ThirdPersonCamera camera;
   SoftTargeting softTargeting;
   CombatController combat{CombatConfig::defaults()};
+  EncounterController encounter{combat};
   std::optional<TargetSelection> currentTarget;
   FixedStep fixedStep{16, 4};
   SnapshotStore snapshots;
@@ -53,6 +57,7 @@ struct Loop {
   void processInput();
   void resetInput();
   void publishRendererStopped();
+  bool startEncounter(EncounterMode mode);
 
   template <typename Fn>
   decltype(auto) withLifecycle(Fn&& operation) {

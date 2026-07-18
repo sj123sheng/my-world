@@ -152,6 +152,19 @@ void testHandlesLargeAndSmallFiniteOffsets() {
   assert(near(small->direction.y, 0.0f));
 }
 
+void testKeepsPreferredTargetUntilItDisappears() {
+  SoftTargeting targeting({2.0f, kPi});
+  const std::vector<TargetCandidate> candidates{
+      {10, {0.0f, 1.0f}}, {20, {0.0f, 0.5f}}};
+
+  const auto kept = targeting.select({0.0f, 0.0f}, 0.0f, candidates, 10);
+  assert(kept && kept->id == 10);
+
+  const auto retargeted = targeting.select(
+      {0.0f, 0.0f}, 0.0f, {{20, {0.0f, 0.5f}}}, 10);
+  assert(retargeted && retargeted->id == 20);
+}
+
 }  // namespace
 
 int main() {
@@ -163,4 +176,5 @@ int main() {
   testNormalizesInvalidConfiguration();
   testReturnsDistanceAngleAndDirection();
   testHandlesLargeAndSmallFiniteOffsets();
+  testKeepsPreferredTargetUntilItDisappears();
 }

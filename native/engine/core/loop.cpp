@@ -53,6 +53,7 @@ void Loop::start() {
   withLifecycle([this]() {
     if (!surface.ready) {
       resetInput();
+      encounter.reset();
       combat.reset();
       combatTimeMs_ = 0;
       {
@@ -64,7 +65,7 @@ void Loop::start() {
     }
     if (!lifecycle.start([this]() {
       resetInput();
-      combat.reset();
+      (void)encounter.start(EncounterMode::Training);
       combatTimeMs_ = 0;
       {
         std::lock_guard<std::mutex> lock(combatEventMutex);
@@ -100,6 +101,7 @@ void Loop::stop() {
       running = false;
     });
     resetInput();
+    encounter.stop();
     combat.reset();
     combatTimeMs_ = 0;
     {
@@ -116,6 +118,22 @@ void Loop::stop() {
     paused.rendererReady = surface.ready;
     ApplyCombatSnapshot(paused, combat.snapshot());
     snapshots.publish(paused);
+  });
+}
+
+bool Loop::startEncounter(EncounterMode mode) {
+  return withLifecycle([this, mode]() {
+    currentTarget.reset();
+    intent.actions.clear();
+    combatTimeMs_ = 0;
+    {
+      std::lock_guard<std::mutex> lock(combatEventMutex);
+      frameCombatEvents_ = {};
+    }
+    const bool started = encounter.start(mode);
+    surface.trainingTarget.alive =
+        started && mode == EncounterMode::Training;
+    return started;
   });
 }
 
@@ -193,11 +211,15 @@ void Loop::tickOnce(int64_t elapsedMs) {
   }
   if (!surface.ready) {
     resetInput();
+    encounter.stop();
     combat.reset();
     combatTimeMs_ = 0;
     surface.trainingTarget.alive = true;
     publishRendererStopped();
     return;
+  }
+  if (encounter.snapshot().state == EncounterState::Stopped) {
+    (void)encounter.start(EncounterMode::Training);
   }
   processInput();
   fixedStep.advance(elapsedMs, [this](Tick tick, int64_t dtMs) {
@@ -265,28 +287,35 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   camera.update({surface.player.x, surface.player.y}, lookDelta, dtSeconds);
   surface.cameraRenderState = camera.renderState();
 
-  std::vector<TargetCandidate> candidates;
-  candidates.reserve(1);
-  if (surface.trainingTarget.alive) {
-    candidates.push_back({static_cast<int32_t>(surface.trainingTarget.id),
-                          {surface.trainingTarget.x, surface.trainingTarget.y}});
-  }
+  const std::vector<TargetCandidate>& candidates =
+      encounter.snapshot().candidates;
   currentTarget = softTargeting.select(
-      {surface.player.x, surface.player.y}, camera.yaw(), candidates);
+      {surface.player.x, surface.player.y}, camera.yaw(), candidates,
+      currentTarget ? std::optional<int32_t>{currentTarget->id} : std::nullopt);
 
   for (const ActionRequest& action : intent.actions) combat.enqueue(action);
   intent.actions.clear();
   const Tick combatTime = AdvanceCombatTime(combatTimeMs_.load(), dtMs);
   combatTimeMs_.store(combatTime);
-  combat.update({combatTime, dtMs, surface.player.moving,
-                 currentTarget ? static_cast<EntityId>(currentTarget->id) : 0,
-                 currentTarget.has_value() && surface.trainingTarget.alive});
-  surface.trainingTarget.alive = combat.snapshot().targetAlive;
-  if (!surface.trainingTarget.alive) currentTarget.reset();
+  encounter.update({combatTime, dtMs,
+                    {surface.player.x, surface.player.y},
+                    surface.player.moving,
+                    currentTarget ? static_cast<EntityId>(currentTarget->id) : 0});
+  surface.trainingTarget.alive =
+      encounter.snapshot().mode == EncounterMode::Training &&
+      combat.snapshot().targetAlive;
+  if (currentTarget.has_value() &&
+      std::none_of(encounter.snapshot().candidates.begin(),
+                   encounter.snapshot().candidates.end(),
+                   [this](const TargetCandidate& candidate) {
+                     return candidate.id == currentTarget->id;
+                   })) {
+    currentTarget.reset();
+  }
 
   {
     std::lock_guard<std::mutex> lock(combatEventMutex);
-    const CombatEventBatch& stepEvents = combat.events();
+    const CombatEventBatch& stepEvents = encounter.events().combat;
     frameCombatEvents_.gameplay.insert(frameCombatEvents_.gameplay.end(),
                                        stepEvents.gameplay.begin(),
                                        stepEvents.gameplay.end());
@@ -310,6 +339,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
 
 void Loop::publishRendererStopped() {
   currentTarget.reset();
+  encounter.stop();
   combat.reset();
   combatTimeMs_ = 0;
   {

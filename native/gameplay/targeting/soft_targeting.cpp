@@ -23,13 +23,15 @@ SoftTargeting::SoftTargeting(SoftTargetingConfig config) : config_(config) {
 
 std::optional<TargetSelection> SoftTargeting::select(
     Vec2 player, float cameraYaw,
-    const std::vector<TargetCandidate>& candidates) const {
+    const std::vector<TargetCandidate>& candidates,
+    std::optional<int32_t> preferredId) const {
   if (!player.finite() || !std::isfinite(cameraYaw)) {
     return std::nullopt;
   }
 
   const Vec2 cameraForward{std::sin(cameraYaw), std::cos(cameraYaw)};
   std::optional<TargetSelection> best;
+  std::optional<TargetSelection> preferred;
   std::unordered_map<int32_t, std::size_t> idCounts;
 
   for (const TargetCandidate& candidate : candidates) {
@@ -61,11 +63,14 @@ std::optional<TargetSelection> SoftTargeting::select(
     }
 
     TargetSelection selection{candidate.id, distance, angle, direction};
+    if (preferredId.has_value() && selection.id == *preferredId) {
+      preferred = selection;
+    }
     if (!best || std::tie(selection.angle, selection.distance, selection.id) <
                      std::tie(best->angle, best->distance, best->id)) {
       best = selection;
     }
   }
 
-  return best;
+  return preferred.has_value() ? preferred : best;
 }
