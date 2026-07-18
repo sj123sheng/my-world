@@ -194,6 +194,23 @@ my-world/
 
 ## 测试与验证
 
+### 阶段 4 自动化、构建与真机状态
+
+2026-07-18 阶段 4 敌人 AI 与真机遭遇入口收口结果：
+
+- 自动化测试：本地可用的 40/40 个纯逻辑 `tests/test_*.cpp` 逐个使用显式 macOS SDK、
+  SDK 内 `usr/include/c++/v1`、`-I. -Inative` 编译并运行通过；Node 桥接契约 1/1 通过，
+  `git diff --check` 通过。`test_loop_integration`、`test_loop_lifecycle` 和 `test_fence_wait`
+  仍需 HarmonyOS 图形或平台链路覆盖，不作为 macOS 纯逻辑批量测试执行。
+- 生产构建：指定 `DEVECO_SDK_HOME=/Applications/DevEco-Studio.app/Contents/sdk` 的 Hvigor
+  `assembleHap` 返回 `BUILD SUCCESSFUL`。最新 signed HAP 为
+  `entry/build/default/outputs/default/entry-default-signed.hap`（约 4.6 MiB，SHA-256
+  `e1f24a22a894d46d38d78fd6934d27ad777ed32db59087360884d24283315a57`）。
+- 真机验收：设备 `2MN0224C12000754` 完成 signed HAP 安装、启动、UITest 点击、布局 dump
+  和截图采证。新增 `训练`、`兽群`、`混战`、`守卫` 遭遇入口可见；初始 HUD 显示
+  `遭遇 0 · 状态 1`，点击 `混战` 后显示 `遭遇 2 · 状态 1`，点击 `守卫` 后显示
+  `遭遇 3 · 状态 1`。应用进程保持运行，基础训练按钮输入链路保持可用。
+
 ### 阶段 3 自动化、构建与真机状态
 
 2026-07-16 阶段 3 最终审查修复后的收口结果：
@@ -265,7 +282,7 @@ git status --short
 - 模拟器是否支持 GLES 取决于 DevEco Studio、SDK 与系统镜像的匹配情况。
 - 当前帧循环使用简单定时休眠，尚未接入生产级 VSync 调度。
 - 当前渲染内容为灰盒图形，不代表最终美术质量。
-- 完整战斗、敌人 AI、区域流式内容和性能基线仍需继续实现与验证。
+- 首领、关卡流程、区域流式内容和性能基线仍需继续实现与验证。
 - 公网联机能力不在当前 MVP 范围内。
 
 ## 路线图
