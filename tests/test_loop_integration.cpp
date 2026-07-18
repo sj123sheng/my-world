@@ -230,6 +230,26 @@ int main() {
       });
   assert(damagedEnemy != enemyEncounterLoop.encounter.snapshot().enemies.end());
   assert(damagedEnemy->hp < fp(300));
+
+  CombatConfig fragileEnemyConfig = CombatConfig::defaults();
+  fragileEnemyConfig.comboDamage = {fp(300), fp(300), fp(300), fp(300)};
+  Loop staleTargetLoop;
+  staleTargetLoop.combat = CombatController(fragileEnemyConfig);
+  staleTargetLoop.surface.width = 1000;
+  staleTargetLoop.surface.height = 800;
+  staleTargetLoop.surface.ready = true;
+  assert(staleTargetLoop.startEncounter(EncounterMode::Beast));
+  staleTargetLoop.tickOnce(16);
+  const int32_t staleTargetId = staleTargetLoop.snapshot().targetId;
+  assert(staleTargetId != 0);
+  assert(staleTargetLoop.enqueueInput(InputAction::Attack, -1, 0.0f, 0.0f));
+  for (int frame = 0; frame < 10; ++frame) staleTargetLoop.tickOnce(16);
+  assert(staleTargetLoop.encounter.snapshot().state == EncounterState::Victory);
+  assert(staleTargetLoop.snapshot().targetId == 0);
+  assert(staleTargetLoop.enqueueInput(InputAction::Attack, -1, 0.0f, 0.0f));
+  for (int frame = 0; frame < 10; ++frame) staleTargetLoop.tickOnce(16);
+  assert(staleTargetLoop.encounter.events().combat.gameplay.empty());
+
   enemyEncounterLoop.stop();
   assert(enemyEncounterLoop.combatEvents().gameplay.empty());
   assert(enemyEncounterLoop.encounter.snapshot().state == EncounterState::Stopped);
