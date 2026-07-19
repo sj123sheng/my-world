@@ -38,6 +38,7 @@ export struct Hud {
   @Prop bossPoise: number = 300;
   @Prop bossMechanic: number = 0;
   @Prop bossCastMs: number = 0;
+  @Prop bossPhase: number = 0;
   @State auras: string[] = [];
 
   build() {
