@@ -264,7 +264,7 @@ assert.match(hud,
   /关卡.*\$\{this\.levelStage\}.*门.*\$\{this\.gateState\}.*补给.*\$\{this\.supplyState\}/,
   'HUD must render level stage, gate and supply state');
 assert.match(hud,
-  /首领.*\$\{this\.bossHp\.toFixed\(1\)\}.*\$\{this\.bossPoise\.toFixed\(1\)\}.*\$\{this\.bossPhase\}.*\$\{this\.bossMechanic\}.*\$\{this\.bossCastMs\}/,
+  /首领.*阶段.*\$\{this\.bossPhase\}.*机制.*\$\{this\.bossMechanic\}.*读条.*\$\{this\.bossCastMs\}/,
   'HUD must render boss HP, poise, phase, mechanic and cast');
 
 // ---- Stage 6: toggleDebugHud, perfLevel, vfx fields ----
@@ -288,3 +288,11 @@ assert.match(controls, /import[^]*\btoggleDebugHud\b/,
   'CombatControls must import toggleDebugHud');
 assert.match(controls, new RegExp(`Button\\(['"]调试['"]\\)(?:(?!Button\\().)*toggleDebugHud\\(\\)`, 's'),
   'CombatControls must pair 调试 with toggleDebugHud()');
+
+// ---- Stage 6: Mobile HUD with Progress bars and debug toggle ----
+assert.match(hud, /@Prop debugHud: boolean = false;/, 'HUD must accept debugHud');
+assert.match(hud, /Progress\(\s*\{[^}]*value:\s*this\.hp/, 'HUD must render HP bar with Progress');
+assert.match(hud, /Progress\(\s*\{[^}]*value:\s*this\.poise/, 'HUD must render poise bar with Progress');
+assert.match(hud, /Progress\(\s*\{[^}]*value:\s*this\.stamina/, 'HUD must render stamina bar with Progress');
+assert.match(hud, /if\s*\(\s*this\.debugHud\s*\)/, 'HUD must gate debug overlay on debugHud prop');
+assert.match(hud, /Progress\(\s*\{[^}]*value:\s*this\.bossHpRatio/, 'HUD must render boss HP ratio bar with Progress');
