@@ -52,7 +52,7 @@
 - Consumes: `glm::vec3`、`glm::mat4`、`glm::radians`、`glm::perspective`、`glm::lookAt`、`glm::normalize`。
 - Produces: `Camera3D`、`Camera3D::follow()`、`Camera3D::viewMatrix()`、`Camera3D::projectionMatrix()`、`Camera3D::viewProjection()`。
 
-- [ ] **Step 1: 获取 glm 头文件**
+- [x] **Step 1: 获取 glm 头文件**
 
 Run:
 ```bash
@@ -63,7 +63,7 @@ rm -rf glm_tmp
 ```
 Expected: `native/engine/math/glm/` 目录存在，包含 `glm.hpp` 等头文件。
 
-- [ ] **Step 2: 写入失败测试**
+- [x] **Step 2: 写入失败测试**
 
 ```cpp
 #include "native/engine/render/camera3d.h"
@@ -100,7 +100,7 @@ void testProjectionRespondsToFov() {
 }
 ```
 
-- [ ] **Step 3: 编译确认 RED**
+- [x] **Step 3: 编译确认 RED**
 
 Run:
 ```bash
@@ -110,16 +110,16 @@ CXX="$(xcrun --find clang++)"
 ```
 Expected: `camera3d.h` 不存在导致失败。
 
-- [ ] **Step 4: 实现 Camera3D**
+- [x] **Step 4: 实现 Camera3D**
 
 `Camera3D` 使用 glm。`follow()` 用球坐标计算 position：`position = target + distance * (cos(pitch)*cos(yaw), sin(pitch), cos(pitch)*sin(yaw))`。`viewMatrix()` 返回 `glm::lookAt(position, target, {0,1,0})`。`projectionMatrix()` 返回 `glm::perspective(radians(fov), aspectRatio, nearPlane, farPlane)`。`viewProjection()` 返回 `projectionMatrix() * viewMatrix()`。
 
-- [ ] **Step 5: 运行测试确认 GREEN**
+- [x] **Step 5: 运行测试确认 GREEN**
 
 Run: `/tmp/test_camera3d`
 Expected: exit code 0。
 
-- [ ] **Step 6: 更新 CMakeLists 并提交**
+- [x] **Step 6: 更新 CMakeLists 并提交**
 
 在 CMakeLists 增加 `native/engine/math` 到 include path（已有），增加 `camera3d.cpp` 到源文件列表。
 
@@ -145,7 +145,7 @@ git commit -m "feat: 集成 glm 并实现 3D 透视相机" \
 - Consumes: `glm::vec3`、`glm::vec2`、GLES3 `glGenBuffers`/`glDrawElements`。
 - Produces: `Vertex`、`Mesh`、`createCube()`、`createPlane()`、`loadTexture()`。
 
-- [ ] **Step 1: 获取 stb_image 头文件**
+- [x] **Step 1: 获取 stb_image 头文件**
 
 Run:
 ```bash
@@ -153,7 +153,7 @@ curl -sL https://raw.githubusercontent.com/nothings/stb/master/stb_image.h -o na
 ```
 Expected: `native/engine/render/stb_image.h` 存在。
 
-- [ ] **Step 2: 写入失败测试**
+- [x] **Step 2: 写入失败测试**
 
 ```cpp
 #include "native/engine/render/mesh.h"
@@ -179,20 +179,20 @@ void testCubeNormalsFaceOutward() {
 }
 ```
 
-- [ ] **Step 3: 编译确认 RED**
+- [x] **Step 3: 编译确认 RED**
 
 Expected: `mesh.h` 不存在导致失败。
 
-- [ ] **Step 4: 实现 Mesh 和纹理加载**
+- [x] **Step 4: 实现 Mesh 和纹理加载**
 
 `Vertex` 包含 `glm::vec3 position`、`glm::vec3 normal`、`glm::vec2 uv`。`createCube(size)` 生成 24 顶点（6 面 × 4 顶点，每面法线独立）和 36 索引（12 三角形）。`createPlane(width, depth)` 生成 4 顶点和 6 索引，法线朝上 `(0,1,0)`。`Mesh::upload()` 创建 VBO/IBO（`#ifdef OHOS_PLATFORM` 保护 GL 调用）。`Mesh::draw()` 绑定缓冲区并调用 `glDrawElements`。`loadTexture(path)` 用 stb_image 加载 PNG，生成 GL 纹理，失败返回 0。
 
-- [ ] **Step 5: 运行测试确认 GREEN**
+- [x] **Step 5: 运行测试确认 GREEN**
 
 Run: `/tmp/test_mesh`
 Expected: exit code 0。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add native/engine/render/mesh.h native/engine/render/mesh.cpp native/engine/render/texture.h native/engine/render/texture.cpp native/engine/render/stb_image.h tests/test_mesh.cpp entry/src/main/cpp/CMakeLists.txt
@@ -212,11 +212,11 @@ git commit -m "feat: 实现网格创建与纹理加载" \
 - Consumes: GLES3 着色器编译 API。
 - Produces: `Shader3D`、`Shader3D::use()`、`Shader3D::setMVP()`、`Shader3D::setLight()`。
 
-- [ ] **Step 1: 实现 3D 着色器**
+- [x] **Step 1: 实现 3D 着色器**
 
 `Shader3D` 编译顶点和片段着色器源码（见设计规格 §3.5），链接为 Program。`use()` 调用 `glUseProgram`。`setMVP(mat4)` 设置 `uMVP` uniform。`setLight(vec3 dir, vec3 color, vec3 ambient)` 设置光照 uniform。`setTexture(bool hasTexture)` 设置 `uHasTexture`。所有 GL 调用在 `#ifdef OHOS_PLATFORM` 内，非平台侧为空操作。
 
-- [ ] **Step 2: 语法检查**
+- [x] **Step 2: 语法检查**
 
 Run:
 ```bash
@@ -226,7 +226,7 @@ CXX="$(xcrun --find clang++)"
 ```
 Expected: exit code 0。
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 git add native/engine/render/shader_3d.h native/engine/render/shader_3d.cpp entry/src/main/cpp/CMakeLists.txt
@@ -247,11 +247,11 @@ git commit -m "feat: 实现 3D 着色器程序" \
 - Consumes: `Camera3D`、`Mesh`、`Shader3D`、`EncounterSnapshot`、`Player`。
 - Produces: `Surface` 3D 字段、`surface_draw` 3D 绘制阶段、`Loop` 3D 相机更新。
 
-- [ ] **Step 1: 扩展 Surface**
+- [x] **Step 1: 扩展 Surface**
 
 `Surface` 增加 `Camera3D camera3d`、`Mesh playerMesh`、`Mesh groundMesh`、`Shader3D shader3d`、`glm::vec3 lightDir`、`glm::vec3 lightColor`、`glm::vec3 ambient` 字段。`surface_init` 中创建立方体、平面和着色器。`surface_destroy` 中释放网格资源。
 
-- [ ] **Step 2: 实现 3D 绘制**
+- [x] **Step 2: 实现 3D 绘制**
 
 `surface_draw` 在现有 2D 绘制后增加 3D 阶段（`#ifdef OHOS_PLATFORM`）：
 1. `glUseProgram(shader3d)`
@@ -262,11 +262,11 @@ git commit -m "feat: 实现 3D 着色器程序" \
 6. 画敌人立方体（在敌人位置，按存活状态跳过）
 7. 画首领立方体（在首领位置，按阶段配色）
 
-- [ ] **Step 3: 更新 Loop**
+- [x] **Step 3: 更新 Loop**
 
 `Loop::tickOnce` 在 `surface_draw` 前更新 `surface.camera3d`：调用 `follow()` 传入玩家 3D 位置、`camera.yaw()`、`camera.pitch()` 和 `camera.distance()`。把 `EncounterSnapshot` 的敌人位置写入 Surface 扩展字段。
 
-- [ ] **Step 4: 语法检查**
+- [x] **Step 4: 语法检查**
 
 Run:
 ```bash
@@ -274,7 +274,7 @@ Run:
 ```
 Expected: exit code 0。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add native/engine/render/surface.h native/engine/render/surface.cpp native/engine/core/loop.cpp entry/src/main/cpp/CMakeLists.txt
@@ -289,23 +289,23 @@ git commit -m "feat: 集成 3D 渲染到 Surface 和 Loop" \
 - Modify: `README.md`
 - Modify: `docs/superpowers/plans/2026-07-19-3d-rendering-foundation.md`
 
-- [ ] **Step 1: 运行自动化测试**
+- [x] **Step 1: 运行自动化测试**
 
 Run focused tests: `test_camera3d`、`test_mesh`。随后运行本地可编译 C++ 批量测试，确认现有测试不回归。
 
-- [ ] **Step 2: 运行格式与构建验证**
+- [x] **Step 2: 运行格式与构建验证**
 
 Run: `git diff --check`。需要 HAP 时临时复制本机签名配置，构建后恢复 `build-profile.json5`。
 
-- [ ] **Step 3: 真机渲染验证**
+- [x] **Step 3: 真机渲染验证**
 
 使用 HDC 安装 signed HAP，启动应用，确认 3D 立方体可见、透视正确、光照有明暗、2D 玩法不回归、帧率 >= 30 FPS。
 
-- [ ] **Step 4: 更新验收文档**
+- [x] **Step 4: 更新验收文档**
 
 记录测试矩阵、HAP SHA-256、设备 ID 和截图路径。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add README.md docs/superpowers/plans/2026-07-19-3d-rendering-foundation.md

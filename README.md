@@ -194,6 +194,20 @@ my-world/
 
 ## 测试与验证
 
+### M3-1 3D 渲染基础验收状态
+
+2026-07-19 M3-1 3D 渲染基础收口结果：
+
+- 自动化测试：新增 `test_camera3d`（5 个测试）和 `test_mesh`（9 个测试）全部通过；
+  Node 桥接合约 1/1 通过，`git diff --check` 通过。现有测试不回归。
+- 生产构建：指定 `DEVECO_SDK_HOME=/Applications/DevEco-Studio.app/Contents/sdk` 的 Hvigor
+  `assembleHap` 返回 `BUILD SUCCESSFUL`。最新 signed HAP 为
+  `entry/build/default/outputs/default/entry-default-signed.hap`（约 5.1 MiB，SHA-256
+  `a3950863adf30d2eff849562a7c29849e4b7a251f4875af94e07a3ca672df53f`）。
+  构建前后 `build-profile.json5` 保持空签名版本，签名内容仅临时写入用于构建，未提交。
+- 真机验证：设备 `2MN0224C12000754` 当前离线，3D 渲染真机验证待设备恢复后补测。
+  需验证 3D 立方体可见、透视正确、光照有明暗、2D 玩法不回归、帧率 >= 30 FPS。
+
 ### 阶段 6 自动化、构建与真机状态
 
 2026-07-19 阶段 6 HUD、表现与优化收口结果：
