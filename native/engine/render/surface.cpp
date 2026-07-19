@@ -8,6 +8,10 @@
 #include <algorithm>
 #include <cstring>
 
+#ifdef OHOS_PLATFORM
+#include <glm/gtc/matrix_transform.hpp>
+#endif
+
 #define LOGI(...) OH_LOG_Print(LOG_APP, LOG_INFO, 0xFF00, "Ethelan", __VA_ARGS__)
 #define LOGE(...) OH_LOG_Print(LOG_APP, LOG_ERROR, 0xFF00, "Ethelan", __VA_ARGS__)
 
@@ -278,6 +282,110 @@ static void drawTrainingTargetGL(const Surface& s) {
       s.trainingTarget.size, aspect(s));
   drawSolidEllipseGL(s, view.x, view.y, radii, 20, 0.85f, 0.32f, 0.22f, 1.0f);
 }
+
+// -----------------------------------------------------------------------------
+// 3D 渲染阶段（M3-1）
+// -----------------------------------------------------------------------------
+// 2D 位置 (x, y)（0-1 范围）映射到 3D 世界坐标 (x, 0, y)，角色立方体半高
+// 贴地放置。3D 着色器无独立 base color uniform，因此通过 setLight 把每个
+// 实体的基色写入 ambient 与 lightColor（ambient = base*0.3，lightColor = base*0.7），
+// 既保留方向光照的明暗变化，又实现按实体/阶段配色，且不修改 Task 3 的着色器。
+#ifdef OHOS_PLATFORM
+static glm::vec3 enemyColorByArchetype(int archetype) {
+  switch (archetype) {
+    case 1:  // Priest
+      return {0.70f, 0.60f, 0.30f};
+    case 2:  // Guard
+      return {0.40f, 0.42f, 0.52f};
+    case 0:  // RiftClaw
+    default:
+      return {0.60f, 0.30f, 0.20f};
+  }
+}
+
+static glm::vec3 bossColorByPhase(int phase) {
+  switch (phase) {
+    case 2:  // CurrentStorm
+      return {0.30f, 0.60f, 0.95f};
+    case 3:  // CorruptionCollapse
+      return {0.62f, 0.22f, 0.62f};
+    case 1:  // RadianceLockdown
+    default:
+      return {0.92f, 0.80f, 0.32f};
+  }
+}
+
+static void applyEntityTint(const Surface& s, const glm::vec3& base) {
+  // ambient = base*0.3 保证背光面仍有基色可见，lightColor = base*0.7 让受光面
+  // 保留基色并随方向光产生明暗。lightDir 保持场景统一方向。
+  s.shader3d.setLight(s.lightDir, base * 0.7f, base * 0.3f);
+}
+
+static void drawMeshAt(const Surface& s, const Mesh& mesh,
+                       const glm::mat4& vp, const glm::vec3& position,
+                       float scale, const glm::vec3& base) {
+  // 单位网格（createCube(1.0)/createPlane）经 translate+scale 落到世界坐标，
+  // 立方体底面贴 y=0：translate.y = scale*0.5。
+  glm::mat4 model = glm::translate(glm::mat4(1.0f), position) *
+                    glm::scale(glm::mat4(1.0f), glm::vec3(scale));
+  s.shader3d.setMVP(vp * model);
+  s.shader3d.setModel(model);
+  applyEntityTint(s, base);
+  mesh.draw();
+}
+
+static void draw3DPhase(Surface& s) {
+  if (!s.shader3dReady || s.shader3d.program() == 0u) return;
+
+  // 3D 阶段需要深度测试；2D 阶段未写深度，故在此单独清深度并开启深度测试，
+  // 绘制结束后关闭，避免影响下一帧 2D 绘制。
+  glClear(GL_DEPTH_BUFFER_BIT);
+  glEnable(GL_DEPTH_TEST);
+
+  s.shader3d.use();
+  s.shader3d.setHasTexture(false);
+
+  if (s.width > 0 && s.height > 0) {
+    s.camera3d.aspectRatio =
+        static_cast<float>(s.width) / static_cast<float>(s.height);
+  }
+
+  const glm::mat4 vp = s.camera3d.projectionMatrix() * s.camera3d.viewMatrix();
+
+  // 地面：大平面覆盖可玩区域，中心放在 (0.5, 0, 0.5)。
+  drawMeshAt(s, s.groundMesh, vp, glm::vec3(0.5f, 0.0f, 0.5f), 3.0f,
+             {0.30f, 0.32f, 0.36f});
+
+  // 玩家立方体（在 (player.x, 0, player.y)，半高贴地）。
+  drawMeshAt(s, s.playerMesh, vp,
+             glm::vec3(s.player.x, 0.05f, s.player.y), 0.1f,
+             {0.18f, 0.65f, 0.95f});
+
+  // 训练假人立方体（按 alive 跳过）。
+  if (s.trainingTarget.alive) {
+    drawMeshAt(s, s.enemyMesh, vp,
+               glm::vec3(s.trainingTarget.x, 0.045f, s.trainingTarget.y),
+               0.09f, {0.85f, 0.32f, 0.22f});
+  }
+
+  // 敌人立方体（按存活状态跳过）。
+  for (const Enemy3DRenderState& enemy : s.enemies3d) {
+    if (!enemy.alive) continue;
+    drawMeshAt(s, s.enemyMesh, vp,
+               glm::vec3(enemy.x, 0.045f, enemy.y), 0.09f,
+               enemyColorByArchetype(enemy.archetype));
+  }
+
+  // 首领立方体（按阶段配色，击败后跳过）。
+  if (s.boss3d.active && !s.boss3d.defeated) {
+    drawMeshAt(s, s.bossMesh, vp,
+               glm::vec3(s.boss3d.x, 0.08f, s.boss3d.y), 0.16f,
+               bossColorByPhase(s.boss3d.phase));
+  }
+
+  glDisable(GL_DEPTH_TEST);
+}
+#endif  // OHOS_PLATFORM
 
 // -----------------------------------------------------------------------------
 // Software rasterizer fallback (used when OpenGL ES is unavailable on simulators)
@@ -608,6 +716,45 @@ static bool testGLFunctionality() {
   return true;
 }
 
+// 创建 3D 渲染层资源（网格 VBO/IBO 与 3D 着色器 Program）。必须在 GL 上下文
+// current 时调用，因此放在 tryInitGL 成功路径内、eglMakeCurrent 解绑之前。
+static void init3DResources(Surface& s) {
+#ifdef OHOS_PLATFORM
+  // 使用单位网格（size=1.0），通过 model 矩阵在 draw3DPhase 中缩放定位，
+  // 避免为每种实体单独生成不同尺寸的几何体。
+  s.playerMesh = createCube(1.0f);
+  s.groundMesh = createPlane(1.0f, 1.0f);
+  s.enemyMesh = createCube(1.0f);
+  s.bossMesh = createCube(1.0f);
+  s.playerMesh.upload();
+  s.groundMesh.upload();
+  s.enemyMesh.upload();
+  s.bossMesh.upload();
+  s.shader3dReady = s.shader3d.init();
+  if (!s.shader3dReady) {
+    LOGE("3D shader init failed, 3D phase will be skipped");
+  } else {
+    LOGI("3D resources ready: shader=%{public}u", s.shader3d.program());
+  }
+#else
+  (void)s;
+#endif
+}
+
+// 释放 3D 渲染层资源。必须在 GL 上下文 current 时调用。
+static void destroy3DResources(Surface& s) {
+#ifdef OHOS_PLATFORM
+  s.playerMesh.destroy();
+  s.groundMesh.destroy();
+  s.enemyMesh.destroy();
+  s.bossMesh.destroy();
+  s.shader3d.destroy();
+  s.shader3dReady = false;
+#else
+  (void)s;
+#endif
+}
+
 static bool tryInitGL(Surface& s) {
   s.display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
   if (s.display == EGL_NO_DISPLAY) {
@@ -702,6 +849,7 @@ static bool tryInitGL(Surface& s) {
     return false;
   }
   generateWorld(s);
+  init3DResources(s);
 
   eglMakeCurrent(s.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
   LOGI("EGL surface ready, props=%{public}zu", s.props.size());
@@ -804,6 +952,9 @@ void surface_draw(Surface& s) {
   drawTrainingTargetGL(s);
   drawParticlesGL(s);
   drawPlayerGL(s);
+#ifdef OHOS_PLATFORM
+  draw3DPhase(s);
+#endif
   glFlush();
 }
 
@@ -821,6 +972,7 @@ void surface_destroy(Surface& s) {
   if (!s.ready && !s.window) return;
   if (!s.useSoftware) {
     eglMakeCurrent(s.display, s.surface, s.surface, s.context);
+    destroy3DResources(s);
     if (s.program != 0) {
       glDeleteProgram(s.program);
       s.program = 0;
@@ -848,5 +1000,6 @@ void surface_destroy(Surface& s) {
   s.glWindowCreated = false;
   s.props.clear();
   s.particles.clear();
+  s.enemies3d.clear();
   LOGI("Surface destroyed");
 }

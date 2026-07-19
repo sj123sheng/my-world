@@ -59,6 +59,40 @@ Tick AdvanceCombatTime(Tick now, int64_t dtMs) {
   const Tick maximum = std::numeric_limits<Tick>::max();
   return now > maximum - dtMs ? maximum : now + dtMs;
 }
+
+// 把当前 EncounterSnapshot 的敌人与首领 2D 位置写入 Surface 的 3D 渲染字段。
+// 渲染层只读消费这些状态，不反向修改游戏逻辑。BossSnapshot 无独立位置字段，
+// 因此首领位置取固定 (0.5, 0.75)，与 refreshSnapshot 中首领 candidate 位置一致。
+void publish3DEncounterState(Surface& surface,
+                             const EncounterSnapshot& snapshot) {
+  surface.enemies3d.clear();
+  surface.enemies3d.reserve(snapshot.enemies.size());
+  for (const EncounterEnemySnapshot& enemy : snapshot.enemies) {
+    Enemy3DRenderState state;
+    state.x = enemy.position.x;
+    state.y = enemy.position.y;
+    state.archetype = static_cast<int>(enemy.archetype);
+    state.alive = enemy.alive;
+    surface.enemies3d.push_back(state);
+  }
+
+  // BossSnapshot 不含位置，按 refreshSnapshot 的首领 candidate 坐标固定。
+  surface.boss3d.x = 0.5f;
+  surface.boss3d.y = 0.75f;
+  surface.boss3d.phase = static_cast<int>(snapshot.boss.phase);
+  surface.boss3d.defeated = snapshot.boss.defeated;
+  surface.boss3d.active = (snapshot.mode == EncounterMode::Boss &&
+                           snapshot.state == EncounterState::Running);
+}
+
+// 在 surface_draw 前更新 3D 透视相机。yaw/pitch/distance 来自现有 2D
+// ThirdPersonCamera，玩家 3D 目标位置取 (player.x, 0.05, player.y)，
+// 0.05 为玩家立方体半高，使相机平视角色而非俯视地面。
+void update3DCamera(Surface& surface, const ThirdPersonCamera& camera) {
+  const glm::vec3 target{surface.player.x, 0.05f, surface.player.y};
+  surface.camera3d.follow(target, camera.yaw(), camera.pitch(),
+                          camera.distance());
+}
 }  // namespace
 
 void Loop::start() {
@@ -259,6 +293,8 @@ void Loop::tickOnce(int64_t elapsedMs) {
     updateFixed(tick, dtMs);
   });
 #ifdef OHOS_PLATFORM
+  update3DCamera(surface, camera);
+  publish3DEncounterState(surface, encounter.snapshot());
   surface_draw(surface);
   surface_swap(surface);
 #endif
