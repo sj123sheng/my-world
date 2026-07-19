@@ -66,6 +66,21 @@ void testSupplyCanOnlyBeConsumedOnce() {
   assert(encounter.snapshot().gateState == GateState::Open);
   assert(encounter.advanceLevel());
   assert(encounter.snapshot().levelStage == LevelStage::Boss);
+  HitRequest lethal;
+  lethal.attacker = EncounterController::kBossId;
+  lethal.target = CombatController::kPlayerId;
+  lethal.baseDamage = fp(100);
+  lethal.tick = 1;
+  lethal.sequence = 99;
+  lethal.transactionId = 99;
+  combat.applyEnemyHit(lethal);
+  encounter.update({1, 1, {0.5f, 0.5f}, false,
+                    EncounterController::kBossId});
+  assert(encounter.snapshot().state == EncounterState::Defeat);
+  assert(encounter.retryBoss());
+  assert(encounter.snapshot().levelStage == LevelStage::Boss);
+  assert(encounter.snapshot().boss.hp == fp(1000));
+  assert(encounter.snapshot().gateState == GateState::Closed);
 }
 
 }  // namespace

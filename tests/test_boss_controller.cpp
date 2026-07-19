@@ -1,4 +1,5 @@
 #include "native/gameplay/entities/boss.h"
+#include "native/gameplay/ai/encounter_controller.h"
 
 #include <cassert>
 
@@ -100,6 +101,43 @@ void testRetryRestoresInitialState() {
   assert(snapshot.vulnerable);
 }
 
+void testBossEncounterVictoryAndRetry() {
+  CombatConfig config = CombatConfig::defaults();
+  config.comboDamage.fill(fp(1000));
+  CombatController combat(config);
+  EncounterController encounter(combat);
+  assert(encounter.start(EncounterMode::Boss));
+  assert(encounter.snapshot().candidates.size() == 1);
+  assert(encounter.snapshot().candidates.front().id ==
+         static_cast<int32_t>(EncounterController::kBossId));
+
+  HitRequest lethal;
+  lethal.attacker = EncounterController::kBossId;
+  lethal.target = CombatController::kPlayerId;
+  lethal.baseDamage = fp(100);
+  lethal.tick = 1;
+  lethal.sequence = 1;
+  lethal.transactionId = 1;
+  combat.applyEnemyHit(lethal);
+  encounter.update({0, 0, {0.5f, 0.5f}, false,
+                    EncounterController::kBossId});
+  assert(encounter.snapshot().state == EncounterState::Defeat);
+  assert(encounter.retryBoss());
+  assert(encounter.snapshot().state == EncounterState::Running);
+  assert(encounter.snapshot().levelStage == LevelStage::Boss);
+  assert(encounter.snapshot().boss.hp == fp(1000));
+  assert(encounter.snapshot().gateState == GateState::Closed);
+
+  combat.enqueue({CombatAction::Attack, 2});
+  encounter.update({100, 16, {0.5f, 0.5f}, false,
+                    EncounterController::kBossId});
+  encounter.update({300, 184, {0.5f, 0.5f}, false,
+                    EncounterController::kBossId});
+  assert(encounter.snapshot().state == EncounterState::Victory);
+  assert(encounter.snapshot().boss.defeated);
+  assert(encounter.snapshot().candidates.empty());
+}
+
 }  // namespace
 
 int main() {
@@ -107,4 +145,5 @@ int main() {
   testCurrentStormRequiresBothNodesBeforeBossVulnerable();
   testFinalForgeFailsWithoutResonanceAndSucceedsWithUltimate();
   testRetryRestoresInitialState();
+  testBossEncounterVictoryAndRetry();
 }

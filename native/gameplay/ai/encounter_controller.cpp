@@ -48,6 +48,13 @@ CombatConfig targetConfig(const EncounterEnemyConfig& enemy) {
   return config;
 }
 
+CombatConfig bossTargetConfig(const BossConfig& boss) {
+  CombatConfig config = CombatConfig::defaults();
+  config.trainingTargetHp = boss.maxHp;
+  config.trainingTargetPoise = boss.maxPoise;
+  return config;
+}
+
 EnemyAiConfig aiConfig(EnemyArchetype archetype,
                        const CombatRegionConfig& region) {
   EnemyAiConfig config;
@@ -168,7 +175,7 @@ bool EncounterSnapshot::operator==(const EncounterSnapshot& other) const {
   return mode == other.mode && state == other.state && victory == other.victory &&
          playerHp == other.playerHp && levelStage == other.levelStage &&
          gateState == other.gateState && supplyState == other.supplyState &&
-         enemies == other.enemies &&
+         boss == other.boss && enemies == other.enemies &&
          candidates == other.candidates;
 }
 
@@ -245,6 +252,17 @@ bool EncounterController::start(const EncounterConfig& config) {
   levelFlowActive_ = false;
   snapshot_.mode = config.mode;
   snapshot_.state = EncounterState::Running;
+  if (config.mode == EncounterMode::Boss) {
+    const BossConfig bossConfig = BossConfig::karounDefaults();
+    if (!boss_.start(bossConfig)) return false;
+    bossTarget_ = std::make_unique<TrainingTarget>(bossTargetConfig(bossConfig));
+    lastObservedBossAbility_ = 0;
+    snapshot_.levelStage = LevelStage::Boss;
+    snapshot_.boss = boss_.snapshot();
+  } else {
+    bossTarget_.reset();
+    lastObservedBossAbility_ = 0;
+  }
   refreshSnapshot(true);
   return true;
 }
@@ -252,6 +270,8 @@ bool EncounterController::start(const EncounterConfig& config) {
 void EncounterController::reset() {
   for (const std::unique_ptr<EnemySlot>& slot : enemies_) slot->agent.reset();
   enemies_.clear();
+  bossTarget_.reset();
+  lastObservedBossAbility_ = 0;
   config_ = {};
   snapshot_ = {};
   events_ = {};
@@ -284,6 +304,47 @@ void EncounterController::update(const EncounterFrameInput& input) {
       snapshot_.state = EncounterState::Victory;
       snapshot_.victory = true;
       snapshot_.gateState = GateState::Open;
+    }
+    refreshSnapshot(true);
+    return;
+  }
+
+  if (config_.mode == EncounterMode::Boss) {
+    const bool targetSelected =
+        input.targetId == kBossId && bossTarget_ != nullptr &&
+        bossTarget_->alive() && boss_.snapshot().vulnerable;
+    const FixedPoint hpBefore =
+        bossTarget_ == nullptr ? 0 : bossTarget_->hp();
+    const FixedPoint poiseBefore =
+        bossTarget_ == nullptr ? 0 : bossTarget_->poise();
+    CombatTargetBinding binding;
+    if (targetSelected) {
+      binding.id = kBossId;
+      binding.target = bossTarget_.get();
+    }
+    combat_.updateEnemy(
+        {tick, dtMs, input.playerMoving, input.targetId, targetSelected}, binding);
+    if (bossTarget_ != nullptr) {
+      boss_.applyDamage(std::max<FixedPoint>(0, hpBefore - bossTarget_->hp()),
+                        std::max<FixedPoint>(0, poiseBefore - bossTarget_->poise()),
+                        tick);
+    }
+    constexpr AbilityId kUltimateAbilityId = 8;
+    const AbilityId ability = combat_.snapshot().lastAbility;
+    const bool ultimateUsed = ability == kUltimateAbilityId &&
+                              lastObservedBossAbility_ != kUltimateAbilityId;
+    lastObservedBossAbility_ = ability;
+    boss_.update({tick, dtMs, combat_.snapshot().resonance > 0,
+                  ultimateUsed, nextSequence_});
+    events_.combat = combat_.events();
+    snapshot_.boss = boss_.snapshot();
+    if (combat_.snapshot().playerHp <= 0) {
+      snapshot_.state = EncounterState::Defeat;
+      snapshot_.victory = false;
+    } else if (snapshot_.boss.defeated) {
+      snapshot_.state = EncounterState::Victory;
+      snapshot_.victory = true;
+      if (levelFlowActive_) snapshot_.gateState = GateState::Open;
     }
     refreshSnapshot(true);
     return;
@@ -430,6 +491,16 @@ void EncounterController::refreshSnapshot(bool includeCandidates) {
     return;
   }
 
+  if (config_.mode == EncounterMode::Boss) {
+    snapshot_.boss = boss_.snapshot();
+    if (includeCandidates && snapshot_.state == EncounterState::Running &&
+        !snapshot_.boss.defeated) {
+      snapshot_.candidates.push_back(
+          {static_cast<int32_t>(kBossId), {0.5f, 0.75f}});
+    }
+    return;
+  }
+
   for (const std::unique_ptr<EnemySlot>& slot : enemies_) {
     EncounterEnemySnapshot enemy;
     enemy.id = slot->enemy.id;
@@ -510,5 +581,26 @@ bool EncounterController::useSupply() {
   combat_.reset();
   snapshot_.playerHp = combat_.snapshot().playerHp;
   snapshot_.supplyState = SupplyState::Consumed;
+  return true;
+}
+
+bool EncounterController::retryBoss() {
+  if (config_.mode != EncounterMode::Boss ||
+      snapshot_.state != EncounterState::Defeat) {
+    return false;
+  }
+  const Tick retryTick = lastTick_;
+  if (!boss_.retry(retryTick)) return false;
+  combat_.reset();
+  bossTarget_ = std::make_unique<TrainingTarget>(
+      bossTargetConfig(BossConfig::karounDefaults()));
+  lastObservedBossAbility_ = 0;
+  events_ = {};
+  snapshot_.state = EncounterState::Running;
+  snapshot_.victory = false;
+  snapshot_.levelStage = LevelStage::Boss;
+  snapshot_.gateState = GateState::Closed;
+  snapshot_.boss = boss_.snapshot();
+  refreshSnapshot(true);
   return true;
 }

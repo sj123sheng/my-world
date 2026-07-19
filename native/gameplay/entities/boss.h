@@ -51,6 +51,19 @@ struct BossSnapshot {
   Tick castRemainingMs = 0;
   Tick lastTransitionTick = 0;
   Tick retryTick = 0;
+
+  bool operator==(const BossSnapshot& other) const {
+    return phase == other.phase && mechanic == other.mechanic &&
+           hp == other.hp && poise == other.poise &&
+           vulnerable == other.vulnerable &&
+           failedMechanic == other.failedMechanic &&
+           defeated == other.defeated &&
+           transitionCount == other.transitionCount &&
+           nodesBroken == other.nodesBroken &&
+           castRemainingMs == other.castRemainingMs &&
+           lastTransitionTick == other.lastTransitionTick &&
+           retryTick == other.retryTick;
+  }
 };
 
 class BossController {
