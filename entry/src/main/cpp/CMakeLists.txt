@@ -79,6 +79,10 @@ add_library(native_game SHARED
     ${NATIVE_ROOT}/gameplay/ai/encounter_controller.cpp
     ${NATIVE_ROOT}/gameplay/ai/encounter_controller.h
 
+    # gameplay entities
+    ${NATIVE_ROOT}/gameplay/entities/boss.cpp
+    ${NATIVE_ROOT}/gameplay/entities/boss.h
+
     # gameplay player
     ${NATIVE_ROOT}/gameplay/player/character.cpp
     ${NATIVE_ROOT}/gameplay/player/player_controller.cpp
