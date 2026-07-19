@@ -195,16 +195,37 @@ static napi_value NativeStartEncounter(napi_env env, napi_callback_info info) {
   double modeNumber = 0.0;
   if (args[0] == nullptr || napi_typeof(env, args[0], &argumentType) != napi_ok ||
       argumentType != napi_number || napi_get_value_double(env, args[0], &modeNumber) != napi_ok ||
-      !std::isfinite(modeNumber)) {
-    return ThrowInputTypeError(env, "startEncounter mode must be a finite integer from 0 to 3");
+     !std::isfinite(modeNumber)) {
+    return ThrowInputTypeError(env, "startEncounter mode must be a finite integer from 0 to 5");
   }
   int32_t mode = 0;
-  if (!TryConvertInt32(modeNumber, mode) || mode < 0 || mode > 3) {
-    return ThrowInputTypeError(env, "startEncounter mode must be an integer from 0 to 3");
+  if (!TryConvertInt32(modeNumber, mode) || mode < 0 || mode > 5) {
+    return ThrowInputTypeError(env, "startEncounter mode must be an integer from 0 to 5");
   }
   const bool started = g_loop.startEncounter(static_cast<EncounterMode>(mode));
   napi_value result = nullptr;
   napi_get_boolean(env, started, &result);
+  return result;
+}
+
+static napi_value NativeAdvanceLevel(napi_env env, napi_callback_info) {
+  const bool advanced = g_loop.advanceLevel();
+  napi_value result = nullptr;
+  napi_get_boolean(env, advanced, &result);
+  return result;
+}
+
+static napi_value NativeUseSupply(napi_env env, napi_callback_info) {
+  const bool supplied = g_loop.useSupply();
+  napi_value result = nullptr;
+  napi_get_boolean(env, supplied, &result);
+  return result;
+}
+
+static napi_value NativeRetryBoss(napi_env env, napi_callback_info) {
+  const bool retried = g_loop.retryBoss();
+  napi_value result = nullptr;
+  napi_get_boolean(env, retried, &result);
   return result;
 }
 
@@ -284,6 +305,14 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_get_boolean(env, snapshot.corroded, &extra[10]);
   napi_create_int32(env, snapshot.currentReaction, &extra[11]);
   napi_create_int32(env, snapshot.pulsePhase, &extra[12]);
+  napi_value stage[7];
+  napi_create_int32(env, snapshot.levelStage, &stage[0]);
+  napi_create_int32(env, snapshot.gateState, &stage[1]);
+  napi_create_int32(env, snapshot.supplyState, &stage[2]);
+  napi_create_double(env, static_cast<double>(snapshot.bossHp) / FP_ONE, &stage[3]);
+  napi_create_double(env, static_cast<double>(snapshot.bossPoise) / FP_ONE, &stage[4]);
+  napi_create_int32(env, snapshot.bossMechanic, &stage[5]);
+  napi_create_int64(env, snapshot.bossCastMs, &stage[6]);
   napi_set_named_property(env, result, "currentAction", extra[0]);
   napi_set_named_property(env, result, "comboWindowMs", extra[1]);
   napi_set_named_property(env, result, "radianceCooldownMs", extra[2]);
@@ -297,6 +326,13 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_set_named_property(env, result, "corroded", extra[10]);
   napi_set_named_property(env, result, "currentReaction", extra[11]);
   napi_set_named_property(env, result, "pulsePhase", extra[12]);
+  napi_set_named_property(env, result, "levelStage", stage[0]);
+  napi_set_named_property(env, result, "gateState", stage[1]);
+  napi_set_named_property(env, result, "supplyState", stage[2]);
+  napi_set_named_property(env, result, "bossHp", stage[3]);
+  napi_set_named_property(env, result, "bossPoise", stage[4]);
+  napi_set_named_property(env, result, "bossMechanic", stage[5]);
+  napi_set_named_property(env, result, "bossCastMs", stage[6]);
   return result;
 }
 
@@ -308,6 +344,9 @@ static napi_value Init(napi_env env, napi_value exports) {
     {"pushInput", nullptr, NativePushInput, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pushAction", nullptr, NativePushAction, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"startEncounter", nullptr, NativeStartEncounter, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"advanceLevel", nullptr, NativeAdvanceLevel, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"useSupply", nullptr, NativeUseSupply, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"retryBoss", nullptr, NativeRetryBoss, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pullSnapshot", nullptr, NativePullSnapshot, nullptr, nullptr, nullptr, napi_default, nullptr},
   };
   napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);

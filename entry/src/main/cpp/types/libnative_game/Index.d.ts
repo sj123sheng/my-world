@@ -3,6 +3,9 @@ export const nativeStop: () => void;
 export const pushInput: (event: {type: number, pointerId: number, x: number, y: number}) => void;
 export const pushAction: (type: number) => void;
 export const startEncounter: (mode: number) => boolean;
+export const advanceLevel: () => boolean;
+export const useSupply: () => boolean;
+export const retryBoss: () => boolean;
 export const pullSnapshot: () => {
   tick: number,
   hp: number,
@@ -42,5 +45,12 @@ export const pullSnapshot: () => {
   corruptionAttached: boolean,
   corroded: boolean,
   currentReaction: number,
-  pulsePhase: number
+  pulsePhase: number,
+  levelStage: number,
+  gateState: number,
+  supplyState: number,
+  bossHp: number,
+  bossPoise: number,
+  bossMechanic: number,
+  bossCastMs: number
 };

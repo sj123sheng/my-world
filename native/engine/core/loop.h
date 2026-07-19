@@ -58,6 +58,9 @@ struct Loop {
   void resetInput();
   void publishRendererStopped();
   bool startEncounter(EncounterMode mode);
+  bool advanceLevel();
+  bool useSupply();
+  bool retryBoss();
 
   template <typename Fn>
   decltype(auto) withLifecycle(Fn&& operation) {
