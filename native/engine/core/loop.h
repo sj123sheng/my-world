@@ -7,6 +7,7 @@
 #include "fixed_step.h"
 #include "../../engine/presentation/vfx_system.h"
 #include "../../engine/presentation/performance_guard.h"
+#include "../../platform/harmony/audio_bridge.h"
 #include "lifecycle_state.h"
 #include "snapshot_store.h"
 #include "../render/surface.h"
@@ -38,6 +39,7 @@ struct Loop {
   std::optional<TargetSelection> currentTarget;
   VfxSystem vfxSystem;
   PerformanceGuard performanceGuard;
+  AudioBridge audioBridge;
   bool debugHud_ = false;
   FixedStep fixedStep{16, 4};
   SnapshotStore snapshots;

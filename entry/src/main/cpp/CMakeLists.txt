@@ -102,6 +102,8 @@ add_library(native_game SHARED
 
     # platform harmony
     ${NATIVE_ROOT}/platform/harmony/lifecycle.cpp
+    ${NATIVE_ROOT}/platform/harmony/audio_bridge.cpp
+    ${NATIVE_ROOT}/platform/harmony/audio_bridge.h
     ${NATIVE_ROOT}/platform/harmony/audio.cpp
     ${NATIVE_ROOT}/platform/harmony/fence_wait.cpp
 )

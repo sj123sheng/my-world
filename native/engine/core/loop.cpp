@@ -78,6 +78,7 @@ void Loop::start() {
     if (!lifecycle.start([this]() {
       resetInput();
       (void)encounter.start(EncounterMode::Training);
+      audioBridge.start();
       combatTimeMs_ = 0;
       {
         std::lock_guard<std::mutex> lock(combatEventMutex);
@@ -114,6 +115,7 @@ void Loop::stop() {
     });
     resetInput();
     encounter.stop();
+    audioBridge.stop();
     combat.reset();
     combatTimeMs_ = 0;
     {
@@ -387,6 +389,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
 
   vfxSystem.consume(frameCombatEvents_);
   vfxSystem.update(combatTime, dtMs);
+  audioBridge.dispatch(frameCombatEvents_);
 
   GameSnapshot updated = snapshots.read();
   ApplyCombatSnapshot(updated, combat.snapshot());
