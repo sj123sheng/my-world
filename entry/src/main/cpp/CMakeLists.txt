@@ -44,9 +44,10 @@ add_library(native_game SHARED
    # engine render
    ${NATIVE_ROOT}/engine/render/camera.cpp
    ${NATIVE_ROOT}/engine/render/surface.cpp
-   ${NATIVE_ROOT}/engine/render/camera3d.cpp
-    ${NATIVE_ROOT}/engine/render/mesh.cpp
-    ${NATIVE_ROOT}/engine/render/texture.cpp
+  ${NATIVE_ROOT}/engine/render/camera3d.cpp
+   ${NATIVE_ROOT}/engine/render/mesh.cpp
+   ${NATIVE_ROOT}/engine/render/texture.cpp
+    ${NATIVE_ROOT}/engine/render/shader_3d.cpp
 
     # engine presentation
     ${NATIVE_ROOT}/engine/presentation/vfx_system.cpp
