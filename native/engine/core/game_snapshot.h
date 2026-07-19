@@ -43,4 +43,11 @@ struct GameSnapshot {
   bool corroded = false;
   int32_t currentReaction = -1;
   uint8_t pulsePhase = 0;
+  int32_t levelStage = 0;
+  int32_t gateState = 0;
+  int32_t supplyState = 0;
+  FixedPoint bossHp = fp(1000);
+  FixedPoint bossPoise = fp(300);
+  int32_t bossMechanic = 0;
+  Tick bossCastMs = 0;
 };

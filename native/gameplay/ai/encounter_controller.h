@@ -3,6 +3,7 @@
 #include "enemy_ai_config.h"
 #include "gameplay/combat/combat_controller.h"
 #include "gameplay/targeting/soft_targeting.h"
+#include "gameplay/entities/boss.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -14,13 +15,29 @@ enum class EncounterMode : uint8_t {
   Beast,
   Mixed,
   Guard,
+  LevelFlow,
+  Boss,
 };
 
 enum class EncounterState : uint8_t {
   Stopped,
   Running,
   Victory,
+  Defeat,
 };
+
+enum class LevelStage : uint8_t {
+  Training,
+  RiftClawFight,
+  PriestMixedFight,
+  GuardElite,
+  Supply,
+  Boss,
+};
+
+enum class GateState : uint8_t { Closed, Open };
+
+enum class SupplyState : uint8_t { Unavailable, Available, Consumed };
 
 struct EncounterEnemyConfig {
   EntityId id = 0;
@@ -69,6 +86,10 @@ struct EncounterSnapshot {
   EncounterState state = EncounterState::Stopped;
   bool victory = false;
   FixedPoint playerHp = fp(100);
+  LevelStage levelStage = LevelStage::Training;
+  GateState gateState = GateState::Closed;
+  SupplyState supplyState = SupplyState::Unavailable;
+  BossSnapshot boss;
   std::vector<EncounterEnemySnapshot> enemies;
   std::vector<TargetCandidate> candidates;
 
@@ -85,6 +106,7 @@ class EncounterController {
   static constexpr EntityId kRiftEnemyId = 2001;
   static constexpr EntityId kPriestEnemyId = 2002;
   static constexpr EntityId kGuardEnemyId = 2003;
+  static constexpr EntityId kBossId = 3001;
 
   explicit EncounterController(CombatController& combat);
   ~EncounterController();
@@ -97,6 +119,9 @@ class EncounterController {
   void reset();
   void stop();
   void update(const EncounterFrameInput& input);
+  bool advanceLevel();
+  bool useSupply();
+  bool retryBoss();
 
   const EncounterSnapshot& snapshot() const { return snapshot_; }
   const EncounterEventBatch& events() const { return events_; }
@@ -114,4 +139,8 @@ class EncounterController {
   EncounterEventBatch events_;
   Tick lastTick_ = 0;
   uint64_t nextSequence_ = 1;
+  bool levelFlowActive_ = false;
+  BossController boss_;
+  std::unique_ptr<TrainingTarget> bossTarget_;
+  AbilityId lastObservedBossAbility_ = 0;
 };

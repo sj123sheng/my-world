@@ -1,4 +1,4 @@
-import { pushAction, startEncounter } from '../napi/Bridge';
+import { pushAction, startEncounter, advanceLevel, useSupply, retryBoss } from '../napi/Bridge';
 
 @Component
 export struct CombatControls {
@@ -9,6 +9,13 @@ export struct CombatControls {
         Button('兽群').onClick(() => { startEncounter(1); })
         Button('混战').onClick(() => { startEncounter(2); })
         Button('守卫').onClick(() => { startEncounter(3); })
+      }
+      Row({ space: 8 }) {
+        Button('流程').onClick(() => { startEncounter(4); })
+        Button('首领').onClick(() => { startEncounter(5); })
+        Button('推进').onClick(() => { advanceLevel(); })
+        Button('补给').onClick(() => { useSupply(); })
+        Button('重试').onClick(() => { retryBoss(); })
       }
       Row({ space: 8 }) {
         Button('普攻').onClick(() => { pushAction(0); })

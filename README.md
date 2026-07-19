@@ -194,6 +194,24 @@ my-world/
 
 ## 测试与验证
 
+### 阶段 5 自动化、构建与真机状态
+
+2026-07-19 阶段 5 首领与关卡收口结果：
+
+- 自动化测试：本地可用的 42/42 个纯逻辑 `tests/test_*.cpp` 逐个使用显式 macOS SDK、
+  SDK 内 `usr/include/c++/v1`、`-I. -Inative` 编译并运行通过；Node 桥接契约 1/1 通过，
+  `git diff --check` 通过。`test_loop_integration`、`test_loop_lifecycle` 和 `test_fence_wait`
+  仍需 HarmonyOS 图形或平台链路覆盖，不作为 macOS 纯逻辑批量测试执行。
+- 生产构建：指定 `DEVECO_SDK_HOME=/Applications/DevEco-Studio.app/Contents/sdk` 的 Hvigor
+  `assembleHap` 返回 `BUILD SUCCESSFUL`。最新 signed HAP 为
+  `entry/build/default/outputs/default/entry-default-signed.hap`（约 4.7 MiB，SHA-256
+  `196309d906abf9dc65bae3ec5fd162667e279d25928b1602576a5c0ed5f2d42b`）。
+  构建前后 `build-profile.json5` 保持空签名版本，签名内容仅临时写入用于构建，未提交。
+- 真机验收：设备 `2MN0224C12000754` 完成 signed HAP 安装、启动、布局 dump 和截图采证。
+  `流程`、`首领`、`推进`、`补给`、`重试` 五个新入口可见；点击 `首领` 后 HUD 显示
+  `遭遇 5 · 状态 1`、`关卡 5` 和 `首领 HP 1000.0 · 韧性 300.0 · 阶段 1`；点击 `重试`
+  后 Boss 状态复位到初始 HP 和阶段，应用进程 `com.ethelandev.myworld` 保持运行。
+
 ### 阶段 4 自动化、构建与真机状态
 
 2026-07-18 阶段 4 敌人 AI 与真机遭遇入口收口结果：

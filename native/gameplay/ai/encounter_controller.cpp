@@ -19,6 +19,8 @@ bool validMode(EncounterMode mode) {
     case EncounterMode::Beast:
     case EncounterMode::Mixed:
     case EncounterMode::Guard:
+    case EncounterMode::LevelFlow:
+    case EncounterMode::Boss:
       return true;
   }
   return false;
@@ -43,6 +45,13 @@ CombatConfig targetConfig(const EncounterEnemyConfig& enemy) {
   CombatConfig config = CombatConfig::defaults();
   config.trainingTargetHp = enemy.hp;
   config.trainingTargetPoise = enemy.poise;
+  return config;
+}
+
+CombatConfig bossTargetConfig(const BossConfig& boss) {
+  CombatConfig config = CombatConfig::defaults();
+  config.trainingTargetHp = boss.maxHp;
+  config.trainingTargetPoise = boss.maxPoise;
   return config;
 }
 
@@ -144,6 +153,9 @@ EncounterConfig EncounterConfig::forMode(EncounterMode mode) {
           enemyConfig(EncounterController::kGuardEnemyId,
                       EnemyArchetype::Guard, {0.5f, 0.7f})};
       break;
+    case EncounterMode::LevelFlow:
+    case EncounterMode::Boss:
+      break;
   }
   return config;
 }
@@ -161,7 +173,9 @@ bool EncounterEnemySnapshot::operator==(
 
 bool EncounterSnapshot::operator==(const EncounterSnapshot& other) const {
   return mode == other.mode && state == other.state && victory == other.victory &&
-         playerHp == other.playerHp && enemies == other.enemies &&
+         playerHp == other.playerHp && levelStage == other.levelStage &&
+         gateState == other.gateState && supplyState == other.supplyState &&
+         boss == other.boss && enemies == other.enemies &&
          candidates == other.candidates;
 }
 
@@ -178,7 +192,11 @@ bool EncounterController::validConfig(const EncounterConfig& config) {
       config.enemies.size() > config.maxEnemies) {
     return false;
   }
-  if ((config.mode == EncounterMode::Training) != config.enemies.empty()) {
+  const bool allowsEmptyEnemies =
+      config.mode == EncounterMode::Training ||
+      config.mode == EncounterMode::LevelFlow ||
+      config.mode == EncounterMode::Boss;
+  if (allowsEmptyEnemies != config.enemies.empty()) {
     return false;
   }
 
@@ -198,6 +216,15 @@ bool EncounterController::validConfig(const EncounterConfig& config) {
 
 bool EncounterController::start(EncounterMode mode) {
   if (!validMode(mode)) return false;
+  if (mode == EncounterMode::LevelFlow) {
+    if (!start(EncounterMode::Training)) return false;
+    levelFlowActive_ = true;
+    snapshot_.mode = EncounterMode::LevelFlow;
+    snapshot_.levelStage = LevelStage::Training;
+    snapshot_.gateState = GateState::Closed;
+    snapshot_.supplyState = SupplyState::Unavailable;
+    return true;
+  }
   return start(EncounterConfig::forMode(mode));
 }
 
@@ -222,8 +249,20 @@ bool EncounterController::start(const EncounterConfig& config) {
   lastTick_ = 0;
   nextSequence_ = 1;
   snapshot_ = {};
+  levelFlowActive_ = false;
   snapshot_.mode = config.mode;
   snapshot_.state = EncounterState::Running;
+  if (config.mode == EncounterMode::Boss) {
+    const BossConfig bossConfig = BossConfig::karounDefaults();
+    if (!boss_.start(bossConfig)) return false;
+    bossTarget_ = std::make_unique<TrainingTarget>(bossTargetConfig(bossConfig));
+    lastObservedBossAbility_ = 0;
+    snapshot_.levelStage = LevelStage::Boss;
+    snapshot_.boss = boss_.snapshot();
+  } else {
+    bossTarget_.reset();
+    lastObservedBossAbility_ = 0;
+  }
   refreshSnapshot(true);
   return true;
 }
@@ -231,11 +270,14 @@ bool EncounterController::start(const EncounterConfig& config) {
 void EncounterController::reset() {
   for (const std::unique_ptr<EnemySlot>& slot : enemies_) slot->agent.reset();
   enemies_.clear();
+  bossTarget_.reset();
+  lastObservedBossAbility_ = 0;
   config_ = {};
   snapshot_ = {};
   events_ = {};
   lastTick_ = 0;
   nextSequence_ = 1;
+  levelFlowActive_ = false;
   combat_.reset();
 }
 
@@ -258,6 +300,52 @@ void EncounterController::update(const EncounterFrameInput& input) {
                     input.targetId == CombatController::kTrainingTargetId &&
                         combat_.snapshot().targetAlive});
     events_.combat = combat_.events();
+    if (levelFlowActive_ && !combat_.snapshot().targetAlive) {
+      snapshot_.state = EncounterState::Victory;
+      snapshot_.victory = true;
+      snapshot_.gateState = GateState::Open;
+    }
+    refreshSnapshot(true);
+    return;
+  }
+
+  if (config_.mode == EncounterMode::Boss) {
+    const bool targetSelected =
+        input.targetId == kBossId && bossTarget_ != nullptr &&
+        bossTarget_->alive() && boss_.snapshot().vulnerable;
+    const FixedPoint hpBefore =
+        bossTarget_ == nullptr ? 0 : bossTarget_->hp();
+    const FixedPoint poiseBefore =
+        bossTarget_ == nullptr ? 0 : bossTarget_->poise();
+    CombatTargetBinding binding;
+    if (targetSelected) {
+      binding.id = kBossId;
+      binding.target = bossTarget_.get();
+    }
+    combat_.updateEnemy(
+        {tick, dtMs, input.playerMoving, input.targetId, targetSelected}, binding);
+    if (bossTarget_ != nullptr) {
+      boss_.applyDamage(std::max<FixedPoint>(0, hpBefore - bossTarget_->hp()),
+                        std::max<FixedPoint>(0, poiseBefore - bossTarget_->poise()),
+                        tick);
+    }
+    constexpr AbilityId kUltimateAbilityId = 8;
+    const AbilityId ability = combat_.snapshot().lastAbility;
+    const bool ultimateUsed = ability == kUltimateAbilityId &&
+                              lastObservedBossAbility_ != kUltimateAbilityId;
+    lastObservedBossAbility_ = ability;
+    boss_.update({tick, dtMs, combat_.snapshot().resonance > 0,
+                  ultimateUsed, nextSequence_});
+    events_.combat = combat_.events();
+    snapshot_.boss = boss_.snapshot();
+    if (combat_.snapshot().playerHp <= 0) {
+      snapshot_.state = EncounterState::Defeat;
+      snapshot_.victory = false;
+    } else if (snapshot_.boss.defeated) {
+      snapshot_.state = EncounterState::Victory;
+      snapshot_.victory = true;
+      if (levelFlowActive_) snapshot_.gateState = GateState::Open;
+    }
     refreshSnapshot(true);
     return;
   }
@@ -380,12 +468,13 @@ void EncounterController::update(const EncounterFrameInput& input) {
   if (!anyAlive) {
     snapshot_.state = EncounterState::Victory;
     snapshot_.victory = true;
+    if (levelFlowActive_) snapshot_.gateState = GateState::Open;
   }
   refreshSnapshot(true);
 }
 
 void EncounterController::refreshSnapshot(bool includeCandidates) {
-  snapshot_.mode = config_.mode;
+  snapshot_.mode = levelFlowActive_ ? EncounterMode::LevelFlow : config_.mode;
   snapshot_.playerHp = combat_.snapshot().playerHp;
   snapshot_.enemies.clear();
   snapshot_.candidates.clear();
@@ -398,6 +487,16 @@ void EncounterController::refreshSnapshot(bool includeCandidates) {
       snapshot_.candidates.push_back(
           {static_cast<int32_t>(CombatController::kTrainingTargetId),
            {0.5f, 0.8f}});
+    }
+    return;
+  }
+
+  if (config_.mode == EncounterMode::Boss) {
+    snapshot_.boss = boss_.snapshot();
+    if (includeCandidates && snapshot_.state == EncounterState::Running &&
+        !snapshot_.boss.defeated) {
+      snapshot_.candidates.push_back(
+          {static_cast<int32_t>(kBossId), {0.5f, 0.75f}});
     }
     return;
   }
@@ -424,4 +523,84 @@ void EncounterController::refreshSnapshot(bool includeCandidates) {
           {static_cast<int32_t>(enemy.id), enemy.position});
     }
   }
+}
+
+bool EncounterController::advanceLevel() {
+  if (!levelFlowActive_ || snapshot_.gateState != GateState::Open) return false;
+
+  const LevelStage current = snapshot_.levelStage;
+  LevelStage next = current;
+  EncounterMode nextMode = EncounterMode::Training;
+  switch (current) {
+    case LevelStage::Training:
+      next = LevelStage::RiftClawFight;
+      nextMode = EncounterMode::Beast;
+      break;
+    case LevelStage::RiftClawFight:
+      next = LevelStage::PriestMixedFight;
+      nextMode = EncounterMode::Mixed;
+      break;
+    case LevelStage::PriestMixedFight:
+      next = LevelStage::GuardElite;
+      nextMode = EncounterMode::Guard;
+      break;
+    case LevelStage::GuardElite:
+      combat_.reset();
+      enemies_.clear();
+      config_ = EncounterConfig::forMode(EncounterMode::Boss);
+      snapshot_ = {};
+      levelFlowActive_ = true;
+      snapshot_.mode = EncounterMode::LevelFlow;
+      snapshot_.state = EncounterState::Running;
+      snapshot_.levelStage = LevelStage::Supply;
+      snapshot_.gateState = GateState::Open;
+      snapshot_.supplyState = SupplyState::Available;
+      return true;
+    case LevelStage::Supply:
+      next = LevelStage::Boss;
+      nextMode = EncounterMode::Boss;
+      break;
+    case LevelStage::Boss:
+      return false;
+  }
+
+  if (!start(nextMode)) return false;
+  levelFlowActive_ = true;
+  snapshot_.mode = EncounterMode::LevelFlow;
+  snapshot_.levelStage = next;
+  snapshot_.gateState = GateState::Closed;
+  snapshot_.supplyState = SupplyState::Unavailable;
+  return true;
+}
+
+bool EncounterController::useSupply() {
+  if (!levelFlowActive_ || snapshot_.levelStage != LevelStage::Supply ||
+      snapshot_.supplyState != SupplyState::Available) {
+    return false;
+  }
+  combat_.reset();
+  snapshot_.playerHp = combat_.snapshot().playerHp;
+  snapshot_.supplyState = SupplyState::Consumed;
+  return true;
+}
+
+bool EncounterController::retryBoss() {
+  if (config_.mode != EncounterMode::Boss ||
+      snapshot_.state != EncounterState::Defeat) {
+    return false;
+  }
+  const Tick retryTick = lastTick_;
+  if (!boss_.retry(retryTick)) return false;
+  combat_.reset();
+  bossTarget_ = std::make_unique<TrainingTarget>(
+      bossTargetConfig(BossConfig::karounDefaults()));
+  lastObservedBossAbility_ = 0;
+  events_ = {};
+  snapshot_.state = EncounterState::Running;
+  snapshot_.victory = false;
+  snapshot_.levelStage = LevelStage::Boss;
+  snapshot_.gateState = GateState::Closed;
+  snapshot_.boss = boss_.snapshot();
+  refreshSnapshot(true);
+  return true;
 }

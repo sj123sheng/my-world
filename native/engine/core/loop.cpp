@@ -15,6 +15,18 @@
 
 namespace {
 void ApplyCombatSnapshot(GameSnapshot& output, const CombatSnapshot& combat) {
+  auto applyEncounter = [](GameSnapshot& snap,
+                           const EncounterSnapshot& encounter) {
+    snap.levelStage = static_cast<int32_t>(encounter.levelStage);
+    snap.gateState = static_cast<int32_t>(encounter.gateState);
+    snap.supplyState = static_cast<int32_t>(encounter.supplyState);
+    snap.bossHp = encounter.boss.hp;
+    snap.bossPoise = encounter.boss.poise;
+    snap.bossPhase = static_cast<int32_t>(encounter.boss.phase);
+    snap.bossMechanic = static_cast<int32_t>(encounter.boss.mechanic);
+    snap.bossCastMs = encounter.boss.castRemainingMs;
+  };
+  (void)applyEncounter;
   output.comboSegment = combat.comboSegment;
   output.hp = combat.playerHp;
   output.poise = combat.playerPoise;
@@ -137,6 +149,22 @@ bool Loop::startEncounter(EncounterMode mode) {
   });
 }
 
+bool Loop::advanceLevel() {
+  return withLifecycle([this]() { return encounter.advanceLevel(); });
+}
+
+bool Loop::useSupply() {
+  return withLifecycle([this]() { return encounter.useSupply(); });
+}
+
+bool Loop::retryBoss() {
+  return withLifecycle([this]() {
+    currentTarget.reset();
+    intent.actions.clear();
+    return encounter.retryBoss();
+  });
+}
+
 void Loop::processInput() {
   InputEvent e;
   while (input.pop(e)) {
@@ -256,6 +284,14 @@ void Loop::tickOnce(int64_t elapsedMs) {
   snapshot.targetDist = currentTarget ? currentTarget->distance : 0.0f;
   const CombatSnapshot& combatSnapshot = combat.snapshot();
   ApplyCombatSnapshot(snapshot, combatSnapshot);
+  snapshot.levelStage = static_cast<int32_t>(encounter.snapshot().levelStage);
+  snapshot.gateState = static_cast<int32_t>(encounter.snapshot().gateState);
+  snapshot.supplyState = static_cast<int32_t>(encounter.snapshot().supplyState);
+  snapshot.bossHp = encounter.snapshot().boss.hp;
+  snapshot.bossPoise = encounter.snapshot().boss.poise;
+  snapshot.bossPhase = static_cast<int32_t>(encounter.snapshot().boss.phase);
+  snapshot.bossMechanic = static_cast<int32_t>(encounter.snapshot().boss.mechanic);
+  snapshot.bossCastMs = encounter.snapshot().boss.castRemainingMs;
   snapshots.publish(snapshot);
 
   if (tickCount <= 5 || tickCount % 60 == 0) {
@@ -338,6 +374,14 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   ApplyCombatSnapshot(updated, combat.snapshot());
   updated.encounterMode = static_cast<int32_t>(encounter.snapshot().mode);
   updated.encounterState = static_cast<int32_t>(encounter.snapshot().state);
+  updated.levelStage = static_cast<int32_t>(encounter.snapshot().levelStage);
+  updated.gateState = static_cast<int32_t>(encounter.snapshot().gateState);
+  updated.supplyState = static_cast<int32_t>(encounter.snapshot().supplyState);
+  updated.bossHp = encounter.snapshot().boss.hp;
+  updated.bossPoise = encounter.snapshot().boss.poise;
+  updated.bossPhase = static_cast<int32_t>(encounter.snapshot().boss.phase);
+  updated.bossMechanic = static_cast<int32_t>(encounter.snapshot().boss.mechanic);
+  updated.bossCastMs = encounter.snapshot().boss.castRemainingMs;
   snapshots.publish(updated);
 }
 

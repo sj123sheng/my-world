@@ -81,14 +81,48 @@ assert.match(startEncounterBody, /!std::isfinite\(modeNumber\)/,
   'NativeStartEncounter must reject non-finite numbers');
 assert.match(startEncounterBody, /!TryConvertInt32\(modeNumber, mode\)/,
   'NativeStartEncounter must reject fractional numbers');
-assert.match(startEncounterBody, /mode < 0 \|\| mode > 3/,
-  'NativeStartEncounter must reject encounter modes outside 0..3');
+assert.match(startEncounterBody, /mode < 0 \|\| mode > 5/,
+  'NativeStartEncounter must reject encounter modes outside 0..5');
 assert.match(startEncounterBody, /g_loop\.startEncounter\(static_cast<EncounterMode>\(mode\)\)/,
   'NativeStartEncounter must delegate to Loop::startEncounter');
 assert.match(startEncounterBody, /napi_get_boolean\(env, started, &result\)/,
   'NativeStartEncounter must return whether the encounter started');
 assert.match(nativeBridge, /"startEncounter", nullptr, NativeStartEncounter/,
   'native bridge must export startEncounter');
+
+assert.match(bridge, /export const advanceLevel/, 'Bridge must export advanceLevel');
+assert.match(bridge, /export const useSupply/, 'Bridge must export useSupply');
+assert.match(bridge, /export const retryBoss/, 'Bridge must export retryBoss');
+assert.match(declarations, /advanceLevel: \(\) => boolean;/,
+  'Index.d.ts must declare advanceLevel');
+assert.match(declarations, /useSupply: \(\) => boolean;/,
+  'Index.d.ts must declare useSupply');
+assert.match(declarations, /retryBoss: \(\) => boolean;/,
+  'Index.d.ts must declare retryBoss');
+assert.match(nativeBridge, /"advanceLevel", nullptr, NativeAdvanceLevel/,
+  'native bridge must export advanceLevel');
+assert.match(nativeBridge, /"useSupply", nullptr, NativeUseSupply/,
+  'native bridge must export useSupply');
+assert.match(nativeBridge, /"retryBoss", nullptr, NativeRetryBoss/,
+  'native bridge must export retryBoss');
+
+const advanceLevelBody = functionBody(nativeBridge, 'static napi_value NativeAdvanceLevel');
+assert.match(advanceLevelBody, /g_loop\.advanceLevel\(\)/,
+  'NativeAdvanceLevel must delegate to Loop');
+assert.match(advanceLevelBody, /napi_get_boolean\(env, advanced, &result\)/,
+  'NativeAdvanceLevel must return boolean');
+
+const useSupplyBody = functionBody(nativeBridge, 'static napi_value NativeUseSupply');
+assert.match(useSupplyBody, /g_loop\.useSupply\(\)/,
+  'NativeUseSupply must delegate to Loop');
+assert.match(useSupplyBody, /napi_get_boolean\(env, supplied, &result\)/,
+  'NativeUseSupply must return boolean');
+
+const retryBossBody = functionBody(nativeBridge, 'static napi_value NativeRetryBoss');
+assert.match(retryBossBody, /g_loop\.retryBoss\(\)/,
+  'NativeRetryBoss must delegate to Loop');
+assert.match(retryBossBody, /napi_get_boolean\(env, retried, &result\)/,
+  'NativeRetryBoss must return boolean');
 
 const snapshotInterface = bridge.match(/export interface Snapshot \{([\s\S]*?)\n\}/);
 assert(snapshotInterface, 'Bridge must declare Snapshot');
@@ -112,6 +146,12 @@ for (const field of fields) {
 
 for (const field of ['tick', 'moveX', 'moveY', 'cameraYaw', 'cameraPitch',
   'targetDist', 'targetId', 'bossPhase', 'encounterMode', 'encounterState']) {
+  assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
+    `GamePage polling must assign ${field}`);
+  assert.match(nativeBridge, new RegExp(`"${field}"`));
+}
+for (const field of ['levelStage', 'gateState', 'supplyState', 'bossHp',
+  'bossPoise', 'bossMechanic', 'bossCastMs']) {
   assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
     `GamePage polling must assign ${field}`);
   assert.match(nativeBridge, new RegExp(`"${field}"`));
@@ -185,8 +225,11 @@ assert.match(functionBody(nativeBridge, 'static napi_value NativeStop'),
 assert.match(functionBody(nativeBridge, 'static napi_value NativePushInput'),
   /g_loop\.enqueueInput\(/,
   'pushInput remains a validated external/test bridge even though GamePage does not call it');
-assert.match(controls, /import \{ pushAction, startEncounter \} from ['"]\.\.\/napi\/Bridge['"];/,
+assert.match(controls, /import \{[^}]*\bpushAction\b[^}]*\bstartEncounter\b[^}]*\} from ['"]\.\.\/napi\/Bridge['"];/,
   'CombatControls must import startEncounter with pushAction');
+assert.match(controls,
+  /import \{ pushAction, startEncounter, advanceLevel, useSupply, retryBoss \} from ['"]\.\.\/napi\/Bridge['"];/,
+  'CombatControls must import stage 5 methods');
 for (const [label, mode] of [['训练', 0], ['兽群', 1], ['混战', 2], ['守卫', 3]]) {
   assert.match(controls,
     new RegExp(`Button\\(['"]${label}['"]\\)(?:(?!Button\\().)*startEncounter\\(${mode}\\)`, 's'),
@@ -197,3 +240,32 @@ for (const callback of ['OnSurfaceCreated', 'OnSurfaceChanged']) {
     /if \(g_foregroundRequested\.load\(\)\)[\s\S]*?g_loop\.start\(\);/,
     `${callback} must start only while foreground is requested`);
 }
+
+assert.match(controls,
+  /import \{ pushAction, startEncounter, advanceLevel, useSupply, retryBoss \} from ['"]\.\.\/napi\/Bridge['"];/,
+  'CombatControls must import stage 5 methods');
+for (const [label, mode] of [['流程', 4], ['首领', 5]]) {
+  assert.match(controls,
+    new RegExp(`Button\\(['"]${label}['"]\\)(?:(?!Button\\().)*startEncounter\\(${mode}\\)`, 's'),
+    `CombatControls must pair ${label} with startEncounter(${mode})`);
+}
+assert.match(controls, new RegExp(`Button\\(['"]推进['"]\\)(?:(?!Button\\().)*advanceLevel\\(\\)`, 's'),
+  'CombatControls must pair 推进 with advanceLevel()');
+assert.match(controls, new RegExp(`Button\\(['"]补给['"]\\)(?:(?!Button\\().)*useSupply\\(\\)`, 's'),
+  'CombatControls must pair 补给 with useSupply()');
+assert.match(controls, new RegExp(`Button\\(['"]重试['"]\\)(?:(?!Button\\().)*retryBoss\\(\\)`, 's'),
+  'CombatControls must pair 重试 with retryBoss()');
+
+assert.match(hud, /@Prop levelStage: number = 0;/, 'HUD must accept levelStage');
+assert.match(hud, /@Prop gateState: number = 0;/, 'HUD must accept gateState');
+assert.match(hud, /@Prop supplyState: number = 0;/, 'HUD must accept supplyState');
+assert.match(hud, /@Prop bossHp: number = 1000;/, 'HUD must accept bossHp');
+assert.match(hud, /@Prop bossPoise: number = 300;/, 'HUD must accept bossPoise');
+assert.match(hud, /@Prop bossMechanic: number = 0;/, 'HUD must accept bossMechanic');
+assert.match(hud, /@Prop bossCastMs: number = 0;/, 'HUD must accept bossCastMs');
+assert.match(hud,
+  /关卡.*\$\{this\.levelStage\}.*门.*\$\{this\.gateState\}.*补给.*\$\{this\.supplyState\}/,
+  'HUD must render level stage, gate and supply state');
+assert.match(hud,
+  /首领.*\$\{this\.bossHp\.toFixed\(1\)\}.*\$\{this\.bossPoise\.toFixed\(1\)\}.*\$\{this\.bossPhase\}.*\$\{this\.bossMechanic\}.*\$\{this\.bossCastMs\}/,
+  'HUD must render boss HP, poise, phase, mechanic and cast');

@@ -47,6 +47,13 @@ export interface Snapshot {
   corroded: boolean;
   currentReaction: number;
   pulsePhase: number;
+  levelStage: number;
+  gateState: number;
+  supplyState: number;
+  bossHp: number;
+  bossPoise: number;
+  bossMechanic: number;
+  bossCastMs: number;
 }
 
 export const nativeStart = (): void => native.nativeStart();
@@ -54,4 +61,7 @@ export const nativeStop = (): void => native.nativeStop();
 export const pushInput = (e: InputEvent): void => native.pushInput(e);
 export const pushAction = (type: number): void => native.pushAction(type);
 export const startEncounter = (mode: number): boolean => native.startEncounter(mode);
+export const advanceLevel = (): boolean => native.advanceLevel();
+export const useSupply = (): boolean => native.useSupply();
+export const retryBoss = (): boolean => native.retryBoss();
 export const pullSnapshot = (): Snapshot => native.pullSnapshot();

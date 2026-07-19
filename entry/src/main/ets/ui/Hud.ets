@@ -31,6 +31,14 @@ export struct Hud {
   @Prop corroded: boolean = false;
   @Prop currentReaction: number = -1;
   @Prop pulsePhase: number = 0;
+  @Prop levelStage: number = 0;
+  @Prop gateState: number = 0;
+  @Prop supplyState: number = 0;
+  @Prop bossHp: number = 1000;
+  @Prop bossPoise: number = 300;
+  @Prop bossMechanic: number = 0;
+  @Prop bossCastMs: number = 0;
+  @Prop bossPhase: number = 0;
   @State auras: string[] = [];
 
   build() {
@@ -61,6 +69,10 @@ export struct Hud {
             .fontColor(this.pulseHitRemainingMs >= 100 && this.pulseHitRemainingMs <= 500 ? Color.Red : Color.Gray)
             .fontSize(12)
           Text(`遭遇 ${this.encounterMode} · 状态 ${this.encounterState}`)
+            .fontColor(Color.Gray).fontSize(12)
+          Text(`关卡 ${this.levelStage} · 门 ${this.gateState} · 补给 ${this.supplyState}`)
+            .fontColor(Color.Gray).fontSize(12)
+          Text(`首领 HP ${this.bossHp.toFixed(1)} · 韧性 ${this.bossPoise.toFixed(1)} · 阶段 ${this.bossPhase} · 机制 ${this.bossMechanic} · 读条 ${this.bossCastMs}ms`)
             .fontColor(Color.Gray).fontSize(12)
           Text(`动作 ${this.currentAction} · 连击窗 ${this.comboWindowMs}ms · 终结窗 ${this.ultimateWindowMs}ms`)
             .fontColor(Color.Gray).fontSize(12)
