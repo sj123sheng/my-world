@@ -5,6 +5,8 @@
 #include <optional>
 #include <mutex>
 #include "fixed_step.h"
+#include "../../engine/presentation/vfx_system.h"
+#include "../../engine/presentation/performance_guard.h"
 #include "lifecycle_state.h"
 #include "snapshot_store.h"
 #include "../render/surface.h"
@@ -34,6 +36,9 @@ struct Loop {
   CombatController combat{CombatConfig::defaults()};
   EncounterController encounter{combat};
   std::optional<TargetSelection> currentTarget;
+  VfxSystem vfxSystem;
+  PerformanceGuard performanceGuard;
+  bool debugHud_ = false;
   FixedStep fixedStep{16, 4};
   SnapshotStore snapshots;
   LifecycleState lifecycle;
@@ -61,6 +66,7 @@ struct Loop {
   bool advanceLevel();
   bool useSupply();
   bool retryBoss();
+  void toggleDebugHud();
 
   template <typename Fn>
   decltype(auto) withLifecycle(Fn&& operation) {

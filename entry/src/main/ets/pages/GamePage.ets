@@ -19,6 +19,8 @@ struct GamePage {
     currentReaction: -1, pulsePhase: 0,
     levelStage: 0, gateState: 0, supplyState: 0,
     bossHp: 1000, bossPoise: 300, bossMechanic: 0, bossCastMs: 0
+    , perfLevel: 0, vfxFlags: 0, cameraShakeX: 0, cameraShakeY: 0,
+    bossHpRatio: 0, bossCastRatio: 0, debugHud: false
   };
   @State tick: number = 0;
   @State hp: number = 100;
@@ -66,6 +68,13 @@ struct GamePage {
   @State bossPoise: number = 300;
   @State bossMechanic: number = 0;
   @State bossCastMs: number = 0;
+  @State perfLevel: number = 0;
+  @State vfxFlags: number = 0;
+  @State cameraShakeX: number = 0;
+  @State cameraShakeY: number = 0;
+  @State bossHpRatio: number = 0;
+  @State bossCastRatio: number = 0;
+  @State debugHud: boolean = false;
   private timer: number = -1;
 
   build() {
@@ -187,6 +196,13 @@ struct GamePage {
         this.bossPoise = this.snapshot.bossPoise;
         this.bossMechanic = this.snapshot.bossMechanic;
         this.bossCastMs = this.snapshot.bossCastMs;
+        this.perfLevel = this.snapshot.perfLevel;
+        this.vfxFlags = this.snapshot.vfxFlags;
+        this.cameraShakeX = this.snapshot.cameraShakeX;
+        this.cameraShakeY = this.snapshot.cameraShakeY;
+        this.bossHpRatio = this.snapshot.bossHpRatio;
+        this.bossCastRatio = this.snapshot.bossCastRatio;
+        this.debugHud = this.snapshot.debugHud;
       } catch (e) {
       }
     }, 100);

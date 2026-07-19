@@ -54,6 +54,13 @@ export interface Snapshot {
   bossPoise: number;
   bossMechanic: number;
   bossCastMs: number;
+  perfLevel: number;
+  vfxFlags: number;
+  cameraShakeX: number;
+  cameraShakeY: number;
+  bossHpRatio: number;
+  bossCastRatio: number;
+  debugHud: boolean;
 }
 
 export const nativeStart = (): void => native.nativeStart();
@@ -64,4 +71,5 @@ export const startEncounter = (mode: number): boolean => native.startEncounter(m
 export const advanceLevel = (): boolean => native.advanceLevel();
 export const useSupply = (): boolean => native.useSupply();
 export const retryBoss = (): boolean => native.retryBoss();
+export const toggleDebugHud = (): void => native.toggleDebugHud();
 export const pullSnapshot = (): Snapshot => native.pullSnapshot();

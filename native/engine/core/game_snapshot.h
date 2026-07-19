@@ -50,4 +50,11 @@ struct GameSnapshot {
   FixedPoint bossPoise = fp(300);
   int32_t bossMechanic = 0;
   Tick bossCastMs = 0;
+  int32_t perfLevel = 0;
+  int32_t vfxFlags = 0;
+  float cameraShakeX = 0.0f;
+  float cameraShakeY = 0.0f;
+  float bossHpRatio = 0.0f;
+  float bossCastRatio = 0.0f;
+  bool debugHud = false;
 };

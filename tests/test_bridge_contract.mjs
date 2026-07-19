@@ -228,7 +228,7 @@ assert.match(functionBody(nativeBridge, 'static napi_value NativePushInput'),
 assert.match(controls, /import \{[^}]*\bpushAction\b[^}]*\bstartEncounter\b[^}]*\} from ['"]\.\.\/napi\/Bridge['"];/,
   'CombatControls must import startEncounter with pushAction');
 assert.match(controls,
-  /import \{ pushAction, startEncounter, advanceLevel, useSupply, retryBoss \} from ['"]\.\.\/napi\/Bridge['"];/,
+  /import \{[^}]*\bpushAction\b[^}]*\bstartEncounter\b[^}]*\badvanceLevel\b[^}]*\buseSupply\b[^}]*\bretryBoss\b[^}]*\} from ['"]\.\.\/napi\/Bridge['"];/,
   'CombatControls must import stage 5 methods');
 for (const [label, mode] of [['训练', 0], ['兽群', 1], ['混战', 2], ['守卫', 3]]) {
   assert.match(controls,
@@ -241,9 +241,6 @@ for (const callback of ['OnSurfaceCreated', 'OnSurfaceChanged']) {
     `${callback} must start only while foreground is requested`);
 }
 
-assert.match(controls,
-  /import \{ pushAction, startEncounter, advanceLevel, useSupply, retryBoss \} from ['"]\.\.\/napi\/Bridge['"];/,
-  'CombatControls must import stage 5 methods');
 for (const [label, mode] of [['流程', 4], ['首领', 5]]) {
   assert.match(controls,
     new RegExp(`Button\\(['"]${label}['"]\\)(?:(?!Button\\().)*startEncounter\\(${mode}\\)`, 's'),
@@ -269,3 +266,25 @@ assert.match(hud,
 assert.match(hud,
   /首领.*\$\{this\.bossHp\.toFixed\(1\)\}.*\$\{this\.bossPoise\.toFixed\(1\)\}.*\$\{this\.bossPhase\}.*\$\{this\.bossMechanic\}.*\$\{this\.bossCastMs\}/,
   'HUD must render boss HP, poise, phase, mechanic and cast');
+
+// ---- Stage 6: toggleDebugHud, perfLevel, vfx fields ----
+assert.match(bridge, /export const toggleDebugHud/, 'Bridge must export toggleDebugHud');
+assert.match(declarations, /toggleDebugHud: \(\) => void;/, 'Index.d.ts must declare toggleDebugHud');
+assert.match(nativeBridge, /"toggleDebugHud", nullptr, NativeToggleDebugHud/,
+  'native bridge must export toggleDebugHud');
+
+const toggleBody = functionBody(nativeBridge, 'static napi_value NativeToggleDebugHud');
+assert.match(toggleBody, /g_loop\.toggleDebugHud\(\)/,
+  'NativeToggleDebugHud must delegate to Loop');
+
+for (const field of ['perfLevel', 'vfxFlags', 'cameraShakeX', 'cameraShakeY',
+  'bossHpRatio', 'bossCastRatio', 'debugHud']) {
+  assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
+    `GamePage polling must assign ${field}`);
+  assert.match(nativeBridge, new RegExp(`"${field}"`), `NativePullSnapshot must export ${field}`);
+}
+
+assert.match(controls, /import[^]*\btoggleDebugHud\b/,
+  'CombatControls must import toggleDebugHud');
+assert.match(controls, new RegExp(`Button\\(['"]调试['"]\\)(?:(?!Button\\().)*toggleDebugHud\\(\\)`, 's'),
+  'CombatControls must pair 调试 with toggleDebugHud()');

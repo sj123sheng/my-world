@@ -165,6 +165,9 @@ bool Loop::retryBoss() {
   });
 }
 
+void Loop::toggleDebugHud() {
+  debugHud_ = !debugHud_;
+}
 void Loop::processInput() {
   InputEvent e;
   while (input.pop(e)) {
@@ -266,6 +269,7 @@ void Loop::tickOnce(int64_t elapsedMs) {
     tickCount = 0;
     lastFpsTime = now;
   }
+  performanceGuard.sample(fixedStep.tick(), 16, fps);
 
   GameSnapshot snapshot;
   snapshot.tick = fixedStep.tick();
@@ -292,6 +296,17 @@ void Loop::tickOnce(int64_t elapsedMs) {
   snapshot.bossPhase = static_cast<int32_t>(encounter.snapshot().boss.phase);
   snapshot.bossMechanic = static_cast<int32_t>(encounter.snapshot().boss.mechanic);
   snapshot.bossCastMs = encounter.snapshot().boss.castRemainingMs;
+  snapshot.perfLevel = performanceGuard.level();
+  snapshot.vfxFlags = vfxSystem.snapshot().vfxFlags;
+  snapshot.cameraShakeX = vfxSystem.snapshot().cameraShakeX;
+  snapshot.cameraShakeY = vfxSystem.snapshot().cameraShakeY;
+  snapshot.bossHpRatio = static_cast<float>(encounter.snapshot().boss.hp) /
+                          static_cast<float>(encounter.snapshot().boss.hp + fp(1));
+  if (encounter.snapshot().boss.castRemainingMs > 0) {
+    snapshot.bossCastRatio = 1.0f - static_cast<float>(encounter.snapshot().boss.castRemainingMs) /
+                                  static_cast<float>(5000);
+  }
+  snapshot.debugHud = debugHud_;
   snapshots.publish(snapshot);
 
   if (tickCount <= 5 || tickCount % 60 == 0) {
@@ -367,8 +382,11 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       return left.sequence < right.sequence;
     };
     std::stable_sort(frameCombatEvents_.gameplay.begin(), frameCombatEvents_.gameplay.end(), less);
-    std::stable_sort(frameCombatEvents_.presentation.begin(), frameCombatEvents_.presentation.end(), less);
+   std::stable_sort(frameCombatEvents_.presentation.begin(), frameCombatEvents_.presentation.end(), less);
   }
+
+  vfxSystem.consume(frameCombatEvents_);
+  vfxSystem.update(combatTime, dtMs);
 
   GameSnapshot updated = snapshots.read();
   ApplyCombatSnapshot(updated, combat.snapshot());
@@ -382,6 +400,17 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   updated.bossPhase = static_cast<int32_t>(encounter.snapshot().boss.phase);
   updated.bossMechanic = static_cast<int32_t>(encounter.snapshot().boss.mechanic);
   updated.bossCastMs = encounter.snapshot().boss.castRemainingMs;
+  updated.perfLevel = performanceGuard.level();
+  updated.vfxFlags = vfxSystem.snapshot().vfxFlags;
+  updated.cameraShakeX = vfxSystem.snapshot().cameraShakeX;
+  updated.cameraShakeY = vfxSystem.snapshot().cameraShakeY;
+  updated.bossHpRatio = static_cast<float>(encounter.snapshot().boss.hp) /
+                        static_cast<float>(encounter.snapshot().boss.hp + fp(1));
+  if (encounter.snapshot().boss.castRemainingMs > 0) {
+    updated.bossCastRatio = 1.0f - static_cast<float>(encounter.snapshot().boss.castRemainingMs) /
+                                  static_cast<float>(5000);
+  }
+  updated.debugHud = debugHud_;
   snapshots.publish(updated);
 }
 
