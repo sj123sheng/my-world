@@ -194,6 +194,24 @@ my-world/
 
 ## 测试与验证
 
+### 阶段 6 自动化、构建与真机状态
+
+2026-07-19 阶段 6 HUD、表现与优化收口结果：
+
+- 自动化测试：本地可用的 45/45 个纯逻辑 `tests/test_*.cpp` 逐个使用显式 macOS SDK、
+  SDK 内 `usr/include/c++/v1`、`-I. -Inative` 编译并运行通过；Node 桥接契约 1/1 通过，
+  `git diff --check` 通过。`test_loop_integration`、`test_loop_lifecycle` 和 `test_fence_wait`
+  仍需 HarmonyOS 图形或平台链路覆盖，不作为 macOS 纯逻辑批量测试执行。
+- 生产构建：指定 `DEVECO_SDK_HOME=/Applications/DevEco-Studio.app/Contents/sdk` 的 Hvigor
+  `assembleHap` 返回 `BUILD SUCCESSFUL`。最新 signed HAP 为
+  `entry/build/default/outputs/default/entry-default-signed.hap`（约 4.7 MiB，SHA-256
+  `0f8d333ff9ada0ef6e8e7499105012b5fbc600ca612d14a6382161e9207c88fb`）。
+  构建前后 `build-profile.json5` 保持空签名版本，签名内容仅临时写入用于构建，未提交。
+- 真机验收：设备 `2MN0224C12000754` 完成 signed HAP 安装、启动、布局 dump 和截图采证。
+  `调试` 按钮可见，点击后调试覆盖显示 `性能 1 · VFX 0` 等字段；点击 `首领` 后 HUD 显示
+  `首领 阶段 1 · 机制 0 · 读条 0ms` 和 `遭遇 5 · 状态 1 · 性能 1 · VFX 0`；应用进程保持运行。
+  `PerformanceGuard` 在 FPS 40 时正确输出降级级别 1。
+
 ### 阶段 5 自动化、构建与真机状态
 
 2026-07-19 阶段 5 首领与关卡收口结果：

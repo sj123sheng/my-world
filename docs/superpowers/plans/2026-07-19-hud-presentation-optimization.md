@@ -59,7 +59,7 @@
 - Consumes: `PresentationEvent`、`PresentationEventType`、`Tick`、`FixedPoint`。
 - Produces: `VfxSnapshot`、`VfxSystem::consume()`、`VfxSystem::update()`、`VfxSystem::snapshot()`。
 
-- [ ] **Step 1: 写入失败测试**
+- [x] **Step 1: 写入失败测试**
 
 ```cpp
 void testHitFlashTriggersAndDecays() {
@@ -108,7 +108,7 @@ void testRepeatEventRefreshesNotStacks() {
 }
 ```
 
-- [ ] **Step 2: 编译确认 RED**
+- [x] **Step 2: 编译确认 RED**
 
 Run:
 ```bash
@@ -118,16 +118,16 @@ CXX="$(xcrun --find clang++)"
 ```
 Expected: `VfxSystem` 或 `vfx_system.cpp` 不存在导致失败。
 
-- [ ] **Step 3: 实现 VFX 系统**
+- [x] **Step 3: 实现 VFX 系统**
 
 `VfxSnapshot` 包含 `hitFlashMs`、`dodgeFlashMs`、`poiseBreakMs`、`resonanceBurstMs`、`phaseTransitionMs`、`castBarBrokenMs`（均为 `Tick`）、`cameraShakeX/Y`（`float`）和 `vfxFlags`（`int32_t` 位掩码）。`consume()` 按事件类型设置对应计时器，重复事件刷新不叠加。`update()` 每 tick 按固定步长衰减所有计时器，归零后清除。镜头震动使用衰减偏移。
 
-- [ ] **Step 4: 运行测试确认 GREEN**
+- [x] **Step 4: 运行测试确认 GREEN**
 
 Run: `/tmp/test_vfx_system`
 Expected: exit code 0。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add native/engine/presentation/vfx_system.h native/engine/presentation/vfx_system.cpp tests/test_vfx_system.cpp entry/src/main/cpp/CMakeLists.txt
@@ -148,7 +148,7 @@ git commit -m "feat: 增加表现事件驱动 VFX 系统" \
 - Consumes: `Tick`、`int64_t dtMs`、`float fps`。
 - Produces: `PerformanceGuard::sample()`、`PerformanceGuard::level()`。
 
-- [ ] **Step 1: 写入失败测试**
+- [x] **Step 1: 写入失败测试**
 
 ```cpp
 void testLevelBoundaries() {
@@ -172,20 +172,20 @@ void testRecoveryUpgrades() {
 }
 ```
 
-- [ ] **Step 2: 编译确认 RED**
+- [x] **Step 2: 编译确认 RED**
 
 Expected: `PerformanceGuard` 不存在导致失败。
 
-- [ ] **Step 3: 实现性能降级守护**
+- [x] **Step 3: 实现性能降级守护**
 
 `PerformanceGuard` 维护 2 秒滑动窗口的 FPS 采样，计算平均帧率后按 55/40/30 边界输出 0-3 降级级别。降级只升不降需持续 2 秒恢复窗口，避免单帧抖动导致频繁切换。
 
-- [ ] **Step 4: 运行测试确认 GREEN**
+- [x] **Step 4: 运行测试确认 GREEN**
 
 Run: `/tmp/test_performance_guard`
 Expected: exit code 0。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add native/engine/presentation/performance_guard.h native/engine/presentation/performance_guard.cpp tests/test_performance_guard.cpp entry/src/main/cpp/CMakeLists.txt
@@ -215,25 +215,25 @@ git commit -m "feat: 增加 FPS 性能降级守护" \
 - Produces: `Surface` 扩展字段 `vfx`、`encounter`、`currentTarget`。
 - Produces: 渲染层敌人、首领、VFX 叠加、镜头震动和软锁定绘制。
 
-- [ ] **Step 1: 写入失败合约测试**
+- [x] **Step 1: 写入失败合约测试**
 
 `tests/test_bridge_contract.mjs` 断言 Bridge 声明 `toggleDebugHud` 返回 void，Index.d.ts 声明该方法，native bridge 导出 `NativeToggleDebugHud` 并委托 Loop；新增快照字段在 Bridge、Index.d.ts、native bridge 和 GamePage 中一致；CombatControls 包含 `调试` 按钮并调用 `toggleDebugHud()`。
 
-- [ ] **Step 2: 运行 Node 测试确认 RED**
+- [x] **Step 2: 运行 Node 测试确认 RED**
 
 Run: `node tests/test_bridge_contract.mjs`
 Expected: 缺少新增方法或字段。
 
-- [ ] **Step 3: 实现快照、桥接与渲染扩展**
+- [x] **Step 3: 实现快照、桥接与渲染扩展**
 
 `GameSnapshot` 增加 `perfLevel`、`vfxFlags`、`cameraShakeX/Y`、`bossHpRatio`、`bossCastRatio`、`debugHud` 字段。`Loop` 增加 `VfxSystem`、`PerformanceGuard` 成员，在 `updateFixed` 中消费表现事件和采样 FPS，在 `tickOnce` 中同步快照和写入 `Surface` 扩展字段。`Surface` 增加 `vfx`、`encounter`、`currentTarget` 只读字段。`surface_draw` 增加敌人、首领、VFX 叠加、镜头震动和软锁定绘制。`native_bridge.cpp` 增加 `NativeToggleDebugHud` 和新快照字段。ArkTS 侧增加 `toggleDebugHud` 导出、`调试` 按钮和新字段轮询。
 
-- [ ] **Step 4: 运行 Node 测试确认 GREEN**
+- [x] **Step 4: 运行 Node 测试确认 GREEN**
 
 Run: `node tests/test_bridge_contract.mjs`
 Expected: exit code 0。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add native/engine/core/game_snapshot.h native/engine/core/loop.h native/engine/core/loop.cpp native/engine/render/surface.h native/engine/render/surface.cpp entry/src/main/cpp/native_bridge.cpp entry/src/main/cpp/types/libnative_game/Index.d.ts entry/src/main/ets/napi/Bridge.ets entry/src/main/ets/ui/CombatControls.ets entry/src/main/ets/pages/GamePage.ets tests/test_bridge_contract.mjs entry/src/main/cpp/CMakeLists.txt
@@ -252,25 +252,25 @@ git commit -m "feat: 接入 VFX 性能降级与渲染扩展" \
 **Interfaces:**
 - Produces: 正式条状 HUD 布局和可切换调试覆盖。
 
-- [ ] **Step 1: 写入失败合约测试**
+- [x] **Step 1: 写入失败合约测试**
 
 `tests/test_bridge_contract.mjs` 断言 Hud 包含生命条 `Progress`、首领条 `Progress`、技能冷却遮罩和调试覆盖切换逻辑；GamePage 传递 `debugHud` 状态。
 
-- [ ] **Step 2: 运行 Node 测试确认 RED**
+- [x] **Step 2: 运行 Node 测试确认 RED**
 
 Run: `node tests/test_bridge_contract.mjs`
 Expected: 缺少 `Progress` 或调试覆盖逻辑。
 
-- [ ] **Step 3: 实现移动 HUD**
+- [x] **Step 3: 实现移动 HUD**
 
 Hud 升级为正式条状布局：左上生命/韧性/体力条，顶部中央首领条和阶段标记，右下技能按钮带冷却遮罩，底部中央关卡状态。调试覆盖由 `debugHud` prop 控制显示，不遮挡正式 HUD。
 
-- [ ] **Step 4: 运行 Node 测试确认 GREEN**
+- [x] **Step 4: 运行 Node 测试确认 GREEN**
 
 Run: `node tests/test_bridge_contract.mjs`
 Expected: exit code 0。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add entry/src/main/ets/ui/Hud.ets entry/src/main/ets/pages/GamePage.ets tests/test_bridge_contract.mjs
@@ -292,24 +292,24 @@ git commit -m "feat: 升级移动 HUD 为正式条状布局" \
 - Consumes: `GameplayEvent`、`PresentationEvent`、`EncounterState`。
 - Produces: `AudioBridge::dispatch()`、`AudioBridge::start()`、`AudioBridge::stop()`。
 
-- [ ] **Step 1: 写入失败测试**
+- [x] **Step 1: 写入失败测试**
 
 创建 `tests/test_audio_bridge.cpp`，断言 `AudioBridge::dispatch()` 按事件类型分类不崩溃，设备不支持时静默降级为空操作。
 
-- [ ] **Step 2: 编译确认 RED**
+- [x] **Step 2: 编译确认 RED**
 
 Expected: `AudioBridge` 不存在导致失败。
 
-- [ ] **Step 3: 实现占位音频**
+- [x] **Step 3: 实现占位音频**
 
 `AudioBridge` 接入 `OHAudioRenderer`，按 `GameplayEventType` 和 `PresentationEventType` 分发五层占位音效。设备不支持时静默降级。`Loop::updateFixed` 在战斗结算后调用 `dispatch()`。
 
-- [ ] **Step 4: 运行测试确认 GREEN**
+- [x] **Step 4: 运行测试确认 GREEN**
 
 Run: `/tmp/test_audio_bridge`
 Expected: exit code 0。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add native/platform/harmony/audio_bridge.h native/platform/harmony/audio_bridge.cpp native/engine/core/loop.h native/engine/core/loop.cpp entry/src/main/cpp/CMakeLists.txt tests/test_audio_bridge.cpp
@@ -328,23 +328,23 @@ git commit -m "feat: 接入占位音频分发" \
 **Interfaces:**
 - Produces: 阶段 6 自动化、构建、真机验证记录。
 
-- [ ] **Step 1: 运行自动化测试**
+- [x] **Step 1: 运行自动化测试**
 
 Run focused tests first: `test_vfx_system`、`test_performance_guard`、`test_audio_bridge`、`node tests/test_bridge_contract.mjs`。随后运行本地可编译 C++ 批量测试，记录 skipped 的 HarmonyOS/platform 测试。
 
-- [ ] **Step 2: 运行格式与构建验证**
+- [x] **Step 2: 运行格式与构建验证**
 
 Run: `git diff --check`。需要 HAP 时临时复制本机签名配置，构建后恢复 `build-profile.json5`，不得提交签名内容。
 
-- [ ] **Step 3: 真机完整流程与稳定性验收**
+- [x] **Step 3: 真机完整流程与稳定性验收**
 
 使用 HDC 安装 signed HAP，启动应用，执行 8–12 分钟完整流程（训练 → 普通敌人 → 精英 → 补给 → 首领），确认 `perfLevel` 随帧率变化；10 分钟持续战斗无崩溃；冷启动/前后台/锁屏/Surface 重建后应用保持运行；精准闪避、打断、破韧、共鸣爆发和首领阶段切换可视觉区分。
 
-- [ ] **Step 4: 更新验收文档**
+- [x] **Step 4: 更新验收文档**
 
 记录测试矩阵、HAP SHA-256、设备 ID、帧率数据、稳定性结果和截图路径。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add README.md docs/superpowers/plans/2026-07-14-combat-vertical-slice-roadmap.md docs/superpowers/plans/2026-07-19-hud-presentation-optimization.md

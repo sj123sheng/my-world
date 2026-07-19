@@ -6,6 +6,7 @@ export const startEncounter: (mode: number) => boolean;
 export const advanceLevel: () => boolean;
 export const useSupply: () => boolean;
 export const retryBoss: () => boolean;
+export const toggleDebugHud: () => void;
 export const pullSnapshot: () => {
   tick: number,
   hp: number,
@@ -52,5 +53,12 @@ export const pullSnapshot: () => {
   bossHp: number,
   bossPoise: number,
   bossMechanic: number,
-  bossCastMs: number
+  bossCastMs: number,
+  perfLevel: number,
+  vfxFlags: number,
+  cameraShakeX: number,
+  cameraShakeY: number,
+  bossHpRatio: number,
+  bossCastRatio: number,
+  debugHud: boolean
 };

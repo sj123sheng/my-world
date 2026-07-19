@@ -229,6 +229,11 @@ static napi_value NativeRetryBoss(napi_env env, napi_callback_info) {
   return result;
 }
 
+static napi_value NativeToggleDebugHud(napi_env env, napi_callback_info) {
+  g_loop.toggleDebugHud();
+  return nullptr;
+}
+
 static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   const GameSnapshot snapshot = g_loop.snapshot();
   napi_value result;
@@ -313,6 +318,14 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_create_double(env, static_cast<double>(snapshot.bossPoise) / FP_ONE, &stage[4]);
   napi_create_int32(env, snapshot.bossMechanic, &stage[5]);
   napi_create_int64(env, snapshot.bossCastMs, &stage[6]);
+  napi_value s6[7];
+  napi_create_int32(env, snapshot.perfLevel, &s6[0]);
+  napi_create_int32(env, snapshot.vfxFlags, &s6[1]);
+  napi_create_double(env, snapshot.cameraShakeX, &s6[2]);
+  napi_create_double(env, snapshot.cameraShakeY, &s6[3]);
+  napi_create_double(env, snapshot.bossHpRatio, &s6[4]);
+  napi_create_double(env, snapshot.bossCastRatio, &s6[5]);
+  napi_get_boolean(env, snapshot.debugHud, &s6[6]);
   napi_set_named_property(env, result, "currentAction", extra[0]);
   napi_set_named_property(env, result, "comboWindowMs", extra[1]);
   napi_set_named_property(env, result, "radianceCooldownMs", extra[2]);
@@ -333,6 +346,13 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_set_named_property(env, result, "bossPoise", stage[4]);
   napi_set_named_property(env, result, "bossMechanic", stage[5]);
   napi_set_named_property(env, result, "bossCastMs", stage[6]);
+  napi_set_named_property(env, result, "perfLevel", s6[0]);
+  napi_set_named_property(env, result, "vfxFlags", s6[1]);
+  napi_set_named_property(env, result, "cameraShakeX", s6[2]);
+  napi_set_named_property(env, result, "cameraShakeY", s6[3]);
+  napi_set_named_property(env, result, "bossHpRatio", s6[4]);
+  napi_set_named_property(env, result, "bossCastRatio", s6[5]);
+  napi_set_named_property(env, result, "debugHud", s6[6]);
   return result;
 }
 
@@ -347,6 +367,7 @@ static napi_value Init(napi_env env, napi_value exports) {
     {"advanceLevel", nullptr, NativeAdvanceLevel, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"useSupply", nullptr, NativeUseSupply, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"retryBoss", nullptr, NativeRetryBoss, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"toggleDebugHud", nullptr, NativeToggleDebugHud, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pullSnapshot", nullptr, NativePullSnapshot, nullptr, nullptr, nullptr, napi_default, nullptr},
   };
   napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);

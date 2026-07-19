@@ -11,6 +11,7 @@ include_directories(
     ${NATIVE_ROOT}/engine/input
     ${NATIVE_ROOT}/engine/math
     ${NATIVE_ROOT}/engine/render
+    ${NATIVE_ROOT}/engine/presentation
     ${NATIVE_ROOT}/engine/resource
     ${NATIVE_ROOT}/gameplay/combat
     ${NATIVE_ROOT}/gameplay/ai
@@ -43,6 +44,12 @@ add_library(native_game SHARED
     # engine render
     ${NATIVE_ROOT}/engine/render/camera.cpp
     ${NATIVE_ROOT}/engine/render/surface.cpp
+
+    # engine presentation
+    ${NATIVE_ROOT}/engine/presentation/vfx_system.cpp
+    ${NATIVE_ROOT}/engine/presentation/vfx_system.h
+    ${NATIVE_ROOT}/engine/presentation/performance_guard.cpp
+    ${NATIVE_ROOT}/engine/presentation/performance_guard.h
 
     # engine resource
     ${NATIVE_ROOT}/engine/resource/loader.cpp
@@ -95,6 +102,8 @@ add_library(native_game SHARED
 
     # platform harmony
     ${NATIVE_ROOT}/platform/harmony/lifecycle.cpp
+    ${NATIVE_ROOT}/platform/harmony/audio_bridge.cpp
+    ${NATIVE_ROOT}/platform/harmony/audio_bridge.h
     ${NATIVE_ROOT}/platform/harmony/audio.cpp
     ${NATIVE_ROOT}/platform/harmony/fence_wait.cpp
 )
