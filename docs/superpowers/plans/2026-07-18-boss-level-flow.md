@@ -47,7 +47,7 @@
 - Consumes: `Tick`、`FixedPoint`、`EntityId`、`CombatAction::Ultimate` 产生的 `lastAbility`。
 - Produces: `BossController::start(BossConfig)`、`BossController::applyDamage(FixedPoint hpDamage, FixedPoint poiseDamage, Tick tick)`、`BossController::update(BossFrameInput)`、`BossController::retry(Tick tick)`、`BossController::snapshot()`。
 
-- [ ] **Step 1: 写入失败测试**
+- [x] **Step 1: 写入失败测试**
 
 ```cpp
 void testPhaseThresholdsTriggerOnce() {
@@ -66,7 +66,7 @@ void testPhaseThresholdsTriggerOnce() {
 }
 ```
 
-- [ ] **Step 2: 编译确认 RED**
+- [x] **Step 2: 编译确认 RED**
 
 Run:
 ```bash
@@ -77,16 +77,16 @@ CXX="$(xcrun --find clang++)"
 ```
 Expected: `BossController` 或 `boss.cpp` 不存在导致失败。
 
-- [ ] **Step 3: 实现最小 Boss 状态机**
+- [x] **Step 3: 实现最小 Boss 状态机**
 
 `BossConfig::karounDefaults()` 使用 1000 HP、300 韧性、70%/35% 阈值。`applyDamage()` 只扣血和韧性；`update()` 处理阶段阈值、二阶段节点门、三阶段终末熔铸读条和失败状态。`retry()` 清空阶段触发标记、机制计时、节点、失败和死亡，并恢复默认 HP/韧性。
 
-- [ ] **Step 4: 运行测试确认 GREEN**
+- [x] **Step 4: 运行测试确认 GREEN**
 
 Run: `/tmp/test_boss_controller`
 Expected: exit code 0。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add native/gameplay/entities/boss.h native/gameplay/entities/boss.cpp tests/test_boss_controller.cpp entry/src/main/cpp/CMakeLists.txt
@@ -107,7 +107,7 @@ git commit -m "feat: 增加卡洛恩首领状态机" \
 - Consumes: `EncounterMode::Beast/Mixed/Guard` 和 `BossController`。
 - Produces: `EncounterMode::LevelFlow`、`EncounterMode::Boss`、`LevelStage`、`GateState`、`SupplyState`、`EncounterController::advanceLevel()`、`EncounterController::useSupply()`、`EncounterController::retryBoss()`。
 
-- [ ] **Step 1: 写入失败测试**
+- [x] **Step 1: 写入失败测试**
 
 ```cpp
 void testLevelDoorsOpenOnlyAfterVictory() {
@@ -124,20 +124,20 @@ void testLevelDoorsOpenOnlyAfterVictory() {
 }
 ```
 
-- [ ] **Step 2: 编译确认 RED**
+- [x] **Step 2: 编译确认 RED**
 
 Run: compile `tests/test_level_flow.cpp` with existing AI/combat/entity sources。
 Expected: 新枚举或方法不存在导致失败。
 
-- [ ] **Step 3: 实现最小关卡编排**
+- [x] **Step 3: 实现最小关卡编排**
 
 流程固定为 `Training -> RiftClawFight -> PriestMixedFight -> GuardElite -> Supply -> Boss`。当前环节胜利后门打开；`advanceLevel()` 只在门打开时推进；`useSupply()` 在补给环节恢复玩家资源并只消费一次；进入 Boss 后记录重试点。
 
-- [ ] **Step 4: 运行测试确认 GREEN，并复跑 `tests/test_encounter_controller.cpp`**
+- [x] **Step 4: 运行测试确认 GREEN，并复跑 `tests/test_encounter_controller.cpp`**
 
 Expected: 新关卡测试通过，阶段 4 模式仍通过。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add native/gameplay/ai/encounter_controller.h native/gameplay/ai/encounter_controller.cpp tests/test_level_flow.cpp tests/test_encounter_controller.cpp
@@ -158,7 +158,7 @@ git commit -m "feat: 增加关卡流程与战斗门" \
 - Consumes: `BossController::snapshot()` 和 `CombatController::updateEnemy()`。
 - Produces: 首领候选目标、Boss 失败状态、Boss 胜利状态、`retryBoss()` 在 5 秒内复位。
 
-- [ ] **Step 1: 写入失败测试**
+- [x] **Step 1: 写入失败测试**
 
 ```cpp
 void testBossRetryDoesNotResetPreviousStages() {
@@ -174,19 +174,19 @@ void testBossRetryDoesNotResetPreviousStages() {
 }
 ```
 
-- [ ] **Step 2: 编译确认 RED**
+- [x] **Step 2: 编译确认 RED**
 
 Expected: Defeat、boss snapshot 或 retry 行为不存在。
 
-- [ ] **Step 3: 接入首领战斗**
+- [x] **Step 3: 接入首领战斗**
 
 Boss 使用实体 ID `3001`，作为软锁定候选；玩家攻击通过现有 `TrainingTarget` 伤害管线落到 Boss HP/韧性；Boss 命中玩家复用 `applyEnemyHit()`；玩家死亡进入 `Defeat`，Boss 死亡进入 `Victory`。
 
-- [ ] **Step 4: 运行 Boss 与 LevelFlow 测试确认 GREEN**
+- [x] **Step 4: 运行 Boss 与 LevelFlow 测试确认 GREEN**
 
 Expected: exit code 0。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add native/gameplay/ai/encounter_controller.h native/gameplay/ai/encounter_controller.cpp tests/test_level_flow.cpp tests/test_boss_controller.cpp
@@ -213,25 +213,25 @@ git commit -m "feat: 接入首领战与快速重试" \
 - Produces: `startEncounter(4)` 进入完整流程、`startEncounter(5)` 直接进入 Boss、`advanceLevel()`、`useSupply()`、`retryBoss()`。
 - Produces snapshot fields: `levelStage`、`gateState`、`supplyState`、`bossHp`、`bossPoise`、`bossPhase`、`bossMechanic`、`bossCastMs`。
 
-- [ ] **Step 1: 写入失败合约测试**
+- [x] **Step 1: 写入失败合约测试**
 
 `tests/test_bridge_contract.mjs` 断言 ArkTS 声明包含新增方法、返回值为 boolean，Native snapshot 包含新增字段，UI 文本包含 `流程`、`首领`、`推进`、`补给`、`重试`。
 
-- [ ] **Step 2: 运行 Node 测试确认 RED**
+- [x] **Step 2: 运行 Node 测试确认 RED**
 
 Run: `node tests/test_bridge_contract.mjs`
 Expected: 缺少新增方法或字段。
 
-- [ ] **Step 3: 实现桥接与 UI**
+- [x] **Step 3: 实现桥接与 UI**
 
 Bridge 只转发 `Loop` 方法；ArkTS 页面维护新增字段并在 HUD 显示。按钮文本保持短标签，避免阶段 6 前做复杂 HUD。
 
-- [ ] **Step 4: 运行 Node 测试确认 GREEN**
+- [x] **Step 4: 运行 Node 测试确认 GREEN**
 
 Run: `node tests/test_bridge_contract.mjs`
 Expected: exit code 0。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add native/engine/core/game_snapshot.h native/engine/core/loop.h native/engine/core/loop.cpp entry/src/main/cpp/native_bridge.cpp entry/src/main/cpp/types/libnative_game/Index.d.ts entry/src/main/ets/napi/Bridge.ets entry/src/main/ets/ui/CombatControls.ets entry/src/main/ets/ui/Hud.ets entry/src/main/ets/pages/GamePage.ets tests/test_bridge_contract.mjs
@@ -250,23 +250,23 @@ git commit -m "feat: 暴露阶段5流程调试入口" \
 **Interfaces:**
 - Produces: 阶段 5 自动化、构建、真机验证记录。
 
-- [ ] **Step 1: 运行自动化测试**
+- [x] **Step 1: 运行自动化测试**
 
 Run focused tests first: `test_boss_controller`、`test_level_flow`、`test_encounter_controller`、`node tests/test_bridge_contract.mjs`。随后运行本地可编译 C++ 批量测试，记录 skipped 的 HarmonyOS/platform 测试。
 
-- [ ] **Step 2: 运行格式与构建验证**
+- [x] **Step 2: 运行格式与构建验证**
 
 Run: `git diff --check`。需要 HAP 时临时复制本机签名配置，构建后恢复 `build-profile.json5`，不得提交签名内容。
 
-- [ ] **Step 3: 真机安装与入口验收**
+- [x] **Step 3: 真机安装与入口验收**
 
 使用 HDC 安装 signed HAP，启动应用，dump layout 确认 `流程`、`首领`、`推进`、`补给`、`重试` 存在；切换 Boss 后 HUD 显示 Boss 阶段和 HP；触发重试后应用进程保持运行。
 
-- [ ] **Step 4: 更新验收文档**
+- [x] **Step 4: 更新验收文档**
 
 记录测试矩阵、HAP SHA-256、设备 ID、布局与截图路径。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add README.md docs/superpowers/plans/2026-07-14-combat-vertical-slice-roadmap.md docs/superpowers/plans/2026-07-18-boss-level-flow.md
