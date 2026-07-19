@@ -14,6 +14,8 @@ enum class EncounterMode : uint8_t {
   Beast,
   Mixed,
   Guard,
+  LevelFlow,
+  Boss,
 };
 
 enum class EncounterState : uint8_t {
@@ -21,6 +23,19 @@ enum class EncounterState : uint8_t {
   Running,
   Victory,
 };
+
+enum class LevelStage : uint8_t {
+  Training,
+  RiftClawFight,
+  PriestMixedFight,
+  GuardElite,
+  Supply,
+  Boss,
+};
+
+enum class GateState : uint8_t { Closed, Open };
+
+enum class SupplyState : uint8_t { Unavailable, Available, Consumed };
 
 struct EncounterEnemyConfig {
   EntityId id = 0;
@@ -69,6 +84,9 @@ struct EncounterSnapshot {
   EncounterState state = EncounterState::Stopped;
   bool victory = false;
   FixedPoint playerHp = fp(100);
+  LevelStage levelStage = LevelStage::Training;
+  GateState gateState = GateState::Closed;
+  SupplyState supplyState = SupplyState::Unavailable;
   std::vector<EncounterEnemySnapshot> enemies;
   std::vector<TargetCandidate> candidates;
 
@@ -97,6 +115,8 @@ class EncounterController {
   void reset();
   void stop();
   void update(const EncounterFrameInput& input);
+  bool advanceLevel();
+  bool useSupply();
 
   const EncounterSnapshot& snapshot() const { return snapshot_; }
   const EncounterEventBatch& events() const { return events_; }
@@ -114,4 +134,5 @@ class EncounterController {
   EncounterEventBatch events_;
   Tick lastTick_ = 0;
   uint64_t nextSequence_ = 1;
+  bool levelFlowActive_ = false;
 };

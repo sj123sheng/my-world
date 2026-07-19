@@ -135,6 +135,19 @@ void testTrainingModeKeepsStageThreePulseSemantics() {
   assert(combat.snapshot().pulseHitRemainingMs == 3000);
 }
 
+void testStandaloneModeClearsLevelFlowState() {
+  CombatController combat(CombatConfig::defaults());
+  EncounterController encounter(combat);
+  assert(encounter.start(EncounterMode::LevelFlow));
+  assert(encounter.snapshot().mode == EncounterMode::LevelFlow);
+
+  assert(encounter.start(EncounterMode::Beast));
+  assert(encounter.snapshot().mode == EncounterMode::Beast);
+  assert(encounter.snapshot().levelStage == LevelStage::Training);
+  assert(encounter.snapshot().gateState == GateState::Closed);
+  assert(encounter.snapshot().supplyState == SupplyState::Unavailable);
+}
+
 }  // namespace
 
 int main() {
@@ -143,4 +156,5 @@ int main() {
   testDeathRemovesCandidateAndKeepsFinalSnapshot();
   testStopHasNoEventsAndResetClearsState();
   testTrainingModeKeepsStageThreePulseSemantics();
+  testStandaloneModeClearsLevelFlowState();
 }
