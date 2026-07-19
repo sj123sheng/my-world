@@ -48,6 +48,8 @@ add_library(native_game SHARED
     # engine presentation
     ${NATIVE_ROOT}/engine/presentation/vfx_system.cpp
     ${NATIVE_ROOT}/engine/presentation/vfx_system.h
+    ${NATIVE_ROOT}/engine/presentation/performance_guard.cpp
+    ${NATIVE_ROOT}/engine/presentation/performance_guard.h
 
     # engine resource
     ${NATIVE_ROOT}/engine/resource/loader.cpp
