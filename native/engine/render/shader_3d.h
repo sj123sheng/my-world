@@ -44,7 +44,13 @@ class Shader3D {
   void setSkinPalette(const SkinPalette& palette);
 
   // 设置 uSkinned。未接受有效调色板时，true 会退化为 false，防止非法骨骼绘制。
-  void setSkinned(bool skinned) const;
+  void setSkinned(bool skinned);
+
+  // 返回最近一次调色板上传是否有效，供宿主机状态测试使用。
+  bool skinPaletteValid() const { return skinPaletteValid_; }
+
+  // 返回最近一次写入 uSkinned 的状态，供宿主机状态测试使用。
+  bool skinningEnabled() const { return skinningEnabled_; }
 
   // 返回 Program 句柄（非平台侧恒为 0）。
   unsigned int program() const { return program_; }
@@ -52,6 +58,7 @@ class Shader3D {
  private:
   unsigned int program_ = 0;
   bool skinPaletteValid_ = false;
+  bool skinningEnabled_ = false;
 
 #ifdef OHOS_PLATFORM
   GLint locMVP_ = -1;

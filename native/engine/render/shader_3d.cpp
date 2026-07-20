@@ -173,6 +173,7 @@ void Shader3D::destroy() {
   }
 #endif
   skinPaletteValid_ = false;
+  skinningEnabled_ = false;
 }
 
 void Shader3D::use() const {
@@ -235,9 +236,14 @@ void Shader3D::setHasTexture(bool hasTexture) const {
 void Shader3D::setSkinPalette(const SkinPalette& palette) {
   skinPaletteValid_ = !palette.matrices.empty() &&
                       palette.matrices.size() <= kMaxSkinJoints;
+  if (!skinPaletteValid_) {
+    setSkinned(false);
+    return;
+  }
 #ifdef OHOS_PLATFORM
-  if (!skinPaletteValid_ || program_ == 0u || locJoints_ == -1) {
+  if (program_ == 0u || locJoints_ == -1) {
     skinPaletteValid_ = false;
+    setSkinned(false);
     return;
   }
   glUniformMatrix4fv(locJoints_, static_cast<GLsizei>(palette.matrices.size()),
@@ -247,10 +253,11 @@ void Shader3D::setSkinPalette(const SkinPalette& palette) {
 #endif
 }
 
-void Shader3D::setSkinned(bool skinned) const {
+void Shader3D::setSkinned(bool skinned) {
+  skinningEnabled_ = skinned && skinPaletteValid_;
 #ifdef OHOS_PLATFORM
-  if (locSkinned_ != -1) {
-    glUniform1i(locSkinned_, skinned && skinPaletteValid_ ? 1 : 0);
+  if (program_ != 0u && locSkinned_ != -1) {
+    glUniform1i(locSkinned_, skinningEnabled_ ? 1 : 0);
   }
 #else
   (void)skinned;
