@@ -1,4 +1,5 @@
 #include "native/engine/render/skinned_model.h"
+#include "tests/gltf_fixture_builder.h"
 
 #include <cassert>
 #include <cmath>
@@ -9,6 +10,28 @@ namespace {
 
 bool close(float actual, float expected, float epsilon = 0.0001f) {
   return std::fabs(actual - expected) < epsilon;
+}
+
+void testInitializesMinimalGlbFromMemory() {
+  SkinnedModel model;
+  const std::vector<uint8_t> bytes = gltf_fixture::makeMinimalGlb();
+
+  assert(model.tryInitialize(bytes, "minimal.glb"));
+  assert(model.ready());
+  assert(model.vertexCount() == 3);
+  assert(model.indexCount() == 3);
+  assert(model.jointCount() == 2);
+  assert((model.clipNames() == std::vector<std::string>{"idle", "run"}));
+
+  const SkinPalette palette = model.update(ActorRenderState{}, 0.0f);
+  assert(palette.matrices.size() == 2);
+  for (const glm::mat4& matrix : palette.matrices) {
+    for (int column = 0; column < 4; ++column) {
+      for (int row = 0; row < 4; ++row) {
+        assert(std::isfinite(matrix[column][row]));
+      }
+    }
+  }
 }
 
 GltfValidationInput validValidationInput() {
@@ -143,6 +166,7 @@ void testRejectsOver64Joints() {
 }  // namespace
 
 int main() {
+  testInitializesMinimalGlbFromMemory();
   testWrapAndStepSampling();
   testLinearSampling();
   testRejectsUnequalAnimationChannelLengths();

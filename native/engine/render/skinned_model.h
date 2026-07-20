@@ -12,6 +12,7 @@
 #include <glm/vec3.hpp>
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -71,44 +72,32 @@ SkinPalette BuildSkinPalette(const std::vector<int>& parents,
                              const std::vector<glm::mat4>& localTransforms,
                              const std::vector<glm::mat4>& inverseBindMatrices);
 
-// Task 1 当前只提供纯数据校验/采样核心，尚未实现 cgltf 到 CPU/GPU 网格的运行时
-// 装载器。这个最小接口让 Surface 能严格管理尝试、降级和 GL 生命周期；在真正的
-// 运行时装载器接入前，它会明确失败并保持 ready()==false，绝不把 GLB 误报为已加载。
 class SkinnedModel {
  public:
+  SkinnedModel();
+  ~SkinnedModel();
+  SkinnedModel(const SkinnedModel&) = delete;
+  SkinnedModel& operator=(const SkinnedModel&) = delete;
+
   bool tryInitialize(const std::vector<uint8_t>& bytes,
-                     const std::string& assetName) {
-    (void)bytes;
-    ready_ = false;
-    lastError_ = (assetName.empty() ? "unnamed asset" : assetName) +
-                 std::string(": SkinnedModel runtime loader is unavailable");
-    return false;
-  }
+                     const std::string& assetName);
+  bool ready() const;
+  SkinPalette update(const ActorRenderState& actor, float dtSeconds);
+  void draw() const;
+  void destroy();
 
-  bool ready() const { return ready_; }
+  // context 已不可 current 时仅丢弃 CPU/GPU 侧跟踪，绝不发出 GL 调用。
+  void abandonGpuResources();
 
-  SkinPalette update(const ActorRenderState& actor, float dtSeconds) {
-    (void)actor;
-    (void)dtSeconds;
-    return {};
-  }
-
-  void draw() const {}
-
-  void destroy() {
-    abandonGpuResources();
-  }
-
-  // context 已不可 current 时仅丢弃 CPU 侧资源跟踪。真实 runtime loader 接入后，
-  // 它必须保持此函数不发出 GL 调用，以便 EGL 销毁路径安全使用。
-  void abandonGpuResources() {
-    ready_ = false;
-    lastError_.clear();
-  }
-
-  const std::string& lastError() const { return lastError_; }
+  const std::string& lastError() const;
+  std::size_t vertexCount() const;
+  std::size_t indexCount() const;
+  std::size_t jointCount() const;
+  const std::vector<std::string>& clipNames() const;
+  bool hasTexture() const;
+  std::size_t gpuResourceCount() const;
 
  private:
-  bool ready_ = false;
-  std::string lastError_;
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
 };
