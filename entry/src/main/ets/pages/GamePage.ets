@@ -1,4 +1,4 @@
-import { nativeStart, nativeStop, pullSnapshot, Snapshot } from '../napi/Bridge';
+import { nativeSetModelAssets, nativeStart, nativeStop, pullSnapshot, Snapshot } from '../napi/Bridge';
 import { Hud } from '../ui/Hud';
 import { CombatControls } from '../ui/CombatControls';
 
@@ -77,6 +77,26 @@ struct GamePage {
   @State debugHud: boolean = false;
   private timer: number = -1;
 
+  private async loadModelAssets(): Promise<void> {
+    try {
+      const resourceManager = getContext(this).resourceManager;
+      const assets: Uint8Array[] = await Promise.all([
+        resourceManager.getRawFileContent('models/player.glb'),
+        resourceManager.getRawFileContent('models/enemy.glb'),
+        resourceManager.getRawFileContent('models/boss.glb')
+      ]);
+      if (!nativeSetModelAssets(assets[0].buffer as ArrayBuffer,
+        assets[1].buffer as ArrayBuffer, assets[2].buffer as ArrayBuffer)) {
+        console.error('[Ethelan] Native rejected model asset buffers; using fallback meshes');
+      }
+    } catch (error) {
+      console.error('[Ethelan] Failed to load model assets; using fallback meshes: ' +
+        JSON.stringify(error));
+    } finally {
+      nativeStart();
+    }
+  }
+
   build() {
     Stack() {
       XComponent({
@@ -136,6 +156,7 @@ struct GamePage {
   }
 
   aboutToAppear() {
+    this.loadModelAssets();
     this.timer = setInterval(() => {
       try {
         this.snapshot = pullSnapshot();

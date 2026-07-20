@@ -24,6 +24,20 @@ static napi_value ThrowInputTypeError(napi_env env, const char* message) {
   return nullptr;
 }
 
+static bool CopyArrayBuffer(napi_env env, napi_value value,
+                            std::vector<uint8_t>& out) {
+  bool isArrayBuffer = false;
+  void* bytes = nullptr;
+  size_t length = 0;
+  return napi_is_arraybuffer(env, value, &isArrayBuffer) == napi_ok &&
+         isArrayBuffer &&
+         napi_get_arraybuffer_info(env, value, &bytes, &length) == napi_ok &&
+         bytes != nullptr && length > 0 &&
+         (out.assign(static_cast<uint8_t*>(bytes),
+                     static_cast<uint8_t*>(bytes) + length),
+          true);
+}
+
 static bool GetNumberProperty(napi_env env, napi_value object, const char* name,
                               bool required, double& value) {
   bool hasProperty = false;
@@ -118,6 +132,35 @@ static napi_value NativeStop(napi_env env, napi_callback_info) {
   g_foregroundRequested.store(false);
   g_loop.stop();
   return nullptr;
+}
+
+static napi_value NativeSetModelAssets(napi_env env, napi_callback_info info) {
+  size_t argc = 3;
+  napi_value args[3] = {nullptr, nullptr, nullptr};
+  napi_value result = nullptr;
+  if (napi_get_cb_info(env, info, &argc, args, nullptr, nullptr) != napi_ok ||
+      argc != 3) {
+    napi_get_boolean(env, false, &result);
+    return result;
+  }
+
+  std::vector<uint8_t> player;
+  std::vector<uint8_t> enemy;
+  std::vector<uint8_t> boss;
+  if (!CopyArrayBuffer(env, args[0], player) ||
+      !CopyArrayBuffer(env, args[1], enemy) ||
+      !CopyArrayBuffer(env, args[2], boss)) {
+    napi_get_boolean(env, false, &result);
+    return result;
+  }
+
+  g_loop.withLifecycle([&player, &enemy, &boss]() {
+    g_loop.surface.setModelAsset(ModelKind::Player, std::move(player));
+    g_loop.surface.setModelAsset(ModelKind::Enemy, std::move(enemy));
+    g_loop.surface.setModelAsset(ModelKind::Boss, std::move(boss));
+  });
+  napi_get_boolean(env, true, &result);
+  return result;
 }
 
 static napi_value NativePushInput(napi_env env, napi_callback_info info) {
@@ -361,6 +404,7 @@ static napi_value Init(napi_env env, napi_value exports) {
   napi_property_descriptor desc[] = {
     {"nativeStart", nullptr, NativeStart, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"nativeStop", nullptr, NativeStop, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"nativeSetModelAssets", nullptr, NativeSetModelAssets, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pushInput", nullptr, NativePushInput, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pushAction", nullptr, NativePushAction, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"startEncounter", nullptr, NativeStartEncounter, nullptr, nullptr, nullptr, napi_default, nullptr},

@@ -296,3 +296,47 @@ assert.match(hud, /Progress\(\s*\{[^}]*value:\s*this\.poise/, 'HUD must render p
 assert.match(hud, /Progress\(\s*\{[^}]*value:\s*this\.stamina/, 'HUD must render stamina bar with Progress');
 assert.match(hud, /if\s*\(\s*this\.debugHud\s*\)/, 'HUD must gate debug overlay on debugHud prop');
 assert.match(hud, /Progress\(\s*\{[^}]*value:\s*this\.bossHpRatio/, 'HUD must render boss HP ratio bar with Progress');
+
+// ---- M3-2 Task 2: GLB rawfile loading and ArrayBuffer bridge ----
+assert.match(bridge, /export const nativeSetModelAssets/,
+  'Bridge must export nativeSetModelAssets');
+assert.match(declarations,
+  /nativeSetModelAssets: \(player: ArrayBuffer, enemy: ArrayBuffer, boss: ArrayBuffer\) => boolean;/,
+  'Index.d.ts must declare the three-model ArrayBuffer bridge');
+assert.match(nativeBridge, /static bool CopyArrayBuffer/,
+  'native bridge must copy ArrayBuffer bytes into owned storage');
+assert.match(nativeBridge, /napi_is_arraybuffer/,
+  'native bridge must validate ArrayBuffer arguments');
+assert.match(nativeBridge, /std::vector<uint8_t>/,
+  'native bridge must own copied model bytes');
+assert.match(nativeBridge, /"nativeSetModelAssets", nullptr, NativeSetModelAssets/,
+  'native bridge must export nativeSetModelAssets');
+
+const setModelAssetsBody = functionBody(nativeBridge,
+  'static napi_value NativeSetModelAssets');
+assert.match(setModelAssetsBody, /argc != 3/,
+  'NativeSetModelAssets must require exactly three arguments');
+assert.equal((setModelAssetsBody.match(/CopyArrayBuffer\(/g) ?? []).length, 3,
+  'NativeSetModelAssets must independently copy all three ArrayBuffers');
+assert.match(setModelAssetsBody,
+  /g_loop\.withLifecycle\([\s\S]*?setModelAsset\(ModelKind::Player[\s\S]*?setModelAsset\(ModelKind::Enemy[\s\S]*?setModelAsset\(ModelKind::Boss/,
+  'NativeSetModelAssets must inject all owned bytes while lifecycle synchronization is held');
+assert.match(setModelAssetsBody, /napi_get_boolean\(env, true, &result\)/,
+  'NativeSetModelAssets must return true after atomic injection');
+
+for (const model of ['player', 'enemy', 'boss']) {
+  assert.match(page, new RegExp(`getRawFileContent\\(['"]models/${model}\\.glb['"]\\)`),
+    `GamePage must read models/${model}.glb`);
+}
+assert.match(page, /Promise\.all\s*\(/,
+  'GamePage must read the three model assets concurrently');
+assert.match(page, /nativeSetModelAssets\s*\(/,
+  'GamePage must inject all model assets in one bridge call');
+const aboutToAppearBody = functionBody(page, 'aboutToAppear()');
+assert.match(aboutToAppearBody, /this\.loadModelAssets\(\);/,
+  'GamePage aboutToAppear must begin model loading');
+const loadModelAssetsBody = functionBody(page, 'private async loadModelAssets()');
+assert.match(loadModelAssetsBody, /catch\s*\([^)]+\)[\s\S]*?console\.error/,
+  'GamePage must record rawfile loading failures');
+assert.match(loadModelAssetsBody, /finally[\s\S]*?nativeStart\(\);/,
+  'GamePage must start native rendering even when model loading falls back');
