@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "native/engine/render/render_animation.h"
+
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/mat4x4.hpp>
@@ -68,3 +70,39 @@ glm::quat SampleQuat(const AnimationChannel<glm::quat>& channel, float time);
 SkinPalette BuildSkinPalette(const std::vector<int>& parents,
                              const std::vector<glm::mat4>& localTransforms,
                              const std::vector<glm::mat4>& inverseBindMatrices);
+
+// Task 1 当前只提供纯数据校验/采样核心，尚未实现 cgltf 到 CPU/GPU 网格的运行时
+// 装载器。这个最小接口让 Surface 能严格管理尝试、降级和 GL 生命周期；在真正的
+// 运行时装载器接入前，它会明确失败并保持 ready()==false，绝不把 GLB 误报为已加载。
+class SkinnedModel {
+ public:
+  bool tryInitialize(const std::vector<uint8_t>& bytes,
+                     const std::string& assetName) {
+    (void)bytes;
+    ready_ = false;
+    lastError_ = (assetName.empty() ? "unnamed asset" : assetName) +
+                 std::string(": SkinnedModel runtime loader is unavailable");
+    return false;
+  }
+
+  bool ready() const { return ready_; }
+
+  SkinPalette update(const ActorRenderState& actor, float dtSeconds) {
+    (void)actor;
+    (void)dtSeconds;
+    return {};
+  }
+
+  void draw() const {}
+
+  void destroy() {
+    ready_ = false;
+    lastError_.clear();
+  }
+
+  const std::string& lastError() const { return lastError_; }
+
+ private:
+  bool ready_ = false;
+  std::string lastError_;
+};

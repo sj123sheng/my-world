@@ -321,7 +321,7 @@ static void applyEntityTint(const Surface& s, const glm::vec3& base) {
   s.shader3d.setLight(s.lightDir, base * 0.7f, base * 0.3f);
 }
 
-static void drawMeshAt(const Surface& s, const Mesh& mesh,
+static void drawMeshAt(Surface& s, const Mesh& mesh,
                        const glm::mat4& vp, const glm::vec3& position,
                        float scale, const glm::vec3& base) {
   // 单位网格（createCube(1.0)/createPlane）经 translate+scale 落到世界坐标，
@@ -330,11 +330,90 @@ static void drawMeshAt(const Surface& s, const Mesh& mesh,
                     glm::scale(glm::mat4(1.0f), glm::vec3(scale));
   s.shader3d.setMVP(vp * model);
   s.shader3d.setModel(model);
+  s.shader3d.setSkinned(false);
   applyEntityTint(s, base);
   mesh.draw();
 }
 
+static glm::mat4 actorModelMatrix(const glm::vec3& position, float scale) {
+  return glm::translate(glm::mat4(1.0f), position) *
+         glm::scale(glm::mat4(1.0f), glm::vec3(scale));
+}
+
+static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
+                      const ActorRenderState& actor, const glm::mat4& matrix,
+                      const glm::mat4& vp, const glm::vec3& base) {
+  s.shader3d.setMVP(vp * matrix);
+  s.shader3d.setModel(matrix);
+  applyEntityTint(s, base);
+
+  if (model.ready()) {
+    s.shader3d.setSkinPalette(model.update(actor, 1.0f / 60.0f));
+    s.shader3d.setSkinned(true);
+    if (s.shader3d.skinningEnabled()) {
+      model.draw();
+      return;
+    }
+  }
+
+  s.shader3d.setSkinned(false);
+  // 静态 Mesh 没有死亡姿态；死亡实体保持隐藏，而可用的骨骼模型可播放 death。
+  if (actor.alive) fallback.draw();
+}
+
+static bool takePendingModelAsset(Surface& s, ModelKind kind,
+                                  std::vector<uint8_t>& bytes) {
+  std::lock_guard<std::mutex> lock(s.modelAssetMutex);
+  std::vector<uint8_t>* source = nullptr;
+  bool* dirty = nullptr;
+  switch (kind) {
+    case ModelKind::Player:
+      source = &s.playerModelAsset;
+      dirty = &s.playerModelAssetDirty;
+      break;
+    case ModelKind::Enemy:
+      source = &s.enemyModelAsset;
+      dirty = &s.enemyModelAssetDirty;
+      break;
+    case ModelKind::Boss:
+      source = &s.bossModelAsset;
+      dirty = &s.bossModelAssetDirty;
+      break;
+  }
+  if (source == nullptr || dirty == nullptr || !*dirty) return false;
+  bytes = *source;
+  *dirty = false;
+  return true;
+}
+
+static void tryInitializeModelAsset(Surface& s, ModelKind kind,
+                                    SkinnedModel& model,
+                                    const char* assetName) {
+  std::vector<uint8_t> bytes;
+  if (!takePendingModelAsset(s, kind, bytes)) return;
+
+  // 替换和清空都必须先在 current context 下释放旧 GPU 资源。
+  model.destroy();
+  if (bytes.empty()) {
+    LOGI("%{public}s cleared; static Mesh fallback remains active", assetName);
+    return;
+  }
+  if (!model.tryInitialize(bytes, assetName)) {
+    LOGE("%{public}s; static Mesh fallback remains active",
+         model.lastError().c_str());
+  }
+}
+
+static void tryInitializePendingModelAssets(Surface& s) {
+  tryInitializeModelAsset(s, ModelKind::Player, s.playerModel, "player.glb");
+  tryInitializeModelAsset(s, ModelKind::Enemy, s.enemyModel, "enemy.glb");
+  tryInitializeModelAsset(s, ModelKind::Boss, s.bossModel, "boss.glb");
+}
+
 static void draw3DPhase(Surface& s) {
+  // bridge 可能晚于 Surface 创建；surface_draw 已成功 makeCurrent，因此只在这里
+  // 消费一次标脏字节，解析失败后保持静态 Mesh，不在每帧反复尝试。
+  tryInitializePendingModelAssets(s);
   if (!s.shader3dReady || s.shader3d.program() == 0u) return;
 
   // 3D 阶段需要深度测试；2D 阶段未写深度，故在此单独清深度并开启深度测试，
@@ -356,33 +435,38 @@ static void draw3DPhase(Surface& s) {
   drawMeshAt(s, s.groundMesh, vp, glm::vec3(0.5f, 0.0f, 0.5f), 3.0f,
              {0.30f, 0.32f, 0.36f});
 
-  // 玩家立方体（在 (player.x, 0, player.y)，半高贴地）。
-  drawMeshAt(s, s.playerMesh, vp,
-             glm::vec3(s.player.x, 0.05f, s.player.y), 0.1f,
-             {0.18f, 0.65f, 0.95f});
+  // M3-1 地面索引按双面占位使用；角色模型阶段启用背面剔除。
+  glEnable(GL_CULL_FACE);
+  glCullFace(GL_BACK);
+
+  // 玩家：模型可用时走蒙皮，否则保留 M3-1 立方体。
+  drawActor(s, s.playerModel, s.playerMesh, s.player3dAnimation,
+            actorModelMatrix(glm::vec3(s.player.x, 0.05f, s.player.y), 0.1f),
+            vp, {0.18f, 0.65f, 0.95f});
 
   // 训练假人立方体（按 alive 跳过）。
-  if (s.trainingTarget.alive) {
-    drawMeshAt(s, s.enemyMesh, vp,
-               glm::vec3(s.trainingTarget.x, 0.045f, s.trainingTarget.y),
-               0.09f, {0.85f, 0.32f, 0.22f});
-  }
+  drawActor(s, s.enemyModel, s.enemyMesh, s.trainingTarget3dAnimation,
+            actorModelMatrix(
+                glm::vec3(s.trainingTarget.x, 0.045f, s.trainingTarget.y),
+                0.09f),
+            vp, {0.85f, 0.32f, 0.22f});
 
   // 敌人立方体（按存活状态跳过）。
   for (const Enemy3DRenderState& enemy : s.enemies3d) {
-    if (!enemy.alive) continue;
-    drawMeshAt(s, s.enemyMesh, vp,
-               glm::vec3(enemy.x, 0.045f, enemy.y), 0.09f,
-               enemyColorByArchetype(enemy.archetype));
+    drawActor(s, s.enemyModel, s.enemyMesh, enemy.animation,
+              actorModelMatrix(glm::vec3(enemy.x, 0.045f, enemy.y), 0.09f),
+              vp, enemyColorByArchetype(enemy.archetype));
   }
 
   // 首领立方体（按阶段配色，击败后跳过）。
-  if (s.boss3d.active && !s.boss3d.defeated) {
-    drawMeshAt(s, s.bossMesh, vp,
-               glm::vec3(s.boss3d.x, 0.08f, s.boss3d.y), 0.16f,
-               bossColorByPhase(s.boss3d.phase));
+  if (s.boss3d.active) {
+    drawActor(s, s.bossModel, s.bossMesh, s.boss3d.animation,
+              actorModelMatrix(glm::vec3(s.boss3d.x, 0.08f, s.boss3d.y),
+                               0.16f),
+              vp, bossColorByPhase(s.boss3d.phase));
   }
 
+  glDisable(GL_CULL_FACE);
   glDisable(GL_DEPTH_TEST);
 }
 #endif  // OHOS_PLATFORM
@@ -736,6 +820,7 @@ static void init3DResources(Surface& s) {
   } else {
     LOGI("3D resources ready: shader=%{public}u", s.shader3d.program());
   }
+  tryInitializePendingModelAssets(s);
 #else
   (void)s;
 #endif
@@ -744,12 +829,24 @@ static void init3DResources(Surface& s) {
 // 释放 3D 渲染层资源。必须在 GL 上下文 current 时调用。
 static void destroy3DResources(Surface& s) {
 #ifdef OHOS_PLATFORM
+  // SkinnedModel 可能拥有 VBO/IBO/纹理；必须先于共享 shader 且在 current
+  // context 下销毁。
+  s.playerModel.destroy();
+  s.enemyModel.destroy();
+  s.bossModel.destroy();
   s.playerMesh.destroy();
   s.groundMesh.destroy();
   s.enemyMesh.destroy();
   s.bossMesh.destroy();
   s.shader3d.destroy();
   s.shader3dReady = false;
+  // EGL context 重建后 GPU 对象必须重传；已有 CPU 字节重新标脏。
+  {
+    std::lock_guard<std::mutex> lock(s.modelAssetMutex);
+    s.playerModelAssetDirty = !s.playerModelAsset.empty();
+    s.enemyModelAssetDirty = !s.enemyModelAsset.empty();
+    s.bossModelAssetDirty = !s.bossModelAsset.empty();
+  }
 #else
   (void)s;
 #endif

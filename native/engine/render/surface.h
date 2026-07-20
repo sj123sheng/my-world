@@ -21,12 +21,15 @@ inline constexpr EGLContext EGL_NO_CONTEXT = nullptr;
 #include <random>
 #include <cstdint>
 #include <mutex>
+#include <utility>
 #include "native/gameplay/player/player_controller.h"
 #include "native/engine/render/camera_render_state.h"
 
 #include "native/engine/render/camera3d.h"
 #include "native/engine/render/mesh.h"
+#include "native/engine/render/render_animation.h"
 #include "native/engine/render/shader_3d.h"
+#include "native/engine/render/skinned_model.h"
 #include <glm/vec3.hpp>
 
 struct Particle {
@@ -60,6 +63,7 @@ struct Enemy3DRenderState {
   // 0 = RiftClaw, 1 = Priest, 2 = Guard（与 EnemyArchetype 数值一致）。
   int archetype = 0;
   bool alive = false;
+  ActorRenderState animation;
 };
 
 struct Boss3DRenderState {
@@ -70,6 +74,7 @@ struct Boss3DRenderState {
   int phase = 1;
   bool defeated = false;
   bool active = false;
+  ActorRenderState animation;
 };
 
 struct Surface {
@@ -110,7 +115,41 @@ struct Surface {
   glm::vec3 ambient{0.25f, 0.25f, 0.3f};
   std::vector<Enemy3DRenderState> enemies3d;
   Boss3DRenderState boss3d;
+  ActorRenderState player3dAnimation;
+  ActorRenderState trainingTarget3dAnimation;
+  float playerHitAnimationSeconds = 0.0f;
+
+  // 三类模型的 bridge 字节可早于或晚于 Surface 创建。setModelAsset 只保存 CPU
+  // 数据并标脏；解析、上传、替换和销毁均由 current GL context 下的渲染路径完成。
+  std::mutex modelAssetMutex;
+  std::vector<uint8_t> playerModelAsset;
+  std::vector<uint8_t> enemyModelAsset;
+  std::vector<uint8_t> bossModelAsset;
+  bool playerModelAssetDirty = false;
+  bool enemyModelAssetDirty = false;
+  bool bossModelAssetDirty = false;
+  SkinnedModel playerModel;
+  SkinnedModel enemyModel;
+  SkinnedModel bossModel;
   bool shader3dReady = false;
+
+  void setModelAsset(ModelKind kind, std::vector<uint8_t> bytes) {
+    std::lock_guard<std::mutex> lock(modelAssetMutex);
+    switch (kind) {
+      case ModelKind::Player:
+        playerModelAsset = std::move(bytes);
+        playerModelAssetDirty = true;
+        break;
+      case ModelKind::Enemy:
+        enemyModelAsset = std::move(bytes);
+        enemyModelAssetDirty = true;
+        break;
+      case ModelKind::Boss:
+        bossModelAsset = std::move(bytes);
+        bossModelAssetDirty = true;
+        break;
+    }
+  }
 };
 
 bool surface_init(Surface& s, OHNativeWindow* window);
