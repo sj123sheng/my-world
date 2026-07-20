@@ -2,6 +2,7 @@
 
 #include "native/engine/render/skinned_model.h"
 #include "native/engine/render/mesh.h"
+#include "native/engine/render/shader_3d.h"
 
 #define CGLTF_IMPLEMENTATION
 #include "native/third_party/cgltf/cgltf.h"
@@ -83,6 +84,7 @@ struct OwnedClip {
 struct PrimitiveRange {
   uint32_t firstIndex = 0;
   uint32_t indexCount = 0;
+  int textureIndex = -1;
 };
 
 struct RuntimeData {
@@ -94,7 +96,7 @@ struct RuntimeData {
   std::vector<glm::mat4> inverseBindMatrices;
   std::vector<OwnedClip> clips;
   std::vector<std::string> clipNames;
-  std::vector<uint8_t> baseColorImage;
+  std::vector<std::vector<uint8_t>> baseColorImages;
 };
 
 struct PoseNode {
@@ -194,13 +196,18 @@ bool validateAccessor(const cgltf_accessor* accessor, cgltf_type type,
 }
 
 bool copyTextureImage(const cgltf_primitive& primitive, RuntimeData& output,
-                      const std::string& assetName, std::string& error) {
+                      PrimitiveRange& range, const std::string& assetName,
+                      std::string& error) {
   if (primitive.material == nullptr ||
       !primitive.material->has_pbr_metallic_roughness) {
     return true;
   }
-  const cgltf_texture* texture =
-      primitive.material->pbr_metallic_roughness.base_color_texture.texture;
+  const cgltf_texture_view& textureView =
+      primitive.material->pbr_metallic_roughness.base_color_texture;
+  if (textureView.texcoord != 0) {
+    return fail(assetName, "baseColorTexture texcoord must be 0", error);
+  }
+  const cgltf_texture* texture = textureView.texture;
   if (texture == nullptr || texture->image == nullptr) return true;
   const cgltf_image* image = texture->image;
   if (image->uri != nullptr) {
@@ -214,10 +221,15 @@ bool copyTextureImage(const cgltf_primitive& primitive, RuntimeData& output,
     return fail(assetName, "embedded baseColor image data is unavailable", error);
   }
   std::vector<uint8_t> imageBytes(first, first + image->buffer_view->size);
-  if (!output.baseColorImage.empty() && output.baseColorImage != imageBytes) {
-    return fail(assetName, "multiple baseColor images are unsupported", error);
+  const auto existing = std::find(output.baseColorImages.begin(),
+                                  output.baseColorImages.end(), imageBytes);
+  if (existing == output.baseColorImages.end()) {
+    output.baseColorImages.push_back(std::move(imageBytes));
+    range.textureIndex = static_cast<int>(output.baseColorImages.size() - 1);
+  } else {
+    range.textureIndex = static_cast<int>(
+        std::distance(output.baseColorImages.begin(), existing));
   }
-  output.baseColorImage = std::move(imageBytes);
   return true;
 }
 
@@ -350,8 +362,9 @@ bool copyPrimitive(const cgltf_primitive& primitive, std::size_t jointCount,
   if (range.indexCount == 0 || range.indexCount % 3 != 0) {
     return fail(assetName, "TRIANGLES index count must be a non-zero multiple of 3", error);
   }
+  if (!copyTextureImage(primitive, output, range, assetName, error)) return false;
   output.primitives.push_back(range);
-  return copyTextureImage(primitive, output, assetName, error);
+  return true;
 }
 
 bool copyNodes(const cgltf_data& data, RuntimeData& output,
@@ -732,7 +745,7 @@ struct SkinnedModel::Impl {
   uint64_t assetRevision = 0;
   unsigned int vbo = 0;
   unsigned int ibo = 0;
-  unsigned int texture = 0;
+  std::vector<unsigned int> textures;
 };
 
 void SkinnedAnimationState::reset() {
@@ -890,33 +903,47 @@ bool SkinnedModel::tryInitialize(const std::vector<uint8_t>& bytes,
 
   unsigned int vbo = 0;
   unsigned int ibo = 0;
-  unsigned int texture = 0;
-  int imageWidth = 0;
-  int imageHeight = 0;
-  int imageChannels = 0;
-  stbi_uc* imagePixels = nullptr;
-  if (!parsed.baseColorImage.empty()) {
-    if (parsed.baseColorImage.size() >
+  struct DecodedImage {
+    stbi_uc* pixels = nullptr;
+    int width = 0;
+    int height = 0;
+  };
+  std::vector<DecodedImage> decodedImages;
+  decodedImages.reserve(parsed.baseColorImages.size());
+  const auto freeDecodedImages = [&decodedImages] {
+    for (DecodedImage& image : decodedImages) {
+      if (image.pixels != nullptr) stbi_image_free(image.pixels);
+      image.pixels = nullptr;
+    }
+  };
+  for (const std::vector<uint8_t>& imageBytes : parsed.baseColorImages) {
+    if (imageBytes.size() >
         static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+      freeDecodedImages();
       impl_->lastError = assetPrefix(assetName) +
                          "embedded baseColor image is too large";
       return false;
     }
-    imagePixels = stbi_load_from_memory(
-        parsed.baseColorImage.data(), static_cast<int>(parsed.baseColorImage.size()),
-        &imageWidth, &imageHeight, &imageChannels, STBI_rgb_alpha);
-    if (imagePixels == nullptr || imageWidth <= 0 || imageHeight <= 0) {
-      if (imagePixels != nullptr) stbi_image_free(imagePixels);
+    DecodedImage image;
+    int imageChannels = 0;
+    image.pixels = stbi_load_from_memory(
+        imageBytes.data(), static_cast<int>(imageBytes.size()),
+        &image.width, &image.height, &imageChannels, STBI_rgb_alpha);
+    if (image.pixels == nullptr || image.width <= 0 || image.height <= 0) {
+      if (image.pixels != nullptr) stbi_image_free(image.pixels);
+      freeDecodedImages();
       impl_->lastError = assetPrefix(assetName) +
                          "could not decode embedded baseColor image";
       return false;
     }
+    decodedImages.push_back(image);
   }
+  std::vector<unsigned int> textures;
 #ifdef OHOS_PLATFORM
   glGenBuffers(1, &vbo);
   glGenBuffers(1, &ibo);
   if (vbo == 0u || ibo == 0u) {
-    if (imagePixels != nullptr) stbi_image_free(imagePixels);
+    freeDecodedImages();
     if (vbo != 0u) glDeleteBuffers(1, &vbo);
     if (ibo != 0u) glDeleteBuffers(1, &ibo);
     impl_->lastError = assetPrefix(assetName) + "could not create GLES mesh buffers";
@@ -933,32 +960,38 @@ bool SkinnedModel::tryInitialize(const std::vector<uint8_t>& bytes,
   glBindBuffer(GL_ARRAY_BUFFER, 0);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-  if (imagePixels != nullptr) {
+  textures.reserve(decodedImages.size());
+  for (const DecodedImage& image : decodedImages) {
+    unsigned int texture = 0;
     glGenTextures(1, &texture);
     if (texture == 0u) {
-      stbi_image_free(imagePixels);
+      freeDecodedImages();
+      if (!textures.empty()) {
+        glDeleteTextures(static_cast<GLsizei>(textures.size()), textures.data());
+      }
       glDeleteBuffers(1, &vbo);
       glDeleteBuffers(1, &ibo);
       impl_->lastError = assetPrefix(assetName) + "could not create GLES texture";
       return false;
     }
     glBindTexture(GL_TEXTURE_2D, texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, imageWidth, imageHeight, 0, GL_RGBA,
-                 GL_UNSIGNED_BYTE, imagePixels);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image.width, image.height, 0, GL_RGBA,
+                 GL_UNSIGNED_BYTE, image.pixels);
     glGenerateMipmap(GL_TEXTURE_2D);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glBindTexture(GL_TEXTURE_2D, 0);
+    textures.push_back(texture);
   }
 #endif
-  if (imagePixels != nullptr) stbi_image_free(imagePixels);
+  freeDecodedImages();
 
   impl_->data = std::move(parsed);
   impl_->vbo = vbo;
   impl_->ibo = ibo;
-  impl_->texture = texture;
+  impl_->textures = std::move(textures);
   impl_->ready = true;
   impl_->lastError.clear();
   return true;
@@ -1033,7 +1066,11 @@ SkinPalette SkinnedModel::update(const ActorRenderState& actor,
   return update(animation, actor, dtSeconds);
 }
 
-void SkinnedModel::draw() const {
+void SkinnedModel::draw() const { drawInternal(nullptr); }
+
+void SkinnedModel::draw(Shader3D& shader) const { drawInternal(&shader); }
+
+void SkinnedModel::drawInternal(Shader3D* shader) const {
 #ifdef OHOS_PLATFORM
   if (!impl_->ready || impl_->vbo == 0u || impl_->ibo == 0u) return;
   glBindBuffer(GL_ARRAY_BUFFER, impl_->vbo);
@@ -1056,8 +1093,15 @@ void SkinnedModel::draw() const {
   glVertexAttribPointer(kWeightsAttribute, 4, GL_FLOAT, GL_FALSE, stride,
                         reinterpret_cast<void*>(offsetof(SkinnedVertex, weights)));
 
-  glBindTexture(GL_TEXTURE_2D, impl_->texture);
   for (const PrimitiveRange& primitive : impl_->data.primitives) {
+    const bool hasTexture =
+        primitive.textureIndex >= 0 &&
+        static_cast<std::size_t>(primitive.textureIndex) < impl_->textures.size();
+    if (shader != nullptr) shader->setHasTexture(hasTexture);
+    glBindTexture(GL_TEXTURE_2D,
+                  hasTexture
+                      ? impl_->textures[static_cast<std::size_t>(primitive.textureIndex)]
+                      : 0u);
     const std::uintptr_t offset =
         static_cast<std::uintptr_t>(primitive.firstIndex) * sizeof(uint32_t);
     glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(primitive.indexCount),
@@ -1066,17 +1110,23 @@ void SkinnedModel::draw() const {
   glBindBuffer(GL_ARRAY_BUFFER, 0);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 #endif
+#ifndef OHOS_PLATFORM
+  (void)shader;
+#endif
 }
 
 void SkinnedModel::destroy() {
 #ifdef OHOS_PLATFORM
-  if (impl_->texture != 0u) glDeleteTextures(1, &impl_->texture);
+  if (!impl_->textures.empty()) {
+    glDeleteTextures(static_cast<GLsizei>(impl_->textures.size()),
+                     impl_->textures.data());
+  }
   if (impl_->vbo != 0u) glDeleteBuffers(1, &impl_->vbo);
   if (impl_->ibo != 0u) glDeleteBuffers(1, &impl_->ibo);
 #endif
   impl_->vbo = 0;
   impl_->ibo = 0;
-  impl_->texture = 0;
+  impl_->textures.clear();
   impl_->data = RuntimeData{};
   impl_->ready = false;
   impl_->lastError.clear();
@@ -1086,7 +1136,7 @@ void SkinnedModel::destroy() {
 void SkinnedModel::abandonGpuResources() {
   impl_->vbo = 0;
   impl_->ibo = 0;
-  impl_->texture = 0;
+  impl_->textures.clear();
   impl_->data = RuntimeData{};
   impl_->ready = false;
   impl_->lastError.clear();
@@ -1105,10 +1155,33 @@ const std::vector<std::string>& SkinnedModel::clipNames() const {
   return impl_->data.clipNames;
 }
 
-bool SkinnedModel::hasTexture() const { return !impl_->data.baseColorImage.empty(); }
+bool SkinnedModel::hasTexture() const {
+  return !impl_->data.baseColorImages.empty();
+}
+
+std::size_t SkinnedModel::primitiveCount() const {
+  return impl_->data.primitives.size();
+}
+
+bool SkinnedModel::primitiveHasTexture(std::size_t primitiveIndex) const {
+  return primitiveIndex < impl_->data.primitives.size() &&
+         impl_->data.primitives[primitiveIndex].textureIndex >= 0;
+}
+
+int SkinnedModel::primitiveTextureIndex(std::size_t primitiveIndex) const {
+  return primitiveIndex < impl_->data.primitives.size()
+             ? impl_->data.primitives[primitiveIndex].textureIndex
+             : -1;
+}
+
+std::size_t SkinnedModel::embeddedTextureCount() const {
+  return impl_->data.baseColorImages.size();
+}
 
 std::size_t SkinnedModel::gpuResourceCount() const {
   return static_cast<std::size_t>(impl_->vbo != 0u) +
          static_cast<std::size_t>(impl_->ibo != 0u) +
-         static_cast<std::size_t>(impl_->texture != 0u);
+         static_cast<std::size_t>(std::count_if(
+             impl_->textures.begin(), impl_->textures.end(),
+             [](unsigned int texture) { return texture != 0u; }));
 }

@@ -261,6 +261,74 @@ inline std::vector<uint8_t> makeEmbeddedTextureGlb() {
   return rebuildGlb(std::move(json), std::move(bin));
 }
 
+inline std::vector<uint8_t> makeMixedPrimitiveTextureGlb() {
+  const std::string secondPrimitive =
+      R"(,"material":0,"mode":4},{"attributes":{"POSITION":0,"NORMAL":1,"TEXCOORD_0":2,"JOINTS_0":3,"WEIGHTS_0":4},"indices":5,"mode":4)";
+  return replaceJsonText(makeEmbeddedTextureGlb(),
+                         ",\"material\":0,\"mode\":4", secondPrimitive);
+}
+
+inline std::vector<uint8_t> makeBaseColorTexcoord1Glb() {
+  return replaceJsonText(
+      makeEmbeddedTextureGlb(),
+      "\"baseColorTexture\":{\"index\":0}",
+      "\"baseColorTexture\":{\"index\":0,\"texCoord\":1}");
+}
+
+inline std::vector<uint8_t> makeTwoTexturePrimitiveGlb() {
+  const std::vector<uint8_t> source = makeEmbeddedTextureGlb();
+  const uint32_t jsonLength = readU32(source, 12);
+  const std::size_t binHeader = 20 + jsonLength;
+  const uint32_t binLength = readU32(source, binHeader);
+  std::string json(reinterpret_cast<const char*>(source.data() + 20), jsonLength);
+  while (!json.empty() && json.back() == ' ') json.pop_back();
+  std::vector<uint8_t> bin(
+      source.begin() + static_cast<std::ptrdiff_t>(binHeader + 8),
+      source.begin() + static_cast<std::ptrdiff_t>(binHeader + 8 + binLength));
+
+  constexpr std::size_t kImageOffset = 348;
+  constexpr std::size_t kImageSize = 70;
+  if (kImageOffset + kImageSize > bin.size()) {
+    throw std::runtime_error("embedded image fixture range is out of bounds");
+  }
+  const std::size_t secondImageOffset = bin.size();
+  bin.insert(bin.end(),
+             bin.begin() + static_cast<std::ptrdiff_t>(kImageOffset),
+             bin.begin() + static_cast<std::ptrdiff_t>(kImageOffset + kImageSize));
+  // PNG 解码器忽略尾随字节；让两个合法 image bufferView 的自有字节确实不同。
+  bin.push_back(0);
+
+  const std::string oldBuffer = "\"buffers\":[{\"byteLength\":418}]";
+  const std::string newBuffer =
+      "\"buffers\":[{\"byteLength\":" + std::to_string(bin.size()) + "}]";
+  json.replace(json.find(oldBuffer), oldBuffer.size(), newBuffer);
+
+  const std::string viewClose = "],\"accessors\":[";
+  const std::string secondImageView =
+      ",{\"buffer\":0,\"byteOffset\":" + std::to_string(secondImageOffset) +
+      ",\"byteLength\":71}]" + ",\"accessors\":[";
+  json.replace(json.find(viewClose), viewClose.size(), secondImageView);
+
+  const std::string oldMaterials =
+      "\"images\":[{\"bufferView\":10,\"mimeType\":\"image/png\"}],"
+      "\"textures\":[{\"source\":0}],"
+      "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}]";
+  const std::string newMaterials =
+      "\"images\":[{\"bufferView\":10,\"mimeType\":\"image/png\"},"
+      "{\"bufferView\":11,\"mimeType\":\"image/png\"}],"
+      "\"textures\":[{\"source\":0},{\"source\":1}],"
+      "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}},"
+      "{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":1}}}]";
+  json.replace(json.find(oldMaterials), oldMaterials.size(), newMaterials);
+
+  const std::string secondPrimitive =
+      R"(,"material":0,"mode":4},{"attributes":{"POSITION":0,"NORMAL":1,"TEXCOORD_0":2,"JOINTS_0":3,"WEIGHTS_0":4},"indices":5,"material":1,"mode":4)";
+  json.replace(json.find(",\"material\":0,\"mode\":4"),
+               std::string(",\"material\":0,\"mode\":4").size(),
+               secondPrimitive);
+  return rebuildGlb(std::move(json), std::move(bin));
+}
+
 inline std::vector<uint8_t> makeInvalidEmbeddedTextureGlb() {
   std::vector<uint8_t> glb = makeEmbeddedTextureGlb();
   const uint32_t jsonLength = readU32(glb, 12);

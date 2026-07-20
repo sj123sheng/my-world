@@ -354,8 +354,7 @@ static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
         model.update(animationState, actor, 1.0f / 60.0f));
     s.shader3d.setSkinned(true);
     if (s.shader3d.skinningEnabled()) {
-      s.shader3d.setHasTexture(model.hasTexture());
-      model.draw();
+      model.draw(s.shader3d);
       return;
     }
   }

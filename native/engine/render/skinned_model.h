@@ -35,6 +35,7 @@ struct SkinPalette {
 };
 
 class SkinnedModel;
+class Shader3D;
 
 // 每个渲染实体独立持有的动画播放状态。网格、纹理和 clip 数据仍由
 // SkinnedModel 共享，避免为每个实体复制 GPU 资产。
@@ -105,6 +106,7 @@ class SkinnedModel {
   // 保留旧调用签名用于一次性采样；连续播放应显式传入实例状态。
   SkinPalette update(const ActorRenderState& actor, float dtSeconds) const;
   void draw() const;
+  void draw(Shader3D& shader) const;
   void destroy();
 
   // context 已不可 current 时仅丢弃 CPU/GPU 侧跟踪，绝不发出 GL 调用。
@@ -116,9 +118,14 @@ class SkinnedModel {
   std::size_t jointCount() const;
   const std::vector<std::string>& clipNames() const;
   bool hasTexture() const;
+  std::size_t primitiveCount() const;
+  bool primitiveHasTexture(std::size_t primitiveIndex) const;
+  int primitiveTextureIndex(std::size_t primitiveIndex) const;
+  std::size_t embeddedTextureCount() const;
   std::size_t gpuResourceCount() const;
 
  private:
   struct Impl;
+  void drawInternal(Shader3D* shader) const;
   std::unique_ptr<Impl> impl_;
 };

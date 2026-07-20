@@ -150,6 +150,35 @@ void testCombinesMultiplePrimitivesAndOwnsEmbeddedImage() {
                               "broken-texture.glb", "decode");
 }
 
+void testKeepsTextureStatePerPrimitive() {
+  SkinnedModel model;
+  const bool ready = model.tryInitialize(
+      gltf_fixture::makeMixedPrimitiveTextureGlb(), "mixed-material.glb");
+  if (!ready) std::fprintf(stderr, "%s\n", model.lastError().c_str());
+  assert(ready);
+  assert(model.primitiveCount() == 2);
+  assert(model.primitiveHasTexture(0));
+  assert(!model.primitiveHasTexture(1));
+  assert(model.embeddedTextureCount() == 1);
+
+  SkinnedModel twoTextures;
+  const bool twoTexturesReady = twoTextures.tryInitialize(
+      gltf_fixture::makeTwoTexturePrimitiveGlb(), "two-textures.glb");
+  if (!twoTexturesReady) {
+    std::fprintf(stderr, "%s\n", twoTextures.lastError().c_str());
+  }
+  assert(twoTexturesReady);
+  assert(twoTextures.primitiveCount() == 2);
+  assert(twoTextures.embeddedTextureCount() == 2);
+  assert(twoTextures.primitiveTextureIndex(0) == 0);
+  assert(twoTextures.primitiveTextureIndex(1) == 1);
+}
+
+void testRejectsUnsupportedBaseColorUvSet() {
+  expectInitializationFailure(gltf_fixture::makeBaseColorTexcoord1Glb(),
+                              "uv-one.glb", "baseColorTexture texcoord must be 0");
+}
+
 void testUsesNonJointAncestorsAndAnimationTransitions() {
   SkinnedModel model;
   SkinnedAnimationState animation;
@@ -382,6 +411,8 @@ int main() {
   testRejectsUnsupportedRealGlbInputs();
   testRejectsAdditionalUnsupportedGlbFeatures();
   testCombinesMultiplePrimitivesAndOwnsEmbeddedImage();
+  testKeepsTextureStatePerPrimitive();
+  testRejectsUnsupportedBaseColorUvSet();
   testUsesNonJointAncestorsAndAnimationTransitions();
   testKeepsAnimationPlaybackStatePerInstance();
   testDestroyAndAbandonClearAllTracking();
