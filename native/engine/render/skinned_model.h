@@ -31,17 +31,31 @@ struct SkinPalette {
   std::vector<glm::mat4> matrices;
 };
 
+enum class GltfAssetFormat {
+  Glb,
+  Gltf,
+};
+
+enum class GltfPrimitiveMode {
+  Triangles,
+  Other,
+};
+
 struct GltfValidationInput {
   std::string assetName;
   uint32_t jointCount = 0;
+  GltfAssetFormat assetFormat = GltfAssetFormat::Gltf;
+  GltfPrimitiveMode primitiveMode = GltfPrimitiveMode::Other;
   bool hasPosition = false;
   bool hasNormal = false;
-  bool hasUv = false;
-  bool hasJoints = false;
-  bool hasWeights = false;
+  bool hasTexcoord0 = false;
+  bool hasJoints0 = false;
+  bool hasWeights0 = false;
+  bool hasJoints1 = false;
+  bool hasWeights1 = false;
+  uint32_t maxVertexInfluences = 0;
   bool singleSkin = false;
   bool hasCubicSpline = false;
-  bool trianglesOnly = false;
 };
 
 bool ValidateGltf(const GltfValidationInput& input, std::string& reason);

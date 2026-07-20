@@ -15,13 +15,15 @@ GltfValidationInput validValidationInput() {
   GltfValidationInput input;
   input.assetName = "player.glb";
   input.jointCount = 2;
+  input.assetFormat = GltfAssetFormat::Glb;
+  input.primitiveMode = GltfPrimitiveMode::Triangles;
   input.hasPosition = true;
   input.hasNormal = true;
-  input.hasUv = true;
-  input.hasJoints = true;
-  input.hasWeights = true;
+  input.hasTexcoord0 = true;
+  input.hasJoints0 = true;
+  input.hasWeights0 = true;
+  input.maxVertexInfluences = 4;
   input.singleSkin = true;
-  input.trianglesOnly = true;
   return input;
 }
 
@@ -51,6 +53,18 @@ void testLinearSampling() {
   assert(close(std::fabs(sampledRotation.y), 0.7071067f));
 }
 
+void testRejectsUnequalAnimationChannelLengths() {
+  AnimationChannel<glm::vec3> position{{0.0f}, {{2.0f, 0.0f, 0.0f}, {3.0f, 0.0f, 0.0f}},
+                                       AnimationInterpolation::Step};
+  assert(SampleVec3(position, 0.0f) == glm::vec3(0.0f));
+
+  AnimationChannel<glm::quat> rotation{{0.0f},
+                                       {glm::quat(0.0f, 1.0f, 0.0f, 0.0f),
+                                        glm::quat(1.0f, 0.0f, 0.0f, 0.0f)},
+                                       AnimationInterpolation::Linear};
+  assert(SampleQuat(rotation, 0.0f) == glm::quat(1.0f, 0.0f, 0.0f, 0.0f));
+}
+
 void testBuildsParentChildSkinPalette() {
   const std::vector<int> parents{-1, 0};
   const std::vector<glm::mat4> locals{
@@ -66,12 +80,45 @@ void testBuildsParentChildSkinPalette() {
   assert(close(palette.matrices[1][3].y, 2.0f));
 }
 
-void testRejectsMissingAttributesAndUnsupportedFeatures() {
+void testRejectsInvalidSkinHierarchy() {
+  const std::vector<glm::mat4> transforms{glm::mat4(1.0f), glm::mat4(1.0f)};
+  assert(BuildSkinPalette({0}, {glm::mat4(1.0f)}, {glm::mat4(1.0f)}).matrices.empty());
+  assert(BuildSkinPalette({1, 0}, transforms, transforms).matrices.empty());
+  assert(BuildSkinPalette({-2}, {glm::mat4(1.0f)}, {glm::mat4(1.0f)}).matrices.empty());
+  assert(BuildSkinPalette({2}, {glm::mat4(1.0f)}, {glm::mat4(1.0f)}).matrices.empty());
+}
+
+void testRejectsUnsupportedGltfInputsWithAssetNames() {
   GltfValidationInput input = validValidationInput();
-  input.hasUv = false;
   std::string reason;
+  input.assetFormat = GltfAssetFormat::Gltf;
   assert(!ValidateGltf(input, reason));
-  assert(reason == "missing required vertex attribute");
+  assert(reason == "player.glb: only GLB assets are supported");
+
+  input = validValidationInput();
+  input.primitiveMode = GltfPrimitiveMode::Other;
+  assert(!ValidateGltf(input, reason));
+  assert(reason == "player.glb: primitive mode must be TRIANGLES");
+
+  input = validValidationInput();
+  input.hasTexcoord0 = false;
+  assert(!ValidateGltf(input, reason));
+  assert(reason == "player.glb: missing required vertex attribute TEXCOORD_0");
+
+  input = validValidationInput();
+  input.hasJoints1 = true;
+  assert(!ValidateGltf(input, reason));
+  assert(reason == "player.glb: JOINTS_1/WEIGHTS_1 are unsupported");
+
+  input = validValidationInput();
+  input.hasWeights1 = true;
+  assert(!ValidateGltf(input, reason));
+  assert(reason == "player.glb: JOINTS_1/WEIGHTS_1 are unsupported");
+
+  input = validValidationInput();
+  input.maxVertexInfluences = 5;
+  assert(!ValidateGltf(input, reason));
+  assert(reason == "player.glb: vertex influence count exceeds 4");
 
   input = validValidationInput();
   input.hasCubicSpline = true;
@@ -84,7 +131,13 @@ void testRejectsOver64Joints() {
   input.jointCount = kMaxSkinJoints + 1;
   std::string reason;
   assert(!ValidateGltf(input, reason));
-  assert(reason == "joint count exceeds 64");
+  assert(reason == "player.glb: joint count exceeds 64");
+
+  input = validValidationInput();
+  input.assetName.clear();
+  input.singleSkin = false;
+  assert(!ValidateGltf(input, reason));
+  assert(reason == "unnamed asset: exactly one skin is required");
 }
 
 }  // namespace
@@ -92,8 +145,10 @@ void testRejectsOver64Joints() {
 int main() {
   testWrapAndStepSampling();
   testLinearSampling();
+  testRejectsUnequalAnimationChannelLengths();
   testBuildsParentChildSkinPalette();
-  testRejectsMissingAttributesAndUnsupportedFeatures();
+  testRejectsInvalidSkinHierarchy();
+  testRejectsUnsupportedGltfInputsWithAssetNames();
   testRejectsOver64Joints();
   return 0;
 }

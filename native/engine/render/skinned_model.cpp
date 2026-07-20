@@ -28,28 +28,62 @@ float interpolationFactor(const std::vector<float>& times, std::size_t left, flo
 }
 
 std::string assetPrefix(const std::string& assetName) {
-  return assetName.empty() ? std::string() : assetName + ": ";
+  return (assetName.empty() ? "unnamed asset" : assetName) + std::string(": ");
+}
+
+std::string validationFailure(const GltfValidationInput& input, const char* detail) {
+  return assetPrefix(input.assetName) + detail;
 }
 
 }  // namespace
 
 bool ValidateGltf(const GltfValidationInput& input, std::string& reason) {
-  if (input.jointCount > kMaxSkinJoints) {
-    reason = "joint count exceeds 64";
+  if (input.assetFormat != GltfAssetFormat::Glb) {
+    reason = validationFailure(input, "only GLB assets are supported");
     return false;
   }
-  if (!input.hasPosition || !input.hasNormal || !input.hasUv || !input.hasJoints ||
-      !input.hasWeights) {
-    reason = "missing required vertex attribute";
+  if (input.primitiveMode != GltfPrimitiveMode::Triangles) {
+    reason = validationFailure(input, "primitive mode must be TRIANGLES");
+    return false;
+  }
+  if (input.jointCount > kMaxSkinJoints) {
+    reason = validationFailure(input, "joint count exceeds 64");
+    return false;
+  }
+  if (!input.hasPosition) {
+    reason = validationFailure(input, "missing required vertex attribute POSITION");
+    return false;
+  }
+  if (!input.hasNormal) {
+    reason = validationFailure(input, "missing required vertex attribute NORMAL");
+    return false;
+  }
+  if (!input.hasTexcoord0) {
+    reason = validationFailure(input, "missing required vertex attribute TEXCOORD_0");
+    return false;
+  }
+  if (!input.hasJoints0) {
+    reason = validationFailure(input, "missing required vertex attribute JOINTS_0");
+    return false;
+  }
+  if (!input.hasWeights0) {
+    reason = validationFailure(input, "missing required vertex attribute WEIGHTS_0");
+    return false;
+  }
+  if (input.hasJoints1 || input.hasWeights1) {
+    reason = validationFailure(input, "JOINTS_1/WEIGHTS_1 are unsupported");
+    return false;
+  }
+  if (input.maxVertexInfluences > 4) {
+    reason = validationFailure(input, "vertex influence count exceeds 4");
     return false;
   }
   if (input.hasCubicSpline) {
-    reason = assetPrefix(input.assetName) +
-             "animation interpolation CUBICSPLINE is unsupported";
+    reason = validationFailure(input, "animation interpolation CUBICSPLINE is unsupported");
     return false;
   }
-  if (!input.singleSkin || !input.trianglesOnly) {
-    reason = "unsupported glTF feature";
+  if (!input.singleSkin) {
+    reason = validationFailure(input, "exactly one skin is required");
     return false;
   }
   reason.clear();
@@ -61,7 +95,7 @@ float WrapAnimationTime(float seconds, float duration) {
 }
 
 glm::vec3 SampleVec3(const AnimationChannel<glm::vec3>& channel, float time) {
-  if (channel.times.empty() || channel.values.empty()) {
+  if (channel.times.empty() || channel.times.size() != channel.values.size()) {
     return glm::vec3(0.0f);
   }
   const std::size_t left = leftKeyframe(channel.times, time);
@@ -74,7 +108,7 @@ glm::vec3 SampleVec3(const AnimationChannel<glm::vec3>& channel, float time) {
 }
 
 glm::quat SampleQuat(const AnimationChannel<glm::quat>& channel, float time) {
-  if (channel.times.empty() || channel.values.empty()) {
+  if (channel.times.empty() || channel.times.size() != channel.values.size()) {
     return glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
   }
   const std::size_t left = leftKeyframe(channel.times, time);
@@ -96,24 +130,36 @@ SkinPalette BuildSkinPalette(const std::vector<int>& parents,
   }
 
   std::vector<glm::mat4> globals(parents.size(), glm::mat4(1.0f));
-  std::vector<bool> resolved(parents.size(), false);
-  std::function<void(std::size_t)> resolveGlobal = [&](std::size_t joint) {
-    if (resolved[joint]) {
-      return;
+  std::vector<unsigned char> states(parents.size(), 0);
+  std::function<bool(std::size_t)> resolveGlobal = [&](std::size_t joint) {
+    if (states[joint] == 2) {
+      return true;
     }
+    if (states[joint] == 1) {
+      return false;
+    }
+    states[joint] = 1;
     const int parent = parents[joint];
-    if (parent >= 0 && static_cast<std::size_t>(parent) < parents.size()) {
-      resolveGlobal(static_cast<std::size_t>(parent));
+    if (parent == -1) {
+      globals[joint] = localTransforms[joint];
+    } else if (parent >= 0 && static_cast<std::size_t>(parent) < parents.size()) {
+      if (!resolveGlobal(static_cast<std::size_t>(parent))) {
+        return false;
+      }
       globals[joint] = globals[static_cast<std::size_t>(parent)] * localTransforms[joint];
     } else {
-      globals[joint] = localTransforms[joint];
+      return false;
     }
-    resolved[joint] = true;
+    states[joint] = 2;
+    return true;
   };
 
   palette.matrices.resize(parents.size());
   for (std::size_t joint = 0; joint < parents.size(); ++joint) {
-    resolveGlobal(joint);
+    if (!resolveGlobal(joint)) {
+      palette.matrices.clear();
+      return palette;
+    }
     palette.matrices[joint] = globals[joint] * inverseBindMatrices[joint];
   }
   return palette;
