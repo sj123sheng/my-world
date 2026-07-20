@@ -2,8 +2,8 @@
 //
 // 编译顶点/片段着色器（设计规格 §3.5）并链接为 Program。使用 #version 300 es
 // 语法，与现有 2D 着色器保持一致，保证在 HarmonyOS GLES3 设备上原生编译。
-// 属性通过 layout(location = N) 显式绑定 0/1/2，与 mesh.cpp 的 draw() 硬编码
-// 属性槽位对齐。所有 GL 调用在 #ifdef OHOS_PLATFORM 内，非平台侧为空操作。
+// 属性通过 layout(location = N) 显式绑定 0–4；静态 Mesh 的 draw() 保持只绑定
+// 0–2。所有 GL 调用在 #ifdef OHOS_PLATFORM 内，非平台侧为空操作。
 
 #include "native/engine/render/shader_3d.h"
 
@@ -23,14 +23,24 @@ const char* kVertexShaderSrc =
     "#version 300 es\n"
     "uniform mat4 uMVP;\n"
     "uniform mat4 uModel;\n"
+    "uniform bool uSkinned;\n"
+    "uniform mat4 uJoints[64];\n"
     "layout(location = 0) in vec3 aPosition;\n"
     "layout(location = 1) in vec3 aNormal;\n"
     "layout(location = 2) in vec2 aUV;\n"
+    "layout(location = 3) in uvec4 aJoints;\n"
+    "layout(location = 4) in vec4 aWeights;\n"
     "out vec3 vNormal;\n"
     "out vec2 vUV;\n"
     "void main() {\n"
-    "  gl_Position = uMVP * vec4(aPosition, 1.0);\n"
-    "  vNormal = mat3(uModel) * aNormal;\n"
+    "  mat4 skin = uJoints[aJoints.x] * aWeights.x +\n"
+    "              uJoints[aJoints.y] * aWeights.y +\n"
+    "              uJoints[aJoints.z] * aWeights.z +\n"
+    "              uJoints[aJoints.w] * aWeights.w;\n"
+    "  vec4 localPosition = uSkinned ? skin * vec4(aPosition, 1.0) : vec4(aPosition, 1.0);\n"
+    "  vec3 localNormal = uSkinned ? mat3(skin) * aNormal : aNormal;\n"
+    "  gl_Position = uMVP * localPosition;\n"
+    "  vNormal = mat3(uModel) * localNormal;\n"
     "  vUV = aUV;\n"
     "}\n";
 
@@ -134,6 +144,8 @@ bool Shader3D::init() {
   locAmbient_ = glGetUniformLocation(program_, "uAmbient");
   locHasTexture_ = glGetUniformLocation(program_, "uHasTexture");
   locTexture_ = glGetUniformLocation(program_, "uTexture");
+  locSkinned_ = glGetUniformLocation(program_, "uSkinned");
+  locJoints_ = glGetUniformLocation(program_, "uJoints");
   LOGI_3D("3D program linked: mvp=%{public}d model=%{public}d lightDir=%{public}d "
           "lightColor=%{public}d ambient=%{public}d hasTexture=%{public}d texture=%{public}d",
           locMVP_, locModel_, locLightDir_, locLightColor_, locAmbient_,
@@ -156,8 +168,11 @@ void Shader3D::destroy() {
     locAmbient_ = -1;
     locHasTexture_ = -1;
     locTexture_ = -1;
+    locSkinned_ = -1;
+    locJoints_ = -1;
   }
 #endif
+  skinPaletteValid_ = false;
 }
 
 void Shader3D::use() const {
@@ -214,5 +229,30 @@ void Shader3D::setHasTexture(bool hasTexture) const {
   }
 #else
   (void)hasTexture;
+#endif
+}
+
+void Shader3D::setSkinPalette(const SkinPalette& palette) {
+  skinPaletteValid_ = !palette.matrices.empty() &&
+                      palette.matrices.size() <= kMaxSkinJoints;
+#ifdef OHOS_PLATFORM
+  if (!skinPaletteValid_ || program_ == 0u || locJoints_ == -1) {
+    skinPaletteValid_ = false;
+    return;
+  }
+  glUniformMatrix4fv(locJoints_, static_cast<GLsizei>(palette.matrices.size()),
+                     GL_FALSE, &palette.matrices.front()[0][0]);
+#else
+  (void)palette;
+#endif
+}
+
+void Shader3D::setSkinned(bool skinned) const {
+#ifdef OHOS_PLATFORM
+  if (locSkinned_ != -1) {
+    glUniform1i(locSkinned_, skinned && skinPaletteValid_ ? 1 : 0);
+  }
+#else
+  (void)skinned;
 #endif
 }

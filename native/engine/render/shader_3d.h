@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include "native/engine/render/skinned_model.h"
+
 #include <glm/vec3.hpp>
 #include <glm/mat4x4.hpp>
 
@@ -38,11 +40,18 @@ class Shader3D {
   // 设置 uHasTexture：true 时片段着色器采样 uTexture。非平台侧为空操作。
   void setHasTexture(bool hasTexture) const;
 
+  // 上传骨骼调色板。空调色板或超过 64 个矩阵时拒绝启用蒙皮绘制。
+  void setSkinPalette(const SkinPalette& palette);
+
+  // 设置 uSkinned。未接受有效调色板时，true 会退化为 false，防止非法骨骼绘制。
+  void setSkinned(bool skinned) const;
+
   // 返回 Program 句柄（非平台侧恒为 0）。
   unsigned int program() const { return program_; }
 
  private:
   unsigned int program_ = 0;
+  bool skinPaletteValid_ = false;
 
 #ifdef OHOS_PLATFORM
   GLint locMVP_ = -1;
@@ -52,5 +61,7 @@ class Shader3D {
   GLint locAmbient_ = -1;
   GLint locHasTexture_ = -1;
   GLint locTexture_ = -1;
+  GLint locSkinned_ = -1;
+  GLint locJoints_ = -1;
 #endif
 };
