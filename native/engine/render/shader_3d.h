@@ -24,6 +24,9 @@ class Shader3D {
   // 释放 Program。非平台侧为空操作。
   void destroy();
 
+  // context 已不可 current 时仅清除 CPU 句柄跟踪，绝不调用 GL。
+  void abandonGpuResources();
+
   // 启用本程序（glUseProgram）。非平台侧为空操作。
   void use() const;
 

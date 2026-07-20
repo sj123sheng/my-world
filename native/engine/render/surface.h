@@ -28,6 +28,7 @@ inline constexpr EGLContext EGL_NO_CONTEXT = nullptr;
 #include "native/engine/render/camera3d.h"
 #include "native/engine/render/mesh.h"
 #include "native/engine/render/render_animation.h"
+#include "native/engine/render/render_lifecycle.h"
 #include "native/engine/render/shader_3d.h"
 #include "native/engine/render/skinned_model.h"
 #include <glm/vec3.hpp>
@@ -122,12 +123,9 @@ struct Surface {
   // 三类模型的 bridge 字节可早于或晚于 Surface 创建。setModelAsset 只保存 CPU
   // 数据并标脏；解析、上传、替换和销毁均由 current GL context 下的渲染路径完成。
   std::mutex modelAssetMutex;
-  std::vector<uint8_t> playerModelAsset;
-  std::vector<uint8_t> enemyModelAsset;
-  std::vector<uint8_t> bossModelAsset;
-  bool playerModelAssetDirty = false;
-  bool enemyModelAssetDirty = false;
-  bool bossModelAssetDirty = false;
+  PendingModelAsset playerModelAsset;
+  PendingModelAsset enemyModelAsset;
+  PendingModelAsset bossModelAsset;
   SkinnedModel playerModel;
   SkinnedModel enemyModel;
   SkinnedModel bossModel;
@@ -137,16 +135,13 @@ struct Surface {
     std::lock_guard<std::mutex> lock(modelAssetMutex);
     switch (kind) {
       case ModelKind::Player:
-        playerModelAsset = std::move(bytes);
-        playerModelAssetDirty = true;
+        playerModelAsset.replace(std::move(bytes));
         break;
       case ModelKind::Enemy:
-        enemyModelAsset = std::move(bytes);
-        enemyModelAssetDirty = true;
+        enemyModelAsset.replace(std::move(bytes));
         break;
       case ModelKind::Boss:
-        bossModelAsset = std::move(bytes);
-        bossModelAssetDirty = true;
+        bossModelAsset.replace(std::move(bytes));
         break;
     }
   }

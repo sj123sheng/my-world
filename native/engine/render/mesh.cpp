@@ -162,3 +162,9 @@ void Mesh::destroy() {
   // 调用方如需释放纹理应在 Surface 销毁时单独 glDeleteTextures。
 #endif
 }
+
+void Mesh::abandonGpuResources() {
+  vbo = 0;
+  ibo = 0;
+  texture = 0;
+}

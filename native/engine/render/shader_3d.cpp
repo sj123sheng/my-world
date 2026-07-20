@@ -176,6 +176,23 @@ void Shader3D::destroy() {
   skinningEnabled_ = false;
 }
 
+void Shader3D::abandonGpuResources() {
+  program_ = 0;
+  skinPaletteValid_ = false;
+  skinningEnabled_ = false;
+#ifdef OHOS_PLATFORM
+  locMVP_ = -1;
+  locModel_ = -1;
+  locLightDir_ = -1;
+  locLightColor_ = -1;
+  locAmbient_ = -1;
+  locHasTexture_ = -1;
+  locTexture_ = -1;
+  locSkinned_ = -1;
+  locJoints_ = -1;
+#endif
+}
+
 void Shader3D::use() const {
 #ifdef OHOS_PLATFORM
   if (program_ != 0u) {

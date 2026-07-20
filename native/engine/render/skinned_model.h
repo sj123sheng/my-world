@@ -96,6 +96,12 @@ class SkinnedModel {
   void draw() const {}
 
   void destroy() {
+    abandonGpuResources();
+  }
+
+  // context 已不可 current 时仅丢弃 CPU 侧资源跟踪。真实 runtime loader 接入后，
+  // 它必须保持此函数不发出 GL 调用，以便 EGL 销毁路径安全使用。
+  void abandonGpuResources() {
     ready_ = false;
     lastError_.clear();
   }

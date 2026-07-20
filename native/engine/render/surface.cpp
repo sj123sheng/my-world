@@ -364,26 +364,19 @@ static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
 static bool takePendingModelAsset(Surface& s, ModelKind kind,
                                   std::vector<uint8_t>& bytes) {
   std::lock_guard<std::mutex> lock(s.modelAssetMutex);
-  std::vector<uint8_t>* source = nullptr;
-  bool* dirty = nullptr;
+  PendingModelAsset* asset = nullptr;
   switch (kind) {
     case ModelKind::Player:
-      source = &s.playerModelAsset;
-      dirty = &s.playerModelAssetDirty;
+      asset = &s.playerModelAsset;
       break;
     case ModelKind::Enemy:
-      source = &s.enemyModelAsset;
-      dirty = &s.enemyModelAssetDirty;
+      asset = &s.enemyModelAsset;
       break;
     case ModelKind::Boss:
-      source = &s.bossModelAsset;
-      dirty = &s.bossModelAssetDirty;
+      asset = &s.bossModelAsset;
       break;
   }
-  if (source == nullptr || dirty == nullptr || !*dirty) return false;
-  bytes = *source;
-  *dirty = false;
-  return true;
+  return asset != nullptr && asset->take(bytes);
 }
 
 static void tryInitializeModelAsset(Surface& s, ModelKind kind,
@@ -843,13 +836,39 @@ static void destroy3DResources(Surface& s) {
   // EGL context 重建后 GPU 对象必须重传；已有 CPU 字节重新标脏。
   {
     std::lock_guard<std::mutex> lock(s.modelAssetMutex);
-    s.playerModelAssetDirty = !s.playerModelAsset.empty();
-    s.enemyModelAssetDirty = !s.enemyModelAsset.empty();
-    s.bossModelAssetDirty = !s.bossModelAsset.empty();
+    s.playerModelAsset.markDirtyForContextRebuild();
+    s.enemyModelAsset.markDirtyForContextRebuild();
+    s.bossModelAsset.markDirtyForContextRebuild();
   }
 #else
   (void)s;
 #endif
+}
+
+// EGL current 绑定失败时不能调用 destroy3DResources：其中包含 GL 删除。context
+// 随后由 eglDestroyContext 回收实际驱动对象；这里只丢弃 CPU 中已经无效的句柄跟踪，
+// 既不会跨 context 删除，也不会伪装成已逐项释放。
+static void abandon3DResources(Surface& s) {
+#ifdef OHOS_PLATFORM
+  s.playerModel.abandonGpuResources();
+  s.enemyModel.abandonGpuResources();
+  s.bossModel.abandonGpuResources();
+  s.playerMesh.abandonGpuResources();
+  s.groundMesh.abandonGpuResources();
+  s.enemyMesh.abandonGpuResources();
+  s.bossMesh.abandonGpuResources();
+  s.shader3d.abandonGpuResources();
+  s.shader3dReady = false;
+#else
+  (void)s;
+#endif
+}
+
+static void clearModelAssets(Surface& s) {
+  std::lock_guard<std::mutex> lock(s.modelAssetMutex);
+  s.playerModelAsset.clear();
+  s.enemyModelAsset.clear();
+  s.bossModelAsset.clear();
 }
 
 static bool tryInitGL(Surface& s) {
@@ -1068,13 +1087,26 @@ void surface_destroy(Surface& s) {
   std::lock_guard<std::mutex> lock(s.windowMutex);
   if (!s.ready && !s.window) return;
   if (!s.useSoftware) {
-    eglMakeCurrent(s.display, s.surface, s.surface, s.context);
-    destroy3DResources(s);
-    if (s.program != 0) {
-      glDeleteProgram(s.program);
+    const bool makeCurrentSucceeded =
+        eglMakeCurrent(s.display, s.surface, s.surface, s.context);
+    const SurfaceDestroyPlan destroyPlan =
+        PlanSurfaceDestroy(makeCurrentSucceeded);
+    if (destroyPlan.releaseGlResources) {
+      // 顺序为 SkinnedModel -> Mesh -> Shader3D -> 2D Program；所有 GL 删除均
+      // 仅在成功绑定本 Surface context 后执行。
+      destroy3DResources(s);
+      if (s.program != 0) {
+        glDeleteProgram(s.program);
+        s.program = 0;
+      }
+    } else {
+      LOGE("surface_destroy eglMakeCurrent failed: %{public}d; skipping GL "
+           "deletes and relying on eglDestroyContext", eglGetError());
+      abandon3DResources(s);
+      // 2D program 与 3D 资源同属即将销毁的 EGL context；清除 CPU 跟踪但不发 GL。
       s.program = 0;
     }
-    if (s.display != EGL_NO_DISPLAY) {
+    if (destroyPlan.destroyEglResources && s.display != EGL_NO_DISPLAY) {
       eglMakeCurrent(s.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
       if (s.surface != EGL_NO_SURFACE) {
         eglDestroySurface(s.display, s.surface);
@@ -1088,6 +1120,7 @@ void surface_destroy(Surface& s) {
       s.display = EGL_NO_DISPLAY;
     }
   }
+  clearModelAssets(s);
   if (s.window) {
     OH_NativeWindow_NativeObjectUnreference(s.window);
     s.window = nullptr;

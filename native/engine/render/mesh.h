@@ -56,6 +56,10 @@ struct Mesh {
 
   // 释放 GPU 资源。非 OHOS 平台为空操作。
   void destroy();
+
+  // context 已不可 current 时仅丢弃 CPU 句柄跟踪，绝不发出 GL 删除调用。
+  // 随后的 eglDestroyContext 负责回收实际驱动对象。
+  void abandonGpuResources();
 };
 
 // 生成立方体网格：24 顶点（6 面 × 4 顶点，每面法线独立），36 索引（12 三角形）。
