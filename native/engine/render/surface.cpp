@@ -819,33 +819,43 @@ static void init3DResources(Surface& s) {
 #endif
 }
 
-// 释放 3D 渲染层资源。必须在 GL 上下文 current 时调用。
-static void destroy3DResources(Surface& s) {
+// 释放一个 3D 渲染层资源组。必须在 GL 上下文 current 时调用。
+static void destroy3DResource(Surface& s, SurfaceGlResource resource) {
 #ifdef OHOS_PLATFORM
-  // SkinnedModel 可能拥有 VBO/IBO/纹理；必须先于共享 shader 且在 current
-  // context 下销毁。
-  s.playerModel.destroy();
-  s.enemyModel.destroy();
-  s.bossModel.destroy();
-  s.playerMesh.destroy();
-  s.groundMesh.destroy();
-  s.enemyMesh.destroy();
-  s.bossMesh.destroy();
-  s.shader3d.destroy();
-  s.shader3dReady = false;
-  // EGL context 重建后 GPU 对象必须重传；已有 CPU 字节重新标脏。
-  {
-    std::lock_guard<std::mutex> lock(s.modelAssetMutex);
-    s.playerModelAsset.markDirtyForContextRebuild();
-    s.enemyModelAsset.markDirtyForContextRebuild();
-    s.bossModelAsset.markDirtyForContextRebuild();
+  switch (resource) {
+    case SurfaceGlResource::SkinnedModels:
+      // SkinnedModel 可能拥有 VBO/IBO/纹理；必须先于共享 shader 销毁。
+      s.playerModel.destroy();
+      s.enemyModel.destroy();
+      s.bossModel.destroy();
+      break;
+    case SurfaceGlResource::StaticMeshes:
+      s.playerMesh.destroy();
+      s.groundMesh.destroy();
+      s.enemyMesh.destroy();
+      s.bossMesh.destroy();
+      break;
+    case SurfaceGlResource::Shader3D:
+      s.shader3d.destroy();
+      s.shader3dReady = false;
+      // EGL context 重建后 GPU 对象必须重传；已有 CPU 字节重新标脏。
+      {
+        std::lock_guard<std::mutex> lock(s.modelAssetMutex);
+        s.playerModelAsset.markDirtyForContextRebuild();
+        s.enemyModelAsset.markDirtyForContextRebuild();
+        s.bossModelAsset.markDirtyForContextRebuild();
+      }
+      break;
+    case SurfaceGlResource::Program2D:
+      break;
   }
 #else
   (void)s;
+  (void)resource;
 #endif
 }
 
-// EGL current 绑定失败时不能调用 destroy3DResources：其中包含 GL 删除。context
+// EGL current 绑定失败时不能调用 destroy3DResource：其中包含 GL 删除。context
 // 随后由 eglDestroyContext 回收实际驱动对象；这里只丢弃 CPU 中已经无效的句柄跟踪，
 // 既不会跨 context 删除，也不会伪装成已逐项释放。
 static void abandon3DResources(Surface& s) {
@@ -1087,38 +1097,45 @@ void surface_destroy(Surface& s) {
   std::lock_guard<std::mutex> lock(s.windowMutex);
   if (!s.ready && !s.window) return;
   if (!s.useSoftware) {
-    const bool makeCurrentSucceeded =
-        eglMakeCurrent(s.display, s.surface, s.surface, s.context);
-    const SurfaceDestroyPlan destroyPlan =
-        PlanSurfaceDestroy(makeCurrentSucceeded);
-    if (destroyPlan.releaseGlResources) {
-      // 顺序为 SkinnedModel -> Mesh -> Shader3D -> 2D Program；所有 GL 删除均
-      // 仅在成功绑定本 Surface context 后执行。
-      destroy3DResources(s);
-      if (s.program != 0) {
-        glDeleteProgram(s.program);
+    SurfaceDestroyOperations operations;
+    operations.makeCurrent = [&s] {
+      return eglMakeCurrent(s.display, s.surface, s.surface, s.context);
+    };
+    operations.destroyGlResource = [&s](SurfaceGlResource resource) {
+      if (resource == SurfaceGlResource::Program2D) {
+        if (s.program != 0) glDeleteProgram(s.program);
         s.program = 0;
+        return;
       }
-    } else {
+      destroy3DResource(s, resource);
+    };
+    operations.abandonGpuResources = [&s] {
       LOGE("surface_destroy eglMakeCurrent failed: %{public}d; skipping GL "
            "deletes and relying on eglDestroyContext", eglGetError());
       abandon3DResources(s);
       // 2D program 与 3D 资源同属即将销毁的 EGL context；清除 CPU 跟踪但不发 GL。
       s.program = 0;
-    }
-    if (destroyPlan.destroyEglResources && s.display != EGL_NO_DISPLAY) {
+    };
+    operations.unbindCurrent = [&s] {
       eglMakeCurrent(s.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-      if (s.surface != EGL_NO_SURFACE) {
+    };
+    operations.destroyEglSurface = [&s] {
+      if (s.display != EGL_NO_DISPLAY && s.surface != EGL_NO_SURFACE) {
         eglDestroySurface(s.display, s.surface);
         s.surface = EGL_NO_SURFACE;
       }
-      if (s.context != EGL_NO_CONTEXT) {
+    };
+    operations.destroyEglContext = [&s] {
+      if (s.display != EGL_NO_DISPLAY && s.context != EGL_NO_CONTEXT) {
         eglDestroyContext(s.display, s.context);
         s.context = EGL_NO_CONTEXT;
       }
-      eglTerminate(s.display);
+    };
+    operations.terminateEglDisplay = [&s] {
+      if (s.display != EGL_NO_DISPLAY) eglTerminate(s.display);
       s.display = EGL_NO_DISPLAY;
-    }
+    };
+    ExecuteSurfaceDestroy(operations);
   }
   clearModelAssets(s);
   if (s.window) {

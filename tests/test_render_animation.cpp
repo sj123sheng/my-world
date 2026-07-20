@@ -89,18 +89,64 @@ void testPendingAssetReplacementAndClearRemainConsumable() {
   assert(!asset.dirty);
 }
 
-void testDestroyPlanReleasesGlOnlyWithCurrentContext() {
-  const SurfaceDestroyPlan currentPlan = PlanSurfaceDestroy(true);
-  assert(currentPlan.releaseGlResources);
-  assert(currentPlan.discardCpuGlTracking);
-  assert(currentPlan.destroyEglResources);
-  assert((currentPlan.glDestroyOrder == kSurfaceGlDestroyOrder));
+void testSurfaceDestroyDoesNotTouchGlOrUnbindAfterMakeCurrentFailure() {
+  std::vector<std::string> calls;
+  SurfaceDestroyOperations operations;
+  operations.makeCurrent = [&calls] {
+    calls.emplace_back("make-current");
+    return false;
+  };
+  operations.destroyGlResource = [&calls](SurfaceGlResource resource) {
+    calls.emplace_back("gl-destroy-" + std::to_string(static_cast<int>(resource)));
+  };
+  operations.abandonGpuResources = [&calls] { calls.emplace_back("abandon-cpu"); };
+  operations.unbindCurrent = [&calls] { calls.emplace_back("unbind"); };
+  operations.destroyEglSurface = [&calls] { calls.emplace_back("destroy-egl-surface"); };
+  operations.destroyEglContext = [&calls] { calls.emplace_back("destroy-egl-context"); };
+  operations.terminateEglDisplay = [&calls] { calls.emplace_back("terminate-egl-display"); };
 
-  const SurfaceDestroyPlan failedPlan = PlanSurfaceDestroy(false);
-  assert(!failedPlan.releaseGlResources);
-  assert(failedPlan.discardCpuGlTracking);
-  assert(failedPlan.destroyEglResources);
-  assert(failedPlan.glDestroyOrder.empty());
+  ExecuteSurfaceDestroy(operations);
+
+  assert((calls == std::vector<std::string>{
+                       "make-current", "abandon-cpu", "destroy-egl-surface",
+                       "destroy-egl-context", "terminate-egl-display"}));
+}
+
+void testSurfaceDestroyDestroysGlBeforeUnbindAndEglCleanup() {
+  std::vector<std::string> calls;
+  SurfaceDestroyOperations operations;
+  operations.makeCurrent = [&calls] {
+    calls.emplace_back("make-current");
+    return true;
+  };
+  operations.destroyGlResource = [&calls](SurfaceGlResource resource) {
+    switch (resource) {
+      case SurfaceGlResource::SkinnedModels:
+        calls.emplace_back("destroy-skinned-models");
+        break;
+      case SurfaceGlResource::StaticMeshes:
+        calls.emplace_back("destroy-static-meshes");
+        break;
+      case SurfaceGlResource::Shader3D:
+        calls.emplace_back("destroy-shader-3d");
+        break;
+      case SurfaceGlResource::Program2D:
+        calls.emplace_back("destroy-program-2d");
+        break;
+    }
+  };
+  operations.abandonGpuResources = [&calls] { calls.emplace_back("abandon-cpu"); };
+  operations.unbindCurrent = [&calls] { calls.emplace_back("unbind"); };
+  operations.destroyEglSurface = [&calls] { calls.emplace_back("destroy-egl-surface"); };
+  operations.destroyEglContext = [&calls] { calls.emplace_back("destroy-egl-context"); };
+  operations.terminateEglDisplay = [&calls] { calls.emplace_back("terminate-egl-display"); };
+
+  ExecuteSurfaceDestroy(operations);
+
+  assert((calls == std::vector<std::string>{
+                       "make-current", "destroy-skinned-models", "destroy-static-meshes",
+                       "destroy-shader-3d", "destroy-program-2d", "unbind",
+                       "destroy-egl-surface", "destroy-egl-context", "terminate-egl-display"}));
 }
 
 }  // namespace
@@ -112,6 +158,7 @@ int main() {
   testSurfaceStoresLateModelAssetsForContextBoundInitialization();
   testPendingAssetIsConsumedExactlyOnceAfterLateDirtySignal();
   testPendingAssetReplacementAndClearRemainConsumable();
-  testDestroyPlanReleasesGlOnlyWithCurrentContext();
+  testSurfaceDestroyDoesNotTouchGlOrUnbindAfterMakeCurrentFailure();
+  testSurfaceDestroyDestroysGlBeforeUnbindAndEglCleanup();
   return 0;
 }

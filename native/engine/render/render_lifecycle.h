@@ -7,6 +7,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <utility>
 #include <vector>
 
@@ -48,24 +49,33 @@ inline const std::vector<SurfaceGlResource> kSurfaceGlDestroyOrder = {
     SurfaceGlResource::Program2D,
 };
 
-struct SurfaceDestroyPlan {
-  bool releaseGlResources = false;
-  bool discardCpuGlTracking = false;
-  bool destroyEglResources = false;
-  std::vector<SurfaceGlResource> glDestroyOrder;
+// Surface 销毁的窄协调接口。Surface 的 EGL/GLES 调用通过这些回调接入，使成功与失败
+// 路径共享同一控制流并可在宿主测试中记录实际销毁顺序。
+struct SurfaceDestroyOperations {
+  std::function<bool()> makeCurrent;
+  std::function<void(SurfaceGlResource)> destroyGlResource;
+  std::function<void()> abandonGpuResources;
+  std::function<void()> unbindCurrent;
+  std::function<void()> destroyEglSurface;
+  std::function<void()> destroyEglContext;
+  std::function<void()> terminateEglDisplay;
 };
 
-inline SurfaceDestroyPlan PlanSurfaceDestroy(bool makeCurrentSucceeded) {
-  if (!makeCurrentSucceeded) {
+inline void ExecuteSurfaceDestroy(const SurfaceDestroyOperations& operations) {
+  const bool makeCurrentSucceeded = operations.makeCurrent();
+  if (makeCurrentSucceeded) {
+    for (const SurfaceGlResource resource : kSurfaceGlDestroyOrder) {
+      operations.destroyGlResource(resource);
+    }
+    // 仅解绑刚刚成功绑定到本 Surface 的 context。失败时调用线程原有的 current context
+    // 仍归其所有，绝不能在这里解绑。
+    operations.unbindCurrent();
+  } else {
     // 不能向未知 current context 发出任何 GL 删除；随后的 eglDestroyContext 会
-    // 回收该 context 所有 GL 对象，CPU 侧只清除过期句柄，不能将其误报为已逐项释放。
-    return {.releaseGlResources = false,
-            .discardCpuGlTracking = true,
-            .destroyEglResources = true,
-            .glDestroyOrder = {}};
+    // 回收该 context 所有 GL 对象，CPU 侧只清除过期句柄。
+    operations.abandonGpuResources();
   }
-  return {.releaseGlResources = true,
-          .discardCpuGlTracking = true,
-          .destroyEglResources = true,
-          .glDestroyOrder = kSurfaceGlDestroyOrder};
+  operations.destroyEglSurface();
+  operations.destroyEglContext();
+  operations.terminateEglDisplay();
 }

@@ -110,3 +110,37 @@ GREEN 后全部断言通过。
 额外的独立 OHOS `surface.cpp` 语法命令未包含工程 CMake 提供的 GLM include，因 SDK
 sysroot 找不到 `glm/vec3.hpp` 失败；真实 HAP Native CMake/Ninja 编译已成功，故该命令不
 作为源码失败结论。
+
+## 第二轮复审修复（真实销毁协调路径）
+
+`SurfaceDestroyPlan` 及其仅验证计划数组的测试已移除。新增
+`SurfaceDestroyOperations` / `ExecuteSurfaceDestroy`：`surface_destroy` 将实际的
+`eglMakeCurrent`、四类 GL 销毁、CPU 句柄放弃、解绑，以及 EGL surface/context/display
+清理作为回调接入该协调函数。
+
+- `eglMakeCurrent` 首次失败：协调器不调用任何 GL 销毁或 `unbindCurrent`；先执行无 GL 的
+  `abandon3DResources` 并清空 2D program CPU 句柄，再直接销毁目标 EGL surface/context 并
+  terminate display。因此不会解绑同一线程上可能属于另一 Surface 的 current context。
+- 成功：实际调用顺序严格为 `SkinnedModels -> StaticMeshes -> Shader3D -> Program2D ->
+  unbind -> EGL surface/context/display cleanup`。`surface.cpp` 将前三类 3D 销毁拆为与该
+  枚举一一对应的分支，避免测试只记录未被生产代码消费的声明顺序。
+
+### TDD 记录
+
+先将宿主测试改为注入可记录回调的两个行为用例。RED 使用 macOS SDK libc++ 编译，因
+`SurfaceDestroyOperations` / `ExecuteSurfaceDestroy` 尚不存在而失败；错误直接指向缺少的
+生产接口。随后最小新增协调器并让 `surface_destroy` 消费它，GREEN 通过。失败用例断言完整
+序列中仅有 `make-current -> abandon-cpu -> EGL cleanup`，所以同时证明 GL 删除和解绑均为零；
+成功用例断言四类真实资源回调、解绑和 EGL 清理的精确顺序。
+
+### 第二轮验证
+
+以下命令均在本 worktree 中退出 0：
+
+- `test_render_animation`（新的真实销毁协调路径断言）
+- `test_loop_lifecycle`、`test_fence_wait`
+- `test_skinned_model`、`test_mesh`、`test_shader_3d`、`test_camera`、`test_camera3d`
+- `node tests/test_bridge_contract.mjs`
+- HarmonyOS Hvigor `assembleHap --analyze=normal --parallel --incremental --daemon`，输出
+  `BUILD SUCCESSFUL in 6 s 930 ms`，Native CMake/Ninja 均已执行；仅保留未配置签名告警
+- `git diff --check`
