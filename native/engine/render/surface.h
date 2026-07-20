@@ -24,6 +24,11 @@ inline constexpr EGLContext EGL_NO_CONTEXT = nullptr;
 #include "native/gameplay/player/player_controller.h"
 #include "native/engine/render/camera_render_state.h"
 
+#include "native/engine/render/camera3d.h"
+#include "native/engine/render/mesh.h"
+#include "native/engine/render/shader_3d.h"
+#include <glm/vec3.hpp>
+
 struct Particle {
   float x;
   float y;
@@ -44,6 +49,27 @@ struct TrainingTargetRenderState {
   float y = 0.8f;
   float size = 0.045f;
   bool alive = true;
+};
+
+// 3D 渲染层使用的实体状态。渲染层只读消费 2D 逻辑写入的位置与存活状态，
+// 不反向修改游戏逻辑。archetype/phase 以 int 存储，避免 surface.h 拉入
+// gameplay 枚举头文件，保持渲染层与逻辑层头文件依赖单向。
+struct Enemy3DRenderState {
+  float x = 0.5f;
+  float y = 0.5f;
+  // 0 = RiftClaw, 1 = Priest, 2 = Guard（与 EnemyArchetype 数值一致）。
+  int archetype = 0;
+  bool alive = false;
+};
+
+struct Boss3DRenderState {
+  float x = 0.5f;
+  float y = 0.75f;
+  // 1 = RadianceLockdown, 2 = CurrentStorm, 3 = CorruptionCollapse
+  //（与 BossPhase 数值一致）。
+  int phase = 1;
+  bool defeated = false;
+  bool active = false;
 };
 
 struct Surface {
@@ -70,6 +96,21 @@ struct Surface {
   std::vector<Prop> props;
   TrainingTargetRenderState trainingTarget;
   std::vector<uint32_t> pixelBuffer;
+
+  // ---- 3D 渲染层字段（M3-1）----
+  // 与 2D 单色着色器独立，仅在 OHOS_PLATFORM 下由 surface_draw 的 3D 阶段消费。
+  Camera3D camera3d;
+  Mesh playerMesh;
+  Mesh groundMesh;
+  Mesh enemyMesh;
+  Mesh bossMesh;
+  Shader3D shader3d;
+  glm::vec3 lightDir{0.35f, 0.85f, 0.25f};
+  glm::vec3 lightColor{0.8f, 0.8f, 0.75f};
+  glm::vec3 ambient{0.25f, 0.25f, 0.3f};
+  std::vector<Enemy3DRenderState> enemies3d;
+  Boss3DRenderState boss3d;
+  bool shader3dReady = false;
 };
 
 bool surface_init(Surface& s, OHNativeWindow* window);
