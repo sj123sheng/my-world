@@ -29,6 +29,7 @@ void expectInitializationFailure(const std::vector<uint8_t>& bytes,
 
 void testInitializesMinimalGlbFromMemory() {
   SkinnedModel model;
+  SkinnedAnimationState animation;
   const std::vector<uint8_t> bytes = gltf_fixture::makeMinimalGlb();
 
   assert(model.tryInitialize(bytes, "minimal.glb"));
@@ -38,7 +39,7 @@ void testInitializesMinimalGlbFromMemory() {
   assert(model.jointCount() == 2);
   assert((model.clipNames() == std::vector<std::string>{"idle", "run"}));
 
-  const SkinPalette palette = model.update(ActorRenderState{}, 0.0f);
+  const SkinPalette palette = model.update(animation, ActorRenderState{}, 0.0f);
   assert(palette.matrices.size() == 2);
   for (const glm::mat4& matrix : palette.matrices) {
     for (int column = 0; column < 4; ++column) {
@@ -151,33 +152,75 @@ void testCombinesMultiplePrimitivesAndOwnsEmbeddedImage() {
 
 void testUsesNonJointAncestorsAndAnimationTransitions() {
   SkinnedModel model;
+  SkinnedAnimationState animation;
   assert(model.tryInitialize(gltf_fixture::makeMinimalGlb(), "animated.glb"));
-  const SkinPalette idle = model.update(ActorRenderState{}, 0.0f);
+  const SkinPalette idle = model.update(animation, ActorRenderState{}, 0.0f);
   assert(close(idle.matrices[0][3].x, 3.0f));
 
   ActorRenderState running;
   running.moving = true;
-  const SkinPalette halfBlend = model.update(running, 0.075f);
+  const SkinPalette halfBlend = model.update(animation, running, 0.075f);
   assert(halfBlend.matrices[0][3].x > 3.0f);
   assert(halfBlend.matrices[0][3].x < 3.15f);
-  const SkinPalette completeBlend = model.update(running, 0.075f);
+  const SkinPalette completeBlend = model.update(animation, running, 0.075f);
   assert(close(completeBlend.matrices[0][3].x, 3.3f));
 
+  const auto expectImmediateFallback = [&model, &running](
+                                           const ActorRenderState& intent) {
+    SkinnedAnimationState fallbackAnimation;
+    model.update(fallbackAnimation, running, 0.15f);
+    const SkinPalette fallback =
+        model.update(fallbackAnimation, intent, 0.01f);
+    assert(close(fallback.matrices[0][3].x, 3.0f));
+  };
   ActorRenderState attackWithoutClip;
   attackWithoutClip.attacking = true;
-  const SkinPalette fallback = model.update(attackWithoutClip, 0.15f);
-  assert(close(fallback.matrices[0][3].x, 3.0f));
+  expectImmediateFallback(attackWithoutClip);
+  ActorRenderState hitWithoutClip;
+  hitWithoutClip.hit = true;
+  expectImmediateFallback(hitWithoutClip);
+  ActorRenderState deathWithoutClip;
+  deathWithoutClip.alive = false;
+  expectImmediateFallback(deathWithoutClip);
 
   SkinnedModel attackModel;
+  SkinnedAnimationState attackAnimation;
   assert(attackModel.tryInitialize(gltf_fixture::makeMinimalGlb(true),
                                    "attack.glb"));
-  attackModel.update(running, 0.15f);
-  const SkinPalette runPose = attackModel.update(running, 0.35f);
+  attackModel.update(attackAnimation, running, 0.15f);
+  const SkinPalette runPose = attackModel.update(attackAnimation, running, 0.35f);
   assert(close(runPose.matrices[0][3].x, 4.0f));
   ActorRenderState attacking;
   attacking.attacking = true;
-  const SkinPalette immediateAttack = attackModel.update(attacking, 0.0f);
+  const SkinPalette immediateAttack =
+      attackModel.update(attackAnimation, attacking, 0.0f);
   assert(close(immediateAttack.matrices[0][3].x, 3.0f));
+}
+
+void testKeepsAnimationPlaybackStatePerInstance() {
+  SkinnedModel sharedModel;
+  assert(sharedModel.tryInitialize(gltf_fixture::makeMinimalGlb(),
+                                   "shared-enemy.glb"));
+
+  SkinnedAnimationState firstEnemy;
+  SkinnedAnimationState secondEnemy;
+  ActorRenderState running;
+  running.moving = true;
+
+  sharedModel.update(firstEnemy, ActorRenderState{}, 0.0f);
+  sharedModel.update(secondEnemy, ActorRenderState{}, 0.0f);
+  sharedModel.update(firstEnemy, running, 0.15f);
+  const SkinPalette firstAtHalfSecond =
+      sharedModel.update(firstEnemy, running, 0.35f);
+  assert(close(firstAtHalfSecond.matrices[0][3].x, 4.0f));
+
+  const SkinPalette secondStillIdle =
+      sharedModel.update(secondEnemy, ActorRenderState{}, 0.1f);
+  assert(close(secondStillIdle.matrices[0][3].x, 3.0f));
+
+  const SkinPalette firstContinuesIndependently =
+      sharedModel.update(firstEnemy, running, 0.1f);
+  assert(close(firstContinuesIndependently.matrices[0][3].x, 4.2f));
 }
 
 void testDestroyAndAbandonClearAllTracking() {
@@ -340,6 +383,7 @@ int main() {
   testRejectsAdditionalUnsupportedGlbFeatures();
   testCombinesMultiplePrimitivesAndOwnsEmbeddedImage();
   testUsesNonJointAncestorsAndAnimationTransitions();
+  testKeepsAnimationPlaybackStatePerInstance();
   testDestroyAndAbandonClearAllTracking();
   testWrapAndStepSampling();
   testLinearSampling();

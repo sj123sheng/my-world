@@ -69,6 +69,7 @@ void publish3DEncounterState(Surface& surface,
   surface.enemies3d.reserve(snapshot.enemies.size());
   for (const EncounterEnemySnapshot& enemy : snapshot.enemies) {
     Enemy3DRenderState state;
+    state.id = enemy.id;
     state.x = enemy.position.x;
     state.y = enemy.position.y;
     state.archetype = static_cast<int>(enemy.archetype);

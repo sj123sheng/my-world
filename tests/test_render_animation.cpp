@@ -62,6 +62,21 @@ void testSurfaceStoresLateModelAssetsForContextBoundInitialization() {
   assert(surface.bossModelAsset.dirty);
 }
 
+void testSurfaceKeepsEnemyAnimationStateByStableEntityId() {
+  Surface surface;
+  surface.enemyAnimationStates.emplace(2001, SkinnedAnimationState{});
+  surface.enemyAnimationStates.emplace(2002, SkinnedAnimationState{});
+
+  Enemy3DRenderState remaining;
+  remaining.id = 2002;
+  surface.enemies3d.push_back(remaining);
+  surface.pruneEnemyAnimationStates();
+
+  assert(surface.enemyAnimationStates.size() == 1);
+  assert(surface.enemyAnimationStates.find(2002) !=
+         surface.enemyAnimationStates.end());
+}
+
 void testPendingAssetIsConsumedExactlyOnceAfterLateDirtySignal() {
   PendingModelAsset asset;
   std::vector<uint8_t> consumed;
@@ -156,6 +171,7 @@ int main() {
   testClipResolutionFallsBackToIdle();
   testUnavailableRuntimeModelStaysOnFallbackPath();
   testSurfaceStoresLateModelAssetsForContextBoundInitialization();
+  testSurfaceKeepsEnemyAnimationStateByStableEntityId();
   testPendingAssetIsConsumedExactlyOnceAfterLateDirtySignal();
   testPendingAssetReplacementAndClearRemainConsumable();
   testSurfaceDestroyDoesNotTouchGlOrUnbindAfterMakeCurrentFailure();

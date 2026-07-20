@@ -18,9 +18,11 @@ inline constexpr EGLSurface EGL_NO_SURFACE = nullptr;
 inline constexpr EGLContext EGL_NO_CONTEXT = nullptr;
 #endif
 #include <vector>
+#include <algorithm>
 #include <random>
 #include <cstdint>
 #include <mutex>
+#include <unordered_map>
 #include <utility>
 #include "native/gameplay/player/player_controller.h"
 #include "native/engine/render/camera_render_state.h"
@@ -59,6 +61,8 @@ struct TrainingTargetRenderState {
 // 不反向修改游戏逻辑。archetype/phase 以 int 存储，避免 surface.h 拉入
 // gameplay 枚举头文件，保持渲染层与逻辑层头文件依赖单向。
 struct Enemy3DRenderState {
+  // gameplay EntityId 的稳定值；使用底层类型避免渲染层反向依赖战斗头文件。
+  uint32_t id = 0;
   float x = 0.5f;
   float y = 0.5f;
   // 0 = RiftClaw, 1 = Priest, 2 = Guard（与 EnemyArchetype 数值一致）。
@@ -129,7 +133,27 @@ struct Surface {
   SkinnedModel playerModel;
   SkinnedModel enemyModel;
   SkinnedModel bossModel;
+  SkinnedAnimationState playerAnimationState;
+  SkinnedAnimationState trainingTargetAnimationState;
+  SkinnedAnimationState bossAnimationState;
+  std::unordered_map<uint32_t, SkinnedAnimationState> enemyAnimationStates;
   bool shader3dReady = false;
+
+  void pruneEnemyAnimationStates() {
+    for (auto state = enemyAnimationStates.begin();
+         state != enemyAnimationStates.end();) {
+      const bool present = std::any_of(
+          enemies3d.begin(), enemies3d.end(),
+          [id = state->first](const Enemy3DRenderState& enemy) {
+            return enemy.id == id;
+          });
+      if (present) {
+        ++state;
+      } else {
+        state = enemyAnimationStates.erase(state);
+      }
+    }
+  }
 
   void setModelAsset(ModelKind kind, std::vector<uint8_t> bytes) {
     std::lock_guard<std::mutex> lock(modelAssetMutex);

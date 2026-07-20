@@ -729,15 +729,21 @@ struct SkinnedModel::Impl {
   RuntimeData data;
   bool ready = false;
   std::string lastError;
-  int currentClip = -1;
-  int previousClip = -1;
-  float currentTime = 0.0f;
-  float previousTime = 0.0f;
-  float blendElapsed = 0.0f;
+  uint64_t assetRevision = 0;
   unsigned int vbo = 0;
   unsigned int ibo = 0;
   unsigned int texture = 0;
 };
+
+void SkinnedAnimationState::reset() {
+  owner = nullptr;
+  assetRevision = 0;
+  currentClip = -1;
+  previousClip = -1;
+  currentTime = 0.0f;
+  previousTime = 0.0f;
+  blendElapsed = 0.0f;
+}
 
 bool ValidateGltf(const GltfValidationInput& input, std::string& reason) {
   if (input.assetFormat != GltfAssetFormat::Glb) {
@@ -955,63 +961,76 @@ bool SkinnedModel::tryInitialize(const std::vector<uint8_t>& bytes,
   impl_->texture = texture;
   impl_->ready = true;
   impl_->lastError.clear();
-  impl_->currentClip =
-      findClip(impl_->data,
-               ResolveClip(impl_->data.clipNames, RenderAnimation::Idle));
-  impl_->previousClip = -1;
-  impl_->currentTime = 0.0f;
-  impl_->previousTime = 0.0f;
-  impl_->blendElapsed = 0.0f;
   return true;
 }
 
 bool SkinnedModel::ready() const { return impl_->ready; }
 
-SkinPalette SkinnedModel::update(const ActorRenderState& actor, float dtSeconds) {
+SkinPalette SkinnedModel::update(SkinnedAnimationState& animation,
+                                 const ActorRenderState& actor,
+                                 float dtSeconds) const {
   if (!impl_->ready) return {};
+  if (animation.owner != this ||
+      animation.assetRevision != impl_->assetRevision) {
+    animation.reset();
+    animation.owner = this;
+    animation.assetRevision = impl_->assetRevision;
+    animation.currentClip = findClip(
+        impl_->data, ResolveClip(impl_->data.clipNames, RenderAnimation::Idle));
+  }
   const float dt = std::max(dtSeconds, 0.0f);
+  const RenderAnimation requestedAnimation = ChooseAnimation(actor);
   const std::string desiredName =
-      ResolveClip(impl_->data.clipNames, ChooseAnimation(actor));
+      ResolveClip(impl_->data.clipNames, requestedAnimation);
   const int desiredClip = findClip(impl_->data, desiredName);
-  if (desiredClip != impl_->currentClip) {
+  if (desiredClip != animation.currentClip) {
     const std::string currentName =
-        impl_->currentClip >= 0
-            ? impl_->data.clips[static_cast<std::size_t>(impl_->currentClip)].name
+        animation.currentClip >= 0
+            ? impl_->data.clips[static_cast<std::size_t>(animation.currentClip)].name
             : std::string{};
-    if (impl_->currentClip >= 0 && desiredClip >= 0 &&
+    const bool requestedLocomotion =
+        requestedAnimation == RenderAnimation::Idle ||
+        requestedAnimation == RenderAnimation::Run;
+    if (requestedLocomotion && animation.currentClip >= 0 && desiredClip >= 0 &&
         isLocomotionClip(currentName) && isLocomotionClip(desiredName)) {
-      impl_->previousClip = impl_->currentClip;
-      impl_->previousTime = impl_->currentTime;
-      impl_->blendElapsed = 0.0f;
+      animation.previousClip = animation.currentClip;
+      animation.previousTime = animation.currentTime;
+      animation.blendElapsed = 0.0f;
     } else {
-      impl_->previousClip = -1;
-      impl_->previousTime = 0.0f;
-      impl_->blendElapsed = 0.0f;
+      animation.previousClip = -1;
+      animation.previousTime = 0.0f;
+      animation.blendElapsed = 0.0f;
     }
-    impl_->currentClip = desiredClip;
-    impl_->currentTime = 0.0f;
+    animation.currentClip = desiredClip;
+    animation.currentTime = 0.0f;
   }
 
-  impl_->currentTime += dt;
-  if (impl_->previousClip >= 0) {
-    impl_->previousTime += dt;
-    impl_->blendElapsed += dt;
+  animation.currentTime += dt;
+  if (animation.previousClip >= 0) {
+    animation.previousTime += dt;
+    animation.blendElapsed += dt;
   }
 
   std::vector<PoseNode> pose =
-      samplePose(impl_->data, impl_->currentClip, impl_->currentTime);
-  if (impl_->previousClip >= 0) {
+      samplePose(impl_->data, animation.currentClip, animation.currentTime);
+  if (animation.previousClip >= 0) {
     const std::vector<PoseNode> previous =
-        samplePose(impl_->data, impl_->previousClip, impl_->previousTime);
+        samplePose(impl_->data, animation.previousClip, animation.previousTime);
     constexpr float kLocomotionBlendSeconds = 0.15f;
-    blendPoses(pose, previous, impl_->blendElapsed / kLocomotionBlendSeconds);
-    if (impl_->blendElapsed >= kLocomotionBlendSeconds) {
-      impl_->previousClip = -1;
-      impl_->previousTime = 0.0f;
-      impl_->blendElapsed = 0.0f;
+    blendPoses(pose, previous, animation.blendElapsed / kLocomotionBlendSeconds);
+    if (animation.blendElapsed >= kLocomotionBlendSeconds) {
+      animation.previousClip = -1;
+      animation.previousTime = 0.0f;
+      animation.blendElapsed = 0.0f;
     }
   }
   return buildRuntimePalette(impl_->data, pose);
+}
+
+SkinPalette SkinnedModel::update(const ActorRenderState& actor,
+                                 float dtSeconds) const {
+  SkinnedAnimationState animation;
+  return update(animation, actor, dtSeconds);
 }
 
 void SkinnedModel::draw() const {
@@ -1061,11 +1080,7 @@ void SkinnedModel::destroy() {
   impl_->data = RuntimeData{};
   impl_->ready = false;
   impl_->lastError.clear();
-  impl_->currentClip = -1;
-  impl_->previousClip = -1;
-  impl_->currentTime = 0.0f;
-  impl_->previousTime = 0.0f;
-  impl_->blendElapsed = 0.0f;
+  ++impl_->assetRevision;
 }
 
 void SkinnedModel::abandonGpuResources() {
@@ -1075,11 +1090,7 @@ void SkinnedModel::abandonGpuResources() {
   impl_->data = RuntimeData{};
   impl_->ready = false;
   impl_->lastError.clear();
-  impl_->currentClip = -1;
-  impl_->previousClip = -1;
-  impl_->currentTime = 0.0f;
-  impl_->previousTime = 0.0f;
-  impl_->blendElapsed = 0.0f;
+  ++impl_->assetRevision;
 }
 
 const std::string& SkinnedModel::lastError() const { return impl_->lastError; }

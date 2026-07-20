@@ -34,6 +34,24 @@ struct SkinPalette {
   std::vector<glm::mat4> matrices;
 };
 
+class SkinnedModel;
+
+// 每个渲染实体独立持有的动画播放状态。网格、纹理和 clip 数据仍由
+// SkinnedModel 共享，避免为每个实体复制 GPU 资产。
+struct SkinnedAnimationState {
+  void reset();
+
+ private:
+  friend class SkinnedModel;
+  const SkinnedModel* owner = nullptr;
+  uint64_t assetRevision = 0;
+  int currentClip = -1;
+  int previousClip = -1;
+  float currentTime = 0.0f;
+  float previousTime = 0.0f;
+  float blendElapsed = 0.0f;
+};
+
 enum class GltfAssetFormat {
   Glb,
   Gltf,
@@ -82,7 +100,10 @@ class SkinnedModel {
   bool tryInitialize(const std::vector<uint8_t>& bytes,
                      const std::string& assetName);
   bool ready() const;
-  SkinPalette update(const ActorRenderState& actor, float dtSeconds);
+  SkinPalette update(SkinnedAnimationState& animation,
+                     const ActorRenderState& actor, float dtSeconds) const;
+  // 保留旧调用签名用于一次性采样；连续播放应显式传入实例状态。
+  SkinPalette update(const ActorRenderState& actor, float dtSeconds) const;
   void draw() const;
   void destroy();
 

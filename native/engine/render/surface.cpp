@@ -342,6 +342,7 @@ static glm::mat4 actorModelMatrix(const glm::vec3& position, float scale) {
 }
 
 static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
+                      SkinnedAnimationState& animationState,
                       const ActorRenderState& actor, const glm::mat4& matrix,
                       const glm::mat4& vp, const glm::vec3& base) {
   s.shader3d.setMVP(vp * matrix);
@@ -349,7 +350,8 @@ static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
   applyEntityTint(s, base);
 
   if (model.ready()) {
-    s.shader3d.setSkinPalette(model.update(actor, 1.0f / 60.0f));
+    s.shader3d.setSkinPalette(
+        model.update(animationState, actor, 1.0f / 60.0f));
     s.shader3d.setSkinned(true);
     if (s.shader3d.skinningEnabled()) {
       s.shader3d.setHasTexture(model.hasTexture());
@@ -436,27 +438,32 @@ static void draw3DPhase(Surface& s) {
   glCullFace(GL_BACK);
 
   // 玩家：模型可用时走蒙皮，否则保留 M3-1 立方体。
-  drawActor(s, s.playerModel, s.playerMesh, s.player3dAnimation,
+  drawActor(s, s.playerModel, s.playerMesh, s.playerAnimationState,
+            s.player3dAnimation,
             actorModelMatrix(glm::vec3(s.player.x, 0.05f, s.player.y), 0.1f),
             vp, {0.18f, 0.65f, 0.95f});
 
   // 训练假人立方体（按 alive 跳过）。
-  drawActor(s, s.enemyModel, s.enemyMesh, s.trainingTarget3dAnimation,
+  drawActor(s, s.enemyModel, s.enemyMesh, s.trainingTargetAnimationState,
+            s.trainingTarget3dAnimation,
             actorModelMatrix(
                 glm::vec3(s.trainingTarget.x, 0.045f, s.trainingTarget.y),
                 0.09f),
             vp, {0.85f, 0.32f, 0.22f});
 
   // 敌人立方体（按存活状态跳过）。
+  s.pruneEnemyAnimationStates();
   for (const Enemy3DRenderState& enemy : s.enemies3d) {
-    drawActor(s, s.enemyModel, s.enemyMesh, enemy.animation,
+    SkinnedAnimationState& animationState = s.enemyAnimationStates[enemy.id];
+    drawActor(s, s.enemyModel, s.enemyMesh, animationState, enemy.animation,
               actorModelMatrix(glm::vec3(enemy.x, 0.045f, enemy.y), 0.09f),
               vp, enemyColorByArchetype(enemy.archetype));
   }
 
   // 首领立方体（按阶段配色，击败后跳过）。
   if (s.boss3d.active) {
-    drawActor(s, s.bossModel, s.bossMesh, s.boss3d.animation,
+    drawActor(s, s.bossModel, s.bossMesh, s.bossAnimationState,
+              s.boss3d.animation,
               actorModelMatrix(glm::vec3(s.boss3d.x, 0.08f, s.boss3d.y),
                                0.16f),
               vp, bossColorByPhase(s.boss3d.phase));
@@ -1151,5 +1158,9 @@ void surface_destroy(Surface& s) {
   s.props.clear();
   s.particles.clear();
   s.enemies3d.clear();
+  s.enemyAnimationStates.clear();
+  s.playerAnimationState.reset();
+  s.trainingTargetAnimationState.reset();
+  s.bossAnimationState.reset();
   LOGI("Surface destroyed");
 }
