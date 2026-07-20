@@ -4,9 +4,11 @@
 #include <hilog/log.h>
 #include <cmath>
 #include <atomic>
+#include <vector>
 #include "engine/core/loop.h"
 #include "engine/input/changed_pointer_forwarder.h"
 #include "engine/input/pointer_input.h"
+#include "native/platform/harmony/model_asset_commit.h"
 
 #define LOGI(...) OH_LOG_Print(LOG_APP, LOG_INFO, 0xFF00, "Ethelan", __VA_ARGS__)
 #define LOGE(...) OH_LOG_Print(LOG_APP, LOG_ERROR, 0xFF00, "Ethelan", __VA_ARGS__)
@@ -134,6 +136,15 @@ static napi_value NativeStop(napi_env env, napi_callback_info) {
   return nullptr;
 }
 
+// GamePage may finish loading after EntryAbility has already sent nativeStop.
+// Unlike NativeStart, this cannot turn a background request back into foreground.
+static napi_value NativeStartIfForeground(napi_env env, napi_callback_info) {
+  if (g_foregroundRequested.load()) {
+    g_loop.start();
+  }
+  return nullptr;
+}
+
 static napi_value NativeSetModelAssets(napi_env env, napi_callback_info info) {
   size_t argc = 3;
   napi_value args[3] = {nullptr, nullptr, nullptr};
@@ -144,21 +155,28 @@ static napi_value NativeSetModelAssets(napi_env env, napi_callback_info info) {
     return result;
   }
 
-  std::vector<uint8_t> player;
-  std::vector<uint8_t> enemy;
-  std::vector<uint8_t> boss;
-  if (!CopyArrayBuffer(env, args[0], player) ||
-      !CopyArrayBuffer(env, args[1], enemy) ||
-      !CopyArrayBuffer(env, args[2], boss)) {
+  const bool committed = CopyAndCommitModelAssets(
+      [&env, &args](ModelAssetSlot slot, std::vector<uint8_t>& out) {
+        return CopyArrayBuffer(env, args[static_cast<size_t>(slot)], out);
+      },
+      [](auto operation) { g_loop.withLifecycle(operation); },
+      [](ModelAssetSlot slot, std::vector<uint8_t> bytes) {
+        switch (slot) {
+          case ModelAssetSlot::Player:
+            g_loop.surface.setModelAsset(ModelKind::Player, std::move(bytes));
+            break;
+          case ModelAssetSlot::Enemy:
+            g_loop.surface.setModelAsset(ModelKind::Enemy, std::move(bytes));
+            break;
+          case ModelAssetSlot::Boss:
+            g_loop.surface.setModelAsset(ModelKind::Boss, std::move(bytes));
+            break;
+        }
+      });
+  if (!committed) {
     napi_get_boolean(env, false, &result);
     return result;
   }
-
-  g_loop.withLifecycle([&player, &enemy, &boss]() {
-    g_loop.surface.setModelAsset(ModelKind::Player, std::move(player));
-    g_loop.surface.setModelAsset(ModelKind::Enemy, std::move(enemy));
-    g_loop.surface.setModelAsset(ModelKind::Boss, std::move(boss));
-  });
   napi_get_boolean(env, true, &result);
   return result;
 }
@@ -404,6 +422,7 @@ static napi_value Init(napi_env env, napi_value exports) {
   napi_property_descriptor desc[] = {
     {"nativeStart", nullptr, NativeStart, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"nativeStop", nullptr, NativeStop, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"nativeStartIfForeground", nullptr, NativeStartIfForeground, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"nativeSetModelAssets", nullptr, NativeSetModelAssets, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pushInput", nullptr, NativePushInput, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pushAction", nullptr, NativePushAction, nullptr, nullptr, nullptr, napi_default, nullptr},

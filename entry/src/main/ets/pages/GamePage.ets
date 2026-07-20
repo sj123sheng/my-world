@@ -1,4 +1,4 @@
-import { nativeSetModelAssets, nativeStart, nativeStop, pullSnapshot, Snapshot } from '../napi/Bridge';
+import { nativeSetModelAssets, nativeStartIfForeground, nativeStop, pullSnapshot, Snapshot } from '../napi/Bridge';
 import { Hud } from '../ui/Hud';
 import { CombatControls } from '../ui/CombatControls';
 
@@ -76,8 +76,14 @@ struct GamePage {
   @State bossCastRatio: number = 0;
   @State debugHud: boolean = false;
   private timer: number = -1;
+  private pageActive: boolean = false;
+  private modelLoadGeneration: number = 0;
 
-  private async loadModelAssets(): Promise<void> {
+  private isActiveModelLoad(generation: number): boolean {
+    return this.pageActive && generation === this.modelLoadGeneration;
+  }
+
+  private async loadModelAssets(generation: number): Promise<void> {
     try {
       const resourceManager = getContext(this).resourceManager;
       const assets: Uint8Array[] = await Promise.all([
@@ -85,15 +91,22 @@ struct GamePage {
         resourceManager.getRawFileContent('models/enemy.glb'),
         resourceManager.getRawFileContent('models/boss.glb')
       ]);
+      if (!this.isActiveModelLoad(generation)) {
+        return;
+      }
       if (!nativeSetModelAssets(assets[0].buffer as ArrayBuffer,
         assets[1].buffer as ArrayBuffer, assets[2].buffer as ArrayBuffer)) {
         console.error('[Ethelan] Native rejected model asset buffers; using fallback meshes');
       }
     } catch (error) {
-      console.error('[Ethelan] Failed to load model assets; using fallback meshes: ' +
-        JSON.stringify(error));
+      if (this.isActiveModelLoad(generation)) {
+        console.error('[Ethelan] Failed to load model assets; using fallback meshes: ' +
+          JSON.stringify(error));
+      }
     } finally {
-      nativeStart();
+      if (this.isActiveModelLoad(generation)) {
+        nativeStartIfForeground();
+      }
     }
   }
 
@@ -156,7 +169,9 @@ struct GamePage {
   }
 
   aboutToAppear() {
-    this.loadModelAssets();
+    this.pageActive = true;
+    const generation = ++this.modelLoadGeneration;
+    this.loadModelAssets(generation);
     this.timer = setInterval(() => {
       try {
         this.snapshot = pullSnapshot();
@@ -219,6 +234,8 @@ struct GamePage {
   }
 
   aboutToDisappear() {
+    this.pageActive = false;
+    ++this.modelLoadGeneration;
     if (this.timer !== -1) {
       clearInterval(this.timer);
       this.timer = -1;

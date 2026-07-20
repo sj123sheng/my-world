@@ -316,11 +316,10 @@ const setModelAssetsBody = functionBody(nativeBridge,
   'static napi_value NativeSetModelAssets');
 assert.match(setModelAssetsBody, /argc != 3/,
   'NativeSetModelAssets must require exactly three arguments');
-assert.equal((setModelAssetsBody.match(/CopyArrayBuffer\(/g) ?? []).length, 3,
-  'NativeSetModelAssets must independently copy all three ArrayBuffers');
-assert.match(setModelAssetsBody,
-  /g_loop\.withLifecycle\([\s\S]*?setModelAsset\(ModelKind::Player[\s\S]*?setModelAsset\(ModelKind::Enemy[\s\S]*?setModelAsset\(ModelKind::Boss/,
-  'NativeSetModelAssets must inject all owned bytes while lifecycle synchronization is held');
+assert.match(setModelAssetsBody, /CopyAndCommitModelAssets/,
+  'NativeSetModelAssets must delegate copy and commit ordering to the atomic helper');
+assert.match(setModelAssetsBody, /CopyArrayBuffer\(env, args\[static_cast<size_t>\(slot\)\], out\)/,
+  'each helper slot must independently copy its corresponding ArrayBuffer');
 assert.match(setModelAssetsBody, /napi_get_boolean\(env, true, &result\)/,
   'NativeSetModelAssets must return true after atomic injection');
 
@@ -333,10 +332,36 @@ assert.match(page, /Promise\.all\s*\(/,
 assert.match(page, /nativeSetModelAssets\s*\(/,
   'GamePage must inject all model assets in one bridge call');
 const aboutToAppearBody = functionBody(page, 'aboutToAppear()');
-assert.match(aboutToAppearBody, /this\.loadModelAssets\(\);/,
-  'GamePage aboutToAppear must begin model loading');
-const loadModelAssetsBody = functionBody(page, 'private async loadModelAssets()');
+assert.match(aboutToAppearBody, /this\.pageActive\s*=\s*true/,
+  'GamePage aboutToAppear must make the page active before loading');
+assert.match(aboutToAppearBody, /\+\+this\.modelLoadGeneration/,
+  'GamePage aboutToAppear must start a new model-load generation');
+assert.match(aboutToAppearBody, /this\.loadModelAssets\(generation\);/,
+  'GamePage aboutToAppear must load models for its generation');
+const disappearBody = functionBody(page, 'aboutToDisappear()');
+assert.match(disappearBody, /this\.pageActive\s*=\s*false/,
+  'GamePage disappearance must invalidate page activity');
+assert.match(disappearBody, /\+\+this\.modelLoadGeneration/,
+  'GamePage disappearance must invalidate pending model-load generations');
+const loadModelAssetsBody = functionBody(page, 'private async loadModelAssets(generation: number)');
 assert.match(loadModelAssetsBody, /catch\s*\([^)]+\)[\s\S]*?console\.error/,
   'GamePage must record rawfile loading failures');
-assert.match(loadModelAssetsBody, /finally[\s\S]*?nativeStart\(\);/,
-  'GamePage must start native rendering even when model loading falls back');
+assert.match(loadModelAssetsBody, /this\.isActiveModelLoad\(generation\)/,
+  'GamePage must gate model completion by page activity and generation');
+assert.match(loadModelAssetsBody,
+  /finally\s*\{\s*if\s*\(this\.isActiveModelLoad\(generation\)\)\s*\{\s*nativeStartIfForeground\(\);/,
+  'only the active generation may start native rendering, and only while foregrounded');
+assert.match(bridge, /export const nativeStartIfForeground/,
+  'Bridge must export a foreground-preserving native start');
+assert.match(nativeBridge, /static napi_value NativeStartIfForeground/,
+  'native bridge must implement foreground-preserving native start');
+const nativeStartIfForegroundBody = functionBody(nativeBridge,
+  'static napi_value NativeStartIfForeground');
+assert.match(nativeStartIfForegroundBody, /g_foregroundRequested\.load\(\)/,
+  'foreground-preserving start must not override a nativeStop background request');
+
+assert.match(nativeBridge, /CopyAndCommitModelAssets/,
+  'NativeSetModelAssets must use the independently testable atomic batch helper');
+assert.match(nativeBridge,
+  /CopyAndCommitModelAssets[\s\S]*?g_loop\.withLifecycle[\s\S]*?setModelAsset\(ModelKind::Player[\s\S]*?setModelAsset\(ModelKind::Enemy[\s\S]*?setModelAsset\(ModelKind::Boss/,
+  'all copies must finish before one lifecycle-held, three-asset commit');

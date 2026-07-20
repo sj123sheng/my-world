@@ -29,8 +29,10 @@ void auditAsset(const std::string& kind) {
   assert(model.ready());
   assert(model.vertexCount() > 0);
   assert(model.indexCount() > 0);
-  assert(model.jointCount() > 0);
-  assert(model.jointCount() <= kMaxSkinJoints);
+  assert(model.jointCount() == 41);
+  assert(model.primitiveCount() == 6);
+  assert(model.clipNames().size() == 76);
+  assert(model.embeddedTextureCount() == 1);
   assert(model.hasTexture());
 
   const std::vector<std::string>& clips = model.clipNames();
