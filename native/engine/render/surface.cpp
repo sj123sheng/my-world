@@ -331,6 +331,7 @@ static void drawMeshAt(Surface& s, const Mesh& mesh,
   s.shader3d.setMVP(vp * model);
   s.shader3d.setModel(model);
   s.shader3d.setSkinned(false);
+  s.shader3d.setHasTexture(mesh.texture != 0u);
   applyEntityTint(s, base);
   mesh.draw();
 }
@@ -351,12 +352,14 @@ static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
     s.shader3d.setSkinPalette(model.update(actor, 1.0f / 60.0f));
     s.shader3d.setSkinned(true);
     if (s.shader3d.skinningEnabled()) {
+      s.shader3d.setHasTexture(model.hasTexture());
       model.draw();
       return;
     }
   }
 
   s.shader3d.setSkinned(false);
+  s.shader3d.setHasTexture(fallback.texture != 0u);
   // 静态 Mesh 没有死亡姿态；死亡实体保持隐藏，而可用的骨骼模型可播放 death。
   if (actor.alive) fallback.draw();
 }

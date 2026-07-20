@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <cmath>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -10,6 +11,20 @@ namespace {
 
 bool close(float actual, float expected, float epsilon = 0.0001f) {
   return std::fabs(actual - expected) < epsilon;
+}
+
+void expectInitializationFailure(const std::vector<uint8_t>& bytes,
+                                 const std::string& assetName,
+                                 const std::string& detail) {
+  SkinnedModel model;
+  assert(!model.tryInitialize(bytes, assetName));
+  assert(!model.ready());
+  assert(model.lastError().find(assetName) != std::string::npos);
+  if (model.lastError().find(detail) == std::string::npos) {
+    std::fprintf(stderr, "expected '%s' in '%s'\n", detail.c_str(),
+                 model.lastError().c_str());
+  }
+  assert(model.lastError().find(detail) != std::string::npos);
 }
 
 void testInitializesMinimalGlbFromMemory() {
@@ -32,6 +47,160 @@ void testInitializesMinimalGlbFromMemory() {
       }
     }
   }
+}
+
+void testRejectsUnsupportedRealGlbInputs() {
+  const std::vector<uint8_t> valid = gltf_fixture::makeMinimalGlb();
+  expectInitializationFailure({'{', '}'}, "json.gltf", "only GLB");
+  expectInitializationFailure(
+      gltf_fixture::replaceJsonText(valid, "\"mode\":4", "\"mode\":1"),
+      "lines.glb", "TRIANGLES");
+  expectInitializationFailure(
+      gltf_fixture::replaceJsonText(valid, "\"POSITION\":0,", ""),
+      "missing-position.glb", "POSITION");
+  expectInitializationFailure(
+      gltf_fixture::replaceJsonText(valid, "\"JOINTS_0\":3",
+                                    "\"JOINTS_0\":3,\"JOINTS_1\":3"),
+      "extra-joints.glb", "JOINTS_1/WEIGHTS_1");
+
+  std::ostringstream joints;
+  joints << "\"joints\":[";
+  for (int i = 0; i < 65; ++i) {
+    if (i != 0) joints << ',';
+    joints << (i % 2 == 0 ? 1 : 2);
+  }
+  joints << ']';
+  expectInitializationFailure(
+      gltf_fixture::replaceJsonText(valid, "\"joints\":[1,2]", joints.str()),
+      "too-many-joints.glb", "joint count exceeds 64");
+
+  expectInitializationFailure(
+      gltf_fixture::replaceJsonText(valid, "\"interpolation\":\"LINEAR\"",
+                                    "\"interpolation\":\"CUBICSPLINE\""),
+      "cubic.glb", "CUBICSPLINE");
+
+  const uint32_t jsonLength = gltf_fixture::readU32(valid, 12);
+  const uint32_t binLength = gltf_fixture::readU32(valid, 20 + jsonLength);
+  const std::string buffer =
+      "\"buffers\":[{\"byteLength\":" + std::to_string(binLength) + "}]";
+  const std::string externalBuffer =
+      "\"buffers\":[{\"byteLength\":" + std::to_string(binLength) +
+      ",\"uri\":\"external.bin\"}]";
+  expectInitializationFailure(
+      gltf_fixture::replaceJsonText(valid, buffer, externalBuffer),
+      "external.glb", "external buffer URI");
+
+  expectInitializationFailure(
+      gltf_fixture::replaceJsonText(valid, "\"byteLength\":36",
+                                    "\"byteLength\":4"),
+      "bounds.glb", "out of bounds");
+}
+
+void testRejectsAdditionalUnsupportedGlbFeatures() {
+  const std::vector<uint8_t> valid = gltf_fixture::makeMinimalGlb();
+  expectInitializationFailure(
+      gltf_fixture::replaceJsonText(
+          valid, "\"asset\":{\"version\":\"2.0\"},",
+          "\"asset\":{\"version\":\"2.0\"},\"extensionsUsed\":[\"KHR_draco_mesh_compression\"],"),
+      "extension.glb", "extensions");
+  expectInitializationFailure(
+      gltf_fixture::replaceJsonText(
+          valid,
+          "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"}",
+          "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\","
+          "\"sparse\":{\"count\":1,\"indices\":{\"bufferView\":5,\"componentType\":5123},"
+          "\"values\":{\"bufferView\":0}}}"),
+      "sparse.glb", "sparse");
+  expectInitializationFailure(
+      gltf_fixture::replaceJsonText(
+          valid, "\"meshes\":[",
+          "\"images\":[{\"uri\":\"external.png\"}],\"meshes\":["),
+      "external-image.glb", "external image URI");
+  expectInitializationFailure(
+      gltf_fixture::replaceJsonText(
+          valid,
+          "{\"inverseBindMatrices\":6,\"joints\":[1,2],\"skeleton\":1}",
+          "{\"inverseBindMatrices\":6,\"joints\":[1,2],\"skeleton\":1},"
+          "{\"inverseBindMatrices\":6,\"joints\":[1,2],\"skeleton\":1}"),
+      "multiple-skins.glb", "exactly one skin");
+  expectInitializationFailure(gltf_fixture::makeZeroWeightsGlb(),
+                              "zero-weights.glb", "weights sum to zero");
+}
+
+void testCombinesMultiplePrimitivesAndOwnsEmbeddedImage() {
+  SkinnedModel multiple;
+  const bool multipleReady = multiple.tryInitialize(
+      gltf_fixture::makeTwoPrimitiveGlb(), "multiple.glb");
+  if (!multipleReady) std::fprintf(stderr, "%s\n", multiple.lastError().c_str());
+  assert(multipleReady);
+  assert(multiple.vertexCount() == 6);
+  assert(multiple.indexCount() == 6);
+
+  SkinnedModel textured;
+  const bool texturedReady = textured.tryInitialize(
+      gltf_fixture::makeEmbeddedTextureGlb(), "textured.glb");
+  if (!texturedReady) std::fprintf(stderr, "%s\n", textured.lastError().c_str());
+  assert(texturedReady);
+  assert(textured.hasTexture());
+  assert(textured.vertexCount() == 3);
+  assert(textured.indexCount() == 3);
+
+  expectInitializationFailure(gltf_fixture::makeInvalidEmbeddedTextureGlb(),
+                              "broken-texture.glb", "decode");
+}
+
+void testUsesNonJointAncestorsAndAnimationTransitions() {
+  SkinnedModel model;
+  assert(model.tryInitialize(gltf_fixture::makeMinimalGlb(), "animated.glb"));
+  const SkinPalette idle = model.update(ActorRenderState{}, 0.0f);
+  assert(close(idle.matrices[0][3].x, 3.0f));
+
+  ActorRenderState running;
+  running.moving = true;
+  const SkinPalette halfBlend = model.update(running, 0.075f);
+  assert(halfBlend.matrices[0][3].x > 3.0f);
+  assert(halfBlend.matrices[0][3].x < 3.15f);
+  const SkinPalette completeBlend = model.update(running, 0.075f);
+  assert(close(completeBlend.matrices[0][3].x, 3.3f));
+
+  ActorRenderState attackWithoutClip;
+  attackWithoutClip.attacking = true;
+  const SkinPalette fallback = model.update(attackWithoutClip, 0.15f);
+  assert(close(fallback.matrices[0][3].x, 3.0f));
+
+  SkinnedModel attackModel;
+  assert(attackModel.tryInitialize(gltf_fixture::makeMinimalGlb(true),
+                                   "attack.glb"));
+  attackModel.update(running, 0.15f);
+  const SkinPalette runPose = attackModel.update(running, 0.35f);
+  assert(close(runPose.matrices[0][3].x, 4.0f));
+  ActorRenderState attacking;
+  attacking.attacking = true;
+  const SkinPalette immediateAttack = attackModel.update(attacking, 0.0f);
+  assert(close(immediateAttack.matrices[0][3].x, 3.0f));
+}
+
+void testDestroyAndAbandonClearAllTracking() {
+  SkinnedModel model;
+  assert(model.tryInitialize(gltf_fixture::makeMinimalGlb(), "cleanup.glb"));
+  assert(model.gpuResourceCount() == 0);
+  model.draw();
+  model.destroy();
+  assert(!model.ready());
+  assert(model.vertexCount() == 0);
+  assert(model.indexCount() == 0);
+  assert(model.jointCount() == 0);
+  assert(model.clipNames().empty());
+  assert(model.gpuResourceCount() == 0);
+
+  assert(model.tryInitialize(gltf_fixture::makeMinimalGlb(), "abandon.glb"));
+  model.abandonGpuResources();
+  assert(!model.ready());
+  assert(model.vertexCount() == 0);
+  assert(model.indexCount() == 0);
+  assert(model.jointCount() == 0);
+  assert(model.clipNames().empty());
+  assert(model.gpuResourceCount() == 0);
 }
 
 GltfValidationInput validValidationInput() {
@@ -167,6 +336,11 @@ void testRejectsOver64Joints() {
 
 int main() {
   testInitializesMinimalGlbFromMemory();
+  testRejectsUnsupportedRealGlbInputs();
+  testRejectsAdditionalUnsupportedGlbFeatures();
+  testCombinesMultiplePrimitivesAndOwnsEmbeddedImage();
+  testUsesNonJointAncestorsAndAnimationTransitions();
+  testDestroyAndAbandonClearAllTracking();
   testWrapAndStepSampling();
   testLinearSampling();
   testRejectsUnequalAnimationChannelLengths();

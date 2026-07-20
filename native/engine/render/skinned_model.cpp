@@ -587,6 +587,18 @@ bool parseGlb(const std::vector<uint8_t>& bytes, const std::string& assetName,
   if (loadResult != cgltf_result_success) {
     return fail(assetName, cgltfResultName(loadResult), error);
   }
+  // cgltf_validate 会先按 CUBICSPLINE 的 3 倍输出规则拒绝数据。先识别项目明确
+  // 不支持的插值，确保错误能指出资产名和真正的不兼容原因。
+  for (std::size_t animation = 0; animation < parsed->animations_count; ++animation) {
+    for (std::size_t sampler = 0;
+         sampler < parsed->animations[animation].samplers_count; ++sampler) {
+      if (parsed->animations[animation].samplers[sampler].interpolation ==
+          cgltf_interpolation_type_cubic_spline) {
+        return fail(assetName,
+                    "animation interpolation CUBICSPLINE is unsupported", error);
+      }
+    }
+  }
   const cgltf_result validateResult = cgltf_validate(parsed.get());
   if (validateResult != cgltf_result_success) {
     return fail(assetName, cgltfResultName(validateResult), error);
@@ -873,10 +885,32 @@ bool SkinnedModel::tryInitialize(const std::vector<uint8_t>& bytes,
   unsigned int vbo = 0;
   unsigned int ibo = 0;
   unsigned int texture = 0;
+  int imageWidth = 0;
+  int imageHeight = 0;
+  int imageChannels = 0;
+  stbi_uc* imagePixels = nullptr;
+  if (!parsed.baseColorImage.empty()) {
+    if (parsed.baseColorImage.size() >
+        static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+      impl_->lastError = assetPrefix(assetName) +
+                         "embedded baseColor image is too large";
+      return false;
+    }
+    imagePixels = stbi_load_from_memory(
+        parsed.baseColorImage.data(), static_cast<int>(parsed.baseColorImage.size()),
+        &imageWidth, &imageHeight, &imageChannels, STBI_rgb_alpha);
+    if (imagePixels == nullptr || imageWidth <= 0 || imageHeight <= 0) {
+      if (imagePixels != nullptr) stbi_image_free(imagePixels);
+      impl_->lastError = assetPrefix(assetName) +
+                         "could not decode embedded baseColor image";
+      return false;
+    }
+  }
 #ifdef OHOS_PLATFORM
   glGenBuffers(1, &vbo);
   glGenBuffers(1, &ibo);
   if (vbo == 0u || ibo == 0u) {
+    if (imagePixels != nullptr) stbi_image_free(imagePixels);
     if (vbo != 0u) glDeleteBuffers(1, &vbo);
     if (ibo != 0u) glDeleteBuffers(1, &ibo);
     impl_->lastError = assetPrefix(assetName) + "could not create GLES mesh buffers";
@@ -893,47 +927,27 @@ bool SkinnedModel::tryInitialize(const std::vector<uint8_t>& bytes,
   glBindBuffer(GL_ARRAY_BUFFER, 0);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-  if (!parsed.baseColorImage.empty()) {
-    if (parsed.baseColorImage.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
-      glDeleteBuffers(1, &vbo);
-      glDeleteBuffers(1, &ibo);
-      impl_->lastError = assetPrefix(assetName) + "embedded baseColor image is too large";
-      return false;
-    }
-    int width = 0;
-    int height = 0;
-    int channels = 0;
-    stbi_uc* pixels = stbi_load_from_memory(
-        parsed.baseColorImage.data(), static_cast<int>(parsed.baseColorImage.size()),
-        &width, &height, &channels, STBI_rgb_alpha);
-    if (pixels == nullptr || width <= 0 || height <= 0) {
-      if (pixels != nullptr) stbi_image_free(pixels);
-      glDeleteBuffers(1, &vbo);
-      glDeleteBuffers(1, &ibo);
-      impl_->lastError = assetPrefix(assetName) +
-                         "could not decode embedded baseColor image";
-      return false;
-    }
+  if (imagePixels != nullptr) {
     glGenTextures(1, &texture);
     if (texture == 0u) {
-      stbi_image_free(pixels);
+      stbi_image_free(imagePixels);
       glDeleteBuffers(1, &vbo);
       glDeleteBuffers(1, &ibo);
       impl_->lastError = assetPrefix(assetName) + "could not create GLES texture";
       return false;
     }
     glBindTexture(GL_TEXTURE_2D, texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA,
-                 GL_UNSIGNED_BYTE, pixels);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, imageWidth, imageHeight, 0, GL_RGBA,
+                 GL_UNSIGNED_BYTE, imagePixels);
     glGenerateMipmap(GL_TEXTURE_2D);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glBindTexture(GL_TEXTURE_2D, 0);
-    stbi_image_free(pixels);
   }
 #endif
+  if (imagePixels != nullptr) stbi_image_free(imagePixels);
 
   impl_->data = std::move(parsed);
   impl_->vbo = vbo;
