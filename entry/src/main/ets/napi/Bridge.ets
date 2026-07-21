@@ -65,6 +65,9 @@ export interface Snapshot {
 
 export const nativeStart = (): void => native.nativeStart();
 export const nativeStop = (): void => native.nativeStop();
+export const nativeStartIfForeground = (): void => native.nativeStartIfForeground();
+export const nativeSetModelAssets = (player: ArrayBuffer, enemy: ArrayBuffer,
+  boss: ArrayBuffer): boolean => native.nativeSetModelAssets(player, enemy, boss);
 export const pushInput = (e: InputEvent): void => native.pushInput(e);
 export const pushAction = (type: number): void => native.pushAction(type);
 export const startEncounter = (mode: number): boolean => native.startEncounter(mode);

@@ -8,6 +8,7 @@
 
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
 
 #include <cstdint>
 #include <vector>
@@ -21,6 +22,22 @@ struct Vertex {
   glm::vec3 normal;
   glm::vec2 uv;
 };
+
+// glTF 蒙皮顶点布局。关节索引直接作为整型属性传给顶点着色器。
+struct SkinnedVertex {
+  glm::vec3 position;
+  glm::vec3 normal;
+  glm::vec2 uv;
+  glm::uvec4 joints;
+  glm::vec4 weights;
+};
+
+// Shader3D 顶点属性槽位。静态网格仅绑定前 3 个槽位。
+constexpr unsigned int kPositionAttribute = 0;
+constexpr unsigned int kNormalAttribute = 1;
+constexpr unsigned int kUvAttribute = 2;
+constexpr unsigned int kJointsAttribute = 3;
+constexpr unsigned int kWeightsAttribute = 4;
 
 struct Mesh {
   std::vector<Vertex> vertices;
@@ -39,6 +56,10 @@ struct Mesh {
 
   // 释放 GPU 资源。非 OHOS 平台为空操作。
   void destroy();
+
+  // context 已不可 current 时仅丢弃 CPU 句柄跟踪，绝不发出 GL 删除调用。
+  // 随后的 eglDestroyContext 负责回收实际驱动对象。
+  void abandonGpuResources();
 };
 
 // 生成立方体网格：24 顶点（6 面 × 4 顶点，每面法线独立），36 索引（12 三角形）。

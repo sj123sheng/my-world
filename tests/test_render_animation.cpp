@@ -1,0 +1,180 @@
+#include "native/engine/render/render_animation.h"
+#include "native/engine/render/render_lifecycle.h"
+#include "native/engine/render/skinned_model.h"
+#include "native/engine/render/surface.h"
+
+#include <cassert>
+#include <string>
+#include <vector>
+
+namespace {
+
+void testAnimationPriority() {
+  ActorRenderState actor;
+  actor.alive = false;
+  actor.attacking = true;
+  actor.hit = true;
+  actor.moving = true;
+  assert(ChooseAnimation(actor) == RenderAnimation::Death);
+
+  actor.alive = true;
+  assert(ChooseAnimation(actor) == RenderAnimation::Attack);
+
+  actor.attacking = false;
+  assert(ChooseAnimation(actor) == RenderAnimation::Hit);
+
+  actor.hit = false;
+  assert(ChooseAnimation(actor) == RenderAnimation::Run);
+
+  actor.moving = false;
+  assert(ChooseAnimation(actor) == RenderAnimation::Idle);
+}
+
+void testClipResolutionFallsBackToIdle() {
+  assert(ResolveClip({"idle"}, RenderAnimation::Attack) == "idle");
+  assert(ResolveClip({"idle", "run", "attack"},
+                     RenderAnimation::Attack) == "attack");
+  assert(ResolveClip({"run"}, RenderAnimation::Death) == "run");
+  assert(ResolveClip({}, RenderAnimation::Idle).empty());
+}
+
+void testUnavailableRuntimeModelStaysOnFallbackPath() {
+  SkinnedModel model;
+  assert(!model.ready());
+  assert(!model.tryInitialize({0x67, 0x6c, 0x54, 0x46}, "player.glb"));
+  assert(!model.ready());
+  assert(model.lastError().find("runtime loader") != std::string::npos);
+  model.destroy();
+  assert(!model.ready());
+}
+
+void testSurfaceStoresLateModelAssetsForContextBoundInitialization() {
+  Surface surface;
+  surface.setModelAsset(ModelKind::Player, {1, 2, 3});
+  surface.setModelAsset(ModelKind::Enemy, {4, 5});
+  surface.setModelAsset(ModelKind::Boss, {6});
+
+  assert((surface.playerModelAsset.bytes == std::vector<uint8_t>{1, 2, 3}));
+  assert((surface.enemyModelAsset.bytes == std::vector<uint8_t>{4, 5}));
+  assert((surface.bossModelAsset.bytes == std::vector<uint8_t>{6}));
+  assert(surface.playerModelAsset.dirty);
+  assert(surface.enemyModelAsset.dirty);
+  assert(surface.bossModelAsset.dirty);
+}
+
+void testSurfaceKeepsEnemyAnimationStateByStableEntityId() {
+  Surface surface;
+  surface.enemyAnimationStates.emplace(2001, SkinnedAnimationState{});
+  surface.enemyAnimationStates.emplace(2002, SkinnedAnimationState{});
+
+  Enemy3DRenderState remaining;
+  remaining.id = 2002;
+  surface.enemies3d.push_back(remaining);
+  surface.pruneEnemyAnimationStates();
+
+  assert(surface.enemyAnimationStates.size() == 1);
+  assert(surface.enemyAnimationStates.find(2002) !=
+         surface.enemyAnimationStates.end());
+}
+
+void testPendingAssetIsConsumedExactlyOnceAfterLateDirtySignal() {
+  PendingModelAsset asset;
+  std::vector<uint8_t> consumed;
+
+  asset.replace({1, 2, 3});
+  assert(asset.dirty);
+  assert(asset.take(consumed));
+  assert((consumed == std::vector<uint8_t>{1, 2, 3}));
+  assert(!asset.dirty);
+  assert(!asset.take(consumed));
+}
+
+void testPendingAssetReplacementAndClearRemainConsumable() {
+  PendingModelAsset asset;
+  std::vector<uint8_t> consumed;
+
+  asset.replace({1});
+  assert(asset.take(consumed));
+  asset.replace({2, 3});
+  assert(asset.take(consumed));
+  assert((consumed == std::vector<uint8_t>{2, 3}));
+  asset.replace({});
+  assert(asset.take(consumed));
+  assert(consumed.empty());
+  assert(!asset.dirty);
+}
+
+void testSurfaceDestroyDoesNotTouchGlOrUnbindAfterMakeCurrentFailure() {
+  std::vector<std::string> calls;
+  SurfaceDestroyOperations operations;
+  operations.makeCurrent = [&calls] {
+    calls.emplace_back("make-current");
+    return false;
+  };
+  operations.destroyGlResource = [&calls](SurfaceGlResource resource) {
+    calls.emplace_back("gl-destroy-" + std::to_string(static_cast<int>(resource)));
+  };
+  operations.abandonGpuResources = [&calls] { calls.emplace_back("abandon-cpu"); };
+  operations.unbindCurrent = [&calls] { calls.emplace_back("unbind"); };
+  operations.destroyEglSurface = [&calls] { calls.emplace_back("destroy-egl-surface"); };
+  operations.destroyEglContext = [&calls] { calls.emplace_back("destroy-egl-context"); };
+  operations.terminateEglDisplay = [&calls] { calls.emplace_back("terminate-egl-display"); };
+
+  ExecuteSurfaceDestroy(operations);
+
+  assert((calls == std::vector<std::string>{
+                       "make-current", "abandon-cpu", "destroy-egl-surface",
+                       "destroy-egl-context", "terminate-egl-display"}));
+}
+
+void testSurfaceDestroyDestroysGlBeforeUnbindAndEglCleanup() {
+  std::vector<std::string> calls;
+  SurfaceDestroyOperations operations;
+  operations.makeCurrent = [&calls] {
+    calls.emplace_back("make-current");
+    return true;
+  };
+  operations.destroyGlResource = [&calls](SurfaceGlResource resource) {
+    switch (resource) {
+      case SurfaceGlResource::SkinnedModels:
+        calls.emplace_back("destroy-skinned-models");
+        break;
+      case SurfaceGlResource::StaticMeshes:
+        calls.emplace_back("destroy-static-meshes");
+        break;
+      case SurfaceGlResource::Shader3D:
+        calls.emplace_back("destroy-shader-3d");
+        break;
+      case SurfaceGlResource::Program2D:
+        calls.emplace_back("destroy-program-2d");
+        break;
+    }
+  };
+  operations.abandonGpuResources = [&calls] { calls.emplace_back("abandon-cpu"); };
+  operations.unbindCurrent = [&calls] { calls.emplace_back("unbind"); };
+  operations.destroyEglSurface = [&calls] { calls.emplace_back("destroy-egl-surface"); };
+  operations.destroyEglContext = [&calls] { calls.emplace_back("destroy-egl-context"); };
+  operations.terminateEglDisplay = [&calls] { calls.emplace_back("terminate-egl-display"); };
+
+  ExecuteSurfaceDestroy(operations);
+
+  assert((calls == std::vector<std::string>{
+                       "make-current", "destroy-skinned-models", "destroy-static-meshes",
+                       "destroy-shader-3d", "destroy-program-2d", "unbind",
+                       "destroy-egl-surface", "destroy-egl-context", "terminate-egl-display"}));
+}
+
+}  // namespace
+
+int main() {
+  testAnimationPriority();
+  testClipResolutionFallsBackToIdle();
+  testUnavailableRuntimeModelStaysOnFallbackPath();
+  testSurfaceStoresLateModelAssetsForContextBoundInitialization();
+  testSurfaceKeepsEnemyAnimationStateByStableEntityId();
+  testPendingAssetIsConsumedExactlyOnceAfterLateDirtySignal();
+  testPendingAssetReplacementAndClearRemainConsumable();
+  testSurfaceDestroyDoesNotTouchGlOrUnbindAfterMakeCurrentFailure();
+  testSurfaceDestroyDestroysGlBeforeUnbindAndEglCleanup();
+  return 0;
+}

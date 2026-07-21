@@ -8,6 +8,9 @@
 #include <cassert>
 #include <cmath>
 #include <algorithm>
+#include <cstddef>
+
+static_assert(offsetof(SkinnedVertex, position) == 0);
 
 namespace {
 
@@ -95,6 +98,11 @@ void testMeshDefaultResourceHandles() {
   cube.destroy();
 }
 
+void testSkinnedVertexUsesExpectedAttributeSlots() {
+  assert(kPositionAttribute == 0 && kNormalAttribute == 1 && kUvAttribute == 2);
+  assert(kJointsAttribute == 3 && kWeightsAttribute == 4);
+}
+
 }  // namespace
 
 int main() {
@@ -107,5 +115,6 @@ int main() {
   testCubeIndicesInBounds();
   testPlaneIndicesInBounds();
   testMeshDefaultResourceHandles();
+  testSkinnedVertexUsesExpectedAttributeSlots();
   return 0;
 }

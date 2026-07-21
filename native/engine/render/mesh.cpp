@@ -6,6 +6,8 @@
 
 #include "native/engine/render/mesh.h"
 
+#include <cstddef>
+
 #ifdef OHOS_PLATFORM
 #include <GLES3/gl3.h>
 #endif
@@ -123,17 +125,17 @@ void Mesh::draw() const {
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
 
   const GLsizei stride = static_cast<GLsizei>(sizeof(Vertex));
-  // aPosition
-  glEnableVertexAttribArray(0);
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride,
+  // 静态 Mesh 只绑定 aPosition/aNormal/aUV（槽位 0–2）。
+  glEnableVertexAttribArray(kPositionAttribute);
+  glVertexAttribPointer(kPositionAttribute, 3, GL_FLOAT, GL_FALSE, stride,
                          reinterpret_cast<void*>(offsetof(Vertex, position)));
   // aNormal
-  glEnableVertexAttribArray(1);
-  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride,
+  glEnableVertexAttribArray(kNormalAttribute);
+  glVertexAttribPointer(kNormalAttribute, 3, GL_FLOAT, GL_FALSE, stride,
                          reinterpret_cast<void*>(offsetof(Vertex, normal)));
   // aUV
-  glEnableVertexAttribArray(2);
-  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride,
+  glEnableVertexAttribArray(kUvAttribute);
+  glVertexAttribPointer(kUvAttribute, 2, GL_FLOAT, GL_FALSE, stride,
                          reinterpret_cast<void*>(offsetof(Vertex, uv)));
 
   if (texture != 0u) {
@@ -159,4 +161,10 @@ void Mesh::destroy() {
   // texture 由 texture.cpp 的 loadTexture 创建，此处不释放以免双重释放；
   // 调用方如需释放纹理应在 Surface 销毁时单独 glDeleteTextures。
 #endif
+}
+
+void Mesh::abandonGpuResources() {
+  vbo = 0;
+  ibo = 0;
+  texture = 0;
 }

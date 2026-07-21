@@ -69,10 +69,12 @@ void publish3DEncounterState(Surface& surface,
   surface.enemies3d.reserve(snapshot.enemies.size());
   for (const EncounterEnemySnapshot& enemy : snapshot.enemies) {
     Enemy3DRenderState state;
+    state.id = enemy.id;
     state.x = enemy.position.x;
     state.y = enemy.position.y;
     state.archetype = static_cast<int>(enemy.archetype);
     state.alive = enemy.alive;
+    state.animation.alive = enemy.alive;
     surface.enemies3d.push_back(state);
   }
 
@@ -81,8 +83,26 @@ void publish3DEncounterState(Surface& surface,
   surface.boss3d.y = 0.75f;
   surface.boss3d.phase = static_cast<int>(snapshot.boss.phase);
   surface.boss3d.defeated = snapshot.boss.defeated;
-  surface.boss3d.active = (snapshot.mode == EncounterMode::Boss &&
-                           snapshot.state == EncounterState::Running);
+  surface.boss3d.active =
+      snapshot.mode == EncounterMode::Boss &&
+      snapshot.state != EncounterState::Stopped;
+  surface.boss3d.animation.alive = !snapshot.boss.defeated;
+}
+
+bool isAttackingAction(uint8_t action) {
+  switch (static_cast<ActionState>(action)) {
+    case ActionState::Attack1:
+    case ActionState::Attack2:
+    case ActionState::Attack3:
+    case ActionState::Attack4:
+    case ActionState::CastingSource:
+    case ActionState::CastingUltimate:
+      return true;
+    case ActionState::Idle:
+    case ActionState::Dodging:
+    default:
+      return false;
+  }
 }
 
 // 在 surface_draw 前更新 3D 透视相机。yaw/pitch/distance 来自现有 2D
@@ -266,6 +286,10 @@ void Loop::resetInput() {
   intent.lookDelta = {};
   intent.actions.clear();
   surface.player.moving = false;
+  surface.playerHitAnimationSeconds = 0.0f;
+  surface.player3dAnimation.attacking = false;
+  surface.player3dAnimation.hit = false;
+  surface.player3dAnimation.moving = false;
   particleEmitTimer = 0.0f;
   currentTarget.reset();
   input.clear();
@@ -294,7 +318,6 @@ void Loop::tickOnce(int64_t elapsedMs) {
   });
 #ifdef OHOS_PLATFORM
   update3DCamera(surface, camera);
-  publish3DEncounterState(surface, encounter.snapshot());
   surface_draw(surface);
   surface_swap(surface);
 #endif
@@ -404,9 +427,16 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     currentTarget.reset();
   }
 
+  bool playerHitObserved = false;
   {
     std::lock_guard<std::mutex> lock(combatEventMutex);
     const CombatEventBatch& stepEvents = encounter.events().combat;
+    playerHitObserved = std::any_of(
+        stepEvents.presentation.begin(), stepEvents.presentation.end(),
+        [](const PresentationEvent& event) {
+          return event.target == CombatController::kPlayerId &&
+                 event.type == PresentationEventType::HitFlash;
+        });
     frameCombatEvents_.gameplay.insert(frameCombatEvents_.gameplay.end(),
                                        stepEvents.gameplay.begin(),
                                        stepEvents.gameplay.end());
@@ -426,6 +456,19 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   vfxSystem.consume(frameCombatEvents_);
   vfxSystem.update(combatTime, dtMs);
   audioBridge.dispatch(frameCombatEvents_);
+
+  // 只从 gameplay 快照/事件投影动画意图，不反向写入战斗、AI 或玩家控制器。
+  surface.playerHitAnimationSeconds = std::max(
+      0.0f, surface.playerHitAnimationSeconds - dtSeconds);
+  if (playerHitObserved) surface.playerHitAnimationSeconds = 0.2f;
+  const CombatSnapshot& combatSnapshot = combat.snapshot();
+  surface.player3dAnimation.alive = combatSnapshot.playerHp > 0;
+  surface.player3dAnimation.attacking =
+      isAttackingAction(combatSnapshot.currentAction);
+  surface.player3dAnimation.hit = surface.playerHitAnimationSeconds > 0.0f;
+  surface.player3dAnimation.moving = surface.player.moving;
+  surface.trainingTarget3dAnimation.alive = surface.trainingTarget.alive;
+  publish3DEncounterState(surface, encounter.snapshot());
 
   GameSnapshot updated = snapshots.read();
   ApplyCombatSnapshot(updated, combat.snapshot());

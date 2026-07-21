@@ -4,9 +4,11 @@
 #include <hilog/log.h>
 #include <cmath>
 #include <atomic>
+#include <vector>
 #include "engine/core/loop.h"
 #include "engine/input/changed_pointer_forwarder.h"
 #include "engine/input/pointer_input.h"
+#include "native/platform/harmony/model_asset_commit.h"
 
 #define LOGI(...) OH_LOG_Print(LOG_APP, LOG_INFO, 0xFF00, "Ethelan", __VA_ARGS__)
 #define LOGE(...) OH_LOG_Print(LOG_APP, LOG_ERROR, 0xFF00, "Ethelan", __VA_ARGS__)
@@ -22,6 +24,20 @@ static void InvalidateSurfaceSnapshot() {
 static napi_value ThrowInputTypeError(napi_env env, const char* message) {
   napi_throw_type_error(env, nullptr, message);
   return nullptr;
+}
+
+static bool CopyArrayBuffer(napi_env env, napi_value value,
+                            std::vector<uint8_t>& out) {
+  bool isArrayBuffer = false;
+  void* bytes = nullptr;
+  size_t length = 0;
+  return napi_is_arraybuffer(env, value, &isArrayBuffer) == napi_ok &&
+         isArrayBuffer &&
+         napi_get_arraybuffer_info(env, value, &bytes, &length) == napi_ok &&
+         bytes != nullptr && length > 0 &&
+         (out.assign(static_cast<uint8_t*>(bytes),
+                     static_cast<uint8_t*>(bytes) + length),
+          true);
 }
 
 static bool GetNumberProperty(napi_env env, napi_value object, const char* name,
@@ -118,6 +134,51 @@ static napi_value NativeStop(napi_env env, napi_callback_info) {
   g_foregroundRequested.store(false);
   g_loop.stop();
   return nullptr;
+}
+
+// GamePage may finish loading after EntryAbility has already sent nativeStop.
+// Unlike NativeStart, this cannot turn a background request back into foreground.
+static napi_value NativeStartIfForeground(napi_env env, napi_callback_info) {
+  if (g_foregroundRequested.load()) {
+    g_loop.start();
+  }
+  return nullptr;
+}
+
+static napi_value NativeSetModelAssets(napi_env env, napi_callback_info info) {
+  size_t argc = 3;
+  napi_value args[3] = {nullptr, nullptr, nullptr};
+  napi_value result = nullptr;
+  if (napi_get_cb_info(env, info, &argc, args, nullptr, nullptr) != napi_ok ||
+      argc != 3) {
+    napi_get_boolean(env, false, &result);
+    return result;
+  }
+
+  const bool committed = CopyAndCommitModelAssets(
+      [&env, &args](ModelAssetSlot slot, std::vector<uint8_t>& out) {
+        return CopyArrayBuffer(env, args[static_cast<size_t>(slot)], out);
+      },
+      [](auto operation) { g_loop.withLifecycle(operation); },
+      [](ModelAssetSlot slot, std::vector<uint8_t> bytes) {
+        switch (slot) {
+          case ModelAssetSlot::Player:
+            g_loop.surface.setModelAsset(ModelKind::Player, std::move(bytes));
+            break;
+          case ModelAssetSlot::Enemy:
+            g_loop.surface.setModelAsset(ModelKind::Enemy, std::move(bytes));
+            break;
+          case ModelAssetSlot::Boss:
+            g_loop.surface.setModelAsset(ModelKind::Boss, std::move(bytes));
+            break;
+        }
+      });
+  if (!committed) {
+    napi_get_boolean(env, false, &result);
+    return result;
+  }
+  napi_get_boolean(env, true, &result);
+  return result;
 }
 
 static napi_value NativePushInput(napi_env env, napi_callback_info info) {
@@ -361,6 +422,8 @@ static napi_value Init(napi_env env, napi_value exports) {
   napi_property_descriptor desc[] = {
     {"nativeStart", nullptr, NativeStart, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"nativeStop", nullptr, NativeStop, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"nativeStartIfForeground", nullptr, NativeStartIfForeground, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"nativeSetModelAssets", nullptr, NativeSetModelAssets, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pushInput", nullptr, NativePushInput, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pushAction", nullptr, NativePushAction, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"startEncounter", nullptr, NativeStartEncounter, nullptr, nullptr, nullptr, napi_default, nullptr},
