@@ -439,15 +439,15 @@ static void draw3DPhase(Surface& s) {
   // 玩家：模型可用时走蒙皮，否则保留 M3-1 立方体。
   drawActor(s, s.playerModel, s.playerMesh, s.playerAnimationState,
             s.player3dAnimation,
-            actorModelMatrix(glm::vec3(s.player.x, 0.05f, s.player.y), 0.1f),
+            actorModelMatrix(glm::vec3(s.player.x, 0.012f, s.player.y), 0.025f),
             vp, {0.18f, 0.65f, 0.95f});
 
   // 训练假人立方体（按 alive 跳过）。
   drawActor(s, s.enemyModel, s.enemyMesh, s.trainingTargetAnimationState,
             s.trainingTarget3dAnimation,
             actorModelMatrix(
-                glm::vec3(s.trainingTarget.x, 0.045f, s.trainingTarget.y),
-                0.09f),
+                glm::vec3(s.trainingTarget.x, 0.011f, s.trainingTarget.y),
+                0.022f),
             vp, {0.85f, 0.32f, 0.22f});
 
   // 敌人立方体（按存活状态跳过）。
@@ -455,7 +455,7 @@ static void draw3DPhase(Surface& s) {
   for (const Enemy3DRenderState& enemy : s.enemies3d) {
     SkinnedAnimationState& animationState = s.enemyAnimationStates[enemy.id];
     drawActor(s, s.enemyModel, s.enemyMesh, animationState, enemy.animation,
-              actorModelMatrix(glm::vec3(enemy.x, 0.045f, enemy.y), 0.09f),
+              actorModelMatrix(glm::vec3(enemy.x, 0.011f, enemy.y), 0.022f),
               vp, enemyColorByArchetype(enemy.archetype));
   }
 
@@ -463,8 +463,8 @@ static void draw3DPhase(Surface& s) {
   if (s.boss3d.active) {
     drawActor(s, s.bossModel, s.bossMesh, s.bossAnimationState,
               s.boss3d.animation,
-              actorModelMatrix(glm::vec3(s.boss3d.x, 0.08f, s.boss3d.y),
-                               0.16f),
+              actorModelMatrix(glm::vec3(s.boss3d.x, 0.02f, s.boss3d.y),
+                               0.04f),
               vp, bossColorByPhase(s.boss3d.phase));
   }
 

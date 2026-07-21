@@ -1,7 +1,19 @@
 {
   "app": {
     "signingConfigs": [
-
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "<redacted-cert-path>",
+          "keyAlias": "debugKey",
+          "keyPassword": "<redacted-key-password>",
+          "profile": "<redacted-profile-path>",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "<redacted-store-path>",
+          "storePassword": "<redacted-store-password>"
+        }
+      }
     ],
     "products": [
       {
@@ -9,7 +21,10 @@
         "signingConfig": "default",
         "compatibleSdkVersion": "6.1.0(23)",
         "targetSdkVersion": "6.1.0(23)",
-        "runtimeOS": "HarmonyOS"
+        "runtimeOS": "HarmonyOS",
+        "buildOption": {
+          "nativeCompiler": "BiSheng"
+        }
       }
     ],
     "buildModeSet": [
