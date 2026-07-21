@@ -2,10 +2,12 @@
 #include "native/engine/render/render_lifecycle.h"
 #include "native/engine/render/skinned_model.h"
 #include "native/engine/render/surface.h"
+#include "native/gameplay/ai/encounter_controller.h"
 
 #include <cassert>
 #include <string>
 #include <vector>
+#include <cmath>
 
 namespace {
 
@@ -164,6 +166,40 @@ void testSurfaceDestroyDestroysGlBeforeUnbindAndEglCleanup() {
                        "destroy-egl-surface", "destroy-egl-context", "terminate-egl-display"}));
 }
 
+void testEnemy3DRenderStateHasAngleField() {
+  Enemy3DRenderState enemy;
+  assert(enemy.angle == 0.0f);
+  enemy.angle = 1.5f;
+  assert(enemy.angle == 1.5f);
+}
+
+void testBoss3DRenderStateHasAngleField() {
+  Boss3DRenderState boss;
+  assert(boss.angle == 0.0f);
+  boss.angle = 2.3f;
+  assert(boss.angle == 2.3f);
+}
+
+void testEncounterEnemySnapshotHasFacingField() {
+  EncounterEnemySnapshot enemy;
+  assert(enemy.facing.x == 1.0f);
+  assert(enemy.facing.y == 0.0f);
+
+  enemy.facing = {0.6f, 0.8f};
+  const float angle = std::atan2(enemy.facing.y, enemy.facing.x);
+  assert(std::abs(angle - 0.927295218f) < 0.001f);
+}
+
+void testEncounterEnemySnapshotEqualityIncludesFacing() {
+  EncounterEnemySnapshot a;
+  EncounterEnemySnapshot b;
+  a.facing = {1.0f, 0.0f};
+  b.facing = {0.0f, 1.0f};
+  assert(!(a == b));
+  b.facing = {1.0f, 0.0f};
+  assert(a == b);
+}
+
 }  // namespace
 
 int main() {
@@ -176,5 +212,9 @@ int main() {
   testPendingAssetReplacementAndClearRemainConsumable();
   testSurfaceDestroyDoesNotTouchGlOrUnbindAfterMakeCurrentFailure();
   testSurfaceDestroyDestroysGlBeforeUnbindAndEglCleanup();
+  testEnemy3DRenderStateHasAngleField();
+  testBoss3DRenderStateHasAngleField();
+  testEncounterEnemySnapshotHasFacingField();
+  testEncounterEnemySnapshotEqualityIncludesFacing();
   return 0;
 }

@@ -336,8 +336,10 @@ static void drawMeshAt(Surface& s, const Mesh& mesh,
   mesh.draw();
 }
 
-static glm::mat4 actorModelMatrix(const glm::vec3& position, float scale) {
+static glm::mat4 actorModelMatrix(const glm::vec3& position, float scale,
+                                  float yaw = 0.0f) {
   return glm::translate(glm::mat4(1.0f), position) *
+         glm::rotate(glm::mat4(1.0f), yaw, glm::vec3(0.0f, 1.0f, 0.0f)) *
          glm::scale(glm::mat4(1.0f), glm::vec3(scale));
 }
 
@@ -352,6 +354,12 @@ static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
   if (model.ready()) {
     s.shader3d.setSkinPalette(
         model.update(animationState, actor, 1.0f / 60.0f));
+#ifdef OHOS_PLATFORM
+    LOGI("drawActor clip=%{public}s attacking=%{public}d moving=%{public}d",
+         RenderAnimationName(ChooseAnimation(actor)),
+         static_cast<int>(actor.attacking),
+         static_cast<int>(actor.moving));
+#endif
     s.shader3d.setSkinned(true);
     if (s.shader3d.skinningEnabled()) {
       model.draw(s.shader3d);
@@ -439,7 +447,8 @@ static void draw3DPhase(Surface& s) {
   // 玩家：模型可用时走蒙皮，否则保留 M3-1 立方体。
   drawActor(s, s.playerModel, s.playerMesh, s.playerAnimationState,
             s.player3dAnimation,
-            actorModelMatrix(glm::vec3(s.player.x, 0.012f, s.player.y), 0.025f),
+            actorModelMatrix(glm::vec3(s.player.x, 0.012f, s.player.y), 0.025f,
+                             s.player.angle),
             vp, {0.18f, 0.65f, 0.95f});
 
   // 训练假人立方体（按 alive 跳过）。
@@ -455,7 +464,8 @@ static void draw3DPhase(Surface& s) {
   for (const Enemy3DRenderState& enemy : s.enemies3d) {
     SkinnedAnimationState& animationState = s.enemyAnimationStates[enemy.id];
     drawActor(s, s.enemyModel, s.enemyMesh, animationState, enemy.animation,
-              actorModelMatrix(glm::vec3(enemy.x, 0.011f, enemy.y), 0.022f),
+              actorModelMatrix(glm::vec3(enemy.x, 0.011f, enemy.y), 0.022f,
+                               enemy.angle),
               vp, enemyColorByArchetype(enemy.archetype));
   }
 
@@ -464,7 +474,7 @@ static void draw3DPhase(Surface& s) {
     drawActor(s, s.bossModel, s.bossMesh, s.bossAnimationState,
               s.boss3d.animation,
               actorModelMatrix(glm::vec3(s.boss3d.x, 0.02f, s.boss3d.y),
-                               0.04f),
+                               0.04f, s.boss3d.angle),
               vp, bossColorByPhase(s.boss3d.phase));
   }
 

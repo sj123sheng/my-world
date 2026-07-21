@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <vector>
 #include <limits>
+#include <cmath>
 
 #ifdef OHOS_PLATFORM
 #define LOGI(...) OH_LOG_Print(LOG_APP, LOG_INFO, 0xFF00, "Ethelan", __VA_ARGS__)
@@ -75,6 +76,9 @@ void publish3DEncounterState(Surface& surface,
     state.archetype = static_cast<int>(enemy.archetype);
     state.alive = enemy.alive;
     state.animation.alive = enemy.alive;
+    // 从敌人 AI 的 facing 向量计算 yaw 弧度，用于 3D 模型旋转。
+    // facing 是归一化的 2D 向量，指向玩家方向；atan2(y, x) 给出标准数学角。
+    state.angle = std::atan2(enemy.facing.y, enemy.facing.x);
     surface.enemies3d.push_back(state);
   }
 
@@ -87,6 +91,12 @@ void publish3DEncounterState(Surface& surface,
       snapshot.mode == EncounterMode::Boss &&
       snapshot.state != EncounterState::Stopped;
   surface.boss3d.animation.alive = !snapshot.boss.defeated;
+  // BossSnapshot 无独立 facing 字段，从首领位置到玩家位置计算朝向角。
+  const float bossDx = surface.player.x - surface.boss3d.x;
+  const float bossDy = surface.player.y - surface.boss3d.y;
+  if (bossDx != 0.0f || bossDy != 0.0f) {
+    surface.boss3d.angle = std::atan2(bossDy, bossDx);
+  }
 }
 
 bool isAttackingAction(uint8_t action) {
@@ -467,6 +477,12 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       isAttackingAction(combatSnapshot.currentAction);
   surface.player3dAnimation.hit = surface.playerHitAnimationSeconds > 0.0f;
   surface.player3dAnimation.moving = surface.player.moving;
+#ifdef OHOS_PLATFORM
+  if (surface.player3dAnimation.attacking) {
+    LOGI("player3dAnimation.attacking=true action=%{public}d",
+         static_cast<int>(combatSnapshot.currentAction));
+  }
+#endif
   surface.trainingTarget3dAnimation.alive = surface.trainingTarget.alive;
   publish3DEncounterState(surface, encounter.snapshot());
 

@@ -168,7 +168,7 @@ bool EncounterEnemySnapshot::operator==(
          alive == other.alive && radianceAttached == other.radianceAttached &&
          currentAttached == other.currentAttached &&
          corruptionAttached == other.corruptionAttached &&
-         corroded == other.corroded;
+         corroded == other.corroded && facing == other.facing;
 }
 
 bool EncounterSnapshot::operator==(const EncounterSnapshot& other) const {
@@ -510,6 +510,7 @@ void EncounterController::refreshSnapshot(bool includeCandidates) {
     enemy.poise = slot->target.poise();
     enemy.shield = slot->enemy.shield;
     enemy.alive = slot->target.alive();
+    enemy.facing = slot->facing;
     for (const SourceAura& aura : slot->target.sourceAuras().active()) {
       if (aura.type == SourceType::Radiance) enemy.radianceAttached = true;
       if (aura.type == SourceType::Current) enemy.currentAttached = true;

@@ -69,6 +69,7 @@ struct Enemy3DRenderState {
   int archetype = 0;
   bool alive = false;
   ActorRenderState animation;
+  float angle = 0.0f;  // 朝向角，弧度
 };
 
 struct Boss3DRenderState {
@@ -80,6 +81,7 @@ struct Boss3DRenderState {
   bool defeated = false;
   bool active = false;
   ActorRenderState animation;
+  float angle = 0.0f;  // 朝向角，弧度
 };
 
 struct Surface {

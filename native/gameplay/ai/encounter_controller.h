@@ -77,6 +77,7 @@ struct EncounterEnemySnapshot {
   bool currentAttached = false;
   bool corruptionAttached = false;
   bool corroded = false;
+  Vec2 facing{1.0f, 0.0f};
 
   bool operator==(const EncounterEnemySnapshot& other) const;
 };
