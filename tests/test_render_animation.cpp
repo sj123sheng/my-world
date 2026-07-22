@@ -14,7 +14,7 @@ namespace {
 void testAnimationPriority() {
   ActorRenderState actor;
   actor.alive = false;
-  actor.attacking = true;
+  actor.action = RenderAnimation::Attack;
   actor.hit = true;
   actor.moving = true;
   assert(ChooseAnimation(actor) == RenderAnimation::Death);
@@ -22,7 +22,7 @@ void testAnimationPriority() {
   actor.alive = true;
   assert(ChooseAnimation(actor) == RenderAnimation::Attack);
 
-  actor.attacking = false;
+  actor.action = RenderAnimation::Idle;
   assert(ChooseAnimation(actor) == RenderAnimation::Hit);
 
   actor.hit = false;
@@ -38,6 +38,41 @@ void testClipResolutionFallsBackToIdle() {
                      RenderAnimation::Attack) == "attack");
   assert(ResolveClip({"run"}, RenderAnimation::Death) == "run");
   assert(ResolveClip({}, RenderAnimation::Idle).empty());
+}
+
+void testDedicatedActionClipNames() {
+  assert(std::string(RenderAnimationName(RenderAnimation::Dodge)) ==
+         "Running_Strafe_Right");
+  assert(std::string(RenderAnimationName(RenderAnimation::Radiance)) ==
+         "Spellcast_Raise");
+  assert(std::string(RenderAnimationName(RenderAnimation::Current)) ==
+         "Spellcast_Shoot");
+  assert(std::string(RenderAnimationName(RenderAnimation::Corruption)) ==
+         "Spellcasting");
+  assert(std::string(RenderAnimationName(RenderAnimation::Ultimate)) ==
+         "Spellcast_Long");
+}
+
+void testDedicatedActionClipFallbacks() {
+  assert(ResolveClip({"idle", "run"}, RenderAnimation::Dodge) == "run");
+  assert(ResolveClip({"idle", "attack"}, RenderAnimation::Radiance) ==
+         "attack");
+  assert(ResolveClip({"idle", "attack"}, RenderAnimation::Current) ==
+         "attack");
+  assert(ResolveClip({"idle", "attack"}, RenderAnimation::Corruption) ==
+         "attack");
+  assert(ResolveClip({"idle", "attack"}, RenderAnimation::Ultimate) ==
+         "attack");
+}
+
+void testExplicitActionPriority() {
+  ActorRenderState actor;
+  actor.action = RenderAnimation::Dodge;
+  actor.hit = true;
+  actor.moving = true;
+  assert(ChooseAnimation(actor) == RenderAnimation::Dodge);
+  actor.alive = false;
+  assert(ChooseAnimation(actor) == RenderAnimation::Death);
 }
 
 void testUnavailableRuntimeModelStaysOnFallbackPath() {
@@ -205,6 +240,9 @@ void testEncounterEnemySnapshotEqualityIncludesFacing() {
 int main() {
   testAnimationPriority();
   testClipResolutionFallsBackToIdle();
+  testDedicatedActionClipNames();
+  testDedicatedActionClipFallbacks();
+  testExplicitActionPriority();
   testUnavailableRuntimeModelStaysOnFallbackPath();
   testSurfaceStoresLateModelAssetsForContextBoundInitialization();
   testSurfaceKeepsEnemyAnimationStateByStableEntityId();
