@@ -4,6 +4,7 @@
 
 #include "native/engine/render/render_animation.h"
 #include "native/gameplay/combat/combat_action.h"
+#include "native/gameplay/entities/boss.h"
 
 inline RenderAnimation PlayerRenderAnimation(ActionState state,
                                              CombatAction activeAction) {
@@ -34,4 +35,12 @@ inline RenderAnimation PlayerRenderAnimation(ActionState state,
     default:
       return RenderAnimation::Idle;
   }
+}
+
+inline RenderAnimation BossRenderAnimation(const BossSnapshot& boss,
+                                           FixedPoint previousHp) {
+  if (boss.defeated) return RenderAnimation::Death;
+  if (boss.castRemainingMs > 0) return RenderAnimation::Ultimate;
+  if (previousHp > 0 && boss.hp < previousHp) return RenderAnimation::Hit;
+  return RenderAnimation::Idle;
 }

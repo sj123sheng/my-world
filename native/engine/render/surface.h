@@ -82,6 +82,8 @@ struct Boss3DRenderState {
   bool active = false;
   ActorRenderState animation;
   float angle = 0.0f;  // 朝向角，弧度
+  int64_t previousHp = 0;
+  float hitAnimationSeconds = 0.0f;
 };
 
 struct Surface {

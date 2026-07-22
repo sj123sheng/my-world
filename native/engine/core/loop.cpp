@@ -66,7 +66,8 @@ Tick AdvanceCombatTime(Tick now, int64_t dtMs) {
 // 渲染层只读消费这些状态，不反向修改游戏逻辑。BossSnapshot 无独立位置字段，
 // 因此首领位置取固定 (0.5, 0.75)，与 refreshSnapshot 中首领 candidate 位置一致。
 void publish3DEncounterState(Surface& surface,
-                             const EncounterSnapshot& snapshot) {
+                             const EncounterSnapshot& snapshot,
+                             float dtSeconds) {
   surface.enemies3d.clear();
   surface.enemies3d.reserve(snapshot.enemies.size());
   for (const EncounterEnemySnapshot& enemy : snapshot.enemies) {
@@ -96,6 +97,18 @@ void publish3DEncounterState(Surface& surface,
       snapshot.mode == EncounterMode::Boss &&
       snapshot.state != EncounterState::Stopped;
   surface.boss3d.animation.alive = !snapshot.boss.defeated;
+  surface.boss3d.hitAnimationSeconds = std::max(
+      0.0f, surface.boss3d.hitAnimationSeconds - dtSeconds);
+  const RenderAnimation bossAnimation = BossRenderAnimation(
+      snapshot.boss, surface.boss3d.previousHp);
+  if (bossAnimation == RenderAnimation::Hit) {
+    surface.boss3d.hitAnimationSeconds = 0.2f;
+  }
+  surface.boss3d.animation.action =
+      bossAnimation == RenderAnimation::Hit ? RenderAnimation::Idle
+                                            : bossAnimation;
+  surface.boss3d.animation.hit = surface.boss3d.hitAnimationSeconds > 0.0f;
+  surface.boss3d.previousHp = snapshot.boss.hp;
   // BossSnapshot 无独立 facing 字段，从首领位置到玩家位置计算朝向角。
   const float bossDx = surface.player.x - surface.boss3d.x;
   const float bossDy = surface.player.y - surface.boss3d.y;
@@ -475,7 +488,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   }
 #endif
   surface.trainingTarget3dAnimation.alive = surface.trainingTarget.alive;
-  publish3DEncounterState(surface, encounter.snapshot());
+  publish3DEncounterState(surface, encounter.snapshot(), dtSeconds);
 
   GameSnapshot updated = snapshots.read();
   ApplyCombatSnapshot(updated, combat.snapshot());

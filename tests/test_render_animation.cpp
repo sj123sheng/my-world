@@ -99,6 +99,23 @@ void testPlayerCombatActionMapsToDedicatedAnimation() {
          RenderAnimation::Ultimate);
 }
 
+void testBossSnapshotMapsToCastHitDeathAndIdle() {
+  BossSnapshot boss;
+  boss.hp = fp(1000);
+  assert(BossRenderAnimation(boss, fp(1000)) == RenderAnimation::Idle);
+
+  boss.castRemainingMs = 500;
+  assert(BossRenderAnimation(boss, fp(1000)) == RenderAnimation::Ultimate);
+
+  boss.castRemainingMs = 0;
+  boss.hp = fp(900);
+  assert(BossRenderAnimation(boss, fp(1000)) == RenderAnimation::Hit);
+
+  boss.castRemainingMs = 500;
+  boss.defeated = true;
+  assert(BossRenderAnimation(boss, fp(1000)) == RenderAnimation::Death);
+}
+
 void testUnavailableRuntimeModelStaysOnFallbackPath() {
   SkinnedModel model;
   assert(!model.ready());
@@ -268,6 +285,7 @@ int main() {
   testDedicatedActionClipFallbacks();
   testExplicitActionPriority();
   testPlayerCombatActionMapsToDedicatedAnimation();
+  testBossSnapshotMapsToCastHitDeathAndIdle();
   testUnavailableRuntimeModelStaysOnFallbackPath();
   testSurfaceStoresLateModelAssetsForContextBoundInitialization();
   testSurfaceKeepsEnemyAnimationStateByStableEntityId();
