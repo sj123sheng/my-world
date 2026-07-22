@@ -126,6 +126,9 @@ struct EncounterController::EnemySlot {
   EnemyAgent agent;
   Vec2 facing = {0.0f, -1.0f};
   EnemyActionPhase phase = EnemyActionPhase::None;
+  bool moving = false;
+  bool attacking = false;
+  bool hit = false;
 };
 
 EncounterConfig EncounterConfig::forMode(EncounterMode mode) {
@@ -168,7 +171,9 @@ bool EncounterEnemySnapshot::operator==(
          alive == other.alive && radianceAttached == other.radianceAttached &&
          currentAttached == other.currentAttached &&
          corruptionAttached == other.corruptionAttached &&
-         corroded == other.corroded && facing == other.facing;
+         corroded == other.corroded && facing == other.facing &&
+         moving == other.moving && attacking == other.attacking &&
+         hit == other.hit;
 }
 
 bool EncounterSnapshot::operator==(const EncounterSnapshot& other) const {
@@ -351,6 +356,7 @@ void EncounterController::update(const EncounterFrameInput& input) {
   }
 
   for (const std::unique_ptr<EnemySlot>& slot : enemies_) {
+    slot->hit = false;
     if (slot->target.alive()) slot->target.advance(tick);
     slot->enemy.hp = slot->target.hp();
     slot->enemy.poise = slot->target.poise();
@@ -365,7 +371,11 @@ void EncounterController::update(const EncounterFrameInput& input) {
   }
 
   CombatTargetBinding binding;
+  FixedPoint selectedHpBefore = 0;
+  FixedPoint selectedPoiseBefore = 0;
   if (selected != nullptr) {
+    selectedHpBefore = selected->target.hp();
+    selectedPoiseBefore = selected->target.poise();
     binding.id = selected->enemy.id;
     binding.target = &selected->target;
     binding.shield = &selected->enemy.shield;
@@ -382,6 +392,8 @@ void EncounterController::update(const EncounterFrameInput& input) {
   if (selected != nullptr) {
     selected->enemy.hp = selected->target.hp();
     selected->enemy.poise = selected->target.poise();
+    selected->hit = selected->enemy.hp < selectedHpBefore ||
+                    selected->enemy.poise < selectedPoiseBefore;
   }
 
   std::vector<HitRequest> hits;
@@ -422,6 +434,12 @@ void EncounterController::update(const EncounterFrameInput& input) {
     EnemyUpdateResult result =
         slot->agent.update({world, dtMs, execution, std::nullopt});
     slot->phase = result.phase;
+    const float movementLength = result.movement.length();
+    slot->moving = result.movement.finite() &&
+                   std::isfinite(movementLength) && movementLength > 0.0f;
+    slot->attacking = result.phase == EnemyActionPhase::Windup ||
+                      result.phase == EnemyActionPhase::Active;
+    slot->hit = slot->hit || result.interrupted;
     if (result.hit.has_value()) hits.push_back(*result.hit);
     if (result.effect.has_value()) effects.push_back(*result.effect);
     results.emplace_back(slot.get(), std::move(result));
@@ -517,6 +535,9 @@ void EncounterController::refreshSnapshot(bool includeCandidates) {
       if (aura.type == SourceType::Corruption) enemy.corruptionAttached = true;
     }
     enemy.corroded = slot->target.corroded();
+    enemy.moving = slot->moving;
+    enemy.attacking = slot->attacking;
+    enemy.hit = slot->hit;
     snapshot_.enemies.push_back(enemy);
     if (includeCandidates && snapshot_.state == EncounterState::Running &&
         enemy.alive) {

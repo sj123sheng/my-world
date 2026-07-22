@@ -77,6 +77,10 @@ void publish3DEncounterState(Surface& surface,
     state.archetype = static_cast<int>(enemy.archetype);
     state.alive = enemy.alive;
     state.animation.alive = enemy.alive;
+    state.animation.action = enemy.attacking ? RenderAnimation::Attack
+                                             : RenderAnimation::Idle;
+    state.animation.hit = enemy.hit;
+    state.animation.moving = enemy.moving;
     // 从敌人 AI 的 facing 向量计算 yaw 弧度，用于 3D 模型旋转。
     // facing 是归一化的 2D 向量，指向玩家方向；atan2(y, x) 给出标准数学角。
     state.angle = std::atan2(enemy.facing.y, enemy.facing.x);

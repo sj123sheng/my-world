@@ -148,6 +148,46 @@ void testStandaloneModeClearsLevelFlowState() {
   assert(encounter.snapshot().supplyState == SupplyState::Unavailable);
 }
 
+void testEnemyAnimationFactsArePublished() {
+  CombatController combat(CombatConfig::defaults());
+  EncounterController encounter(combat);
+  assert(encounter.start(EncounterMode::Beast));
+  const EntityId enemyId = encounter.snapshot().enemies.front().id;
+
+  bool observedMoving = false;
+  bool observedAttacking = false;
+  for (Tick tick = 100; tick <= 2000; tick += 100) {
+    update(encounter, tick, 100, enemyId);
+    const EncounterEnemySnapshot* enemy = findEnemy(encounter.snapshot(), enemyId);
+    assert(enemy != nullptr);
+    observedMoving = observedMoving || enemy->moving;
+    observedAttacking = observedAttacking || enemy->attacking;
+  }
+  assert(observedMoving);
+  assert(observedAttacking);
+
+  combat.enqueue({CombatAction::Attack, 99});
+  update(encounter, 2100, 100, enemyId);
+  update(encounter, 2260, 160, enemyId);
+  const EncounterEnemySnapshot* hitEnemy = findEnemy(encounter.snapshot(), enemyId);
+  assert(hitEnemy != nullptr && hitEnemy->hit);
+}
+
+void testEnemySnapshotEqualityIncludesAnimationFacts() {
+  EncounterEnemySnapshot left;
+  EncounterEnemySnapshot right;
+  left.moving = true;
+  assert(!(left == right));
+  right.moving = true;
+  left.attacking = true;
+  assert(!(left == right));
+  right.attacking = true;
+  left.hit = true;
+  assert(!(left == right));
+  right.hit = true;
+  assert(left == right);
+}
+
 }  // namespace
 
 int main() {
@@ -157,4 +197,6 @@ int main() {
   testStopHasNoEventsAndResetClearsState();
   testTrainingModeKeepsStageThreePulseSemantics();
   testStandaloneModeClearsLevelFlowState();
+  testEnemyAnimationFactsArePublished();
+  testEnemySnapshotEqualityIncludesAnimationFacts();
 }
