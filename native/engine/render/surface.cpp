@@ -355,9 +355,9 @@ static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
     s.shader3d.setSkinPalette(
         model.update(animationState, actor, 1.0f / 60.0f));
 #ifdef OHOS_PLATFORM
-    LOGI("drawActor clip=%{public}s attacking=%{public}d moving=%{public}d",
+    LOGI("drawActor clip=%{public}s action=%{public}s moving=%{public}d",
          RenderAnimationName(ChooseAnimation(actor)),
-         static_cast<int>(actor.attacking),
+         RenderAnimationName(actor.action),
          static_cast<int>(actor.moving));
 #endif
     s.shader3d.setSkinned(true);

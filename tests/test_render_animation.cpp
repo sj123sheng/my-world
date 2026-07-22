@@ -1,4 +1,5 @@
 #include "native/engine/render/render_animation.h"
+#include "native/engine/render/combat_animation.h"
 #include "native/engine/render/render_lifecycle.h"
 #include "native/engine/render/skinned_model.h"
 #include "native/engine/render/surface.h"
@@ -73,6 +74,29 @@ void testExplicitActionPriority() {
   assert(ChooseAnimation(actor) == RenderAnimation::Dodge);
   actor.alive = false;
   assert(ChooseAnimation(actor) == RenderAnimation::Death);
+}
+
+void testPlayerCombatActionMapsToDedicatedAnimation() {
+  assert(PlayerRenderAnimation(ActionState::Idle, CombatAction::Attack) ==
+         RenderAnimation::Idle);
+  assert(PlayerRenderAnimation(ActionState::Attack1, CombatAction::Attack) ==
+         RenderAnimation::Attack);
+  assert(PlayerRenderAnimation(ActionState::Attack4, CombatAction::Attack) ==
+         RenderAnimation::Attack);
+  assert(PlayerRenderAnimation(ActionState::Dodging, CombatAction::Dodge) ==
+         RenderAnimation::Dodge);
+  assert(PlayerRenderAnimation(ActionState::CastingSource,
+                               CombatAction::Radiance) ==
+         RenderAnimation::Radiance);
+  assert(PlayerRenderAnimation(ActionState::CastingSource,
+                               CombatAction::Current) ==
+         RenderAnimation::Current);
+  assert(PlayerRenderAnimation(ActionState::CastingSource,
+                               CombatAction::Corruption) ==
+         RenderAnimation::Corruption);
+  assert(PlayerRenderAnimation(ActionState::CastingUltimate,
+                               CombatAction::Ultimate) ==
+         RenderAnimation::Ultimate);
 }
 
 void testUnavailableRuntimeModelStaysOnFallbackPath() {
@@ -243,6 +267,7 @@ int main() {
   testDedicatedActionClipNames();
   testDedicatedActionClipFallbacks();
   testExplicitActionPriority();
+  testPlayerCombatActionMapsToDedicatedAnimation();
   testUnavailableRuntimeModelStaysOnFallbackPath();
   testSurfaceStoresLateModelAssetsForContextBoundInitialization();
   testSurfaceKeepsEnemyAnimationStateByStableEntityId();

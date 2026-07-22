@@ -42,6 +42,7 @@ class ActionStateMachine {
     resources_.recordDistinctSource(source, tick);
   }
   bool canUltimate(Tick tick) { return resources_.canUltimate(tick); }
+  CombatAction activeAction() const { return activeAction_; }
   ActionState state() const;
   uint8_t comboSegment() const { return comboIndex_; }
   Tick comboWindowRemainingMs() const;

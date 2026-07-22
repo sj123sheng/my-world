@@ -1,4 +1,5 @@
 #include "loop.h"
+#include "native/engine/render/combat_animation.h"
 #ifdef OHOS_PLATFORM
 #include <hilog/log.h>
 #endif
@@ -96,22 +97,6 @@ void publish3DEncounterState(Surface& surface,
   const float bossDy = surface.player.y - surface.boss3d.y;
   if (bossDx != 0.0f || bossDy != 0.0f) {
     surface.boss3d.angle = std::atan2(bossDy, bossDx);
-  }
-}
-
-bool isAttackingAction(uint8_t action) {
-  switch (static_cast<ActionState>(action)) {
-    case ActionState::Attack1:
-    case ActionState::Attack2:
-    case ActionState::Attack3:
-    case ActionState::Attack4:
-    case ActionState::CastingSource:
-    case ActionState::CastingUltimate:
-      return true;
-    case ActionState::Idle:
-    case ActionState::Dodging:
-    default:
-      return false;
   }
 }
 
@@ -473,13 +458,15 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   if (playerHitObserved) surface.playerHitAnimationSeconds = 0.2f;
   const CombatSnapshot& combatSnapshot = combat.snapshot();
   surface.player3dAnimation.alive = combatSnapshot.playerHp > 0;
-  surface.player3dAnimation.attacking =
-      isAttackingAction(combatSnapshot.currentAction);
+  surface.player3dAnimation.action = PlayerRenderAnimation(
+      static_cast<ActionState>(combatSnapshot.currentAction),
+      combatSnapshot.activeCombatAction);
   surface.player3dAnimation.hit = surface.playerHitAnimationSeconds > 0.0f;
   surface.player3dAnimation.moving = surface.player.moving;
 #ifdef OHOS_PLATFORM
-  if (surface.player3dAnimation.attacking) {
-    LOGI("player3dAnimation.attacking=true action=%{public}d",
+  if (surface.player3dAnimation.action != RenderAnimation::Idle) {
+    LOGI("player3dAnimation action=%{public}s state=%{public}d",
+         RenderAnimationName(surface.player3dAnimation.action),
          static_cast<int>(combatSnapshot.currentAction));
   }
 #endif

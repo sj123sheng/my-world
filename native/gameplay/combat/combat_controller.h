@@ -33,6 +33,7 @@ struct CombatSnapshot {
   bool targetAlive = false;
   uint64_t lastAcceptedSequence = 0;
   uint8_t currentAction = static_cast<uint8_t>(ActionState::Idle);
+  CombatAction activeCombatAction = CombatAction::Attack;
   Tick comboWindowMs = 0;
   Tick radianceCooldownMs = 0;
   Tick currentCooldownMs = 0;

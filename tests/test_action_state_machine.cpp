@@ -233,6 +233,32 @@ void testHistoricalInvulnerabilityUsesAbsoluteDodgeInterval() {
   assert(machine.wasInvulnerableAt(800));
 }
 
+void testAcceptedActionPublishesExactCombatAction() {
+  {
+    ActionStateMachine machine(CombatConfig::defaults());
+    assert(machine.request({CombatAction::Dodge, 1}, ActionContext{}).accepted);
+    assert(machine.activeAction() == CombatAction::Dodge);
+  }
+
+  const CombatAction sourceActions[] = {
+      CombatAction::Radiance,
+      CombatAction::Current,
+      CombatAction::Corruption,
+  };
+  for (CombatAction action : sourceActions) {
+    ActionStateMachine machine(CombatConfig::defaults());
+    assert(machine.request({action, 1}, targetContext()).accepted);
+    assert(machine.activeAction() == action);
+  }
+
+  {
+    ActionStateMachine machine(CombatConfig::defaults());
+    machine.addResonance(fp(100));
+    assert(machine.request({CombatAction::Ultimate, 1}, targetContext()).accepted);
+    assert(machine.activeAction() == CombatAction::Ultimate);
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -250,5 +276,6 @@ int main() {
   testMovingAndDamageDoNotCancelDodge();
   testResetRestoresResourcesAndClearsDodge();
   testHistoricalInvulnerabilityUsesAbsoluteDodgeInterval();
+  testAcceptedActionPublishesExactCombatAction();
   return 0;
 }

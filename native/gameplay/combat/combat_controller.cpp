@@ -235,6 +235,7 @@ void CombatController::refreshSnapshot(const TrainingTarget* target,
   snapshot_.targetAlive = target != nullptr && target->alive();
   snapshot_.lastAcceptedSequence = lastAcceptedSequence_;
   snapshot_.currentAction = static_cast<uint8_t>(actions_.state());
+  snapshot_.activeCombatAction = actions_.activeAction();
   snapshot_.comboWindowMs = actions_.comboWindowRemainingMs();
   snapshot_.radianceCooldownMs = actions_.sourceCooldownRemainingMs(SourceType::Radiance);
   snapshot_.currentCooldownMs = actions_.sourceCooldownRemainingMs(SourceType::Current);
