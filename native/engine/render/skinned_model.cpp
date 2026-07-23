@@ -756,6 +756,7 @@ void SkinnedAnimationState::reset() {
   currentTime = 0.0f;
   previousTime = 0.0f;
   blendElapsed = 0.0f;
+  logState.reset();
 }
 
 bool ValidateGltf(const GltfValidationInput& input, std::string& reason) {

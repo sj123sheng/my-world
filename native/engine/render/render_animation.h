@@ -31,6 +31,29 @@ struct ActorRenderState {
   bool moving = false;
 };
 
+struct AnimationLogState {
+  bool shouldReport(RenderAnimation animation, const std::string& clip) {
+    if (initialized && animation == previousAnimation && clip == previousClip) {
+      return false;
+    }
+    initialized = true;
+    previousAnimation = animation;
+    previousClip = clip;
+    return true;
+  }
+
+  void reset() {
+    initialized = false;
+    previousAnimation = RenderAnimation::Idle;
+    previousClip.clear();
+  }
+
+ private:
+  bool initialized = false;
+  RenderAnimation previousAnimation = RenderAnimation::Idle;
+  std::string previousClip;
+};
+
 inline RenderAnimation ChooseAnimation(const ActorRenderState& actor) {
   if (!actor.alive) return RenderAnimation::Death;
   if (actor.action != RenderAnimation::Idle) return actor.action;

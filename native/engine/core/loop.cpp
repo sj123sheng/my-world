@@ -299,7 +299,7 @@ void Loop::resetInput() {
   intent.actions.clear();
   surface.player.moving = false;
   surface.playerHitAnimationSeconds = 0.0f;
-  surface.player3dAnimation.attacking = false;
+  surface.player3dAnimation.action = RenderAnimation::Idle;
   surface.player3dAnimation.hit = false;
   surface.player3dAnimation.moving = false;
   particleEmitTimer = 0.0f;
@@ -480,13 +480,6 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       combatSnapshot.activeCombatAction);
   surface.player3dAnimation.hit = surface.playerHitAnimationSeconds > 0.0f;
   surface.player3dAnimation.moving = surface.player.moving;
-#ifdef OHOS_PLATFORM
-  if (surface.player3dAnimation.action != RenderAnimation::Idle) {
-    LOGI("player3dAnimation action=%{public}s state=%{public}d",
-         RenderAnimationName(surface.player3dAnimation.action),
-         static_cast<int>(combatSnapshot.currentAction));
-  }
-#endif
   surface.trainingTarget3dAnimation.alive = surface.trainingTarget.alive;
   publish3DEncounterState(surface, encounter.snapshot(), dtSeconds);
 

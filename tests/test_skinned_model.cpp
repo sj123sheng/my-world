@@ -203,7 +203,7 @@ void testUsesNonJointAncestorsAndAnimationTransitions() {
     assert(close(fallback.matrices[0][3].x, 3.0f));
   };
   ActorRenderState attackWithoutClip;
-  attackWithoutClip.attacking = true;
+  attackWithoutClip.action = RenderAnimation::Attack;
   expectImmediateFallback(attackWithoutClip);
   ActorRenderState hitWithoutClip;
   hitWithoutClip.hit = true;
@@ -220,7 +220,7 @@ void testUsesNonJointAncestorsAndAnimationTransitions() {
   const SkinPalette runPose = attackModel.update(attackAnimation, running, 0.35f);
   assert(close(runPose.matrices[0][3].x, 4.0f));
   ActorRenderState attacking;
-  attacking.attacking = true;
+  attacking.action = RenderAnimation::Attack;
   const SkinPalette immediateAttack =
       attackModel.update(attackAnimation, attacking, 0.0f);
   assert(close(immediateAttack.matrices[0][3].x, 3.0f));

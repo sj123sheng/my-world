@@ -346,19 +346,21 @@ static glm::mat4 actorModelMatrix(const glm::vec3& position, float scale,
 static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
                       SkinnedAnimationState& animationState,
                       const ActorRenderState& actor, const glm::mat4& matrix,
-                      const glm::mat4& vp, const glm::vec3& base) {
+                      const glm::mat4& vp, const glm::vec3& base,
+                      const char* actorName) {
   s.shader3d.setMVP(vp * matrix);
   s.shader3d.setModel(matrix);
   applyEntityTint(s, base);
 
   if (model.ready()) {
-    s.shader3d.setSkinPalette(
-        model.update(animationState, actor, 1.0f / 60.0f));
+    s.shader3d.setSkinPalette(model.update(animationState, actor, 1.0f / 60.0f));
 #ifdef OHOS_PLATFORM
-    LOGI("drawActor clip=%{public}s action=%{public}s moving=%{public}d",
-         RenderAnimationName(ChooseAnimation(actor)),
-         RenderAnimationName(actor.action),
-         static_cast<int>(actor.moving));
+    const RenderAnimation animation = ChooseAnimation(actor);
+    const std::string clip = ResolveClip(model.clipNames(), animation);
+    if (animationState.shouldReport(animation, clip)) {
+      LOGI("animation actor=%{public}s action=%{public}s clip=%{public}s",
+           actorName, RenderAnimationName(animation), clip.c_str());
+    }
 #endif
     s.shader3d.setSkinned(true);
     if (s.shader3d.skinningEnabled()) {
@@ -449,7 +451,7 @@ static void draw3DPhase(Surface& s) {
             s.player3dAnimation,
             actorModelMatrix(glm::vec3(s.player.x, 0.012f, s.player.y), 0.025f,
                              s.player.angle),
-            vp, {0.18f, 0.65f, 0.95f});
+            vp, {0.18f, 0.65f, 0.95f}, "player");
 
   // 训练假人立方体（按 alive 跳过）。
   drawActor(s, s.enemyModel, s.enemyMesh, s.trainingTargetAnimationState,
@@ -457,7 +459,7 @@ static void draw3DPhase(Surface& s) {
             actorModelMatrix(
                 glm::vec3(s.trainingTarget.x, 0.011f, s.trainingTarget.y),
                 0.022f),
-            vp, {0.85f, 0.32f, 0.22f});
+            vp, {0.85f, 0.32f, 0.22f}, "training-target");
 
   // 敌人立方体（按存活状态跳过）。
   s.pruneEnemyAnimationStates();
@@ -466,7 +468,7 @@ static void draw3DPhase(Surface& s) {
     drawActor(s, s.enemyModel, s.enemyMesh, animationState, enemy.animation,
               actorModelMatrix(glm::vec3(enemy.x, 0.011f, enemy.y), 0.022f,
                                enemy.angle),
-              vp, enemyColorByArchetype(enemy.archetype));
+              vp, enemyColorByArchetype(enemy.archetype), "enemy");
   }
 
   // 首领立方体（按阶段配色，击败后跳过）。
@@ -475,7 +477,7 @@ static void draw3DPhase(Surface& s) {
               s.boss3d.animation,
               actorModelMatrix(glm::vec3(s.boss3d.x, 0.02f, s.boss3d.y),
                                0.04f, s.boss3d.angle),
-              vp, bossColorByPhase(s.boss3d.phase));
+              vp, bossColorByPhase(s.boss3d.phase), "boss");
   }
 
   glDisable(GL_CULL_FACE);

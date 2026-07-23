@@ -116,6 +116,15 @@ void testBossSnapshotMapsToCastHitDeathAndIdle() {
   assert(BossRenderAnimation(boss, fp(1000)) == RenderAnimation::Death);
 }
 
+void testAnimationLogOnlyReportsIntentOrResolvedClipChanges() {
+  AnimationLogState logState;
+  assert(logState.shouldReport(RenderAnimation::Idle, "Idle"));
+  assert(!logState.shouldReport(RenderAnimation::Idle, "Idle"));
+  assert(logState.shouldReport(RenderAnimation::Run, "Running_A"));
+  assert(!logState.shouldReport(RenderAnimation::Run, "Running_A"));
+  assert(logState.shouldReport(RenderAnimation::Run, "Running_B"));
+}
+
 void testUnavailableRuntimeModelStaysOnFallbackPath() {
   SkinnedModel model;
   assert(!model.ready());
@@ -286,6 +295,7 @@ int main() {
   testExplicitActionPriority();
   testPlayerCombatActionMapsToDedicatedAnimation();
   testBossSnapshotMapsToCastHitDeathAndIdle();
+  testAnimationLogOnlyReportsIntentOrResolvedClipChanges();
   testUnavailableRuntimeModelStaysOnFallbackPath();
   testSurfaceStoresLateModelAssetsForContextBoundInitialization();
   testSurfaceKeepsEnemyAnimationStateByStableEntityId();

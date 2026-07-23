@@ -261,6 +261,26 @@ my-world/
   `遭遇 0 · 状态 1`，点击 `混战` 后显示 `遭遇 2 · 状态 1`，点击 `守卫` 后显示
   `遭遇 3 · 状态 1`。应用进程保持运行，基础训练按钮输入链路保持可用。
 
+### M4 Task 1 动画响应状态
+
+2026-07-22 已完成玩家、敌人和首领的动画意图投影：玩家普攻、闪避、三源技能与
+终结技使用精确战斗动作；敌人使用移动、攻击、受击与死亡事实；首领使用施法、受击与
+死亡快照。渲染日志只在动作或实际解析 clip 改变时输出 `actor/action/clip`，不再逐帧刷屏。
+
+- 聚焦回归：`test_render_animation`、`test_skinned_model`、`test_action_state_machine`、
+  `test_encounter_controller`、`test_boss_controller` 和 Node 桥接契约均通过，
+  `git diff --check` 无输出。
+- 生产构建：Hvigor `assembleHap` 返回 `BUILD SUCCESSFUL`。signed HAP 为
+  `entry/build/default/outputs/default/entry-default-signed.hap`（17,462,639 bytes，
+  SHA-256 `a22e837d75e4532c871344521bfcbdb922419ab42ab4bed4b78297be699ced73`）。
+- 模拟器验收：Pura 70 Pro（`127.0.0.1:5555`、`aarch64`）完成当前 signed HAP
+  覆盖安装，应用 PID `3875`。HiLog 实测玩家 `attack`、`Running_Strafe_Right`、
+  `Spellcast_Raise`、`Spellcast_Shoot`、`Spellcasting`、`run`、`hit`、`death`，敌人
+  `run/attack/idle`，首领 `idle/hit` 均按状态变化输出实际 clip；终结技与首领施法的
+  `Spellcast_Long` 映射由宿主机测试覆盖，本轮设备交互未推进到对应机制触发条件。
+  截图确认首领场景、角色模型和 HUD 正常显示，运行时约 47.5 FPS；应用保持存活，且未检出
+  `SIGSEGV`、`cppcrash`、无效 `glGetString`、`RequestBuffer` 失败或 EGL error。
+
 ### 阶段 3 自动化、构建与真机状态
 
 2026-07-16 阶段 3 最终审查修复后的收口结果：

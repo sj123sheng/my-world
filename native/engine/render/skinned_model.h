@@ -41,6 +41,9 @@ class Shader3D;
 // SkinnedModel 共享，避免为每个实体复制 GPU 资产。
 struct SkinnedAnimationState {
   void reset();
+  bool shouldReport(RenderAnimation animation, const std::string& clip) {
+    return logState.shouldReport(animation, clip);
+  }
 
  private:
   friend class SkinnedModel;
@@ -51,6 +54,7 @@ struct SkinnedAnimationState {
   float currentTime = 0.0f;
   float previousTime = 0.0f;
   float blendElapsed = 0.0f;
+  AnimationLogState logState;
 };
 
 enum class GltfAssetFormat {
