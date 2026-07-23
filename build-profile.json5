@@ -1,19 +1,7 @@
 {
   "app": {
     "signingConfigs": [
-      {
-        "name": "default",
-        "type": "HarmonyOS",
-        "material": {
-          "certpath": "<redacted-cert-path>",
-          "keyAlias": "debugKey",
-          "keyPassword": "<redacted-key-password>",
-          "profile": "<redacted-profile-path>",
-          "signAlg": "SHA256withECDSA",
-          "storeFile": "<redacted-store-path>",
-          "storePassword": "<redacted-store-password>"
-        }
-      }
+
     ],
     "products": [
       {
