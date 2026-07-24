@@ -16,7 +16,8 @@
 - 原始下载 URL、作者、下载日期、源文件 SHA-256 和派生文件 SHA-256 必须写入项目清单。
 - 环境使用外围遗迹环、中心裂隙、边界背景、装饰四个稳定批次；不得依赖容器迭代顺序。
 - 高细节模式为默认模式；常态不低于 30 FPS，复杂首领区域不低于 24 FPS。
-- 性能降级顺序固定为：隐藏远景 → 隐藏装饰 → 环境纹理降为半分辨率。
+- 性能等级扩展为五档；降级顺序固定为：Medium 隐藏远景 → Heavy 隐藏装饰 →
+  Critical 使用内置半分辨率环境纹理。
 - 性能降级不得改变玩家、敌人、首领、战斗状态、AI、输入响应或动画。
 - 环境失败必须回退到现有程序化地面和基础几何体，应用仍可启动和战斗。
 - 静态环境不得创建、销毁或恢复 NativeWindow/EGL；所有 GL 资源操作必须发生在有效 current context 下。
@@ -366,8 +367,10 @@ Implement `static_model.cpp` with these exact validation rules:
 - Buffers and images must be embedded.
 - Node world transforms are baked into positions and inverse-transpose transformed normals.
 - Primitives sharing one embedded base-color texture are merged.
-- Full texture uses decoded dimensions; Half uses deterministic box-filtered dimensions `max(1, width/2) × max(1, height/2)`.
-- Tier changes mark textures dirty; re-upload occurs during the next draw while context is current.
+- Full and Half textures use the GLB 内置 `diffuse_full` 与 `diffuse_half`
+  image records; runtime 不执行缩放。
+- Tier changes mark textures dirty; the selected embedded image uploads during
+  the next draw while context is current.
 - `destroy()` deletes GL objects; `abandonGpuResources()` only clears tracked handles.
 
 Add `static_model.cpp` to `entry/src/main/cpp/CMakeLists.txt`.
@@ -401,6 +404,9 @@ git commit -m "feat: 增加静态环境 GLB 管线" \
 - Create: `native/engine/render/environment.h`
 - Create: `native/engine/render/environment.cpp`
 - Create: `tests/test_environment.cpp`
+- Modify: `native/engine/render/performance_guard.h`
+- Modify: `native/engine/render/performance_guard.cpp`
+- Modify: `tests/test_performance_guard.cpp`
 
 **Interfaces:**
 - Consumes: camera target position in normalized gameplay coordinates and `PerformanceGuard::level()`
@@ -434,13 +440,16 @@ void testDegradationOrderIsFixed() {
   assert(!medium.backdrop && medium.decoration);
   const auto heavy = controller.evaluate({0.5f, 0.5f}, 3);
   assert(!heavy.backdrop && !heavy.decoration);
-  assert(heavy.outerRing && heavy.centerRift);
-  assert(heavy.textureTier == StaticTextureTier::Half);
+  assert(heavy.textureTier == StaticTextureTier::Full);
+  const auto critical = controller.evaluate({0.5f, 0.5f}, 4);
+  assert(!critical.backdrop && !critical.decoration);
+  assert(critical.outerRing && critical.centerRift);
+  assert(critical.textureTier == StaticTextureTier::Half);
 }
 
 void testCenterRiftNeverDisappears() {
   EnvironmentController controller;
-  for (int level = 0; level <= 3; ++level) {
+  for (int level = 0; level <= 4; ++level) {
     assert(controller.evaluate({1.0f, 1.0f}, level).centerRift);
   }
 }
@@ -529,8 +538,8 @@ EnvironmentRenderPlan EnvironmentController::evaluate(
     plan.decoration = false;
   }
   if (perfLevel >= 2) plan.backdrop = false;
-  if (perfLevel >= 3) {
-    plan.decoration = false;
+  if (perfLevel >= 3) plan.decoration = false;
+  if (perfLevel >= 4) {
     plan.textureTier = StaticTextureTier::Half;
   }
   return plan;
@@ -558,7 +567,9 @@ Expected: all exit 0; existing combat snapshot fields remain unchanged.
 
 ```bash
 git add native/engine/render/environment.h \
-  native/engine/render/environment.cpp tests/test_environment.cpp
+  native/engine/render/environment.cpp tests/test_environment.cpp \
+  native/engine/render/performance_guard.h \
+  native/engine/render/performance_guard.cpp tests/test_performance_guard.cpp
 git commit -m "feat: 定义环境分区和降级策略" \
   -m "固定远景、装饰和纹理等级的降级顺序并发布观测指标。" \
   -m "Prompt: M4 Task 2 环境与场景氛围"
@@ -882,8 +893,11 @@ Use:
 - center tint `{0.35, 0.03, 0.02}`;
 - rift emissive-looking base `{0.95, 0.08, 0.04}`.
 
-On `PerfLevel::Heavy`, call `setTextureTier(Half)` only on ready environment
-models. On recovery, return to `Full`. Log only batch status/tier changes.
+Extend `PerformanceGuard` with `Critical = 4`; enter it only after Heavy remains
+below 24 FPS for its existing downgrade window, and recover through Heavy before
+Medium. On `PerfLevel::Critical`, call `setTextureTier(Half)` only on ready
+environment models. On recovery, return to `Full`. Log only batch status/tier
+changes.
 
 Reset the three per-frame counters before environment drawing, increment them
 only after a batch or fallback draw is submitted, and set `environmentReady`
@@ -1044,7 +1058,8 @@ Traverse the full ring once, then start the boss encounter and collect at least
 - normal route has no sustained FPS below 30;
 - boss area has no sustained FPS below 24;
 - center and outer batches remain visible at all quality levels;
-- forced heavy quality hides backdrop and decoration and uses half textures;
+- forced Heavy quality hides backdrop and decoration but retains full textures;
+- forced Critical quality uses half textures;
 - restoring performance returns full texture tier;
 - input, Task 1 animations and combat remain responsive.
 
