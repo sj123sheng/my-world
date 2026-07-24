@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import {
   bakeNodeTransforms,
+  chooseDiffuseDependency,
   chooseGltfDownload,
   embedTextureLevels,
   mergePrimitivesByMaterial,
@@ -53,6 +54,15 @@ assert.equal(chooseGltfDownload({
   a: { url: 'https://dl.polyhaven.org/a_2k.gltf' },
 }), 'https://dl.polyhaven.org/a_2k.gltf');
 assert.throws(() => chooseGltfDownload({}, '2k'), /no 2k glTF download/);
+assert.equal(chooseDiffuseDependency([
+  { path: 'textures/ruins_nor_2k.jpg' },
+  { path: 'textures/ruins_diff_2k.jpg' },
+], 'ruins').path, 'textures/ruins_diff_2k.jpg');
+assert.throws(() => chooseDiffuseDependency([], 'ruins'), /no ruins 2K diffuse dependency/);
+assert.throws(() => chooseDiffuseDependency([
+  { path: 'textures/ruins_diff_2k.jpg' },
+  { path: 'textures/ruins_diff_2k.png' },
+], 'ruins'), /ambiguous ruins 2K diffuse dependencies/);
 
 const roundTrip = readGlb(writeGlb(triangleDocument));
 assert.equal(roundTrip.json.asset.version, '2.0');
@@ -85,11 +95,23 @@ assert.deepEqual(partitioned.outerRing.json.images.map((image) => image.name),
 
 const manifestUrl = new URL('../assets/environment/manifest.json', import.meta.url);
 const manifest = JSON.parse(await readFile(manifestUrl, 'utf8'));
+const layoutUrl = new URL('../assets/environment/layout.json', import.meta.url);
+const layout = JSON.parse(await readFile(layoutUrl, 'utf8'));
 
 assert.equal(manifest.license, 'CC0-1.0');
 assert.equal(manifest.licenseUrl, 'https://polyhaven.com/license');
 assert.deepEqual(manifest.sourceAssets.map((asset) => asset.id),
   ['modular_fort_01', 'rabdentse_ruins_wall']);
+
+const findDownloadRecord = (node, url) => {
+  if (!node || typeof node !== 'object') return undefined;
+  if (node.url === url) return node;
+  for (const value of Object.values(node)) {
+    const found = findDownloadRecord(value, url);
+    if (found) return found;
+  }
+  return undefined;
+};
 
 for (const source of manifest.sourceAssets) {
   assert.match(source.author, /\S/);
@@ -97,7 +119,47 @@ for (const source of manifest.sourceAssets) {
   assert.match(source.downloadUrl, /^https:\/\/dl\.polyhaven\.org\//);
   assert.match(source.sha256, /^[a-f0-9]{64}$/);
   assert.match(source.downloadedAt, /^\d{4}-\d{2}-\d{2}$/);
+  assert.ok(Array.isArray(source.sourceFiles), `${source.id}: sourceFiles`);
+  assert.ok(source.sourceFiles.length > 1, `${source.id}: sourceFiles`);
+  assert.deepEqual(source.sourceFiles.map((file) => file.path),
+    [...source.sourceFiles.map((file) => file.path)].sort(),
+    `${source.id}: sourceFiles must be sorted by path`);
+  const indexResponse = await fetch(`https://api.polyhaven.com/files/${source.id}`);
+  assert.equal(indexResponse.ok, true, `${source.id}: metadata HTTP ${indexResponse.status}`);
+  const index = await indexResponse.json();
+  const downloadRecord = findDownloadRecord(index, source.downloadUrl);
+  assert.ok(downloadRecord, `${source.id}: download metadata record`);
+  const primaryPath = new URL(source.downloadUrl).pathname.split('/').at(-1);
+  const expectedFiles = [
+    { path: primaryPath, url: source.downloadUrl },
+    ...Object.entries(downloadRecord.include ?? {}).map(([path, entry]) =>
+      ({ path, url: entry.url })),
+  ].sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+  assert.deepEqual(source.sourceFiles.map(({ path, url }) => ({ path, url })),
+    expectedFiles, `${source.id}: all API include files must be recorded`);
+  await Promise.all(source.sourceFiles.map(async (file) => {
+    assert.match(file.path, /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$)).+\S$/);
+    assert.match(file.url, /^https:\/\/dl\.polyhaven\.org\//);
+    assert.match(file.downloadedAt, /^\d{4}-\d{2}-\d{2}$/);
+    assert.match(file.sha256, /^[a-f0-9]{64}$/);
+    const response = await fetch(file.url);
+    assert.equal(response.ok, true, `${file.path}: HTTP ${response.status}`);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), file.sha256,
+      `${source.id}/${file.path}: downloaded SHA-256`);
+  }));
+  const primary = source.sourceFiles.find((file) => file.url === source.downloadUrl);
+  assert.ok(primary, `${source.id}: primary glTF sourceFiles entry`);
+  assert.equal(primary.sha256, source.sha256, `${source.id}: primary SHA-256`);
+  assert.equal(primary.downloadedAt, source.downloadedAt, `${source.id}: primary date`);
 }
+
+const outerRingPillars = layout.filter((placement) =>
+  placement.region === 'outerRing' &&
+  placement.sourceNode === 'modular_fort_01_tower_round' &&
+  /pillar/.test(placement.id));
+assert.ok(outerRingPillars.length > 0,
+  'outerRing must place modular_fort_01_tower_round (Cylinder) as an explicit pillar');
 
 for (const asset of manifest.derivedAssets) {
   const bytes = await readFile(asset.path);

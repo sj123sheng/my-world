@@ -68,6 +68,37 @@ export function chooseGltfDownload(index, resolution = '2k') {
   return candidates[0];
 }
 
+function comparePaths(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function normalizeDependencyPath(path) {
+  if (typeof path !== 'string') throw new Error('dependency path must be a string');
+  const normalized = path.replaceAll('\\', '/');
+  if (normalized.startsWith('/') ||
+      normalized.split('/').some((part) => part.length === 0 || part === '.' || part === '..')) {
+    throw new Error(`unsafe dependency path: ${path}`);
+  }
+  return normalized;
+}
+
+export function chooseDiffuseDependency(includes, assetId) {
+  const entries = (Array.isArray(includes)
+    ? includes
+    : Object.entries(includes ?? {}).map(([path, value]) => ({ path, ...value })))
+    .map((entry) => ({ ...entry, path: normalizeDependencyPath(entry.path) }))
+    .sort((left, right) => comparePaths(left.path, right.path));
+  const escapedId = assetId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`(?:^|/)${escapedId}_diff_2k\\.(?:jpe?g|png)$`, 'i');
+  const matches = entries.filter((entry) => pattern.test(entry.path));
+  if (matches.length === 0) throw new Error(`no ${assetId} 2K diffuse dependency`);
+  if (matches.length > 1) {
+    throw new Error(`ambiguous ${assetId} 2K diffuse dependencies: ${
+      matches.map((entry) => entry.path).join(', ')}`);
+  }
+  return matches[0];
+}
+
 export function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
 }
@@ -621,18 +652,45 @@ async function download(url) {
 async function downloadPackage(index, url, directory) {
   const record = findDownloadRecord(index, url);
   const primary = await download(url);
-  const primaryPath = join(directory, new URL(url).pathname.split('/').at(-1));
+  const primaryRelativePath = normalizeDependencyPath(new URL(url).pathname.split('/').at(-1));
+  const primaryPath = join(directory, primaryRelativePath);
   await mkdir(directory, { recursive: true });
   await writeFile(primaryPath, primary);
-  const includes = {};
-  await Promise.all(Object.entries(record.include ?? {}).map(async ([relativePath, dependency]) => {
+  const dependencies = Object.entries(record.include ?? {})
+    .map(([relativePath, dependency]) =>
+      ({ dependency, relativePath: normalizeDependencyPath(relativePath) }))
+    .sort((left, right) => comparePaths(left.relativePath, right.relativePath));
+  const includeEntries = await Promise.all(dependencies.map(async ({ dependency, relativePath }) => {
     const bytes = await download(dependency.url);
-    const path = join(directory, relativePath);
-    await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, bytes);
-    includes[relativePath] = { bytes, path, url: dependency.url };
+    const localPath = join(directory, relativePath);
+    await mkdir(dirname(localPath), { recursive: true });
+    await writeFile(localPath, bytes);
+    return [relativePath, { bytes, localPath, url: dependency.url }];
   }));
-  return { primary, primaryPath, includes, url };
+  return {
+    primary,
+    primaryPath,
+    primaryRelativePath,
+    includes: Object.fromEntries(includeEntries),
+    url,
+  };
+}
+
+function sourceFilesFor(packageDownload, downloadedAt) {
+  return [
+    {
+      path: packageDownload.primaryRelativePath,
+      url: packageDownload.url,
+      downloadedAt,
+      sha256: sha256(packageDownload.primary),
+    },
+    ...Object.entries(packageDownload.includes).map(([path, entry]) => ({
+      path,
+      url: entry.url,
+      downloadedAt,
+      sha256: sha256(entry.bytes),
+    })),
+  ].sort((left, right) => comparePaths(left.path, right.path));
 }
 
 function rejectExternalUris(document) {
@@ -679,11 +737,12 @@ async function main() {
     const sourceDocument = { json: fortJson, bin: fortBinEntry.bytes };
     const layout = JSON.parse(await readFile(layoutPath, 'utf8'));
     const regions = partitionNodes(sourceDocument, layout);
-    const diffuseEntry = Object.entries(ruins.includes)
-      .find(([name]) => /_diff_2k\.(?:jpg|jpeg|png)$/i.test(name))?.[1];
-    if (!diffuseEntry) throw new Error('Rabdentse 2K diffuse texture dependency missing');
+    const diffuseEntry = chooseDiffuseDependency(
+      Object.entries(ruins.includes).map(([path, entry]) => ({ path, ...entry })),
+      'rabdentse_ruins_wall',
+    );
     const diffuseHalf = await generateHalfTexture(
-      diffuseEntry.path, join(temporary, 'rabdentse_ruins_wall_diff_1k.png'),
+      diffuseEntry.localPath, join(temporary, 'rabdentse_ruins_wall_diff_1k.png'),
     );
     await mkdir(outputDirectory, { recursive: true });
     const derivedAssets = [];
@@ -710,6 +769,8 @@ async function main() {
       });
     }
     const downloadedAt = new Date().toISOString().slice(0, 10);
+    const fortSourceFiles = sourceFilesFor(fort, downloadedAt);
+    const ruinsSourceFiles = sourceFilesFor(ruins, downloadedAt);
     const manifest = {
       license: 'CC0-1.0',
       licenseUrl: 'https://polyhaven.com/license',
@@ -722,6 +783,7 @@ async function main() {
           downloadUrl: fortUrl,
           sha256: sha256(fort.primary),
           downloadedAt,
+          sourceFiles: fortSourceFiles,
         },
         {
           id: 'rabdentse_ruins_wall',
@@ -731,6 +793,7 @@ async function main() {
           downloadUrl: ruinsUrl,
           sha256: sha256(ruins.primary),
           downloadedAt,
+          sourceFiles: ruinsSourceFiles,
         },
       ],
       derivedAssets,

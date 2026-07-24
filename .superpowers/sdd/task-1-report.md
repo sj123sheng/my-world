@@ -122,5 +122,114 @@ git diff --check: exit code 0
 - 1K PNG 派生依赖 macOS `/usr/bin/sips`；当前 DevEco Studio/HarmonyOS 开发环境为
   macOS，已用固定尺寸、格式和 formatOptions 验证多次输出一致。若未来在非 macOS
   CI 重新派生，需要提供等价的固定 PNG 编码器。
-- manifest 的 source SHA-256 对应所登记 downloadUrl 的主 glTF 文件；
-  下载依赖只在临时目录中用于派生，不单独作为 sourceAssets 条目登记。
+- manifest 的顶层 source SHA-256 对应所登记 downloadUrl 的主 glTF 文件；主文件及
+  每个 include 另在该资产的 `sourceFiles` 中逐文件登记。
+
+## 评审修复：逐文件证据、确定性 include 与外围立柱
+
+### 实现修复
+
+- 保留两个 `sourceAssets` 顶层条目，并在各条目增加按规范路径 code-point 顺序排列的
+  `sourceFiles`：
+  - `modular_fort_01`：主 glTF、BIN 和 9 个贴图 include，共 11 个文件。
+  - `rabdentse_ruins_wall`：主 glTF、BIN 和 3 个贴图 include，共 5 个文件。
+- 每个 source file 登记规范相对路径、Poly Haven 下载 URL、下载日期和实际下载字节的
+  SHA-256。顶层 `downloadUrl`/`sha256`/`downloadedAt` 与主 glTF 文件条目交叉一致。
+- validator 和测试均重新获取选中 downloadUrl 对应的 Poly Haven API record，验证
+  `sourceFiles` 完整覆盖主 glTF 与全部 include；随后重新下载 16 个 URL 并核对字节哈希。
+- `downloadPackage` 先规范化并排序依赖路径，再从已排序数组启动下载；
+  `Promise.all` 按输入顺序返回，最后才构造 include 对象，不再受完成时序影响。
+- 新增导出函数 `chooseDiffuseDependency`：按规范路径排序后只接受唯一的
+  `{assetId}_diff_2k.(jpg|jpeg|png)`；零匹配或多个匹配均明确报错。
+- 核对实际源 glTF：节点 `modular_fort_01_tower_round` 的 mesh 名为 `Cylinder`，
+  源文件无 `pillar`/`column` 命名节点。权威布局新增
+  `outer_northeast_pillar` 与 `outer_southwest_pillar`，均引用此真实节点并显式缩放为立柱。
+- 重新生成四个 GLB；只有包含新增立柱的 `outer_ring.glb` 哈希发生变化。
+
+### 评审修复 RED
+
+清单与立柱契约补入测试后运行：
+
+```bash
+/Applications/DevEco-Studio.app/Contents/tools/node/bin/node \
+  tests/test_environment_assets.mjs
+```
+
+预期且实际失败：
+
+```text
+AssertionError [ERR_ASSERTION]: modular_fort_01: sourceFiles
+actual: false
+expected: true
+exit code: 1
+```
+
+为明确漫反射唯一选择增加接口测试后、实现导出前运行同一命令：
+
+```text
+SyntaxError: The requested module
+'../automation/assets/fetch_environment_assets.mjs'
+does not provide an export named 'chooseDiffuseDependency'
+exit code: 1
+```
+
+首次真实生成还捕获了临时路径与规范依赖路径字段复用：
+
+```text
+Error: unsafe dependency path:
+/var/folders/.../rabdentse_ruins_wall/rabdentse_ruins_wall.bin
+exit code: 1
+```
+
+修复为独立 `localPath` 后，规范 `path` 只用于排序、选择与证据清单。
+
+### 评审修复 GREEN
+
+命令：
+
+```bash
+/Applications/DevEco-Studio.app/Contents/tools/node/bin/node \
+  automation/assets/fetch_environment_assets.mjs
+/Applications/DevEco-Studio.app/Contents/tools/node/bin/node \
+  automation/assets/validate_environment_assets.mjs
+/Applications/DevEco-Studio.app/Contents/tools/node/bin/node \
+  tests/test_environment_assets.mjs
+```
+
+结果：
+
+```text
+fetch_environment_assets.mjs: exit code 0
+validate_environment_assets.mjs: exit code 0
+test_environment_assets.mjs: exit code 0
+validator/test: API package coverage and all 16 downloaded SHA-256 checks passed
+```
+
+三轮完整生成命令：
+
+```bash
+for round in 1 2 3; do
+  /Applications/DevEco-Studio.app/Contents/tools/node/bin/node \
+    automation/assets/fetch_environment_assets.mjs
+  shasum -a 256 entry/src/main/resources/rawfile/environment/*.glb
+done
+```
+
+三轮输出逐项一致：
+
+```text
+ROUND 1 / ROUND 2 / ROUND 3
+55376fc70f8dc2f354c2edcdce242d14d0edf11f98de07a9d42f6285e7b410cc  backdrop.glb
+600703fc588eff24301031df0f99460316acc944bd54155c58169687635b07ae  center_rift.glb
+2c1bf9f689a0fa2452f1a2c7c67e4eccea5fbb91e32105165b3c7e481ae99879  decoration.glb
+c303a49e2621a2be34ab2200ebe1e4ac85f1cd6548e6abcc63dd96fee9f40c27  outer_ring.glb
+```
+
+### 评审修复自审
+
+- `sourceFiles` 的 11 + 5 个路径/URL 与当前 API 选中 record 完全一致，无遗漏或额外项。
+- 路径规范化拒绝绝对路径、空段、`.`、`..` 和反斜杠歧义；清单顺序不依赖 locale。
+- 贴图选择测试覆盖唯一匹配、零匹配和 JPEG/PNG 歧义匹配。
+- 两个 pillar placement ID 唯一、变换有限、区域为 `outerRing`、源节点真实存在。
+- manifest 的新 derived 哈希与本地 GLB 一致，三轮完整远端获取/本地派生逐字节一致。
+- 无新增任务范围外文件，无 C++/渲染/计划文档改动。
