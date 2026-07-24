@@ -1,4 +1,5 @@
-import { nativeSetModelAssets, nativeStartIfForeground, nativeStop, pullSnapshot, Snapshot } from '../napi/Bridge';
+import { nativeSetEnvironmentAssets, nativeSetModelAssets, nativeStartIfForeground,
+  nativeStop, pullSnapshot, Snapshot } from '../napi/Bridge';
 import { Hud } from '../ui/Hud';
 import { CombatControls } from '../ui/CombatControls';
 
@@ -86,23 +87,47 @@ struct GamePage {
   private async loadModelAssets(generation: number): Promise<void> {
     try {
       const resourceManager = getContext(this).resourceManager;
-      const assets: Uint8Array[] = await Promise.all([
-        resourceManager.getRawFileContent('models/player.glb'),
-        resourceManager.getRawFileContent('models/enemy.glb'),
-        resourceManager.getRawFileContent('models/boss.glb')
-      ]);
-      if (!this.isActiveModelLoad(generation)) {
-        return;
+      try {
+        const assets: Uint8Array[] = await Promise.all([
+          resourceManager.getRawFileContent('models/player.glb'),
+          resourceManager.getRawFileContent('models/enemy.glb'),
+          resourceManager.getRawFileContent('models/boss.glb')
+        ]);
+        if (!this.isActiveModelLoad(generation)) {
+          return;
+        }
+        if (!nativeSetModelAssets(assets[0].buffer as ArrayBuffer,
+          assets[1].buffer as ArrayBuffer, assets[2].buffer as ArrayBuffer)) {
+          console.error('[Ethelan] Native rejected model asset buffers; using fallback meshes');
+        }
+      } catch (error) {
+        if (this.isActiveModelLoad(generation)) {
+          console.error('[Ethelan] Failed to load model assets; using fallback meshes: ' +
+            JSON.stringify(error));
+        }
       }
-      if (!nativeSetModelAssets(assets[0].buffer as ArrayBuffer,
-        assets[1].buffer as ArrayBuffer, assets[2].buffer as ArrayBuffer)) {
-        console.error('[Ethelan] Native rejected model asset buffers; using fallback meshes');
+      try {
+        const environmentAssets: Uint8Array[] = await Promise.all([
+          resourceManager.getRawFileContent('environment/outer_ring.glb'),
+          resourceManager.getRawFileContent('environment/center_rift.glb'),
+          resourceManager.getRawFileContent('environment/backdrop.glb'),
+          resourceManager.getRawFileContent('environment/decoration.glb')
+        ]);
+        if (this.isActiveModelLoad(generation) &&
+          !nativeSetEnvironmentAssets(environmentAssets[0].buffer as ArrayBuffer,
+            environmentAssets[1].buffer as ArrayBuffer,
+            environmentAssets[2].buffer as ArrayBuffer,
+            environmentAssets[3].buffer as ArrayBuffer)) {
+          console.error('[Ethelan] Native rejected environment assets; using procedural fallback');
+        }
+      } catch (error) {
+        if (this.isActiveModelLoad(generation)) {
+          console.error('[Ethelan] Failed to load environment assets; using procedural fallback: ' +
+            JSON.stringify(error));
+        }
       }
     } catch (error) {
-      if (this.isActiveModelLoad(generation)) {
-        console.error('[Ethelan] Failed to load model assets; using fallback meshes: ' +
-          JSON.stringify(error));
-      }
+      console.error('[Ethelan] Resource manager unavailable: ' + JSON.stringify(error));
     } finally {
       if (this.isActiveModelLoad(generation)) {
         nativeStartIfForeground();

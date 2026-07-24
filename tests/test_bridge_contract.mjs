@@ -365,3 +365,24 @@ assert.match(nativeBridge, /CopyAndCommitModelAssets/,
 assert.match(nativeBridge,
   /CopyAndCommitModelAssets[\s\S]*?g_loop\.withLifecycle[\s\S]*?setModelAsset\(ModelKind::Player[\s\S]*?setModelAsset\(ModelKind::Enemy[\s\S]*?setModelAsset\(ModelKind::Boss/,
   'all copies must finish before one lifecycle-held, three-asset commit');
+
+// ---- M4 Task 2: four-batch environment bridge ----
+for (const batch of ['outer_ring', 'center_rift', 'backdrop', 'decoration']) {
+  assert.match(page,
+    new RegExp(`getRawFileContent\\(['"]environment/${batch}\\.glb['"]\\)`));
+}
+assert.match(bridge, /export const nativeSetEnvironmentAssets/);
+assert.match(declarations,
+  /nativeSetEnvironmentAssets: \(outer: ArrayBuffer, center: ArrayBuffer,[\s\S]*?backdrop: ArrayBuffer, decoration: ArrayBuffer\) => boolean;/);
+assert.match(nativeBridge, /"nativeSetEnvironmentAssets", nullptr, NativeSetEnvironmentAssets/);
+const setEnvironmentAssetsBody = functionBody(nativeBridge,
+  'static napi_value NativeSetEnvironmentAssets');
+assert.match(setEnvironmentAssetsBody, /argc != 4/,
+  'NativeSetEnvironmentAssets must require exactly four arguments');
+assert.match(setEnvironmentAssetsBody, /CopyAndCommitEnvironmentAssets/);
+assert.match(setEnvironmentAssetsBody,
+  /CopyArrayBuffer\(env, args\[static_cast<size_t>\(slot\)\], out\)/);
+assert.match(setEnvironmentAssetsBody, /g_loop\.withLifecycle/);
+assert.match(loadModelAssetsBody,
+  /nativeSetModelAssets[\s\S]*?try[\s\S]*?nativeSetEnvironmentAssets[\s\S]*?catch/,
+  'character and environment assets must use separate failure domains');

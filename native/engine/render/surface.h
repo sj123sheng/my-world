@@ -134,6 +134,10 @@ struct Surface {
   PendingModelAsset playerModelAsset;
   PendingModelAsset enemyModelAsset;
   PendingModelAsset bossModelAsset;
+  PendingModelAsset outerRingEnvironmentAsset;
+  PendingModelAsset centerRiftEnvironmentAsset;
+  PendingModelAsset backdropEnvironmentAsset;
+  PendingModelAsset decorationEnvironmentAsset;
   SkinnedModel playerModel;
   SkinnedModel enemyModel;
   SkinnedModel bossModel;
@@ -172,6 +176,14 @@ struct Surface {
         bossModelAsset.replace(std::move(bytes));
         break;
     }
+  }
+
+  void setEnvironmentAsset(size_t slot, std::vector<uint8_t> bytes) {
+    std::lock_guard<std::mutex> lock(modelAssetMutex);
+    PendingModelAsset* assets[] = {
+        &outerRingEnvironmentAsset, &centerRiftEnvironmentAsset,
+        &backdropEnvironmentAsset, &decorationEnvironmentAsset};
+    if (slot < 4) assets[slot]->replace(std::move(bytes));
   }
 };
 

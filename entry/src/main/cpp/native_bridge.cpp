@@ -9,6 +9,7 @@
 #include "engine/input/changed_pointer_forwarder.h"
 #include "engine/input/pointer_input.h"
 #include "native/platform/harmony/model_asset_commit.h"
+#include "native/platform/harmony/environment_asset_commit.h"
 
 #define LOGI(...) OH_LOG_Print(LOG_APP, LOG_INFO, 0xFF00, "Ethelan", __VA_ARGS__)
 #define LOGE(...) OH_LOG_Print(LOG_APP, LOG_ERROR, 0xFF00, "Ethelan", __VA_ARGS__)
@@ -178,6 +179,30 @@ static napi_value NativeSetModelAssets(napi_env env, napi_callback_info info) {
     return result;
   }
   napi_get_boolean(env, true, &result);
+  return result;
+}
+
+static napi_value NativeSetEnvironmentAssets(napi_env env,
+                                             napi_callback_info info) {
+  size_t argc = 4;
+  napi_value args[4] = {nullptr, nullptr, nullptr, nullptr};
+  napi_value result = nullptr;
+  if (napi_get_cb_info(env, info, &argc, args, nullptr, nullptr) != napi_ok ||
+      argc != 4) {
+    napi_get_boolean(env, false, &result);
+    return result;
+  }
+
+  const bool committed = CopyAndCommitEnvironmentAssets(
+      [&env, &args](EnvironmentAssetSlot slot, std::vector<uint8_t>& out) {
+        return CopyArrayBuffer(env, args[static_cast<size_t>(slot)], out);
+      },
+      [](auto operation) { g_loop.withLifecycle(operation); },
+      [](EnvironmentAssetSlot slot, std::vector<uint8_t> bytes) {
+        g_loop.surface.setEnvironmentAsset(static_cast<size_t>(slot),
+                                           std::move(bytes));
+      });
+  napi_get_boolean(env, committed, &result);
   return result;
 }
 
@@ -424,6 +449,7 @@ static napi_value Init(napi_env env, napi_value exports) {
     {"nativeStop", nullptr, NativeStop, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"nativeStartIfForeground", nullptr, NativeStartIfForeground, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"nativeSetModelAssets", nullptr, NativeSetModelAssets, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"nativeSetEnvironmentAssets", nullptr, NativeSetEnvironmentAssets, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pushInput", nullptr, NativePushInput, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pushAction", nullptr, NativePushAction, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"startEncounter", nullptr, NativeStartEncounter, nullptr, nullptr, nullptr, napi_default, nullptr},
