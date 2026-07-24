@@ -48,6 +48,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <glm/gtc/matrix_inverse.hpp>
 #include <glm/mat3x3.hpp>
 #include <glm/mat4x4.hpp>
@@ -241,10 +242,34 @@ bool parseStaticGlb(const std::vector<uint8_t> &bytes,
     }
   }
 
+  const cgltf_scene *scene = parsed->scene;
+  if (scene == nullptr && parsed->scenes_count != 0) {
+    scene = &parsed->scenes[0];
+  }
+  if (scene == nullptr) {
+    return fail(assetName, "static environment must define a scene", error);
+  }
+  std::vector<const cgltf_node *> reachableNodes;
+  std::vector<uint8_t> visitedNodes(parsed->nodes_count, 0);
+  std::function<void(const cgltf_node *)> visitNode =
+      [&](const cgltf_node *node) {
+        if (node == nullptr) return;
+        const std::size_t index =
+            static_cast<std::size_t>(node - parsed->nodes);
+        if (index >= parsed->nodes_count || visitedNodes[index] != 0) return;
+        visitedNodes[index] = 1;
+        reachableNodes.push_back(node);
+        for (std::size_t child = 0; child < node->children_count; ++child) {
+          visitNode(node->children[child]);
+        }
+      };
+  for (std::size_t root = 0; root < scene->nodes_count; ++root) {
+    visitNode(scene->nodes[root]);
+  }
+
   std::unordered_map<const cgltf_image *, std::size_t> mergedByImage;
-  for (std::size_t nodeIndex = 0; nodeIndex < parsed->nodes_count;
-       ++nodeIndex) {
-    const cgltf_node &node = parsed->nodes[nodeIndex];
+  for (const cgltf_node *nodePointer : reachableNodes) {
+    const cgltf_node &node = *nodePointer;
     if (node.mesh == nullptr) continue;
 
     cgltf_float worldValues[16]{};
@@ -291,10 +316,17 @@ bool parseStaticGlb(const std::vector<uint8_t> &bytes,
                     "indices must be unsigned byte/short/int triangles", error);
       }
 
+      if (primitive.material != nullptr &&
+          primitive.material->has_pbr_metallic_roughness) {
+        const cgltf_texture_view &textureView =
+            primitive.material->pbr_metallic_roughness.base_color_texture;
+        if (textureView.texture != nullptr && textureView.texcoord != 0) {
+          return fail(assetName, "baseColorTexture texcoord must be 0", error);
+        }
+      }
       const cgltf_image *image = baseColorImage(primitive);
-      if (image != nullptr &&
-          (image != fullImage || halfImage == nullptr ||
-           fullTexture.empty() || halfTexture.empty())) {
+      if (image != nullptr && (image != fullImage || halfImage == nullptr ||
+                               fullTexture.empty() || halfTexture.empty())) {
         return fail(
             assetName,
             "base-color texture requires diffuse_full and diffuse_half images",
@@ -367,8 +399,6 @@ bool parseStaticGlb(const std::vector<uint8_t> &bytes,
 
 bool StaticModel::tryInitialize(const std::vector<uint8_t> &bytes,
                                 const std::string &assetName) {
-  destroy();
-
   std::vector<Mesh> meshes;
   std::vector<bool> meshUsesTexture;
   std::vector<Vertex> testVertices;
@@ -381,7 +411,14 @@ bool StaticModel::tryInitialize(const std::vector<uint8_t> &bytes,
     lastError_ = std::move(error);
     return false;
   }
+  if (hasGpuResources()) {
+    lastError_ =
+        assetPrefix(assetName) +
+        "destroy or abandon existing GPU resources before reinitialize";
+    return false;
+  }
 
+  clearOwnedState();
   primitives_ = std::move(meshes);
   primitiveUsesTexture_ = std::move(meshUsesTexture);
   testVertices_ = std::move(testVertices);
@@ -508,6 +545,14 @@ void StaticModel::clearOwnedState() {
   stats_ = StaticModelStats{};
   textureTier_ = StaticTextureTier::Full;
   textureDirty_ = false;
+}
+
+bool StaticModel::hasGpuResources() const {
+  if (texture_ != 0u) return true;
+  for (const Mesh &mesh : primitives_) {
+    if (mesh.vbo != 0u || mesh.ibo != 0u || mesh.texture != 0u) return true;
+  }
+  return false;
 }
 
 const std::vector<uint8_t> &StaticModel::selectedTextureBytes() const {

@@ -19,6 +19,8 @@ struct StaticModelStats {
 
 class StaticModel {
  public:
+  // 纯 CPU 解析并原子替换模型。若当前实例仍跟踪 GPU handle，会拒绝替换；
+  // 调用方须先在 context current 时 destroy()，或 context 丢失后 abandon。
   bool tryInitialize(const std::vector<uint8_t> &bytes,
                      const std::string &assetName);
   bool ready() const;
@@ -33,6 +35,7 @@ class StaticModel {
 
  private:
   void clearOwnedState();
+  bool hasGpuResources() const;
   const std::vector<uint8_t> &selectedTextureBytes() const;
 
   bool ready_ = false;

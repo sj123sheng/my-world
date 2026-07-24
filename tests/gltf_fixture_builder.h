@@ -299,6 +299,28 @@ inline std::vector<uint8_t> makeStaticSceneWithExternalUri() {
       R"({"name":"diffuse_full","uri":"external.png"})");
 }
 
+inline std::vector<uint8_t> makeStaticSceneWithInactiveNodesAndScenes(
+    bool specifyDefaultScene = true) {
+  std::vector<uint8_t> glb = replaceJsonText(
+      makeStaticSceneGlb(),
+      R"("nodes":[{"translation":[2,0,0],"mesh":0}],
+    "scenes":[{"nodes":[0]}],"scene":0)",
+      R"("nodes":[{"translation":[2,0,0],"mesh":0},
+      {"translation":[5,0,0],"mesh":0},
+      {"translation":[9,0,0],"mesh":0}],
+    "scenes":[{"nodes":[1]},{"nodes":[0]}],"scene":1)");
+  if (!specifyDefaultScene) {
+    glb = replaceJsonText(glb, R"(],"scene":1)", R"(])");
+  }
+  return glb;
+}
+
+inline std::vector<uint8_t> makeStaticSceneWithBaseColorTexcoord1() {
+  return replaceJsonText(makeStaticSceneGlb(),
+                         R"("baseColorTexture":{"index":0})",
+                         R"("baseColorTexture":{"index":0,"texCoord":1})");
+}
+
 inline std::vector<uint8_t> makeTwoPrimitiveGlb() {
   const std::string secondPrimitive =
       R"(,"indices":5,"mode":4},{"attributes":{"POSITION":0,"NORMAL":1,"TEXCOORD_0":2,"JOINTS_0":3,"WEIGHTS_0":4},"indices":5,"mode":4)";
