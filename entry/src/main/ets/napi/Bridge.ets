@@ -25,6 +25,9 @@ export interface Snapshot {
   encounterMode: number;
   encounterState: number;
   rendererReady: boolean;
+  environmentReady: boolean;
+  environmentDrawCalls: number;
+  environmentTriangles: number;
   stamina: number;
   comboSegment: number;
   invulnerable: boolean;

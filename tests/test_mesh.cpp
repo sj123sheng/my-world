@@ -103,6 +103,17 @@ void testSkinnedVertexUsesExpectedAttributeSlots() {
   assert(kJointsAttribute == 3 && kWeightsAttribute == 4);
 }
 
+void testCylinderHasFiniteNormalsAndTriangles() {
+  Mesh cylinder = createCylinder(1.0f, 2.0f, 16);
+  assert(!cylinder.vertices.empty());
+  assert(cylinder.indices.size() == 16u * 12u);
+  for (const Vertex& vertex : cylinder.vertices) {
+    assert(std::isfinite(vertex.normal.x));
+    assert(std::isfinite(vertex.normal.y));
+    assert(std::isfinite(vertex.normal.z));
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -116,5 +127,6 @@ int main() {
   testPlaneIndicesInBounds();
   testMeshDefaultResourceHandles();
   testSkinnedVertexUsesExpectedAttributeSlots();
+  testCylinderHasFiniteNormalsAndTriangles();
   return 0;
 }

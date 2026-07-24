@@ -199,8 +199,9 @@ static napi_value NativeSetEnvironmentAssets(napi_env env,
       },
       [](auto operation) { g_loop.withLifecycle(operation); },
       [](EnvironmentAssetSlot slot, std::vector<uint8_t> bytes) {
-        g_loop.surface.setEnvironmentAsset(static_cast<size_t>(slot),
-                                           std::move(bytes));
+        g_loop.surface.setEnvironmentAsset(
+            static_cast<EnvironmentBatchKind>(static_cast<size_t>(slot)),
+            std::move(bytes));
       });
   napi_get_boolean(env, committed, &result);
   return result;
@@ -327,6 +328,7 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_value tickVal, hpVal, poiseVal, xVal, yVal, fpsVal, movingVal;
   napi_value moveXVal, moveYVal, cameraYawVal, cameraPitchVal, distVal;
   napi_value targetIdVal, bossPhaseVal, encounterModeVal, encounterStateVal, rendererReadyVal;
+  napi_value environmentReadyVal, environmentDrawCallsVal, environmentTrianglesVal;
   napi_value staminaVal, comboSegmentVal, invulnerableVal, insightMsVal;
   napi_value resonanceVal, targetHpVal, targetPoiseVal, pulseHitRemainingMsVal;
   napi_value lastRejectReasonVal;
@@ -347,6 +349,9 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_create_int32(env, snapshot.encounterState, &encounterStateVal);
   napi_get_boolean(env, snapshot.moving, &movingVal);
   napi_get_boolean(env, snapshot.rendererReady, &rendererReadyVal);
+  napi_get_boolean(env, snapshot.environmentReady, &environmentReadyVal);
+  napi_create_uint32(env, snapshot.environmentDrawCalls, &environmentDrawCallsVal);
+  napi_create_uint32(env, snapshot.environmentTriangles, &environmentTrianglesVal);
   napi_create_double(env, static_cast<double>(snapshot.stamina) / FP_ONE, &staminaVal);
   napi_create_uint32(env, snapshot.comboSegment, &comboSegmentVal);
   napi_get_boolean(env, snapshot.invulnerable, &invulnerableVal);
@@ -373,6 +378,9 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_set_named_property(env, result, "encounterMode", encounterModeVal);
   napi_set_named_property(env, result, "encounterState", encounterStateVal);
   napi_set_named_property(env, result, "rendererReady", rendererReadyVal);
+  napi_set_named_property(env, result, "environmentReady", environmentReadyVal);
+  napi_set_named_property(env, result, "environmentDrawCalls", environmentDrawCallsVal);
+  napi_set_named_property(env, result, "environmentTriangles", environmentTrianglesVal);
   napi_set_named_property(env, result, "stamina", staminaVal);
   napi_set_named_property(env, result, "comboSegment", comboSegmentVal);
   napi_set_named_property(env, result, "invulnerable", invulnerableVal);

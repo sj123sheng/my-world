@@ -24,6 +24,7 @@ inline constexpr EGLContext EGL_NO_CONTEXT = nullptr;
 #include <mutex>
 #include <unordered_map>
 #include <utility>
+#include <array>
 #include "native/gameplay/player/player_controller.h"
 #include "native/engine/render/camera_render_state.h"
 
@@ -33,6 +34,8 @@ inline constexpr EGLContext EGL_NO_CONTEXT = nullptr;
 #include "native/engine/render/render_lifecycle.h"
 #include "native/engine/render/shader_3d.h"
 #include "native/engine/render/skinned_model.h"
+#include "native/engine/render/static_model.h"
+#include "native/engine/render/environment.h"
 #include <glm/vec3.hpp>
 
 struct Particle {
@@ -134,10 +137,21 @@ struct Surface {
   PendingModelAsset playerModelAsset;
   PendingModelAsset enemyModelAsset;
   PendingModelAsset bossModelAsset;
-  PendingModelAsset outerRingEnvironmentAsset;
-  PendingModelAsset centerRiftEnvironmentAsset;
-  PendingModelAsset backdropEnvironmentAsset;
-  PendingModelAsset decorationEnvironmentAsset;
+  std::array<PendingModelAsset, 4> environmentAssets;
+  std::array<StaticModel, 4> environmentModels;
+  std::array<EnvironmentBatchStatus, 4> environmentStatuses{
+      EnvironmentBatchStatus::Empty, EnvironmentBatchStatus::Empty,
+      EnvironmentBatchStatus::Empty, EnvironmentBatchStatus::Empty};
+  EnvironmentController environmentController;
+  EnvironmentRenderPlan environmentPlan;
+  Mesh fallbackPillarMesh;
+  Mesh fallbackWallMesh;
+  Mesh riftPlaneMesh;
+  bool environmentReady = false;
+  uint32_t environmentDrawCalls = 0;
+  uint32_t environmentTriangles = 0;
+  int32_t environmentPerfLevel = 0;
+  StaticTextureTier loggedEnvironmentTextureTier = StaticTextureTier::Full;
   SkinnedModel playerModel;
   SkinnedModel enemyModel;
   SkinnedModel bossModel;
@@ -178,12 +192,18 @@ struct Surface {
     }
   }
 
-  void setEnvironmentAsset(size_t slot, std::vector<uint8_t> bytes) {
+  void setEnvironmentAsset(EnvironmentBatchKind kind, std::vector<uint8_t> bytes) {
     std::lock_guard<std::mutex> lock(modelAssetMutex);
-    PendingModelAsset* assets[] = {
-        &outerRingEnvironmentAsset, &centerRiftEnvironmentAsset,
-        &backdropEnvironmentAsset, &decorationEnvironmentAsset};
-    if (slot < 4) assets[slot]->replace(std::move(bytes));
+    const size_t slot = static_cast<size_t>(kind);
+    if (slot < environmentAssets.size()) {
+      environmentAssets[slot].replace(std::move(bytes));
+      environmentStatuses[slot] = EnvironmentBatchStatus::Pending;
+    }
+  }
+
+  bool shouldDrawEnvironmentFallback() const {
+    return environmentStatuses[0] != EnvironmentBatchStatus::Ready ||
+           environmentStatuses[1] != EnvironmentBatchStatus::Ready;
   }
 };
 

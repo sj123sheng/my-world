@@ -7,6 +7,8 @@
 #include "native/engine/render/mesh.h"
 
 #include <cstddef>
+#include <cmath>
+#include <glm/geometric.hpp>
 
 #ifdef OHOS_PLATFORM
 #include <GLES3/gl3.h>
@@ -91,6 +93,32 @@ Mesh createPlane(float width, float depth) {
   mesh.indices.push_back(2);
   mesh.indices.push_back(3);
 
+  return mesh;
+}
+
+Mesh createCylinder(float radius, float height, uint32_t segments) {
+  Mesh mesh;
+  if (radius <= 0.0f || height <= 0.0f || segments < 3) return mesh;
+  const float half = height * 0.5f;
+  constexpr float kTau = 6.2831853071795864769f;
+  mesh.vertices.reserve(segments * 4u);
+  mesh.indices.reserve(segments * 12u);
+  for (uint32_t i = 0; i < segments; ++i) {
+    const uint32_t next = (i + 1u) % segments;
+    const float a = kTau * static_cast<float>(i) / static_cast<float>(segments);
+    const float b = kTau * static_cast<float>(next) / static_cast<float>(segments);
+    const glm::vec3 pa{std::cos(a) * radius, -half, std::sin(a) * radius};
+    const glm::vec3 pb{std::cos(b) * radius, -half, std::sin(b) * radius};
+    const glm::vec3 ta{pa.x, half, pa.z};
+    const glm::vec3 tb{pb.x, half, pb.z};
+    const uint32_t base = static_cast<uint32_t>(mesh.vertices.size());
+    mesh.vertices.push_back({pa, glm::normalize(glm::vec3(pa.x, 0.0f, pa.z)), {0, 0}});
+    mesh.vertices.push_back({pb, glm::normalize(glm::vec3(pb.x, 0.0f, pb.z)), {1, 0}});
+    mesh.vertices.push_back({tb, glm::normalize(glm::vec3(pb.x, 0.0f, pb.z)), {1, 1}});
+    mesh.vertices.push_back({ta, glm::normalize(glm::vec3(pa.x, 0.0f, pa.z)), {0, 1}});
+    mesh.indices.insert(mesh.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3,
+                                             base, base + 3, base + 1, base + 1, base + 3, base + 2});
+  }
   return mesh;
 }
 

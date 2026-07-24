@@ -10,7 +10,8 @@ struct GamePage {
     tick: 0, hp: 100, poise: 100, x: 0.5, y: 0.5, fps: 0, moving: false,
     moveX: 0, moveY: 0, cameraYaw: 0, cameraPitch: 0,
     targetDist: 0, targetId: 0, bossPhase: 0, encounterMode: 0,
-    encounterState: 0, rendererReady: true,
+    encounterState: 0, rendererReady: true, environmentReady: false,
+    environmentDrawCalls: 0, environmentTriangles: 0,
     stamina: 100, comboSegment: 0, invulnerable: false, insightMs: 0,
     resonance: 0, targetHp: 300, targetPoise: 100, pulseHitRemainingMs: 0,
     lastRejectReason: 0, currentAction: 0, comboWindowMs: 0,
@@ -40,6 +41,9 @@ struct GamePage {
   @State encounterMode: number = 0;
   @State encounterState: number = 0;
   @State rendererReady: boolean = true;
+  @State environmentReady: boolean = false;
+  @State environmentDrawCalls: number = 0;
+  @State environmentTriangles: number = 0;
   @State stamina: number = 100;
   @State comboSegment: number = 0;
   @State invulnerable: boolean = false;
@@ -217,6 +221,9 @@ struct GamePage {
         this.encounterMode = this.snapshot.encounterMode;
         this.encounterState = this.snapshot.encounterState;
         this.rendererReady = this.snapshot.rendererReady;
+        this.environmentReady = this.snapshot.environmentReady;
+        this.environmentDrawCalls = this.snapshot.environmentDrawCalls;
+        this.environmentTriangles = this.snapshot.environmentTriangles;
         this.stamina = this.snapshot.stamina;
         this.comboSegment = this.snapshot.comboSegment;
         this.invulnerable = this.snapshot.invulnerable;

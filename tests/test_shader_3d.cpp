@@ -34,9 +34,15 @@ void testSkinPaletteBoundariesAndInvalidation() {
   assert(!shader.skinningEnabled());
 }
 
+void testEnvironmentTintSetterIsSafeWithoutGlContext() {
+  Shader3D shader;
+  shader.setEnvironmentTint({0.35f, 0.03f, 0.02f}, 0.5f);
+}
+
 }  // namespace
 
 int main() {
   testSkinPaletteBoundariesAndInvalidation();
+  testEnvironmentTintSetterIsSafeWithoutGlContext();
   return 0;
 }
