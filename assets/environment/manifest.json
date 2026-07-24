@@ -1,0 +1,62 @@
+{
+  "derivedAssets": [
+    {
+      "id": "outerRing",
+      "path": "entry/src/main/resources/rawfile/environment/outer_ring.glb",
+      "sha256": "ee8df4e5ee951a7f28fb86dd274f19394b153e2e2231a66d86fd5d53c68e4d14",
+      "sourceDependencies": [
+        "modular_fort_01",
+        "rabdentse_ruins_wall"
+      ]
+    },
+    {
+      "id": "centerRift",
+      "path": "entry/src/main/resources/rawfile/environment/center_rift.glb",
+      "sha256": "600703fc588eff24301031df0f99460316acc944bd54155c58169687635b07ae",
+      "sourceDependencies": [
+        "modular_fort_01",
+        "rabdentse_ruins_wall"
+      ]
+    },
+    {
+      "id": "backdrop",
+      "path": "entry/src/main/resources/rawfile/environment/backdrop.glb",
+      "sha256": "55376fc70f8dc2f354c2edcdce242d14d0edf11f98de07a9d42f6285e7b410cc",
+      "sourceDependencies": [
+        "modular_fort_01",
+        "rabdentse_ruins_wall"
+      ]
+    },
+    {
+      "id": "decoration",
+      "path": "entry/src/main/resources/rawfile/environment/decoration.glb",
+      "sha256": "2c1bf9f689a0fa2452f1a2c7c67e4eccea5fbb91e32105165b3c7e481ae99879",
+      "sourceDependencies": [
+        "modular_fort_01",
+        "rabdentse_ruins_wall"
+      ]
+    }
+  ],
+  "license": "CC0-1.0",
+  "licenseUrl": "https://polyhaven.com/license",
+  "sourceAssets": [
+    {
+      "author": "Rico Cilliers",
+      "downloadUrl": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/modular_fort_01/modular_fort_01_2k.gltf",
+      "downloadedAt": "2026-07-24",
+      "id": "modular_fort_01",
+      "name": "Modular Fort 01",
+      "pageUrl": "https://polyhaven.com/a/modular_fort_01",
+      "sha256": "7278a56aaa624ce71974ad2374bb7b1a5ac83c9296ebc5acc5893862a69cf59d"
+    },
+    {
+      "author": "Amal Kumar",
+      "downloadUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/gltf/2k/rabdentse_ruins_wall/rabdentse_ruins_wall_2k.gltf",
+      "downloadedAt": "2026-07-24",
+      "id": "rabdentse_ruins_wall",
+      "name": "Rabdentse Ruins Wall",
+      "pageUrl": "https://polyhaven.com/a/rabdentse_ruins_wall",
+      "sha256": "4130d776f3ba785db672be9b101cbd4bfa0c2c330608cd52937528dea4514a4c"
+    }
+  ]
+}
