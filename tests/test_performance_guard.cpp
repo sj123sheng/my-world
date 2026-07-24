@@ -45,6 +45,42 @@ void testInitialLevelIsZero() {
   assert(guard.level() == 0);
 }
 
+void testCriticalRequiresSustainedSub24Fps() {
+  PerformanceGuard guard;
+  for (int i = 0; i < 125; ++i) {
+    guard.sample(16 * i, 16, 20.0f);
+  }
+  assert(guard.level() == 3);
+
+  guard.sample(2000, 16, 20.0f);
+  assert(guard.level() == 4);
+}
+
+void testBriefSub24FpsDoesNotEnterCritical() {
+  PerformanceGuard guard;
+  for (int i = 0; i < 63; ++i) {
+    guard.sample(16 * i, 16, 20.0f);
+  }
+  assert(guard.level() == 3);
+
+  guard.sample(3000, 16, 25.0f);
+  assert(guard.level() == 3);
+}
+
+void testCriticalRecoveryReturnsToHeavyFirst() {
+  PerformanceGuard guard;
+  for (int i = 0; i <= 125; ++i) {
+    guard.sample(16 * i, 16, 20.0f);
+  }
+  assert(guard.level() == 4);
+
+  guard.sample(5000, 16, 60.0f);
+  assert(guard.level() == 3);
+
+  guard.sample(5016, 16, 60.0f);
+  assert(guard.level() == 0);
+}
+
 }  // namespace
 
 int main() {
@@ -52,5 +88,8 @@ int main() {
   testLevelBoundaries();
   testRecoveryUpgrades();
   testSingleSpikeDoesNotChangeLevel();
+  testCriticalRequiresSustainedSub24Fps();
+  testBriefSub24FpsDoesNotEnterCritical();
+  testCriticalRecoveryReturnsToHeavyFirst();
   return 0;
 }

@@ -4,6 +4,7 @@ namespace {
 
 // 2-second window in milliseconds.
 constexpr int64_t kWindowMs = 2000;
+constexpr float kCriticalFps = 24.0f;
 
 PerfLevel fpsToLevel(float avgFps) {
   if (avgFps >= 55.0f) return PerfLevel::Full;
@@ -44,5 +45,24 @@ void PerformanceGuard::recompute(Tick now) {
   }
 
   const float avgFps = sum / static_cast<float>(count);
+  if (avgFps < kCriticalFps) {
+    if (!sub24Active_) {
+      sub24Active_ = true;
+      sub24Since_ = now;
+    }
+    if (level_ == PerfLevel::Heavy &&
+        now - sub24Since_ >= kWindowMs) {
+      level_ = PerfLevel::Critical;
+    } else if (level_ != PerfLevel::Critical) {
+      level_ = PerfLevel::Heavy;
+    }
+    return;
+  }
+
+  sub24Active_ = false;
+  if (level_ == PerfLevel::Critical) {
+    level_ = PerfLevel::Heavy;
+    return;
+  }
   level_ = fpsToLevel(avgFps);
 }
