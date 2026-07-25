@@ -47,10 +47,37 @@ void testBossIntroTimeoutIsRelativeToPhaseEntry() {
   DemoDirector director;
   director.tick(90000, DemoSignals{.introComplete = true});
   director.skipTo(DemoPhase::BossIntro);
-  director.tick(97000, DemoSignals{});
+  director.tick(96999, DemoSignals{});
   assert(director.phase() == DemoPhase::BossIntro);
-  director.tick(98000, DemoSignals{});
+  director.tick(97000, DemoSignals{});
   assert(director.phase() == DemoPhase::BossFight);
+}
+
+void testBossIntroCinematicRestoresControlWhenReady() {
+  DemoDirector director;
+  director.tick(1000, DemoSignals{.introComplete = true});
+  director.skipTo(DemoPhase::BossIntro);
+
+  director.tick(1001, DemoSignals{});
+  assert(!director.snapshot().inputRestored);
+  assert(!director.snapshot().cameraRestored);
+
+  director.tick(8000, DemoSignals{});
+  assert(director.phase() == DemoPhase::BossFight);
+  assert(director.snapshot().inputRestored);
+  assert(director.snapshot().cameraRestored);
+  assert(director.bossCinematic().readyForFight);
+}
+
+void testSkippingBossIntroRestoresControl() {
+  DemoDirector director;
+  director.skipTo(DemoPhase::BossIntro);
+  director.tick(1000, DemoSignals{});
+  assert(!director.snapshot().inputRestored);
+
+  director.skipTo(DemoPhase::BossFight);
+  assert(director.snapshot().inputRestored);
+  assert(director.snapshot().cameraRestored);
 }
 
 }  // namespace
@@ -60,5 +87,7 @@ int main() {
   testExploreTimeoutProvidesSafeProgression();
   testSkipRestoresInputAndCamera();
   testBossIntroTimeoutIsRelativeToPhaseEntry();
+  testBossIntroCinematicRestoresControlWhenReady();
+  testSkippingBossIntroRestoresControl();
   return 0;
 }

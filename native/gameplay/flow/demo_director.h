@@ -14,6 +14,24 @@ enum class DemoPhase : uint8_t {
   Outro,
 };
 
+enum class BossSourceColor : uint8_t {
+  Radiance,
+  Current,
+  Corruption,
+};
+
+struct BossCinematicState {
+  float ringProgress = 0.0f;
+  uint8_t shardCount = 3;
+  BossSourceColor sourceColor = BossSourceColor::Radiance;
+  bool broken = false;
+  bool readyForFight = false;
+  Tick elapsedMs = 0;
+
+  BossCinematicState tick(Tick deltaMs) const;
+  static BossCinematicState fromBossHp(float hpRatio);
+};
+
 struct DemoSignals {
   bool introComplete = false;
   bool reachedCombatAnchor = false;
@@ -29,6 +47,7 @@ struct DemoDirectorSnapshot {
   bool inputRestored = true;
   bool cameraRestored = true;
   Tick phaseElapsedMs = 0;
+  BossCinematicState bossCinematic;
 };
 
 class DemoDirector {
@@ -38,6 +57,9 @@ class DemoDirector {
 
   DemoPhase phase() const { return snapshot_.phase; }
   const DemoDirectorSnapshot& snapshot() const { return snapshot_; }
+  const BossCinematicState& bossCinematic() const {
+    return snapshot_.bossCinematic;
+  }
 
  private:
   void advanceTo(DemoPhase phase, Tick now, bool timeoutFallback);
