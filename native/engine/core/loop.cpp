@@ -454,6 +454,19 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                     {surface.player.x, surface.player.y},
                     surface.player.moving,
                     currentTarget ? static_cast<EntityId>(currentTarget->id) : 0});
+  const EncounterSnapshot& encounterState = encounter.snapshot();
+  DemoSignals demoSignals;
+  demoSignals.introComplete = combatTime >= 1000;
+  demoSignals.reachedCombatAnchor = surface.player.y >= 0.45f;
+  demoSignals.encounterComplete =
+      encounterState.state == EncounterState::Victory;
+  demoSignals.allSourcesActive = combat.snapshot().radianceAttached &&
+                                 combat.snapshot().currentAttached &&
+                                 combat.snapshot().corruptionAttached;
+  demoSignals.cinematicComplete = false;
+  demoSignals.bossDefeated = encounterState.state == EncounterState::Victory &&
+                             encounterState.mode == EncounterMode::Boss;
+  demoDirector.tick(combatTime, demoSignals);
   surface.trainingTarget.alive =
       encounter.snapshot().mode == EncounterMode::Training &&
       combat.snapshot().targetAlive;
@@ -533,6 +546,30 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                                   static_cast<float>(5000);
   }
   updated.debugHud = debugHud_;
+  switch (demoDirector.phase()) {
+    case DemoPhase::Intro:
+      updated.objectiveLabel = "进入失落遗迹";
+      break;
+    case DemoPhase::Explore:
+      updated.objectiveLabel = "前往共鸣祭坛";
+      break;
+    case DemoPhase::Encounter:
+      updated.objectiveLabel = "清除遗迹守卫";
+      break;
+    case DemoPhase::Resonance:
+      updated.objectiveLabel = "激活三源共鸣";
+      break;
+    case DemoPhase::BossIntro:
+      updated.objectiveLabel = "共鸣核心正在苏醒";
+      break;
+    case DemoPhase::BossFight:
+      updated.objectiveLabel = "击破共鸣核心";
+      break;
+    case DemoPhase::Outro:
+      updated.objectiveLabel = "遗迹共鸣已完成";
+      break;
+  }
+  updated.showDebugHud = debugHud_;
   snapshots.publish(updated);
 }
 

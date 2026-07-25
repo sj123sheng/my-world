@@ -21,6 +21,7 @@
 #include "../../gameplay/targeting/soft_targeting.h"
 #include "../../gameplay/combat/combat_controller.h"
 #include "../../gameplay/ai/encounter_controller.h"
+#include "../../gameplay/flow/demo_director.h"
 
 struct Loop {
   Loop() { (void)encounter.start(EncounterMode::Training); }
@@ -36,6 +37,7 @@ struct Loop {
   SoftTargeting softTargeting;
   CombatController combat{CombatConfig::defaults()};
   EncounterController encounter{combat};
+  DemoDirector demoDirector;
   std::optional<TargetSelection> currentTarget;
   VfxSystem vfxSystem;
   PerformanceGuard performanceGuard;

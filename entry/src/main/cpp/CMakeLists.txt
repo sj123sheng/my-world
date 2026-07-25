@@ -92,6 +92,7 @@ add_library(native_game SHARED
     ${NATIVE_ROOT}/gameplay/ai/enemy_archetypes.cpp
     ${NATIVE_ROOT}/gameplay/ai/enemy_archetypes.h
     ${NATIVE_ROOT}/gameplay/ai/encounter_controller.cpp
+    ${NATIVE_ROOT}/gameplay/flow/demo_director.cpp
     ${NATIVE_ROOT}/gameplay/ai/encounter_controller.h
 
     # gameplay entities
