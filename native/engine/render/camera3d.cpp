@@ -11,7 +11,7 @@ void Camera3D::follow(glm::vec3 targetPos, float yaw, float pitch, float distanc
   const float sp = std::sin(pitch);
   const float cy = std::cos(yaw);
   const float sy = std::sin(yaw);
-  position = targetPos + glm::vec3(cp * cy, sp, cp * sy) * distance;
+  position = targetPos + glm::vec3(-sy * cp, sp, -cy * cp) * distance;
 }
 
 glm::mat4 Camera3D::viewMatrix() const {
