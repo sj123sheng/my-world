@@ -67,5 +67,8 @@ export const pullSnapshot: () => {
   cameraShakeY: number,
   bossHpRatio: number,
   bossCastRatio: number,
-  debugHud: boolean
+  debugHud: boolean,
+  objectiveLabel: string,
+  resonanceSlots: number[],
+  showDebugHud: boolean
 };

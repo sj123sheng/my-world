@@ -2,6 +2,8 @@
 
 #include <cassert>
 #include <cstdint>
+#include <cmath>
+#include <glm/geometric.hpp>
 
 namespace {
 
@@ -102,6 +104,15 @@ void testEmptyBatchNoEffect() {
   assert(vfx.snapshot().vfxFlags == 0);
 }
 
+void testResonanceCueUsesStableSourceColor() {
+  const VfxCue cue = VfxCue::resonance(SourceType::Current, 0.8f, 600);
+  const glm::vec3 expected{0.26f, 0.82f, 0.72f};
+  assert(glm::length(cue.color - expected) < 0.0001f);
+  assert(std::fabs(cue.intensity - 0.8f) < 0.0001f);
+  assert(cue.durationMs == 600);
+  assert(cue.shape == VfxShape::RingWave);
+}
+
 }  // namespace
 
 int main() {
@@ -115,5 +126,6 @@ int main() {
   testRepeatEventRefreshesNotStacks();
   testVfxFlagsReflectActiveEffects();
   testEmptyBatchNoEffect();
+  testResonanceCueUsesStableSourceColor();
   return 0;
 }

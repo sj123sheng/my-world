@@ -44,64 +44,70 @@ export struct Hud {
   @Prop vfxFlags: number = 0;
   @Prop bossHpRatio: number = 0;
   @Prop bossCastRatio: number = 0;
+  @Prop objectiveLabel: string = '';
+  @Prop resonanceSlots: number[] = [0, 0, 0];
+  @Prop showDebugHud: boolean = false;
   @State auras: string[] = [];
 
   build() {
     Column() {
-      Row() {
-        Column() {
-          Progress({ value: this.hp, total: 100, type: ProgressType.Linear })
-            .width('40%').height(8)
-            .color(Color.Red)
-          Progress({ value: this.poise, total: 100, type: ProgressType.Linear })
-            .width('40%').height(6)
-            .color(Color.Orange)
-          Progress({ value: this.stamina, total: 100, type: ProgressType.Linear })
-            .width('40%').height(6)
-            .color(Color.Green)
-          Text(`连击 ${this.comboSegment} · 洞察 ${this.insightMs}ms`)
-            .fontColor(this.insightMs > 0 ? Color.Yellow : Color.Gray)
-            .fontSize(12)
-          Text(`附着 ${this.radianceAttached ? '辉' : '-'}${this.currentAttached ? '流' : '-'}${this.corruptionAttached ? '蚀' : '-'}`)
-            .fontColor(this.targetPoiseBroken ? Color.Red : Color.Gray).fontSize(12)
-        }
-        .alignItems(HorizontalAlign.Start)
-        .layoutWeight(1)
-
-        Column() {
-          Text(`FPS ${this.fps.toFixed(1)}`)
-            .fontColor(Color.Yellow)
-            .fontSize(14)
-        }
-        .alignItems(HorizontalAlign.End)
-      }
-      .width('100%')
-      .justifyContent(FlexAlign.SpaceBetween)
+      Text(this.objectiveLabel)
+        .fontColor('#E5ECEA')
+        .fontSize(16)
+        .fontWeight(FontWeight.Medium)
+        .letterSpacing(1.5)
+        .textShadow({ radius: 8, color: '#B0000000', offsetX: 0, offsetY: 2 })
+        .margin({ top: 18 })
 
       if (this.encounterMode == 5) {
         Column() {
           Progress({ value: this.bossHpRatio * 100, total: 100, type: ProgressType.Linear })
-            .width('60%').height(10)
-            .color(Color.Red)
-          Text(`首领 阶段 ${this.bossPhase} · 机制 ${this.bossMechanic} · 读条 ${this.bossCastMs}ms`)
-            .fontColor(Color.White).fontSize(12)
+            .width('54%').height(6)
+            .color('#AA4F86')
+          Text('共鸣核心祭司')
+            .fontColor('#CBD5D3').fontSize(11).letterSpacing(2)
         }
         .alignItems(HorizontalAlign.Center)
         .width('100%')
-        .margin({ top: 4 })
+        .margin({ top: 10 })
       }
 
-      if (this.encounterMode == 4) {
-        Text(`关卡 ${this.levelStage} · 门 ${this.gateState} · 补给 ${this.supplyState}`)
-          .fontColor(Color.Gray).fontSize(12)
-          .margin({ top: 4 })
-      }
+      Blank().layoutWeight(1)
 
-      if (this.debugHud) {
-        Column() {
+      Column({ space: 5 }) {
+        Progress({ value: this.hp, total: 100, type: ProgressType.Linear })
+          .width(150).height(5).color('#D6E2DF')
+        Progress({ value: this.poise, total: 100, type: ProgressType.Linear })
+          .width(134).height(2).color('#D9A145')
+        Progress({ value: this.stamina, total: 100, type: ProgressType.Linear })
+          .width(118).height(3).color('#4FD4BB')
+        Row({ space: 12 }) {
+          Text('辉').fontSize(14)
+            .fontColor(this.resonanceSlots[0] > 0 ? '#D9A145' : '#66706F')
+          Text('流').fontSize(14)
+            .fontColor(this.resonanceSlots[1] > 0 ? '#43CDB5' : '#66706F')
+          Text('蚀').fontSize(14)
+            .fontColor(this.resonanceSlots[2] > 0 ? '#AB4F92' : '#66706F')
+        }
+      }
+      .alignItems(HorizontalAlign.Center)
+      .padding({ left: 16, right: 16, top: 8, bottom: 8 })
+      .backgroundColor('#8A11181D')
+      .borderRadius(18)
+      .margin({ bottom: 22 })
+
+      if (this.showDebugHud) {
+        if (this.debugHud) {
+          Column() {
+          Text(`FPS ${this.fps.toFixed(1)}`)
+            .fontColor(Color.Yellow).fontSize(12)
           Text(`X ${this.x.toFixed(3)}  Y ${this.y.toFixed(3)} · ${this.moving ? '移动中' : '待机'} · 目标 ${(this.targetDist * 100).toFixed(1)}%`)
             .fontColor(Color.Gray).fontSize(10)
           Text(`遭遇 ${this.encounterMode} · 状态 ${this.encounterState} · 性能 ${this.perfLevel} · VFX ${this.vfxFlags}`)
+            .fontColor(Color.Gray).fontSize(10)
+          Text(`关卡 ${this.levelStage} · 门 ${this.gateState} · 补给 ${this.supplyState}`)
+            .fontColor(Color.Gray).fontSize(10)
+          Text(`首领 阶段 ${this.bossPhase} · 机制 ${this.bossMechanic} · 读条 ${this.bossCastMs}ms`)
             .fontColor(Color.Gray).fontSize(10)
           Text(`假人 HP ${this.targetHp.toFixed(1)} · 韧性 ${this.targetPoise.toFixed(1)}`)
             .fontColor(Color.White).fontSize(10)
@@ -112,21 +118,19 @@ export struct Hud {
             .fontColor(Color.Gray).fontSize(10)
           Text(`冷却 ${this.radianceCooldownMs}/${this.currentCooldownMs}/${this.corruptionCooldownMs}ms`)
             .fontColor(Color.Gray).fontSize(10)
+          Text(`精准窗 ${this.pulseHitRemainingMs >= 100 && this.pulseHitRemainingMs <= 500 ? '开启' : '关闭'}`)
+            .fontColor(Color.Gray).fontSize(10)
           Text(`侵蚀 ${this.corroded ? '是' : '否'} · 反应 ${this.currentReaction} · 相位 ${this.pulsePhase}`)
             .fontColor(Color.Gray).fontSize(10)
+          }
+          .alignItems(HorizontalAlign.Start)
+          .position({ x: 12, y: 70 })
         }
-        .alignItems(HorizontalAlign.Start)
       }
-
-      ForEach(this.auras, (a: string) => {
-        Text(a)
-          .fontColor(Color.Yellow)
-          .fontSize(14)
-      }, (a: string) => a)
     }
-    .alignItems(HorizontalAlign.Start)
-    .padding(16)
+    .alignItems(HorizontalAlign.Center)
     .position({ x: 0, y: 0 })
     .width('100%')
+    .height('100%')
   }
 }

@@ -2,8 +2,33 @@
 
 #include "engine/core/tick_clock.h"
 #include "gameplay/combat/combat_controller.h"
+#include "native/engine/presentation/visual_tokens.h"
+
+#include <glm/vec3.hpp>
 
 #include <cstdint>
+
+enum class VfxShape : uint8_t {
+  RingWave,
+  Trail,
+  Rune,
+  HitFlash,
+  OutlinePulse,
+};
+
+struct VfxCue {
+  VfxShape shape = VfxShape::RingWave;
+  SourceType source = SourceType::Radiance;
+  glm::vec3 color{1.0f, 1.0f, 1.0f};
+  float intensity = 0.0f;
+  Tick durationMs = 0;
+
+  static VfxCue resonance(SourceType source, float intensity,
+                          Tick durationMs) {
+    return {VfxShape::RingWave, source, VisualTokens::sourceColor(source),
+            intensity, durationMs};
+  }
+};
 
 // VFX effect bit flags for snapshot consumers.
 enum VfxFlag : int32_t {
@@ -27,6 +52,7 @@ struct VfxSnapshot {
   float cameraShakeX = 0.0f;
   float cameraShakeY = 0.0f;
   int32_t vfxFlags = VfxNone;
+  VfxCue resonanceCue;
 };
 
 class VfxSystem {

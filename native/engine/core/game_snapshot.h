@@ -1,6 +1,8 @@
 #pragma once
 #include "tick_clock.h"
+#include <array>
 #include <cstdint>
+#include <string>
 
 struct GameSnapshot {
   Tick tick = 0;
@@ -60,4 +62,7 @@ struct GameSnapshot {
   bool environmentReady = false;
   uint32_t environmentDrawCalls = 0;
   uint32_t environmentTriangles = 0;
+  std::string objectiveLabel;
+  std::array<uint8_t, 3> resonanceSlots{0, 0, 0};
+  bool showDebugHud = false;
 };

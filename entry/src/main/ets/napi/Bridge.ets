@@ -64,6 +64,9 @@ export interface Snapshot {
   bossHpRatio: number;
   bossCastRatio: number;
   debugHud: boolean;
+  objectiveLabel: string;
+  resonanceSlots: number[];
+  showDebugHud: boolean;
 }
 
 export const nativeStart = (): void => native.nativeStart();

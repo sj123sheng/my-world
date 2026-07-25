@@ -447,6 +447,20 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_set_named_property(env, result, "bossHpRatio", s6[4]);
   napi_set_named_property(env, result, "bossCastRatio", s6[5]);
   napi_set_named_property(env, result, "debugHud", s6[6]);
+  napi_value objectiveLabelVal, resonanceSlotsVal, showDebugHudVal;
+  napi_create_string_utf8(env, snapshot.objectiveLabel.c_str(), NAPI_AUTO_LENGTH,
+                          &objectiveLabelVal);
+  napi_create_array_with_length(env, snapshot.resonanceSlots.size(),
+                                &resonanceSlotsVal);
+  for (uint32_t index = 0; index < snapshot.resonanceSlots.size(); ++index) {
+    napi_value slotVal;
+    napi_create_uint32(env, snapshot.resonanceSlots[index], &slotVal);
+    napi_set_element(env, resonanceSlotsVal, index, slotVal);
+  }
+  napi_get_boolean(env, snapshot.showDebugHud, &showDebugHudVal);
+  napi_set_named_property(env, result, "objectiveLabel", objectiveLabelVal);
+  napi_set_named_property(env, result, "resonanceSlots", resonanceSlotsVal);
+  napi_set_named_property(env, result, "showDebugHud", showDebugHudVal);
   return result;
 }
 

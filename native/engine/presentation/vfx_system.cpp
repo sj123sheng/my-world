@@ -39,6 +39,10 @@ void VfxSystem::consume(const CombatEventBatch& batch) {
         break;
       case PresentationEventType::ResonanceBurst:
         snapshot_.resonanceBurstMs = kResonanceBurstMs;
+        snapshot_.resonanceCue = VfxCue::resonance(
+            SourceType::Current,
+            static_cast<float>(e.intensity) / static_cast<float>(FP_ONE),
+            kResonanceBurstMs);
         break;
       case PresentationEventType::PhaseTransition:
         snapshot_.phaseTransitionMs = kPhaseTransitionMs;

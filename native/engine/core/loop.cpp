@@ -391,6 +391,22 @@ void Loop::tickOnce(int64_t elapsedMs) {
                                   static_cast<float>(5000);
   }
   snapshot.debugHud = debugHud_;
+  switch (encounter.snapshot().mode) {
+    case EncounterMode::Training:
+      snapshot.objectiveLabel = "唤醒第一道共鸣";
+      break;
+    case EncounterMode::Boss:
+      snapshot.objectiveLabel = "击破共鸣核心";
+      break;
+    default:
+      snapshot.objectiveLabel = "前往共鸣祭坛";
+      break;
+  }
+  snapshot.resonanceSlots = {
+      static_cast<uint8_t>(snapshot.radianceAttached),
+      static_cast<uint8_t>(snapshot.currentAttached),
+      static_cast<uint8_t>(snapshot.corruptionAttached)};
+  snapshot.showDebugHud = debugHud_;
   snapshots.publish(snapshot);
 
   if (tickCount <= 5 || tickCount % 60 == 0) {

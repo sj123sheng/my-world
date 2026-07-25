@@ -22,7 +22,8 @@ struct GamePage {
     levelStage: 0, gateState: 0, supplyState: 0,
     bossHp: 1000, bossPoise: 300, bossMechanic: 0, bossCastMs: 0
     , perfLevel: 0, vfxFlags: 0, cameraShakeX: 0, cameraShakeY: 0,
-    bossHpRatio: 0, bossCastRatio: 0, debugHud: false
+    bossHpRatio: 0, bossCastRatio: 0, debugHud: false,
+    objectiveLabel: '', resonanceSlots: [0, 0, 0], showDebugHud: false
   };
   @State tick: number = 0;
   @State hp: number = 100;
@@ -80,6 +81,9 @@ struct GamePage {
   @State bossHpRatio: number = 0;
   @State bossCastRatio: number = 0;
   @State debugHud: boolean = false;
+  @State objectiveLabel: string = '';
+  @State resonanceSlots: number[] = [0, 0, 0];
+  @State showDebugHud: boolean = false;
   private timer: number = -1;
   private pageActive: boolean = false;
   private modelLoadGeneration: number = 0;
@@ -188,7 +192,8 @@ struct GamePage {
         bossMechanic: this.bossMechanic, bossCastMs: this.bossCastMs,
         debugHud: this.debugHud, perfLevel: this.perfLevel,
         vfxFlags: this.vfxFlags, bossHpRatio: this.bossHpRatio,
-        bossCastRatio: this.bossCastRatio })
+        bossCastRatio: this.bossCastRatio, objectiveLabel: this.objectiveLabel,
+        resonanceSlots: this.resonanceSlots, showDebugHud: this.showDebugHud })
 
       CombatControls()
         .align(Alignment.BottomEnd)
@@ -260,6 +265,9 @@ struct GamePage {
         this.bossHpRatio = this.snapshot.bossHpRatio;
         this.bossCastRatio = this.snapshot.bossCastRatio;
         this.debugHud = this.snapshot.debugHud;
+        this.objectiveLabel = this.snapshot.objectiveLabel;
+        this.resonanceSlots = this.snapshot.resonanceSlots;
+        this.showDebugHud = this.snapshot.showDebugHud;
       } catch (e) {
       }
     }, 100);

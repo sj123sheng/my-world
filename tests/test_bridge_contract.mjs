@@ -25,7 +25,8 @@ assert.doesNotMatch(page, /\.onTouch\s*\(/,
   'GamePage must not register an ArkTS touch producer');
 for (const field of ['stamina', 'comboSegment', 'invulnerable', 'insightMs',
   'resonance', 'targetHp', 'targetPoise', 'pulseHitRemainingMs', 'lastRejectReason',
-  'encounterMode', 'encounterState']) {
+  'encounterMode', 'encounterState', 'objectiveLabel', 'resonanceSlots',
+  'showDebugHud']) {
   assert.match(bridge, new RegExp(`\\b${field}\\b`), `Bridge Snapshot missing ${field}`);
 }
 for (const source of [bridge, declarations, page, nativeBridge, loop, hud]) {
@@ -35,6 +36,12 @@ for (const source of [bridge, declarations, page, nativeBridge, loop, hud]) {
 assert.match(hud,
   /pulseHitRemainingMs\s*>=\s*100\s*&&\s*this\.pulseHitRemainingMs\s*<=\s*500/,
   'HUD must highlight exactly the closed 100..500ms precision window');
+assert.match(hud, /@Prop objectiveLabel: string = '';/,
+  'HUD must accept the current objective label');
+assert.match(hud, /@Prop resonanceSlots: number\[\] = \[0, 0, 0\];/,
+  'HUD must accept exactly three resonance slots');
+assert.match(hud, /if \(this\.showDebugHud\)/,
+  'HUD debug diagnostics must be opt-in');
 
 assert.doesNotMatch(page, /\.onTouch\s*\(/,
   'GamePage must not register an ArkTS touch producer for a library-backed XComponent');
