@@ -3,6 +3,7 @@
 #include "native/engine/render/static_model.h"
 
 #include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
 
 #include <cstdint>
 
@@ -28,8 +29,17 @@ struct EnvironmentRenderPlan {
   StaticTextureTier textureTier = StaticTextureTier::Full;
 };
 
+struct EnvironmentComposition {
+  glm::vec3 spawn;
+  glm::vec3 foregroundOccluder;
+  glm::vec3 combatAnchor;
+  glm::vec3 altarAnchor;
+  glm::vec3 cameraFocus;
+};
+
 class EnvironmentController {
  public:
+  static EnvironmentComposition defaultComposition();
   EnvironmentRenderPlan evaluate(glm::vec2 cameraTarget,
                                  int32_t perfLevel) const;
 };

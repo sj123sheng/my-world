@@ -1,5 +1,4 @@
 #include "surface.h"
-#include "native/engine/presentation/visual_tokens.h"
 #include "platform/harmony/fence_wait.h"
 #include <hilog/log.h>
 #include <unistd.h>
@@ -568,7 +567,7 @@ static void draw3DPhase(Surface& s) {
 
   // 地面：大平面覆盖可玩区域，中心放在 (0.5, 0, 0.5)。
   drawMeshAt(s, s.groundMesh, vp, glm::vec3(0.5f, 0.0f, 0.5f), 3.0f,
-             {0.30f, 0.32f, 0.36f});
+             s.environmentPalette.ambient);
 
   if (s.environmentPlan.backdrop) {
     drawEnvironmentModel(s, 2, vp, glm::vec3(0.0f), 0.0f);
@@ -580,14 +579,16 @@ static void draw3DPhase(Surface& s) {
   if (s.environmentPlan.decoration) {
     drawEnvironmentModel(s, 3, vp, glm::vec3(0.0f), 0.0f);
   }
-  drawEnvironmentModel(s, 1, vp, {0.35f, 0.03f, 0.02f}, 0.18f);
+  drawEnvironmentModel(s, 1, vp, s.environmentPalette.fogColor, 0.22f);
   if (s.environmentStatuses[1] != EnvironmentBatchStatus::Ready) {
     drawCenterFallback(s, vp);
   }
   const glm::mat4 rift =
-      glm::translate(glm::mat4(1.0f), {0.5f, 0.004f, 0.75f}) *
+      glm::translate(glm::mat4(1.0f), s.environmentComposition.altarAnchor +
+                                               glm::vec3(0.0f, 0.004f, 0.0f)) *
       glm::scale(glm::mat4(1.0f), {0.22f, 1.0f, 0.08f});
-  drawFallbackMesh(s, s.riftPlaneMesh, vp, rift, {0.95f, 0.08f, 0.04f});
+  drawFallbackMesh(s, s.riftPlaneMesh, vp, rift,
+                   s.environmentPalette.altarGlow);
   const bool fallbackMeshesReady = s.fallbackPillarMesh.vbo != 0u &&
                                    s.fallbackWallMesh.vbo != 0u;
   const bool outerCovered =

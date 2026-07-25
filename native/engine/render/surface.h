@@ -28,6 +28,7 @@ inline constexpr EGLContext EGL_NO_CONTEXT = nullptr;
 #include "native/gameplay/player/player_controller.h"
 #include "native/engine/render/camera_render_state.h"
 #include "native/engine/render/asset_profile.h"
+#include "native/engine/presentation/visual_tokens.h"
 
 #include "native/engine/render/camera3d.h"
 #include "native/engine/render/mesh.h"
@@ -144,6 +145,9 @@ struct Surface {
       EnvironmentBatchStatus::Empty, EnvironmentBatchStatus::Empty,
       EnvironmentBatchStatus::Empty, EnvironmentBatchStatus::Empty};
   EnvironmentController environmentController;
+  EnvironmentComposition environmentComposition =
+      EnvironmentController::defaultComposition();
+  EnvironmentPalette environmentPalette = VisualTokens::environmentPalette();
   EnvironmentRenderPlan environmentPlan;
   Mesh fallbackPillarMesh;
   Mesh fallbackWallMesh;
@@ -177,6 +181,10 @@ struct Surface {
         bossAssetProfile = profile;
         break;
     }
+  }
+
+  void setEnvironmentPalette(const EnvironmentPalette& palette) {
+    environmentPalette = palette;
   }
 
   void pruneEnemyAnimationStates() {
