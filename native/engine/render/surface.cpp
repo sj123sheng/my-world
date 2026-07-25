@@ -372,7 +372,7 @@ static void drawBossCinematicGeometry(Surface& s, const glm::mat4& vp) {
   if (!s.boss3d.active) return;
   const glm::vec3 center{s.boss3d.x, 0.31f, s.boss3d.y};
   const glm::vec3 coreColor = bossCoreColor(s.boss3d.sourceColor);
-  const float reveal = std::max(0.2f, s.boss3d.cinematicProgress);
+  const float reveal = std::max(0.5f, s.boss3d.cinematicProgress);
 
   auto drawRing = [&](float yaw, float roll, float scale) {
     const glm::mat4 model =
@@ -395,7 +395,7 @@ static void drawBossCinematicGeometry(Surface& s, const glm::mat4& vp) {
   drawRing(s.boss3d.ringBroken ? 0.70f : 0.34f,
            s.boss3d.ringBroken ? -0.42f : 0.0f, reveal * 0.82f);
 
-  drawMeshAt(s, s.bossMesh, vp, center, 0.075f + reveal * 0.025f,
+  drawMeshAt(s, s.bossMesh, vp, center, 0.15f + reveal * 0.05f,
              coreColor);
   for (uint8_t i = 0; i < s.boss3d.shardCount; ++i) {
     constexpr float kTau = 6.2831853071795864769f;
@@ -406,7 +406,7 @@ static void drawBossCinematicGeometry(Surface& s, const glm::mat4& vp) {
         center.x + std::cos(angle) * radius,
         center.y + std::sin(angle * 2.0f) * 0.045f,
         center.z + std::sin(angle) * radius};
-    drawMeshAt(s, s.bossMesh, vp, shardPosition, 0.045f, coreColor * 0.75f);
+    drawMeshAt(s, s.bossMesh, vp, shardPosition, 0.08f, coreColor * 0.75f);
   }
 }
 
@@ -691,7 +691,7 @@ static void draw3DPhase(Surface& s) {
               actorModelMatrix(glm::vec3(s.boss3d.x, 0.02f, s.boss3d.y),
                                s.bossAssetProfile.scale,
                                s.boss3d.angle + s.bossAssetProfile.yawOffsetRadians),
-              vp, bossColorByPhase(s.boss3d.phase), "boss");
+             vp, bossColorByPhase(s.boss3d.phase), "boss");
     drawBossCinematicGeometry(s, vp);
   }
 
@@ -921,22 +921,23 @@ static void drawBossCinematicSW(const Surface& s, Canvas& c) {
                                     c.swapRedBlue);
   const int cx = ndcToScreenX(s, view.x);
   const int cy = ndcToScreenY(s, view.y);
-  const int rx = std::max(8, ndcToPixelRadiusX(s, base.x));
-  const int ry = std::max(12, ndcToPixelRadiusY(s, base.y));
+  const int rx = std::max(30, ndcToPixelRadiusX(s, base.x));
+  const int ry = std::max(40, ndcToPixelRadiusY(s, base.y));
   for (int step = 0; step < 48; ++step) {
     if (s.boss3d.ringBroken && (step == 5 || step == 6 || step == 29)) continue;
     const float angle = 6.2831853f * static_cast<float>(step) / 48.0f;
-    blendPixel(c, cx + static_cast<int>(std::cos(angle) * rx),
-               cy + static_cast<int>(std::sin(angle) * ry), packed);
+    drawSolidEllipse(c, cx + static_cast<int>(std::cos(angle) * rx),
+                     cy + static_cast<int>(std::sin(angle) * ry),
+                     5, 5, packed);
   }
-  drawSolidEllipse(c, cx, cy, std::max(4, rx / 5), std::max(4, ry / 5),
+  drawSolidEllipse(c, cx, cy, std::max(10, rx / 4), std::max(10, ry / 4),
                    packed);
   for (uint8_t i = 0; i < s.boss3d.shardCount; ++i) {
     const float angle = 6.2831853f * static_cast<float>(i) / 3.0f +
                         s.boss3d.cinematicProgress * 2.2f;
     drawSolidEllipse(c, cx + static_cast<int>(std::cos(angle) * rx * 0.72f),
                      cy + static_cast<int>(std::sin(angle) * ry * 0.72f),
-                     std::max(2, rx / 10), std::max(2, ry / 10), packed);
+                     8, 8, packed);
   }
 }
 
