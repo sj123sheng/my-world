@@ -577,6 +577,10 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   updated.bossShardCount = introCinematic.shardCount;
   updated.bossSourceColor = static_cast<uint8_t>(introCinematic.sourceColor);
   updated.bossRingBroken = cinematic.broken;
+  surface.boss3d.cinematicProgress = updated.bossCinematicProgress;
+  surface.boss3d.shardCount = updated.bossShardCount;
+  surface.boss3d.sourceColor = updated.bossSourceColor;
+  surface.boss3d.ringBroken = updated.bossRingBroken;
   snapshots.publish(updated);
 }
 

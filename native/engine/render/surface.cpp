@@ -328,6 +328,17 @@ static glm::vec3 bossColorByPhase(int phase) {
   }
 }
 
+static glm::vec3 bossCoreColor(uint8_t sourceColor) {
+  switch (sourceColor % 3u) {
+    case 1:
+      return VisualTokens::sourceColor(SourceType::Current);
+    case 2:
+      return VisualTokens::sourceColor(SourceType::Corruption);
+    default:
+      return VisualTokens::sourceColor(SourceType::Radiance);
+  }
+}
+
 static void applyEntityTint(const Surface& s, const glm::vec3& base) {
   // ambient = base*0.3 保证背光面仍有基色可见，lightColor = base*0.7 让受光面
   // 保留基色并随方向光产生明暗。lightDir 保持场景统一方向。
@@ -355,6 +366,48 @@ static glm::mat4 actorModelMatrix(const glm::vec3& position, float scale,
   return glm::translate(glm::mat4(1.0f), position) *
          glm::rotate(glm::mat4(1.0f), yaw, glm::vec3(0.0f, 1.0f, 0.0f)) *
          glm::scale(glm::mat4(1.0f), glm::vec3(scale));
+}
+
+static void drawBossCinematicGeometry(Surface& s, const glm::mat4& vp) {
+  if (!s.boss3d.active) return;
+  const glm::vec3 center{s.boss3d.x, 0.31f, s.boss3d.y};
+  const glm::vec3 coreColor = bossCoreColor(s.boss3d.sourceColor);
+  const float reveal = std::max(0.2f, s.boss3d.cinematicProgress);
+
+  auto drawRing = [&](float yaw, float roll, float scale) {
+    const glm::mat4 model =
+        glm::translate(glm::mat4(1.0f), center) *
+        glm::rotate(glm::mat4(1.0f), yaw, glm::vec3(0.0f, 1.0f, 0.0f)) *
+        glm::rotate(glm::mat4(1.0f), 1.5707963f,
+                    glm::vec3(1.0f, 0.0f, 0.0f)) *
+        glm::rotate(glm::mat4(1.0f), roll, glm::vec3(0.0f, 0.0f, 1.0f)) *
+        glm::scale(glm::mat4(1.0f), glm::vec3(scale));
+    s.shader3d.setMVP(vp * model);
+    s.shader3d.setModel(model);
+    s.shader3d.setSkinned(false);
+    s.shader3d.setHasTexture(false);
+    applyEntityTint(s, coreColor);
+    s.bossRingMesh.draw();
+  };
+
+  drawRing(s.boss3d.ringBroken ? -0.62f : -0.28f,
+           s.boss3d.ringBroken ? 0.38f : 0.0f, reveal);
+  drawRing(s.boss3d.ringBroken ? 0.70f : 0.34f,
+           s.boss3d.ringBroken ? -0.42f : 0.0f, reveal * 0.82f);
+
+  drawMeshAt(s, s.bossMesh, vp, center, 0.075f + reveal * 0.025f,
+             coreColor);
+  for (uint8_t i = 0; i < s.boss3d.shardCount; ++i) {
+    constexpr float kTau = 6.2831853071795864769f;
+    const float angle = kTau * static_cast<float>(i) / 3.0f +
+                        s.boss3d.cinematicProgress * 2.2f;
+    const float radius = s.boss3d.ringBroken ? 0.27f : 0.20f;
+    const glm::vec3 shardPosition{
+        center.x + std::cos(angle) * radius,
+        center.y + std::sin(angle * 2.0f) * 0.045f,
+        center.z + std::sin(angle) * radius};
+    drawMeshAt(s, s.bossMesh, vp, shardPosition, 0.045f, coreColor * 0.75f);
+  }
 }
 
 static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
@@ -639,6 +692,7 @@ static void draw3DPhase(Surface& s) {
                                s.bossAssetProfile.scale,
                                s.boss3d.angle + s.bossAssetProfile.yawOffsetRadians),
               vp, bossColorByPhase(s.boss3d.phase), "boss");
+    drawBossCinematicGeometry(s, vp);
   }
 
   glDisable(GL_CULL_FACE);
@@ -858,6 +912,34 @@ static void drawTrainingTargetSW(const Surface& s, Canvas& c) {
   drawSolidEllipseSW(s, c, view.x, view.y, radii, 0.85f, 0.32f, 0.22f, 1.0f);
 }
 
+static void drawBossCinematicSW(const Surface& s, Canvas& c) {
+  if (!s.boss3d.active) return;
+  const Vec2 view = worldToNdc(s, {s.boss3d.x, s.boss3d.y});
+  const Vec2 base = s.cameraRenderState.billboardNdcRadii(0.15f, aspect(s));
+  const glm::vec3 color = bossCoreColor(s.boss3d.sourceColor);
+  const uint32_t packed = packColor(color.r, color.g, color.b, 0.95f,
+                                    c.swapRedBlue);
+  const int cx = ndcToScreenX(s, view.x);
+  const int cy = ndcToScreenY(s, view.y);
+  const int rx = std::max(8, ndcToPixelRadiusX(s, base.x));
+  const int ry = std::max(12, ndcToPixelRadiusY(s, base.y));
+  for (int step = 0; step < 48; ++step) {
+    if (s.boss3d.ringBroken && (step == 5 || step == 6 || step == 29)) continue;
+    const float angle = 6.2831853f * static_cast<float>(step) / 48.0f;
+    blendPixel(c, cx + static_cast<int>(std::cos(angle) * rx),
+               cy + static_cast<int>(std::sin(angle) * ry), packed);
+  }
+  drawSolidEllipse(c, cx, cy, std::max(4, rx / 5), std::max(4, ry / 5),
+                   packed);
+  for (uint8_t i = 0; i < s.boss3d.shardCount; ++i) {
+    const float angle = 6.2831853f * static_cast<float>(i) / 3.0f +
+                        s.boss3d.cinematicProgress * 2.2f;
+    drawSolidEllipse(c, cx + static_cast<int>(std::cos(angle) * rx * 0.72f),
+                     cy + static_cast<int>(std::sin(angle) * ry * 0.72f),
+                     std::max(2, rx / 10), std::max(2, ry / 10), packed);
+  }
+}
+
 static void softwareDrawFrame(Surface& s) {
   std::lock_guard<std::mutex> lock(s.windowMutex);
   if (!s.ready || !s.window) return;
@@ -915,6 +997,7 @@ static void softwareDrawFrame(Surface& s) {
   drawGridSW(s, c);
   drawPropsSW(s, c);
   drawTrainingTargetSW(s, c);
+  drawBossCinematicSW(s, c);
   drawParticlesSW(s, c);
   drawPlayerSW(s, c);
 
@@ -985,6 +1068,7 @@ static void init3DResources(Surface& s) {
   s.groundMesh = createPlane(1.0f, 1.0f);
   s.enemyMesh = createCube(1.0f);
   s.bossMesh = createCube(1.0f);
+  s.bossRingMesh = createRing(0.42f, 0.055f, 24);
   s.fallbackPillarMesh = createCylinder(0.025f, 0.12f, 16);
   s.fallbackWallMesh = createCube(1.0f);
   s.riftPlaneMesh = createPlane(1.0f, 1.0f);
@@ -992,6 +1076,7 @@ static void init3DResources(Surface& s) {
   s.groundMesh.upload();
   s.enemyMesh.upload();
   s.bossMesh.upload();
+  s.bossRingMesh.upload();
   s.fallbackPillarMesh.upload();
   s.fallbackWallMesh.upload();
   s.riftPlaneMesh.upload();

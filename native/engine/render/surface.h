@@ -89,6 +89,10 @@ struct Boss3DRenderState {
   float angle = 0.0f;  // 朝向角，弧度
   int64_t previousHp = 0;
   float hitAnimationSeconds = 0.0f;
+  float cinematicProgress = 0.0f;
+  uint8_t shardCount = 3;
+  uint8_t sourceColor = 0;
+  bool ringBroken = false;
 };
 
 struct Surface {
@@ -123,6 +127,7 @@ struct Surface {
   Mesh groundMesh;
   Mesh enemyMesh;
   Mesh bossMesh;
+  Mesh bossRingMesh;
   Shader3D shader3d;
   glm::vec3 lightDir{0.35f, 0.85f, 0.25f};
   glm::vec3 lightColor{0.8f, 0.8f, 0.75f};

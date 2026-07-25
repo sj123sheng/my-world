@@ -122,6 +122,34 @@ Mesh createCylinder(float radius, float height, uint32_t segments) {
   return mesh;
 }
 
+Mesh createRing(float radius, float thickness, uint32_t segments) {
+  Mesh mesh;
+  if (radius <= 0.0f || thickness <= 0.0f || segments < 3) return mesh;
+  constexpr float kTau = 6.2831853071795864769f;
+  const float inner = radius - thickness * 0.5f;
+  const float outer = radius + thickness * 0.5f;
+  if (inner <= 0.0f) return mesh;
+  mesh.vertices.reserve(segments * 4u);
+  mesh.indices.reserve(segments * 6u);
+  for (uint32_t i = 0; i < segments; ++i) {
+    const float a = kTau * static_cast<float>(i) / static_cast<float>(segments);
+    const float b = kTau * static_cast<float>(i + 1u) /
+                    static_cast<float>(segments);
+    const uint32_t base = static_cast<uint32_t>(mesh.vertices.size());
+    mesh.vertices.push_back(
+        {{std::cos(a) * inner, 0.0f, std::sin(a) * inner}, {0, 1, 0}, {0, 0}});
+    mesh.vertices.push_back(
+        {{std::cos(a) * outer, 0.0f, std::sin(a) * outer}, {0, 1, 0}, {0, 1}});
+    mesh.vertices.push_back(
+        {{std::cos(b) * outer, 0.0f, std::sin(b) * outer}, {0, 1, 0}, {1, 1}});
+    mesh.vertices.push_back(
+        {{std::cos(b) * inner, 0.0f, std::sin(b) * inner}, {0, 1, 0}, {1, 0}});
+    mesh.indices.insert(mesh.indices.end(),
+                        {base, base + 1, base + 2, base, base + 2, base + 3});
+  }
+  return mesh;
+}
+
 void Mesh::upload() {
 #ifdef OHOS_PLATFORM
   if (vbo != 0u || ibo != 0u) {

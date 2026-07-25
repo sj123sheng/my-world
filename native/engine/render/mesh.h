@@ -70,3 +70,4 @@ Mesh createCube(float size);
 // width 为 X 方向跨度，depth 为 Z 方向跨度，几何中心在原点。
 Mesh createPlane(float width, float depth);
 Mesh createCylinder(float radius, float height, uint32_t segments);
+Mesh createRing(float radius, float thickness, uint32_t segments);
