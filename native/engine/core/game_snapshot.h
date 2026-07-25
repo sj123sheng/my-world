@@ -57,4 +57,7 @@ struct GameSnapshot {
   float bossHpRatio = 0.0f;
   float bossCastRatio = 0.0f;
   bool debugHud = false;
+  bool environmentReady = false;
+  uint32_t environmentDrawCalls = 0;
+  uint32_t environmentTriangles = 0;
 };

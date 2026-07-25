@@ -37,6 +37,7 @@ struct PendingModelAsset {
 
 enum class SurfaceGlResource {
   SkinnedModels,
+  StaticEnvironmentModels,
   StaticMeshes,
   Shader3D,
   Program2D,
@@ -44,6 +45,7 @@ enum class SurfaceGlResource {
 
 inline const std::vector<SurfaceGlResource> kSurfaceGlDestroyOrder = {
     SurfaceGlResource::SkinnedModels,
+    SurfaceGlResource::StaticEnvironmentModels,
     SurfaceGlResource::StaticMeshes,
     SurfaceGlResource::Shader3D,
     SurfaceGlResource::Program2D,

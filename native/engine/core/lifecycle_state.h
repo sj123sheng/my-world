@@ -38,6 +38,9 @@ class LifecycleState {
 
 inline GameSnapshot RendererStoppedSnapshot(GameSnapshot snapshot) {
   snapshot.rendererReady = false;
+  snapshot.environmentReady = false;
+  snapshot.environmentDrawCalls = 0;
+  snapshot.environmentTriangles = 0;
   snapshot.moving = false;
   snapshot.moveX = 0.0f;
   snapshot.moveY = 0.0f;

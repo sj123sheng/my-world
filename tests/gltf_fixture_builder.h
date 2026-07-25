@@ -204,6 +204,123 @@ inline std::vector<uint8_t> makeMinimalGlb(bool includeAttack = false) {
   return glb;
 }
 
+inline std::vector<uint8_t> makeStaticSceneGlb(bool embeddedTexture = true) {
+  BinaryBuilder bin;
+  const BufferSlice positions = bin.append<float>({
+      0.0f, 0.0f, 0.0f,
+      1.0f, 0.0f, 0.0f,
+      0.0f, 1.0f, 0.0f,
+  });
+  const BufferSlice normals = bin.append<float>({
+      0.0f, 0.0f, 1.0f,
+      0.0f, 0.0f, 1.0f,
+      0.0f, 0.0f, 1.0f,
+  });
+  const BufferSlice texcoords = bin.append<float>({
+      0.0f, 0.0f,
+      1.0f, 0.0f,
+      0.0f, 1.0f,
+  });
+  const BufferSlice indices = bin.append<uint16_t>({0, 1, 2});
+  const std::vector<uint8_t> png{
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+      0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+      0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+      0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41,
+      0x54, 0x08, 0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0xf0,
+      0x1f, 0x00, 0x05, 0x00, 0x01, 0xff, 0x89, 0x99,
+      0x3d, 0x1d, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45,
+      0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+  };
+  BufferSlice fullImage;
+  BufferSlice halfImage;
+  if (embeddedTexture) {
+    std::vector<uint8_t> halfPng = png;
+    // PNG 解码器允许尾随字节；让两档 image record 的自有字节数可被测试区分。
+    halfPng.push_back(0);
+    fullImage = bin.append(png);
+    halfImage = bin.append(halfPng);
+  }
+
+  const std::array<BufferSlice, 6> views{
+      positions, normals, texcoords, indices, fullImage, halfImage,
+  };
+  std::ostringstream json;
+  json << R"({"asset":{"version":"2.0"},"buffers":[{"byteLength":)"
+       << bin.bytes().size() << R"(}],"bufferViews":[)";
+  const std::size_t viewCount = embeddedTexture ? views.size() : 4;
+  for (std::size_t i = 0; i < viewCount; ++i) {
+    if (i != 0) json << ',';
+    json << R"({"buffer":0,"byteOffset":)" << views[i].offset
+         << R"(,"byteLength":)" << views[i].size << '}';
+  }
+  json << R"(],"accessors":[
+    {"bufferView":0,"componentType":5126,"count":3,"type":"VEC3"},
+    {"bufferView":1,"componentType":5126,"count":3,"type":"VEC3"},
+    {"bufferView":2,"componentType":5126,"count":3,"type":"VEC2"},
+    {"bufferView":3,"componentType":5123,"count":3,"type":"SCALAR"}
+  ],)";
+  if (embeddedTexture) {
+    json << R"("images":[
+      {"name":"diffuse_full","bufferView":4,"mimeType":"image/png"},
+      {"name":"diffuse_half","bufferView":5,"mimeType":"image/png"}
+    ],"textures":[
+      {"name":"diffuse_full","source":0},{"name":"diffuse_half","source":1}
+    ],"materials":[{"pbrMetallicRoughness":{
+      "baseColorTexture":{"index":0}
+    }}],)";
+  }
+  json << R"("meshes":[{"primitives":[{"attributes":{
+      "POSITION":0,"NORMAL":1,"TEXCOORD_0":2},"indices":3)";
+  if (embeddedTexture) json << R"(,"material":0)";
+  json << R"(,"mode":4}]}],"nodes":[{"translation":[2,0,0],"mesh":0}],
+    "scenes":[{"nodes":[0]}],"scene":0})";
+  return rebuildGlb(json.str(), bin.bytes());
+}
+
+inline std::vector<uint8_t> makeTwoStaticPrimitiveGlb(
+    bool secondPrimitiveTextured = true) {
+  const std::string primitive =
+      R"({"attributes":{
+      "POSITION":0,"NORMAL":1,"TEXCOORD_0":2},"indices":3,"material":0,"mode":4})";
+  const std::string second =
+      R"(,{"attributes":{
+      "POSITION":0,"NORMAL":1,"TEXCOORD_0":2},"indices":3)" +
+      std::string(secondPrimitiveTextured ? R"(,"material":0)" : "") +
+      R"(,"mode":4})";
+  return replaceJsonText(makeStaticSceneGlb(), primitive, primitive + second);
+}
+
+inline std::vector<uint8_t> makeStaticSceneWithExternalUri() {
+  return replaceJsonText(
+      makeStaticSceneGlb(),
+      R"({"name":"diffuse_full","bufferView":4,"mimeType":"image/png"})",
+      R"({"name":"diffuse_full","uri":"external.png"})");
+}
+
+inline std::vector<uint8_t> makeStaticSceneWithInactiveNodesAndScenes(
+    bool specifyDefaultScene = true) {
+  std::vector<uint8_t> glb = replaceJsonText(
+      makeStaticSceneGlb(),
+      R"("nodes":[{"translation":[2,0,0],"mesh":0}],
+    "scenes":[{"nodes":[0]}],"scene":0)",
+      R"("nodes":[{"translation":[2,0,0],"mesh":0},
+      {"translation":[5,0,0],"mesh":0},
+      {"translation":[9,0,0],"mesh":0}],
+    "scenes":[{"nodes":[1]},{"nodes":[0]}],"scene":1)");
+  if (!specifyDefaultScene) {
+    glb = replaceJsonText(glb, R"(],"scene":1)", R"(])");
+  }
+  return glb;
+}
+
+inline std::vector<uint8_t> makeStaticSceneWithBaseColorTexcoord1() {
+  return replaceJsonText(makeStaticSceneGlb(),
+                         R"("baseColorTexture":{"index":0})",
+                         R"("baseColorTexture":{"index":0,"texCoord":1})");
+}
+
 inline std::vector<uint8_t> makeTwoPrimitiveGlb() {
   const std::string secondPrimitive =
       R"(,"indices":5,"mode":4},{"attributes":{"POSITION":0,"NORMAL":1,"TEXCOORD_0":2,"JOINTS_0":3,"WEIGHTS_0":4},"indices":5,"mode":4)";

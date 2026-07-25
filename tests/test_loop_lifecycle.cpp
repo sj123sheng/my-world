@@ -60,8 +60,14 @@ int main() {
   running.targetId = 9;
   running.targetDist = 3.5f;
   running.rendererReady = true;
+  running.environmentReady = true;
+  running.environmentDrawCalls = 7;
+  running.environmentTriangles = 42;
   const GameSnapshot stopped = RendererStoppedSnapshot(running);
   assert(!stopped.rendererReady);
+  assert(!stopped.environmentReady);
+  assert(stopped.environmentDrawCalls == 0);
+  assert(stopped.environmentTriangles == 0);
   assert(stopped.tick == running.tick);
   assert(stopped.hp == running.hp);
   assert(stopped.playerX == running.playerX);

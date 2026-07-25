@@ -69,3 +69,4 @@ Mesh createCube(float size);
 // 生成 XZ 平面网格：4 顶点，6 索引，法线朝上 (0,1,0)。
 // width 为 X 方向跨度，depth 为 Z 方向跨度，几何中心在原点。
 Mesh createPlane(float width, float depth);
+Mesh createCylinder(float radius, float height, uint32_t segments);

@@ -330,6 +330,7 @@ void Loop::tickOnce(int64_t elapsedMs) {
   });
 #ifdef OHOS_PLATFORM
   update3DCamera(surface, camera);
+  surface.environmentPerfLevel = performanceGuard.level();
   surface_draw(surface);
   surface_swap(surface);
 #endif
@@ -341,6 +342,13 @@ void Loop::tickOnce(int64_t elapsedMs) {
     fps = tickCount * 1000.0f / (float)elapsed;
     tickCount = 0;
     lastFpsTime = now;
+    LOGI("PROFILE fps=%{public}.1f perf_level=%{public}d environment_ready=%{public}d "
+         "environment_draw_calls=%{public}u environment_triangles=%{public}u "
+         "environment_texture_tier=%{public}s encounter_mode=%{public}d",
+         fps, performanceGuard.level(), static_cast<int>(surface.environmentReady),
+         surface.environmentDrawCalls, surface.environmentTriangles,
+         performanceGuard.level() >= 4 ? "half" : "full",
+         static_cast<int>(encounter.snapshot().mode));
   }
   performanceGuard.sample(fixedStep.tick(), 16, fps);
 
@@ -352,6 +360,9 @@ void Loop::tickOnce(int64_t elapsedMs) {
   snapshot.moving = surface.player.moving;
   snapshot.targetId = currentTarget ? currentTarget->id : 0;
   snapshot.rendererReady = surface.ready;
+  snapshot.environmentReady = surface.environmentReady;
+  snapshot.environmentDrawCalls = surface.environmentDrawCalls;
+  snapshot.environmentTriangles = surface.environmentTriangles;
   snapshot.encounterMode = static_cast<int32_t>(encounter.snapshot().mode);
   snapshot.encounterState = static_cast<int32_t>(encounter.snapshot().state);
   snapshot.moveX = intent.move.x;

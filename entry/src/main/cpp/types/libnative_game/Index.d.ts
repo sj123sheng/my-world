@@ -2,6 +2,8 @@ export const nativeStart: () => void;
 export const nativeStop: () => void;
 export const nativeStartIfForeground: () => void;
 export const nativeSetModelAssets: (player: ArrayBuffer, enemy: ArrayBuffer, boss: ArrayBuffer) => boolean;
+export const nativeSetEnvironmentAssets: (outer: ArrayBuffer, center: ArrayBuffer,
+  backdrop: ArrayBuffer, decoration: ArrayBuffer) => boolean;
 export const pushInput: (event: {type: number, pointerId: number, x: number, y: number}) => void;
 export const pushAction: (type: number) => void;
 export const startEncounter: (mode: number) => boolean;
@@ -27,6 +29,9 @@ export const pullSnapshot: () => {
   encounterMode: number,
   encounterState: number,
   rendererReady: boolean,
+  environmentReady: boolean,
+  environmentDrawCalls: number,
+  environmentTriangles: number,
   stamina: number,
   comboSegment: number,
   invulnerable: boolean,

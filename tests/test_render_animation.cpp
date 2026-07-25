@@ -149,6 +149,19 @@ void testSurfaceStoresLateModelAssetsForContextBoundInitialization() {
   assert(surface.bossModelAsset.dirty);
 }
 
+void testSurfaceKeepsEnvironmentBytesUntilContextBoundInitialization() {
+  Surface surface;
+  surface.setEnvironmentAsset(EnvironmentBatchKind::OuterRing, {1, 2, 3});
+  assert(surface.environmentAssets[0].dirty);
+  assert(surface.environmentAssets[0].bytes.size() == 3);
+}
+
+void testEnvironmentFailureKeepsFallbackEnabled() {
+  Surface surface;
+  surface.environmentStatuses[0] = EnvironmentBatchStatus::Failed;
+  assert(surface.shouldDrawEnvironmentFallback());
+}
+
 void testSurfaceKeepsEnemyAnimationStateByStableEntityId() {
   Surface surface;
   surface.enemyAnimationStates.emplace(2001, SkinnedAnimationState{});
@@ -226,6 +239,9 @@ void testSurfaceDestroyDestroysGlBeforeUnbindAndEglCleanup() {
       case SurfaceGlResource::SkinnedModels:
         calls.emplace_back("destroy-skinned-models");
         break;
+      case SurfaceGlResource::StaticEnvironmentModels:
+        calls.emplace_back("destroy-environment-models");
+        break;
       case SurfaceGlResource::StaticMeshes:
         calls.emplace_back("destroy-static-meshes");
         break;
@@ -246,7 +262,8 @@ void testSurfaceDestroyDestroysGlBeforeUnbindAndEglCleanup() {
   ExecuteSurfaceDestroy(operations);
 
   assert((calls == std::vector<std::string>{
-                       "make-current", "destroy-skinned-models", "destroy-static-meshes",
+                       "make-current", "destroy-skinned-models", "destroy-environment-models",
+                       "destroy-static-meshes",
                        "destroy-shader-3d", "destroy-program-2d", "unbind",
                        "destroy-egl-surface", "destroy-egl-context", "terminate-egl-display"}));
 }
@@ -298,6 +315,8 @@ int main() {
   testAnimationLogOnlyReportsIntentOrResolvedClipChanges();
   testUnavailableRuntimeModelStaysOnFallbackPath();
   testSurfaceStoresLateModelAssetsForContextBoundInitialization();
+  testSurfaceKeepsEnvironmentBytesUntilContextBoundInitialization();
+  testEnvironmentFailureKeepsFallbackEnabled();
   testSurfaceKeepsEnemyAnimationStateByStableEntityId();
   testPendingAssetIsConsumedExactlyOnceAfterLateDirtySignal();
   testPendingAssetReplacementAndClearRemainConsumable();

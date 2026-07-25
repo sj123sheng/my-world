@@ -43,6 +43,8 @@ class Shader3D {
   // 设置 uHasTexture：true 时片段着色器采样 uTexture。非平台侧为空操作。
   void setHasTexture(bool hasTexture) const;
 
+  void setEnvironmentTint(const glm::vec3& tint, float strength) const;
+
   // 上传骨骼调色板。空调色板或超过 64 个矩阵时拒绝启用蒙皮绘制。
   void setSkinPalette(const SkinPalette& palette);
 
@@ -71,6 +73,8 @@ class Shader3D {
   GLint locAmbient_ = -1;
   GLint locHasTexture_ = -1;
   GLint locTexture_ = -1;
+  GLint locEnvironmentTint_ = -1;
+  GLint locEnvironmentTintStrength_ = -1;
   GLint locSkinned_ = -1;
   GLint locJoints_ = -1;
 #endif

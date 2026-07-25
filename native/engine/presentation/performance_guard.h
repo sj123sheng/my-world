@@ -9,11 +9,13 @@
 //   1 = light     (FPS 40-55)
 //   2 = medium    (FPS 30-40)
 //   3 = heavy     (FPS < 30)
+//   4 = critical  (FPS < 24 sustained for the degradation window)
 enum class PerfLevel : int32_t {
   Full = 0,
   Light = 1,
   Medium = 2,
   Heavy = 3,
+  Critical = 4,
 };
 
 class PerformanceGuard {
@@ -37,4 +39,6 @@ class PerformanceGuard {
   int writeIndex_ = 0;
   int sampleCount_ = 0;
   PerfLevel level_ = PerfLevel::Full;
+  Tick sub24Since_ = 0;
+  bool sub24Active_ = false;
 };

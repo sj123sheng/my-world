@@ -19,7 +19,7 @@ namespace {
 
 // 设计规格 §3.5 的顶点着色器，改写为 GLES3 #version 300 es 语法：
 // attribute -> in，varying -> out，使用 layout(location) 显式绑定属性槽位。
-const char* kVertexShaderSrc =
+[[maybe_unused]] const char* kVertexShaderSrc =
     "#version 300 es\n"
     "uniform mat4 uMVP;\n"
     "uniform mat4 uModel;\n"
@@ -46,7 +46,7 @@ const char* kVertexShaderSrc =
 
 // 设计规格 §3.5 的片段着色器，改写为 GLES3 #version 300 es 语法：
 // varying -> in，gl_FragColor -> 自定义 out，texture2D -> texture。
-const char* kFragmentShaderSrc =
+[[maybe_unused]] const char* kFragmentShaderSrc =
     "#version 300 es\n"
     "precision mediump float;\n"
     "uniform sampler2D uTexture;\n"
@@ -54,18 +54,18 @@ const char* kFragmentShaderSrc =
     "uniform vec3 uLightColor;\n"
     "uniform vec3 uAmbient;\n"
     "uniform bool uHasTexture;\n"
+    "uniform vec3 uEnvironmentTint;\n"
+    "uniform float uEnvironmentTintStrength;\n"
     "in vec3 vNormal;\n"
     "in vec2 vUV;\n"
     "out vec4 fragColor;\n"
     "void main() {\n"
     "  vec3 N = normalize(vNormal);\n"
     "  float diff = max(dot(N, normalize(uLightDir)), 0.0);\n"
-    "  vec3 color = uAmbient + diff * uLightColor;\n"
-    "  if (uHasTexture) {\n"
-    "    fragColor = vec4(color, 1.0) * texture(uTexture, vUV);\n"
-    "  } else {\n"
-    "    fragColor = vec4(color, 1.0);\n"
-    "  }\n"
+    "  vec4 baseColor = uHasTexture ? texture(uTexture, vUV) : vec4(1.0);\n"
+    "  vec3 lit = baseColor.rgb * (uAmbient + uLightColor * diff);\n"
+    "  vec3 finalColor = mix(lit, uEnvironmentTint, uEnvironmentTintStrength);\n"
+    "  fragColor = vec4(finalColor, baseColor.a);\n"
     "}\n";
 
 }  // namespace
@@ -144,6 +144,9 @@ bool Shader3D::init() {
   locAmbient_ = glGetUniformLocation(program_, "uAmbient");
   locHasTexture_ = glGetUniformLocation(program_, "uHasTexture");
   locTexture_ = glGetUniformLocation(program_, "uTexture");
+  locEnvironmentTint_ = glGetUniformLocation(program_, "uEnvironmentTint");
+  locEnvironmentTintStrength_ =
+      glGetUniformLocation(program_, "uEnvironmentTintStrength");
   locSkinned_ = glGetUniformLocation(program_, "uSkinned");
   locJoints_ = glGetUniformLocation(program_, "uJoints");
   LOGI_3D("3D program linked: mvp=%{public}d model=%{public}d lightDir=%{public}d "
@@ -168,6 +171,8 @@ void Shader3D::destroy() {
     locAmbient_ = -1;
     locHasTexture_ = -1;
     locTexture_ = -1;
+    locEnvironmentTint_ = -1;
+    locEnvironmentTintStrength_ = -1;
     locSkinned_ = -1;
     locJoints_ = -1;
   }
@@ -188,6 +193,8 @@ void Shader3D::abandonGpuResources() {
   locAmbient_ = -1;
   locHasTexture_ = -1;
   locTexture_ = -1;
+  locEnvironmentTint_ = -1;
+  locEnvironmentTintStrength_ = -1;
   locSkinned_ = -1;
   locJoints_ = -1;
 #endif
@@ -237,6 +244,21 @@ void Shader3D::setLight(const glm::vec3& dir, const glm::vec3& color,
   (void)dir;
   (void)color;
   (void)ambient;
+#endif
+}
+
+void Shader3D::setEnvironmentTint(const glm::vec3& tint,
+                                  float strength) const {
+#ifdef OHOS_PLATFORM
+  if (locEnvironmentTint_ != -1) {
+    glUniform3fv(locEnvironmentTint_, 1, &tint[0]);
+  }
+  if (locEnvironmentTintStrength_ != -1) {
+    glUniform1f(locEnvironmentTintStrength_, strength);
+  }
+#else
+  (void)tint;
+  (void)strength;
 #endif
 }
 

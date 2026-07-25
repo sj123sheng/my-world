@@ -7,6 +7,7 @@
 #include <vector>
 #include <algorithm>
 #include <cstring>
+#include <array>
 
 #ifdef OHOS_PLATFORM
 #include <glm/gtc/matrix_transform.hpp>
@@ -155,6 +156,18 @@ static void drawArraysGL(const Surface& s, GLenum mode, const std::vector<float>
   glDrawArrays(mode, 0, static_cast<GLsizei>(verts.size() / 2));
   glDisableVertexAttribArray(s.locPosition);
   glDisableVertexAttribArray(s.locColor);
+}
+
+static void drawGradientSkyGL(const Surface& s) {
+  const std::vector<float> vertices = {
+      -1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f};
+  // Bottom horizon #46515d, top #18243d.
+  const std::vector<float> colors = {
+      70.0f / 255.0f, 81.0f / 255.0f, 93.0f / 255.0f, 1.0f,
+      70.0f / 255.0f, 81.0f / 255.0f, 93.0f / 255.0f, 1.0f,
+      24.0f / 255.0f, 36.0f / 255.0f, 61.0f / 255.0f, 1.0f,
+      24.0f / 255.0f, 36.0f / 255.0f, 61.0f / 255.0f, 1.0f};
+  drawArraysGL(s, GL_TRIANGLE_STRIP, vertices, colors);
 }
 
 static void drawSolidRectGL(const Surface& s, float x, float y, float w, float h, float r, float g, float b, float a) {
@@ -319,6 +332,7 @@ static void applyEntityTint(const Surface& s, const glm::vec3& base) {
   // ambient = base*0.3 保证背光面仍有基色可见，lightColor = base*0.7 让受光面
   // 保留基色并随方向光产生明暗。lightDir 保持场景统一方向。
   s.shader3d.setLight(s.lightDir, base * 0.7f, base * 0.3f);
+  s.shader3d.setEnvironmentTint(glm::vec3(0.0f), 0.0f);
 }
 
 static void drawMeshAt(Surface& s, const Mesh& mesh,
@@ -417,10 +431,112 @@ static void tryInitializePendingModelAssets(Surface& s) {
   tryInitializeModelAsset(s, ModelKind::Boss, s.bossModel, "boss.glb");
 }
 
+static const char* environmentAssetName(size_t index) {
+  static constexpr std::array<const char*, 4> kNames = {
+      "outer_ring.glb", "center_rift.glb", "backdrop.glb", "decoration.glb"};
+  return kNames[index];
+}
+
+static void tryInitializePendingEnvironmentAssets(Surface& s) {
+  for (size_t index = 0; index < s.environmentAssets.size(); ++index) {
+    std::vector<uint8_t> bytes;
+    {
+      std::lock_guard<std::mutex> lock(s.modelAssetMutex);
+      if (!s.environmentAssets[index].take(bytes)) continue;
+    }
+    StaticModel& model = s.environmentModels[index];
+    model.destroy();
+    if (bytes.empty()) {
+      s.environmentStatuses[index] = EnvironmentBatchStatus::Empty;
+      continue;
+    }
+    if (model.tryInitialize(bytes, environmentAssetName(index))) {
+      s.environmentStatuses[index] = EnvironmentBatchStatus::Ready;
+      LOGI("environment batch ready: %{public}s", environmentAssetName(index));
+    } else {
+      s.environmentStatuses[index] = EnvironmentBatchStatus::Failed;
+      LOGE("%{public}s; procedural fallback remains active",
+           model.lastError().c_str());
+    }
+  }
+}
+
+static void drawEnvironmentModel(Surface& s, size_t index,
+                                 const glm::mat4& vp,
+                                 const glm::vec3& tint, float tintStrength) {
+  StaticModel& model = s.environmentModels[index];
+  if (s.environmentStatuses[index] != EnvironmentBatchStatus::Ready ||
+      !model.ready()) return;
+  model.setTextureTier(s.environmentPlan.textureTier);
+  s.shader3d.setMVP(vp);
+  s.shader3d.setModel(glm::mat4(1.0f));
+  s.shader3d.setSkinned(false);
+  s.shader3d.setLight(glm::normalize(s.lightDir), {0.8f, 0.8f, 0.75f},
+                      {0.18f, 0.20f, 0.24f});
+  s.shader3d.setEnvironmentTint(tint, tintStrength);
+  model.draw(s.shader3d);
+  s.environmentDrawCalls += static_cast<uint32_t>(model.stats().primitiveCount);
+  s.environmentTriangles += static_cast<uint32_t>(model.stats().triangleCount);
+}
+
+static void drawFallbackMesh(Surface& s, const Mesh& mesh,
+                             const glm::mat4& vp, const glm::mat4& model,
+                             const glm::vec3& color) {
+  s.shader3d.setMVP(vp * model);
+  s.shader3d.setModel(model);
+  s.shader3d.setSkinned(false);
+  s.shader3d.setHasTexture(false);
+  s.shader3d.setLight(glm::normalize(s.lightDir), color * 0.75f, color * 0.25f);
+  s.shader3d.setEnvironmentTint(glm::vec3(0.0f), 0.0f);
+  mesh.draw();
+  ++s.environmentDrawCalls;
+  s.environmentTriangles += static_cast<uint32_t>(mesh.indices.size() / 3u);
+}
+
+static void drawEnvironmentFallback(Surface& s, const glm::mat4& vp) {
+  constexpr int kPillars = 12;
+  for (int index = 0; index < kPillars; ++index) {
+    const float angle = static_cast<float>(index) * 6.2831853f / kPillars;
+    const glm::vec3 position{0.5f + std::cos(angle) * 0.42f, 0.06f,
+                             0.65f + std::sin(angle) * 0.42f};
+    const glm::mat4 pillar = glm::translate(glm::mat4(1.0f), position) *
+        glm::scale(glm::mat4(1.0f), glm::vec3(0.55f, 1.0f, 0.55f));
+    drawFallbackMesh(s, s.fallbackPillarMesh, vp, pillar,
+                     {0.42f, 0.45f, 0.50f});
+  }
+  constexpr int kWalls = 8;
+  for (int index = 0; index < kWalls; ++index) {
+    const float angle = static_cast<float>(index) * 6.2831853f / kWalls;
+    const glm::vec3 position{0.5f + std::cos(angle) * 0.46f, 0.035f,
+                             0.65f + std::sin(angle) * 0.46f};
+    const glm::mat4 wall = glm::translate(glm::mat4(1.0f), position) *
+        glm::rotate(glm::mat4(1.0f), -angle, glm::vec3(0.0f, 1.0f, 0.0f)) *
+        glm::scale(glm::mat4(1.0f), glm::vec3(0.20f, 0.07f, 0.025f));
+    drawFallbackMesh(s, s.fallbackWallMesh, vp, wall, {0.34f, 0.37f, 0.42f});
+  }
+}
+
+static void drawCenterFallback(Surface& s, const glm::mat4& vp) {
+  constexpr int kMarkers = 4;
+  for (int index = 0; index < kMarkers; ++index) {
+    const float angle = static_cast<float>(index) * 6.2831853f / kMarkers;
+    const glm::vec3 position{0.5f + std::cos(angle) * 0.16f, 0.018f,
+                             0.75f + std::sin(angle) * 0.09f};
+    const glm::mat4 marker =
+        glm::translate(glm::mat4(1.0f), position) *
+        glm::rotate(glm::mat4(1.0f), -angle,
+                    glm::vec3(0.0f, 1.0f, 0.0f)) *
+        glm::scale(glm::mat4(1.0f), glm::vec3(0.07f, 0.036f, 0.035f));
+    drawFallbackMesh(s, s.fallbackWallMesh, vp, marker,
+                     {0.31f, 0.25f, 0.25f});
+  }
+}
+
 static void draw3DPhase(Surface& s) {
   // bridge 可能晚于 Surface 创建；surface_draw 已成功 makeCurrent，因此只在这里
   // 消费一次标脏字节，解析失败后保持静态 Mesh，不在每帧反复尝试。
   tryInitializePendingModelAssets(s);
+  tryInitializePendingEnvironmentAssets(s);
   if (!s.shader3dReady || s.shader3d.program() == 0u) return;
 
   // 3D 阶段需要深度测试；2D 阶段未写深度，故在此单独清深度并开启深度测试，
@@ -438,9 +554,48 @@ static void draw3DPhase(Surface& s) {
 
   const glm::mat4 vp = s.camera3d.projectionMatrix() * s.camera3d.viewMatrix();
 
+  s.environmentDrawCalls = 0;
+  s.environmentTriangles = 0;
+  s.environmentPlan = s.environmentController.evaluate(
+      {s.player.x, s.player.y}, s.environmentPerfLevel);
+  if (s.environmentPlan.textureTier != s.loggedEnvironmentTextureTier) {
+    s.loggedEnvironmentTextureTier = s.environmentPlan.textureTier;
+    LOGI("environment texture tier: %{public}s",
+         s.loggedEnvironmentTextureTier == StaticTextureTier::Half ? "half"
+                                                                    : "full");
+  }
+
   // 地面：大平面覆盖可玩区域，中心放在 (0.5, 0, 0.5)。
   drawMeshAt(s, s.groundMesh, vp, glm::vec3(0.5f, 0.0f, 0.5f), 3.0f,
              {0.30f, 0.32f, 0.36f});
+
+  if (s.environmentPlan.backdrop) {
+    drawEnvironmentModel(s, 2, vp, glm::vec3(0.0f), 0.0f);
+  }
+  drawEnvironmentModel(s, 0, vp, glm::vec3(0.0f), 0.0f);
+  if (s.environmentStatuses[0] != EnvironmentBatchStatus::Ready) {
+    drawEnvironmentFallback(s, vp);
+  }
+  if (s.environmentPlan.decoration) {
+    drawEnvironmentModel(s, 3, vp, glm::vec3(0.0f), 0.0f);
+  }
+  drawEnvironmentModel(s, 1, vp, {0.35f, 0.03f, 0.02f}, 0.18f);
+  if (s.environmentStatuses[1] != EnvironmentBatchStatus::Ready) {
+    drawCenterFallback(s, vp);
+  }
+  const glm::mat4 rift =
+      glm::translate(glm::mat4(1.0f), {0.5f, 0.004f, 0.75f}) *
+      glm::scale(glm::mat4(1.0f), {0.22f, 1.0f, 0.08f});
+  drawFallbackMesh(s, s.riftPlaneMesh, vp, rift, {0.95f, 0.08f, 0.04f});
+  const bool fallbackMeshesReady = s.fallbackPillarMesh.vbo != 0u &&
+                                   s.fallbackWallMesh.vbo != 0u;
+  const bool outerCovered =
+      s.environmentStatuses[0] == EnvironmentBatchStatus::Ready ||
+      fallbackMeshesReady;
+  const bool centerCovered =
+      s.environmentStatuses[1] == EnvironmentBatchStatus::Ready ||
+      (s.fallbackWallMesh.vbo != 0u && s.riftPlaneMesh.vbo != 0u);
+  s.environmentReady = s.shader3dReady && outerCovered && centerCovered;
 
   // M3-1 地面索引按双面占位使用；角色模型阶段启用背面剔除。
   glEnable(GL_CULL_FACE);
@@ -824,10 +979,16 @@ static void init3DResources(Surface& s) {
   s.groundMesh = createPlane(1.0f, 1.0f);
   s.enemyMesh = createCube(1.0f);
   s.bossMesh = createCube(1.0f);
+  s.fallbackPillarMesh = createCylinder(0.025f, 0.12f, 16);
+  s.fallbackWallMesh = createCube(1.0f);
+  s.riftPlaneMesh = createPlane(1.0f, 1.0f);
   s.playerMesh.upload();
   s.groundMesh.upload();
   s.enemyMesh.upload();
   s.bossMesh.upload();
+  s.fallbackPillarMesh.upload();
+  s.fallbackWallMesh.upload();
+  s.riftPlaneMesh.upload();
   s.shader3dReady = s.shader3d.init();
   if (!s.shader3dReady) {
     LOGE("3D shader init failed, 3D phase will be skipped");
@@ -835,6 +996,7 @@ static void init3DResources(Surface& s) {
     LOGI("3D resources ready: shader=%{public}u", s.shader3d.program());
   }
   tryInitializePendingModelAssets(s);
+  tryInitializePendingEnvironmentAssets(s);
 #else
   (void)s;
 #endif
@@ -850,11 +1012,17 @@ static void destroy3DResource(Surface& s, SurfaceGlResource resource) {
       s.enemyModel.destroy();
       s.bossModel.destroy();
       break;
+    case SurfaceGlResource::StaticEnvironmentModels:
+      for (StaticModel& model : s.environmentModels) model.destroy();
+      break;
     case SurfaceGlResource::StaticMeshes:
       s.playerMesh.destroy();
       s.groundMesh.destroy();
       s.enemyMesh.destroy();
       s.bossMesh.destroy();
+      s.fallbackPillarMesh.destroy();
+      s.fallbackWallMesh.destroy();
+      s.riftPlaneMesh.destroy();
       break;
     case SurfaceGlResource::Shader3D:
       s.shader3d.destroy();
@@ -865,6 +1033,9 @@ static void destroy3DResource(Surface& s, SurfaceGlResource resource) {
         s.playerModelAsset.markDirtyForContextRebuild();
         s.enemyModelAsset.markDirtyForContextRebuild();
         s.bossModelAsset.markDirtyForContextRebuild();
+        for (PendingModelAsset& asset : s.environmentAssets) {
+          asset.markDirtyForContextRebuild();
+        }
       }
       break;
     case SurfaceGlResource::Program2D:
@@ -884,12 +1055,25 @@ static void abandon3DResources(Surface& s) {
   s.playerModel.abandonGpuResources();
   s.enemyModel.abandonGpuResources();
   s.bossModel.abandonGpuResources();
+  for (StaticModel& model : s.environmentModels) model.abandonGpuResources();
   s.playerMesh.abandonGpuResources();
   s.groundMesh.abandonGpuResources();
   s.enemyMesh.abandonGpuResources();
   s.bossMesh.abandonGpuResources();
+  s.fallbackPillarMesh.abandonGpuResources();
+  s.fallbackWallMesh.abandonGpuResources();
+  s.riftPlaneMesh.abandonGpuResources();
   s.shader3d.abandonGpuResources();
   s.shader3dReady = false;
+  {
+    std::lock_guard<std::mutex> lock(s.modelAssetMutex);
+    s.playerModelAsset.markDirtyForContextRebuild();
+    s.enemyModelAsset.markDirtyForContextRebuild();
+    s.bossModelAsset.markDirtyForContextRebuild();
+    for (PendingModelAsset& asset : s.environmentAssets) {
+      asset.markDirtyForContextRebuild();
+    }
+  }
 #else
   (void)s;
 #endif
@@ -900,6 +1084,14 @@ static void clearModelAssets(Surface& s) {
   s.playerModelAsset.clear();
   s.enemyModelAsset.clear();
   s.bossModelAsset.clear();
+  for (size_t index = 0; index < s.environmentAssets.size(); ++index) {
+    s.environmentAssets[index].clear();
+    s.environmentStatuses[index] = EnvironmentBatchStatus::Empty;
+  }
+  s.environmentReady = false;
+  s.environmentDrawCalls = 0;
+  s.environmentTriangles = 0;
+  s.loggedEnvironmentTextureTier = StaticTextureTier::Full;
 }
 
 static bool tryInitGL(Surface& s) {
@@ -1094,6 +1286,7 @@ void surface_draw(Surface& s) {
   glClear(GL_COLOR_BUFFER_BIT);
   if (s.program != 0) glUseProgram(s.program);
 
+  drawGradientSkyGL(s);
   drawGridGL(s);
   drawPropsGL(s);
   drawTrainingTargetGL(s);
