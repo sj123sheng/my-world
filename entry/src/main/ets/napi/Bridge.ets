@@ -71,6 +71,7 @@ export interface Snapshot {
   bossShardCount: number;
   bossSourceColor: number;
   bossRingBroken: boolean;
+  inputEventCount: number;
 }
 
 export const nativeStart = (): void => native.nativeStart();

@@ -65,6 +65,7 @@ struct GameSnapshot {
   std::string objectiveLabel;
   std::array<uint8_t, 3> resonanceSlots{0, 0, 0};
   bool showDebugHud = false;
+  int32_t inputEventCount = 0;
   float bossCinematicProgress = 0.0f;
   uint8_t bossShardCount = 0;
   uint8_t bossSourceColor = 0;

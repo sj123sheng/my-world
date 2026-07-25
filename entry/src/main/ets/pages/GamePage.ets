@@ -25,7 +25,8 @@ struct GamePage {
     bossHpRatio: 0, bossCastRatio: 0, debugHud: false,
     objectiveLabel: '', resonanceSlots: [0, 0, 0], showDebugHud: false,
     bossCinematicProgress: 0, bossShardCount: 0, bossSourceColor: 0,
-    bossRingBroken: false
+    bossRingBroken: false,
+    inputEventCount: 0
   };
   @State tick: number = 0;
   @State hp: number = 100;
@@ -90,6 +91,7 @@ struct GamePage {
   @State bossShardCount: number = 0;
   @State bossSourceColor: number = 0;
   @State bossRingBroken: boolean = false;
+  @State inputEventCount: number = 0;
   private timer: number = -1;
   private pageActive: boolean = false;
   private modelLoadGeneration: number = 0;
@@ -202,10 +204,13 @@ struct GamePage {
         resonanceSlots: this.resonanceSlots, showDebugHud: this.showDebugHud,
         bossCinematicProgress: this.bossCinematicProgress,
         bossShardCount: this.bossShardCount, bossSourceColor: this.bossSourceColor,
-        bossRingBroken: this.bossRingBroken })
+        bossRingBroken: this.bossRingBroken,
+        inputEventCount: this.inputEventCount })
+        .hitTestBehavior(HitTestMode.Transparent)
 
       CombatControls()
         .align(Alignment.BottomEnd)
+        .hitTestBehavior(HitTestMode.Transparent)
     }
     .width('100%')
     .height('100%')
@@ -281,6 +286,7 @@ struct GamePage {
         this.bossShardCount = this.snapshot.bossShardCount;
         this.bossSourceColor = this.snapshot.bossSourceColor;
         this.bossRingBroken = this.snapshot.bossRingBroken;
+        this.inputEventCount = this.snapshot.inputEventCount;
       } catch (e) {
       }
     }, 100);

@@ -5,7 +5,15 @@
 #include <cmath>
 #include <limits>
 
+void testDraggingUpProducesForwardMovement() {
+  VirtualJoystick joystick({0.0f, 100.0f});
+  joystick.begin(0, {100, 200});
+  joystick.move(0, {100, 100});
+  assert(joystick.value().y > 0.0f);
+}
+
 int main() {
+  testDraggingUpProducesForwardMovement();
   TouchRouter router;
   assert(!router.handle({InputAction::PointerDown, 1, 100, 200, 0}, 0, 800));
   assert(router.handle({InputAction::PointerDown, 1, 100, 200, 1}, 1000, 800));

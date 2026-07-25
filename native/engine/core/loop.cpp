@@ -407,6 +407,7 @@ void Loop::tickOnce(int64_t elapsedMs) {
       static_cast<uint8_t>(snapshot.currentAttached),
       static_cast<uint8_t>(snapshot.corruptionAttached)};
   snapshot.showDebugHud = debugHud_;
+  snapshot.inputEventCount = inputEventCount_;
   snapshots.publish(snapshot);
 
   if (tickCount <= 5 || tickCount % 60 == 0) {
@@ -570,6 +571,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       break;
   }
   updated.showDebugHud = debugHud_;
+  updated.inputEventCount = inputEventCount_;
   const BossCinematicState cinematic = BossCinematicState::fromBossHp(
       updated.bossHpRatio);
   const BossCinematicState& introCinematic = demoDirector.bossCinematic();

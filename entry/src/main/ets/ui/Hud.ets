@@ -51,6 +51,7 @@ export struct Hud {
   @Prop bossShardCount: number = 0;
   @Prop bossSourceColor: number = 0;
   @Prop bossRingBroken: boolean = false;
+  @Prop inputEventCount: number = 0;
   @State auras: string[] = [];
 
   build() {
@@ -97,8 +98,8 @@ export struct Hud {
       .alignItems(HorizontalAlign.Center)
       .padding({ left: 16, right: 16, top: 8, bottom: 8 })
       .backgroundColor('#8A11181D')
-      .borderRadius(18)
-      .margin({ bottom: 22 })
+        .borderRadius(18)
+        .margin({ bottom: 22 })
 
       if (this.showDebugHud) {
         if (this.debugHud) {
@@ -126,6 +127,8 @@ export struct Hud {
             .fontColor(Color.Gray).fontSize(10)
           Text(`侵蚀 ${this.corroded ? '是' : '否'} · 反应 ${this.currentReaction} · 相位 ${this.pulsePhase}`)
             .fontColor(Color.Gray).fontSize(10)
+          Text(`输入事件 ${this.inputEventCount}`)
+            .fontColor(Color.Yellow).fontSize(10)
           }
           .alignItems(HorizontalAlign.Start)
           .position({ x: 12, y: 70 })
@@ -136,5 +139,6 @@ export struct Hud {
     .position({ x: 0, y: 0 })
     .width('100%')
     .height('100%')
+    .hitTestBehavior(HitTestMode.Transparent)
   }
 }

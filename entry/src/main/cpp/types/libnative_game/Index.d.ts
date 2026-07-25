@@ -74,5 +74,6 @@ export const pullSnapshot: () => {
   bossCinematicProgress: number,
   bossShardCount: number,
   bossSourceColor: number,
-  bossRingBroken: boolean
+  bossRingBroken: boolean,
+  inputEventCount: number
 };

@@ -57,6 +57,7 @@ struct Loop {
   std::atomic<Tick> combatTimeMs_{0};
   CombatEventBatch frameCombatEvents_;
   uint64_t inputSequence = 0;
+  int32_t inputEventCount_ = 0;
   std::atomic<bool> running{false};
   std::atomic<bool> shouldStop{false};
   std::thread runner;
@@ -88,6 +89,7 @@ struct Loop {
     const bool accepted =
         input.push({action, pointerId, x, y, inputSequence});
     if (accepted) ++inputSequence;
+    if (accepted) ++inputEventCount_;
     return accepted;
   }
 

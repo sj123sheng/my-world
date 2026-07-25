@@ -36,5 +36,6 @@ export struct CombatControls {
     .padding(12)
     .margin({ right: 16, bottom: 16 })
     .alignItems(HorizontalAlign.End)
+    .hitTestBehavior(HitTestMode.Transparent)
   }
 }

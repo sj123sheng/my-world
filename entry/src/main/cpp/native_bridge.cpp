@@ -117,6 +117,8 @@ static void OnDispatchTouchEvent(OH_NativeXComponent* component, void* window) {
     LOGE("OH_NativeXComponent_GetTouchEvent failed");
     return;
   }
+  LOGI("touch type=%{public}d id=%{public}d x=%{public}f y=%{public}f",
+       touchEvent.type, touchEvent.id, touchEvent.x, touchEvent.y);
   ForwardChangedPointer(
       static_cast<int32_t>(touchEvent.type), touchEvent.id, touchEvent.x,
       touchEvent.y,
@@ -473,6 +475,9 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_set_named_property(env, result, "bossShardCount", bossShardCountVal);
   napi_set_named_property(env, result, "bossSourceColor", bossSourceColorVal);
   napi_set_named_property(env, result, "bossRingBroken", bossRingBrokenVal);
+  napi_value inputEventCountVal;
+  napi_create_int32(env, snapshot.inputEventCount, &inputEventCountVal);
+  napi_set_named_property(env, result, "inputEventCount", inputEventCountVal);
   return result;
 }
 

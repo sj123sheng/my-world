@@ -34,7 +34,9 @@ class VirtualJoystick {
       value_ = {};
       return;
     }
-    value_ = ClampLength(displacement * (1.0f / config_.radius), 1.0f);
+    value_ = ClampLength(
+        Vec2{displacement.x, -displacement.y} * (1.0f / config_.radius),
+        1.0f);
   }
 
   void end(int32_t pointerId) {
