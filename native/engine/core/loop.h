@@ -24,7 +24,13 @@
 #include "../../gameplay/flow/demo_director.h"
 
 struct Loop {
-  Loop() { (void)encounter.start(EncounterMode::Training); }
+  Loop() {
+    const EnvironmentComposition composition =
+        EnvironmentController::defaultComposition();
+    surface.player.x = composition.spawn.x;
+    surface.player.y = composition.spawn.z;
+    (void)encounter.start(EncounterMode::Training);
+  }
 
   Surface surface;
   InputQueue input;

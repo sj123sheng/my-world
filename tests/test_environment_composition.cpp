@@ -22,10 +22,18 @@ void testOpeningShotHasForegroundAndDistantFocus() {
   assert(composition.cameraFocus != composition.spawn);
 }
 
+void testSpawnStartsBeforeCombatTrigger() {
+  const EnvironmentComposition composition =
+      EnvironmentController::defaultComposition();
+  assert(composition.spawn.z < 0.45f);
+  assert(composition.combatAnchor.z >= 0.45f);
+}
+
 }  // namespace
 
 int main() {
   testSpawnFramesTheAltarAlongTheMainRoute();
   testOpeningShotHasForegroundAndDistantFocus();
+  testSpawnStartsBeforeCombatTrigger();
   return 0;
 }
