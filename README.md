@@ -194,6 +194,52 @@ my-world/
 
 ## 测试与验证
 
+### M4 Task 2 环境与场景氛围验收状态
+
+2026-07-25 在 Pura 70 Pro 模拟器（HDC target `127.0.0.1:5555`，设备上报型号
+`emulator`，ABI `aarch64`）完成 Lost Ruins 环境的构建、运行和性能验收：
+
+- 环境资产来自 Poly Haven 的 **Modular Fort 01**（作者 Rico Cilliers，
+  `https://polyhaven.com/a/modular_fort_01`，源 GLTF SHA-256
+  `7278a56aaa624ce71974ad2374bb7b1a5ac83c9296ebc5acc5893862a69cf59d`）和
+  **Rabdentse Ruins Wall**（作者 Amal Kumar，
+  `https://polyhaven.com/a/rabdentse_ruins_wall`，源 GLTF SHA-256
+  `4130d776f3ba785db672be9b101cbd4bfa0c2c330608cd52937528dea4514a4c`）。两者均为
+  [CC0 1.0](https://polyhaven.com/license)，完整下载文件哈希见
+  `assets/environment/manifest.json`。
+- 四个派生 GLB 分别为：`outer_ring.glb` 6,265,288 字节，SHA-256
+  `c303a49e2621a2be34ab2200ebe1e4ac85f1cd6548e6abcc63dd96fee9f40c27`；
+  `center_rift.glb` 5,631,600 字节，SHA-256
+  `600703fc588eff24301031df0f99460316acc944bd54155c58169687635b07ae`；
+  `backdrop.glb` 6,028,252 字节，SHA-256
+  `55376fc70f8dc2f354c2edcdce242d14d0edf11f98de07a9d42f6285e7b410cc`；
+  `decoration.glb` 5,259,680 字节，SHA-256
+  `2c1bf9f689a0fa2452f1a2c7c67e4eccea5fbb91e32105165b3c7e481ae99879`。
+- 验收包 `entry/build/default/outputs/default/entry-default-signed.hap` 为 41,184,019 字节，
+  SHA-256 `b57fb63f9d11320d5cd64b8532c172481a7f150d8ee69fc25b20142b82fdadab`。
+  安装启动后的应用 PID 为 `4781`，采样期间保持不变。
+- normal 阶段 CSV `/tmp/my-world-task2-normal.csv` 共 31 个样本，FPS 最低 48.0、
+  平均 49.93、最高 51.3；boss 阶段 CSV `/tmp/my-world-task2-boss.csv` 共 31 个样本，
+  FPS 最低 44.9、平均 46.72、最高 48.2。两阶段均未出现持续 2 秒低于 30/24 FPS
+  阈值的情况。
+- 两阶段均报告 `environment_ready=1`、5 draw calls、49,948 triangles 和 `full`
+  texture tier；boss 样本全部为 `encounter_mode=5`。HiLog 未命中 `SIGSEGV`、
+  `cppcrash`、无效 `glGetString`、`RequestBuffer` 失败或 EGL error。
+- 实际画面证据为 `/tmp/my-world-task2-spawn.jpeg`（SHA-256
+  `db7f07b100e7b15a74d24005bcf82c2e79d29d3d966e134e6629c59615347904`）和
+  `/tmp/my-world-task2-boss.jpeg`（SHA-256
+  `1e58b09bc9b3b07e6fbeb52901e9cac7b5f94a06205025ee03857a4abe06a8ae`），尺寸均为
+  1260×2844。外环拱门/立柱、ruined altar、collapsed camp 尚无独立截图，不能据此
+  声称五个指定视角均已完成视觉验收。
+- 确定性测试覆盖 Medium 隐藏 backdrop、Heavy 隐藏 backdrop 和 decoration、Critical
+  使用 half texture、Critical 恢复先回 Heavy，以及中心和外环批次始终保留。模拟器正常
+  负载实际只达到 `perf_level=1`，未提供强制 Heavy/Critical 的设备调试入口，因此这些规则
+  当前属于自动化验证，不属于设备强制验证。
+- detached 临时 worktree 中将 `decoration.glb` 替换为无效数据后，Hvigor 可成功构建故障
+  unsigned HAP；原生单批次状态机和测试覆盖 `Failed` 后保留程序化 fallback。由于仓库不保存
+  本地签名配置，命令行明确跳过签名，故未将该故障包安装到模拟器；设备端 fallback、战斗存活
+  和 PID 稳定性仍待使用同一调试签名补验。生产 signed HAP 保持未修改。
+
 ### M3-1 3D 渲染基础验收状态
 
 2026-07-19 M3-1 3D 渲染基础收口结果：
