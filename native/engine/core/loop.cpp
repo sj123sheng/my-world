@@ -384,8 +384,8 @@ void Loop::tickOnce(int64_t elapsedMs) {
   snapshot.vfxFlags = vfxSystem.snapshot().vfxFlags;
   snapshot.cameraShakeX = vfxSystem.snapshot().cameraShakeX;
   snapshot.cameraShakeY = vfxSystem.snapshot().cameraShakeY;
-  snapshot.bossHpRatio = static_cast<float>(encounter.snapshot().boss.hp) /
-                          static_cast<float>(encounter.snapshot().boss.hp + fp(1));
+  snapshot.bossHpRatio = BossCinematicState::healthRatio(
+      encounter.snapshot().boss.hp, BossConfig::karounDefaults().maxHp);
   if (encounter.snapshot().boss.castRemainingMs > 0) {
     snapshot.bossCastRatio = 1.0f - static_cast<float>(encounter.snapshot().boss.castRemainingMs) /
                                   static_cast<float>(5000);
@@ -539,8 +539,8 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   updated.vfxFlags = vfxSystem.snapshot().vfxFlags;
   updated.cameraShakeX = vfxSystem.snapshot().cameraShakeX;
   updated.cameraShakeY = vfxSystem.snapshot().cameraShakeY;
-  updated.bossHpRatio = static_cast<float>(encounter.snapshot().boss.hp) /
-                        static_cast<float>(encounter.snapshot().boss.hp + fp(1));
+  updated.bossHpRatio = BossCinematicState::healthRatio(
+      encounter.snapshot().boss.hp, BossConfig::karounDefaults().maxHp);
   if (encounter.snapshot().boss.castRemainingMs > 0) {
     updated.bossCastRatio = 1.0f - static_cast<float>(encounter.snapshot().boss.castRemainingMs) /
                                   static_cast<float>(5000);
@@ -570,6 +570,13 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       break;
   }
   updated.showDebugHud = debugHud_;
+  const BossCinematicState cinematic = BossCinematicState::fromBossHp(
+      updated.bossHpRatio);
+  const BossCinematicState& introCinematic = demoDirector.bossCinematic();
+  updated.bossCinematicProgress = introCinematic.ringProgress;
+  updated.bossShardCount = introCinematic.shardCount;
+  updated.bossSourceColor = static_cast<uint8_t>(introCinematic.sourceColor);
+  updated.bossRingBroken = cinematic.broken;
   snapshots.publish(updated);
 }
 

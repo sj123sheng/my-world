@@ -461,6 +461,18 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_set_named_property(env, result, "objectiveLabel", objectiveLabelVal);
   napi_set_named_property(env, result, "resonanceSlots", resonanceSlotsVal);
   napi_set_named_property(env, result, "showDebugHud", showDebugHudVal);
+  napi_value bossCinematicProgressVal, bossShardCountVal, bossSourceColorVal;
+  napi_value bossRingBrokenVal;
+  napi_create_double(env, snapshot.bossCinematicProgress,
+                     &bossCinematicProgressVal);
+  napi_create_uint32(env, snapshot.bossShardCount, &bossShardCountVal);
+  napi_create_uint32(env, snapshot.bossSourceColor, &bossSourceColorVal);
+  napi_get_boolean(env, snapshot.bossRingBroken, &bossRingBrokenVal);
+  napi_set_named_property(env, result, "bossCinematicProgress",
+                          bossCinematicProgressVal);
+  napi_set_named_property(env, result, "bossShardCount", bossShardCountVal);
+  napi_set_named_property(env, result, "bossSourceColor", bossSourceColorVal);
+  napi_set_named_property(env, result, "bossRingBroken", bossRingBrokenVal);
   return result;
 }
 

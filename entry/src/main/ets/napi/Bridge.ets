@@ -67,6 +67,10 @@ export interface Snapshot {
   objectiveLabel: string;
   resonanceSlots: number[];
   showDebugHud: boolean;
+  bossCinematicProgress: number;
+  bossShardCount: number;
+  bossSourceColor: number;
+  bossRingBroken: boolean;
 }
 
 export const nativeStart = (): void => native.nativeStart();

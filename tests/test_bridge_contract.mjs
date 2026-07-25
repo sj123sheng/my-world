@@ -26,7 +26,8 @@ assert.doesNotMatch(page, /\.onTouch\s*\(/,
 for (const field of ['stamina', 'comboSegment', 'invulnerable', 'insightMs',
   'resonance', 'targetHp', 'targetPoise', 'pulseHitRemainingMs', 'lastRejectReason',
   'encounterMode', 'encounterState', 'objectiveLabel', 'resonanceSlots',
-  'showDebugHud']) {
+  'showDebugHud', 'bossCinematicProgress', 'bossShardCount',
+  'bossSourceColor', 'bossRingBroken']) {
   assert.match(bridge, new RegExp(`\\b${field}\\b`), `Bridge Snapshot missing ${field}`);
 }
 for (const source of [bridge, declarations, page, nativeBridge, loop, hud]) {

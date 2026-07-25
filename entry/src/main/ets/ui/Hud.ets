@@ -47,6 +47,10 @@ export struct Hud {
   @Prop objectiveLabel: string = '';
   @Prop resonanceSlots: number[] = [0, 0, 0];
   @Prop showDebugHud: boolean = false;
+  @Prop bossCinematicProgress: number = 0;
+  @Prop bossShardCount: number = 0;
+  @Prop bossSourceColor: number = 0;
+  @Prop bossRingBroken: boolean = false;
   @State auras: string[] = [];
 
   build() {

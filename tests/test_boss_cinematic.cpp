@@ -19,10 +19,16 @@ void testHalfHealthBreaksOuterRing() {
   assert(!BossCinematicState::fromBossHp(0.50f).broken);
 }
 
+void testBossHealthUsesConfiguredMaximum() {
+  assert(BossCinematicState::healthRatio(500, 1000) == 0.5f);
+  assert(BossCinematicState::healthRatio(500, 0) == 0.0f);
+}
+
 }  // namespace
 
 int main() {
   testIntroCompletesWithinEightSeconds();
   testHalfHealthBreaksOuterRing();
+  testBossHealthUsesConfiguredMaximum();
   return 0;
 }

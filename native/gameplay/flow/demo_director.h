@@ -30,6 +30,7 @@ struct BossCinematicState {
 
   BossCinematicState tick(Tick deltaMs) const;
   static BossCinematicState fromBossHp(float hpRatio);
+  static float healthRatio(int64_t currentHp, int64_t maxHp);
 };
 
 struct DemoSignals {

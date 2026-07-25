@@ -28,6 +28,12 @@ BossCinematicState BossCinematicState::fromBossHp(float hpRatio) {
   return state;
 }
 
+float BossCinematicState::healthRatio(int64_t currentHp, int64_t maxHp) {
+  if (maxHp <= 0) return 0.0f;
+  return std::clamp(static_cast<float>(currentHp) / static_cast<float>(maxHp),
+                    0.0f, 1.0f);
+}
+
 void DemoDirector::advanceTo(DemoPhase phase, Tick now,
                              bool timeoutFallback) {
   snapshot_.phase = phase;

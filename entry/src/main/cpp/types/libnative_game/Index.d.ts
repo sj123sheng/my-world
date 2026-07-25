@@ -70,5 +70,9 @@ export const pullSnapshot: () => {
   debugHud: boolean,
   objectiveLabel: string,
   resonanceSlots: number[],
-  showDebugHud: boolean
+  showDebugHud: boolean,
+  bossCinematicProgress: number,
+  bossShardCount: number,
+  bossSourceColor: number,
+  bossRingBroken: boolean
 };

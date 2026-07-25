@@ -23,7 +23,9 @@ struct GamePage {
     bossHp: 1000, bossPoise: 300, bossMechanic: 0, bossCastMs: 0
     , perfLevel: 0, vfxFlags: 0, cameraShakeX: 0, cameraShakeY: 0,
     bossHpRatio: 0, bossCastRatio: 0, debugHud: false,
-    objectiveLabel: '', resonanceSlots: [0, 0, 0], showDebugHud: false
+    objectiveLabel: '', resonanceSlots: [0, 0, 0], showDebugHud: false,
+    bossCinematicProgress: 0, bossShardCount: 0, bossSourceColor: 0,
+    bossRingBroken: false
   };
   @State tick: number = 0;
   @State hp: number = 100;
@@ -84,6 +86,10 @@ struct GamePage {
   @State objectiveLabel: string = '';
   @State resonanceSlots: number[] = [0, 0, 0];
   @State showDebugHud: boolean = false;
+  @State bossCinematicProgress: number = 0;
+  @State bossShardCount: number = 0;
+  @State bossSourceColor: number = 0;
+  @State bossRingBroken: boolean = false;
   private timer: number = -1;
   private pageActive: boolean = false;
   private modelLoadGeneration: number = 0;
@@ -193,7 +199,10 @@ struct GamePage {
         debugHud: this.debugHud, perfLevel: this.perfLevel,
         vfxFlags: this.vfxFlags, bossHpRatio: this.bossHpRatio,
         bossCastRatio: this.bossCastRatio, objectiveLabel: this.objectiveLabel,
-        resonanceSlots: this.resonanceSlots, showDebugHud: this.showDebugHud })
+        resonanceSlots: this.resonanceSlots, showDebugHud: this.showDebugHud,
+        bossCinematicProgress: this.bossCinematicProgress,
+        bossShardCount: this.bossShardCount, bossSourceColor: this.bossSourceColor,
+        bossRingBroken: this.bossRingBroken })
 
       CombatControls()
         .align(Alignment.BottomEnd)
@@ -268,6 +277,10 @@ struct GamePage {
         this.objectiveLabel = this.snapshot.objectiveLabel;
         this.resonanceSlots = this.snapshot.resonanceSlots;
         this.showDebugHud = this.snapshot.showDebugHud;
+        this.bossCinematicProgress = this.snapshot.bossCinematicProgress;
+        this.bossShardCount = this.snapshot.bossShardCount;
+        this.bossSourceColor = this.snapshot.bossSourceColor;
+        this.bossRingBroken = this.snapshot.bossRingBroken;
       } catch (e) {
       }
     }, 100);
