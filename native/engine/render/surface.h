@@ -27,6 +27,7 @@ inline constexpr EGLContext EGL_NO_CONTEXT = nullptr;
 #include <array>
 #include "native/gameplay/player/player_controller.h"
 #include "native/engine/render/camera_render_state.h"
+#include "native/engine/render/asset_profile.h"
 
 #include "native/engine/render/camera3d.h"
 #include "native/engine/render/mesh.h"
@@ -160,6 +161,23 @@ struct Surface {
   SkinnedAnimationState bossAnimationState;
   std::unordered_map<uint32_t, SkinnedAnimationState> enemyAnimationStates;
   bool shader3dReady = false;
+  AssetProfile playerAssetProfile = AssetProfile::forModel(ModelKind::Player);
+  AssetProfile enemyAssetProfile = AssetProfile::forModel(ModelKind::Enemy);
+  AssetProfile bossAssetProfile = AssetProfile::forModel(ModelKind::Boss);
+
+  void applyAssetProfile(ModelKind kind, const AssetProfile& profile) {
+    switch (kind) {
+      case ModelKind::Player:
+        playerAssetProfile = profile;
+        break;
+      case ModelKind::Enemy:
+        enemyAssetProfile = profile;
+        break;
+      case ModelKind::Boss:
+        bossAssetProfile = profile;
+        break;
+    }
+  }
 
   void pruneEnemyAnimationStates() {
     for (auto state = enemyAnimationStates.begin();

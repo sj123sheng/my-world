@@ -1,4 +1,5 @@
 #include "surface.h"
+#include "native/engine/presentation/visual_tokens.h"
 #include "platform/harmony/fence_wait.h"
 #include <hilog/log.h>
 #include <unistd.h>
@@ -319,12 +320,12 @@ static glm::vec3 enemyColorByArchetype(int archetype) {
 static glm::vec3 bossColorByPhase(int phase) {
   switch (phase) {
     case 2:  // CurrentStorm
-      return {0.30f, 0.60f, 0.95f};
+      return VisualTokens::sourceColor(SourceType::Current);
     case 3:  // CorruptionCollapse
-      return {0.62f, 0.22f, 0.62f};
+      return VisualTokens::sourceColor(SourceType::Corruption);
     case 1:  // RadianceLockdown
     default:
-      return {0.92f, 0.80f, 0.32f};
+      return VisualTokens::sourceColor(SourceType::Radiance);
   }
 }
 
@@ -604,25 +605,28 @@ static void draw3DPhase(Surface& s) {
   // 玩家：模型可用时走蒙皮，否则保留 M3-1 立方体。
   drawActor(s, s.playerModel, s.playerMesh, s.playerAnimationState,
             s.player3dAnimation,
-            actorModelMatrix(glm::vec3(s.player.x, 0.012f, s.player.y), 0.025f,
-                             s.player.angle),
-            vp, {0.18f, 0.65f, 0.95f}, "player");
+            actorModelMatrix(glm::vec3(s.player.x, 0.012f, s.player.y),
+                             s.playerAssetProfile.scale,
+                             s.player.angle + s.playerAssetProfile.yawOffsetRadians),
+            vp, s.playerAssetProfile.materialTint, "player");
 
   // 训练假人立方体（按 alive 跳过）。
   drawActor(s, s.enemyModel, s.enemyMesh, s.trainingTargetAnimationState,
             s.trainingTarget3dAnimation,
             actorModelMatrix(
                 glm::vec3(s.trainingTarget.x, 0.011f, s.trainingTarget.y),
-                0.022f),
-            vp, {0.85f, 0.32f, 0.22f}, "training-target");
+                s.enemyAssetProfile.scale,
+                s.enemyAssetProfile.yawOffsetRadians),
+            vp, s.enemyAssetProfile.materialTint, "training-target");
 
   // 敌人立方体（按存活状态跳过）。
   s.pruneEnemyAnimationStates();
   for (const Enemy3DRenderState& enemy : s.enemies3d) {
     SkinnedAnimationState& animationState = s.enemyAnimationStates[enemy.id];
     drawActor(s, s.enemyModel, s.enemyMesh, animationState, enemy.animation,
-              actorModelMatrix(glm::vec3(enemy.x, 0.011f, enemy.y), 0.022f,
-                               enemy.angle),
+              actorModelMatrix(glm::vec3(enemy.x, 0.011f, enemy.y),
+                               s.enemyAssetProfile.scale,
+                               enemy.angle + s.enemyAssetProfile.yawOffsetRadians),
               vp, enemyColorByArchetype(enemy.archetype), "enemy");
   }
 
@@ -631,7 +635,8 @@ static void draw3DPhase(Surface& s) {
     drawActor(s, s.bossModel, s.bossMesh, s.bossAnimationState,
               s.boss3d.animation,
               actorModelMatrix(glm::vec3(s.boss3d.x, 0.02f, s.boss3d.y),
-                               0.04f, s.boss3d.angle),
+                               s.bossAssetProfile.scale,
+                               s.boss3d.angle + s.bossAssetProfile.yawOffsetRadians),
               vp, bossColorByPhase(s.boss3d.phase), "boss");
   }
 

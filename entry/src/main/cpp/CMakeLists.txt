@@ -50,7 +50,8 @@ add_library(native_game SHARED
     ${NATIVE_ROOT}/engine/render/shader_3d.cpp
     ${NATIVE_ROOT}/engine/render/skinned_model.cpp
     ${NATIVE_ROOT}/engine/render/static_model.cpp
-    ${NATIVE_ROOT}/engine/render/environment.cpp
+   ${NATIVE_ROOT}/engine/render/environment.cpp
+    ${NATIVE_ROOT}/engine/render/asset_profile.cpp
 
     # engine presentation
     ${NATIVE_ROOT}/engine/presentation/vfx_system.cpp
