@@ -11,6 +11,7 @@ export const advanceLevel: () => boolean;
 export const useSupply: () => boolean;
 export const retryBoss: () => boolean;
 export const toggleDebugHud: () => void;
+export const skipDemoPhase: (phase: number) => void;
 export const pullSnapshot: () => {
   tick: number,
   hp: number,

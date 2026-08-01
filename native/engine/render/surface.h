@@ -173,6 +173,12 @@ struct Surface {
   AssetProfile playerAssetProfile = AssetProfile::forModel(ModelKind::Player);
   AssetProfile enemyAssetProfile = AssetProfile::forModel(ModelKind::Enemy);
   AssetProfile bossAssetProfile = AssetProfile::forModel(ModelKind::Boss);
+  int32_t vfxFlags = 0;
+  float vfxHitFlash = 0.0f;
+  float vfxDodgeFlash = 0.0f;
+  float vfxResonanceBurst = 0.0f;
+  float vfxCameraShakeX = 0.0f;
+  float vfxCameraShakeY = 0.0f;
 
   void applyAssetProfile(ModelKind kind, const AssetProfile& profile) {
     switch (kind) {

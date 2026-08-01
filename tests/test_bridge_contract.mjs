@@ -297,6 +297,24 @@ assert.match(controls, /import[^]*\btoggleDebugHud\b/,
 assert.match(controls, new RegExp(`Button\\(['"]调试['"]\\)(?:(?!Button\\().)*toggleDebugHud\\(\\)`, 's'),
   'CombatControls must pair 调试 with toggleDebugHud()');
 
+// ---- Stage 7: skipDemoPhase for demo phase navigation ----
+assert.match(bridge, /export const skipDemoPhase/, 'Bridge must export skipDemoPhase');
+assert.match(declarations, /skipDemoPhase: \(phase: number\) => void;/,
+  'Index.d.ts must declare skipDemoPhase');
+assert.match(nativeBridge, /"skipDemoPhase", nullptr, NativeSkipDemoPhase/,
+  'native bridge must export skipDemoPhase');
+
+const skipBody = functionBody(nativeBridge, 'static napi_value NativeSkipDemoPhase');
+assert.match(skipBody, /argc != 1/, 'NativeSkipDemoPhase must require exactly one argument');
+assert.match(skipBody, /!std::isfinite\(phaseNumber\)/,
+  'NativeSkipDemoPhase must reject non-finite numbers');
+assert.match(skipBody, /!TryConvertInt32\(phaseNumber, phase\)/,
+  'NativeSkipDemoPhase must reject fractional numbers');
+assert.match(skipBody, /phase < 0 \|\| phase > 6/,
+  'NativeSkipDemoPhase must reject phases outside 0..6');
+assert.match(skipBody, /g_loop\.skipDemoPhase\(static_cast<DemoPhase>\(phase\)\)/,
+  'NativeSkipDemoPhase must delegate to Loop');
+
 // ---- Stage 6: Mobile HUD with Progress bars and debug toggle ----
 assert.match(hud, /@Prop debugHud: boolean = false;/, 'HUD must accept debugHud');
 assert.match(hud, /Progress\(\s*\{[^}]*value:\s*this\.hp/, 'HUD must render HP bar with Progress');

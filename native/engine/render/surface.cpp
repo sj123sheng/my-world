@@ -288,6 +288,24 @@ static void drawPlayerGL(const Surface& s) {
                      1.0f);
 }
 
+static void drawVfxOverlayGL(const Surface& s) {
+  if (s.program == 0) return;
+  glUseProgram(s.program);
+  glDisable(GL_DEPTH_TEST);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  if (s.vfxHitFlash > 0.0f) {
+    drawSolidRectGL(s, 0.0f, 0.0f, 2.0f, 2.0f, 0.8f, 0.15f, 0.1f, s.vfxHitFlash * 0.3f);
+  }
+  if (s.vfxDodgeFlash > 0.0f) {
+    drawSolidRectGL(s, 0.0f, 0.0f, 2.0f, 2.0f, 0.1f, 0.3f, 0.8f, s.vfxDodgeFlash * 0.25f);
+  }
+  if (s.vfxResonanceBurst > 0.0f) {
+    drawSolidRectGL(s, 0.0f, 0.0f, 2.0f, 2.0f, 0.85f, 0.63f, 0.16f, s.vfxResonanceBurst * 0.2f);
+  }
+  glDisable(GL_BLEND);
+}
+
 static void drawTrainingTargetGL(const Surface& s) {
   if (!s.trainingTarget.alive) return;
   const Vec2 view = worldToNdc(s, {s.trainingTarget.x, s.trainingTarget.y});
@@ -1387,6 +1405,7 @@ void surface_draw(Surface& s) {
 #ifdef OHOS_PLATFORM
   draw3DPhase(s);
 #endif
+  drawVfxOverlayGL(s);
   glFlush();
 }
 

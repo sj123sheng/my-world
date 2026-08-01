@@ -89,4 +89,5 @@ export const advanceLevel = (): boolean => native.advanceLevel();
 export const useSupply = (): boolean => native.useSupply();
 export const retryBoss = (): boolean => native.retryBoss();
 export const toggleDebugHud = (): void => native.toggleDebugHud();
+export const skipDemoPhase = (phase: number): void => native.skipDemoPhase(phase);
 export const pullSnapshot = (): Snapshot => native.pullSnapshot();

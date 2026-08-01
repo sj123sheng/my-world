@@ -78,6 +78,7 @@ struct Loop {
   bool useSupply();
   bool retryBoss();
   void toggleDebugHud();
+  void skipDemoPhase(DemoPhase phase) { demoDirector.skipTo(phase); }
 
   template <typename Fn>
   decltype(auto) withLifecycle(Fn&& operation) {

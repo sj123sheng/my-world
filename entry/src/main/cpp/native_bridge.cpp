@@ -323,6 +323,40 @@ static napi_value NativeToggleDebugHud(napi_env env, napi_callback_info) {
   return nullptr;
 }
 
+static napi_value NativeSkipDemoPhase(napi_env env, napi_callback_info info) {
+  size_t argc = 0;
+  napi_get_cb_info(env, info, &argc, nullptr, nullptr, nullptr);
+  if (argc != 1) {
+    napi_throw_type_error(env, nullptr, "skipDemoPhase expects exactly one argument");
+    return nullptr;
+  }
+  napi_value args[1];
+  napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  napi_valuetype argumentType;
+  napi_typeof(env, args[0], &argumentType);
+  if (argumentType != napi_number) {
+    napi_throw_type_error(env, nullptr, "skipDemoPhase phase must be a number");
+    return nullptr;
+  }
+  double phaseNumber;
+  napi_get_value_double(env, args[0], &phaseNumber);
+  if (!std::isfinite(phaseNumber)) {
+    napi_throw_type_error(env, nullptr, "skipDemoPhase phase must be finite");
+    return nullptr;
+  }
+  int32_t phase;
+  if (!TryConvertInt32(phaseNumber, phase)) {
+    napi_throw_type_error(env, nullptr, "skipDemoPhase phase must be an integer");
+    return nullptr;
+  }
+  if (phase < 0 || phase > 6) {
+    napi_throw_type_error(env, nullptr, "skipDemoPhase phase must be 0..6");
+    return nullptr;
+  }
+  g_loop.skipDemoPhase(static_cast<DemoPhase>(phase));
+  return nullptr;
+}
+
 static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   const GameSnapshot snapshot = g_loop.snapshot();
   napi_value result;
@@ -496,6 +530,7 @@ static napi_value Init(napi_env env, napi_value exports) {
     {"useSupply", nullptr, NativeUseSupply, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"retryBoss", nullptr, NativeRetryBoss, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"toggleDebugHud", nullptr, NativeToggleDebugHud, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"skipDemoPhase", nullptr, NativeSkipDemoPhase, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pullSnapshot", nullptr, NativePullSnapshot, nullptr, nullptr, nullptr, napi_default, nullptr},
   };
   napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
