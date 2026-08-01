@@ -121,7 +121,8 @@ void publish3DEncounterState(Surface& surface,
 // ThirdPersonCamera，玩家 3D 目标位置取 (player.x, 0.05, player.y)，
 // 0.05 为玩家立方体半高，使相机平视角色而非俯视地面。
 void update3DCamera(Surface& surface, const ThirdPersonCamera& camera) {
-  const glm::vec3 target{surface.player.x, 0.05f, surface.player.y};
+  const glm::vec3 target{surface.player.x + surface.vfxCameraShakeX, 0.05f,
+                         surface.player.y + surface.vfxCameraShakeY};
   surface.camera3d.follow(target, camera.yaw(), camera.pitch(),
                           camera.distance());
 }
@@ -419,11 +420,18 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   const Vec2 lookDelta = intent.lookDelta;
   intent.lookDelta = {};
   const float dtSeconds = static_cast<float>(dtMs) / 1000.0f;
+
+  // 相机先更新：玩家移动使用本帧最新 yaw，保证操控方向与画面严格一致。
+  camera.update({surface.player.x, surface.player.y}, lookDelta, dtSeconds);
+  surface.cameraRenderState = camera.renderState();
+
   playerController.update(surface.player, intent.move, camera.yaw(),
                           dtSeconds);
 
+  // 仅在摇杆有有效输入时发射脚步粒子，避免减速滑行期间误发。
   particleEmitTimer += dtSeconds;
-  if (surface.player.moving && particleEmitTimer > 0.05f) {
+  if (surface.player.moving && intent.move.length() > 0.0f &&
+      particleEmitTimer > 0.05f) {
     particleEmitTimer = 0.0f;
     surface.particles.push_back({surface.player.x, surface.player.y, 0.4f,
                                  0.4f});
@@ -437,9 +445,6 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                        return particle.life <= 0.0f;
                      }),
       surface.particles.end());
-
-  camera.update({surface.player.x, surface.player.y}, lookDelta, dtSeconds);
-  surface.cameraRenderState = camera.renderState();
 
   const std::vector<TargetCandidate>& candidates =
       encounter.snapshot().candidates;
@@ -540,6 +545,12 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   updated.vfxFlags = vfxSystem.snapshot().vfxFlags;
   updated.cameraShakeX = vfxSystem.snapshot().cameraShakeX;
   updated.cameraShakeY = vfxSystem.snapshot().cameraShakeY;
+  surface.vfxFlags = vfxSystem.snapshot().vfxFlags;
+  surface.vfxHitFlash = static_cast<float>(vfxSystem.snapshot().hitFlashMs) / 200.0f;
+  surface.vfxDodgeFlash = static_cast<float>(vfxSystem.snapshot().dodgeFlashMs) / 400.0f;
+  surface.vfxResonanceBurst = static_cast<float>(vfxSystem.snapshot().resonanceBurstMs) / 800.0f;
+  surface.vfxCameraShakeX = vfxSystem.snapshot().cameraShakeX;
+  surface.vfxCameraShakeY = vfxSystem.snapshot().cameraShakeY;
   updated.bossHpRatio = BossCinematicState::healthRatio(
       encounter.snapshot().boss.hp, BossConfig::karounDefaults().maxHp);
   if (encounter.snapshot().boss.castRemainingMs > 0) {

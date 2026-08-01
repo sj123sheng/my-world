@@ -43,15 +43,15 @@ void testFollowYawRotatesPositionAroundTarget() {
   cam.aspectRatio = 1.0f;
   cam.follow({0.0f, 0.0f, 0.0f}, 0.0f, 0.0f, 1.0f);
   // pitch=0 -> position on xz plane, distance 1.
-  // yaw=0 -> (cos0*cos0, sin0, cos0*sin0) = (1, 0, 0)
-  assert(std::fabs(cam.position.x - 1.0f) < 0.0001f);
+  // yaw=0 -> (sin0*cos0, sin0, -cos0*cos0) = (0, 0, -1)
+  assert(std::fabs(cam.position.x) < 0.0001f);
   assert(std::fabs(cam.position.y) < 0.0001f);
-  assert(std::fabs(cam.position.z) < 0.0001f);
+  assert(std::fabs(cam.position.z + 1.0f) < 0.0001f);
 
   cam.follow({0.0f, 0.0f, 0.0f}, 3.14159265f / 2.0f, 0.0f, 1.0f);
-  // yaw=pi/2 -> (0, 0, 1)
-  assert(std::fabs(cam.position.x) < 0.0001f);
-  assert(std::fabs(cam.position.z - 1.0f) < 0.0001f);
+  // yaw=pi/2 -> (1, 0, 0): yaw 增大时相机向目标右侧轨道。
+  assert(std::fabs(cam.position.x - 1.0f) < 0.0001f);
+  assert(std::fabs(cam.position.z) < 0.0001f);
 }
 
 void testProjectionIsFinite() {

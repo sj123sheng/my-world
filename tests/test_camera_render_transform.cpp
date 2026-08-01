@@ -65,15 +65,20 @@ int main() {
   for (const float yaw : yaws) {
     Player player;
     PlayerController controller({1.0f, 100.0f});
-    controller.update(player, move, yaw, 0.1f);
+    // 速度平滑需要数帧收敛到满速，取收敛后最后一帧的位移验证。
+    Vec2 previous{player.x, player.y};
+    for (int frame = 0; frame < 21; ++frame) {
+      previous = {player.x, player.y};
+      controller.update(player, move, yaw, 0.016f);
+    }
 
     const CameraRenderState state({0.5f, 0.5f}, yaw, 0.45f, 0.35f,
                                   0.45f, 0.35f);
     const Vec2 viewMove = difference(
         state.worldToView({player.x, player.y}),
-        state.worldToView({0.5f, 0.5f}));
-    assert(close(viewMove.x, move.x * 0.1f));
-    assert(close(viewMove.y, move.y * 0.1f));
+        state.worldToView(previous));
+    assert(close(viewMove.x, move.x * 0.016f));
+    assert(close(viewMove.y, move.y * 0.016f));
 
     const Vec2 worldFacing{std::cos(player.angle), std::sin(player.angle)};
     const Vec2 viewFacing = state.worldVectorToView(worldFacing);

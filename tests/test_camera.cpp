@@ -32,6 +32,7 @@ void assertValidConfig(const ThirdPersonCameraConfig& config) {
   assert(std::isfinite(config.minDistance));
   assert(std::isfinite(config.maxDistance));
   assert(std::isfinite(config.followSharpness));
+  assert(std::isfinite(config.yawSharpness));
   assert(config.minPitch <= config.maxPitch);
   assert(config.defaultPitch >= config.minPitch);
   assert(config.defaultPitch <= config.maxPitch);
@@ -52,8 +53,17 @@ void moveAwayFromDefaults(ThirdPersonCamera& camera) {
 int main() {
   ThirdPersonCamera camera;
   camera.update({0.5f, 0.5f}, {1.0f, 100.0f}, 0.016f);
-  assert(camera.yaw() == 1.0f);
+  // yaw 平滑逼近目标：不瞬间跳到 1.0，但已开始转动。
+  const float expectedYawFollow =
+      1.0f - std::exp(-camera.config().yawSharpness * 0.016f);
+  assert(close(camera.yaw(), expectedYawFollow));
+  assert(camera.yaw() > 0.0f && camera.yaw() < 1.0f);
   assert(camera.pitch() == camera.config().maxPitch);
+  // 无后续输入时 yaw 收敛到目标值。
+  for (int converge = 0; converge < 300; ++converge) {
+    camera.update({0.5f, 0.5f}, {}, 0.016f);
+  }
+  assert(close(camera.yaw(), 1.0f));
 
   camera.setDistance(100.0f);
   assert(camera.distance() == camera.config().maxDistance);
@@ -113,6 +123,7 @@ int main() {
   nonFiniteConfig.maxDistance = std::numeric_limits<float>::infinity();
   nonFiniteConfig.followSharpness =
       std::numeric_limits<float>::quiet_NaN();
+  nonFiniteConfig.yawSharpness = std::numeric_limits<float>::quiet_NaN();
   ThirdPersonCamera nonFiniteCamera(nonFiniteConfig);
   assertValidConfig(nonFiniteCamera.config());
   const ThirdPersonCameraConfig builtInDefaults;
@@ -129,6 +140,8 @@ int main() {
          builtInDefaults.maxDistance);
   assert(nonFiniteCamera.config().followSharpness ==
          builtInDefaults.followSharpness);
+  assert(nonFiniteCamera.config().yawSharpness ==
+         builtInDefaults.yawSharpness);
   assertReset(nonFiniteCamera);
 
   ThirdPersonCameraConfig invertedConfig;
@@ -139,6 +152,7 @@ int main() {
   invertedConfig.maxDistance = 1.0f;
   invertedConfig.defaultDistance = -20.0f;
   invertedConfig.followSharpness = -1.0f;
+  invertedConfig.yawSharpness = -5.0f;
   ThirdPersonCamera invertedCamera(invertedConfig);
   assertValidConfig(invertedCamera.config());
   assert(invertedCamera.config().minPitch == builtInDefaults.minPitch);
@@ -147,6 +161,8 @@ int main() {
   assert(invertedCamera.config().maxDistance == builtInDefaults.maxDistance);
   assert(invertedCamera.config().followSharpness ==
          builtInDefaults.followSharpness);
+  assert(invertedCamera.config().yawSharpness ==
+         builtInDefaults.yawSharpness);
   assertReset(invertedCamera);
   invertedCamera.update({1.0f, 1.0f}, {0.0f, 100.0f}, fixedDt);
   assert(std::isfinite(invertedCamera.pitch()));

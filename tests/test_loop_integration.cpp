@@ -173,6 +173,11 @@ int main() {
   loop.processInput();
   loop.updateFixed(2, 16);
   assert(loop.intent.move == Vec2{});
+  // 平滑减速：松开摇杆后速度经数帧衰减至停止，而非瞬间归零。
+  for (Tick decelTick = 3; loop.surface.player.moving && decelTick < 100;
+       ++decelTick) {
+    loop.updateFixed(decelTick, 16);
+  }
   assert(!loop.surface.player.moving);
   assert(loop.touchRouter.activeCount() == 0);
 
@@ -195,7 +200,8 @@ int main() {
   const GameSnapshot targeted = targetingLoop.snapshot();
   assert(targeted.targetId == static_cast<int32_t>(CombatController::kTrainingTargetId));
   assert(targetingLoop.surface.props.size() == 1);
-  assert(std::abs(targeted.targetDist - 0.3f) < 0.001f);
+  // 出生点 (0.5, 0.12) 到训练假人 (0.5, 0.8) 的距离。
+  assert(std::abs(targeted.targetDist - 0.68f) < 0.001f);
 
   targetingLoop.resetInput();
   targetingLoop.tickOnce(0);
@@ -341,8 +347,11 @@ int main() {
   restartedLoop.start();
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
   restartedLoop.stop();
-  assert(restartedLoop.surface.player.x == 0.5f);
-  assert(restartedLoop.surface.player.y == 0.5f);
+  // start() 会 resetInput 清空排队输入，玩家应保持在环境出生点。
+  const EnvironmentComposition restartedSpawn =
+      EnvironmentController::defaultComposition();
+  assert(restartedLoop.surface.player.x == restartedSpawn.spawn.x);
+  assert(restartedLoop.surface.player.y == restartedSpawn.spawn.z);
 
   for (int round = 0; round < 20; ++round) {
     Loop concurrentLoop;

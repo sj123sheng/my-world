@@ -11,7 +11,10 @@ void Camera3D::follow(glm::vec3 targetPos, float yaw, float pitch, float distanc
   const float sp = std::sin(pitch);
   const float cy = std::cos(yaw);
   const float sy = std::sin(yaw);
-  position = targetPos + glm::vec3(-sy * cp, sp, -cy * cp) * distance;
+  // 轨道偏移与 2D ThirdPersonCamera 约定一致：
+  // 屏幕上方 = 世界 {sin(yaw), cos(yaw)}，屏幕右方 = {cos(yaw), -sin(yaw)}。
+  // 相机位于目标身后：backward = -forward，右移相机时 yaw 增大（标准第三人称）。
+  position = targetPos + glm::vec3(sy * cp, sp, -cy * cp) * distance;
 }
 
 glm::mat4 Camera3D::viewMatrix() const {

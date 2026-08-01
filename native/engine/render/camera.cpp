@@ -46,6 +46,10 @@ ThirdPersonCameraConfig sanitizeConfig(ThirdPersonCameraConfig config) {
     config.followSharpness = defaults.followSharpness;
   }
 
+  if (!std::isfinite(config.yawSharpness) || config.yawSharpness <= 0.0f) {
+    config.yawSharpness = defaults.yawSharpness;
+  }
+
   return config;
 }
 
@@ -64,9 +68,14 @@ void ThirdPersonCamera::update(Vec2 desiredTarget, Vec2 lookDelta,
     return;
   }
 
-  yaw_ += lookDelta.x;
+  targetYaw_ += lookDelta.x;
   pitch_ = std::clamp(pitch_ + lookDelta.y, config_.minPitch,
                       config_.maxPitch);
+  // yaw 以指数插值逼近目标，转动视角时平滑过渡，
+  // 同时保证移动方向映射与画面一致。
+  const float yawFollow =
+      1.0f - std::exp(-config_.yawSharpness * dtSeconds);
+  yaw_ += (targetYaw_ - yaw_) * yawFollow;
   const float follow = 1.0f - std::exp(-config_.followSharpness * dtSeconds);
   target_ = target_ + (desiredTarget - target_) * follow;
 
@@ -85,6 +94,7 @@ void ThirdPersonCamera::setDistance(float distance) {
 
 void ThirdPersonCamera::reset() {
   yaw_ = config_.defaultYaw;
+  targetYaw_ = config_.defaultYaw;
   pitch_ = config_.defaultPitch;
   distance_ = config_.defaultDistance;
   target_ = {0.5f, 0.5f};
@@ -114,6 +124,6 @@ const ThirdPersonCameraConfig& ThirdPersonCamera::config() const {
 }
 
 bool ThirdPersonCamera::finite() const {
-  return std::isfinite(yaw_) && std::isfinite(pitch_) &&
-         std::isfinite(distance_) && target_.finite();
+  return std::isfinite(yaw_) && std::isfinite(targetYaw_) &&
+         std::isfinite(pitch_) && std::isfinite(distance_) && target_.finite();
 }

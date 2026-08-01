@@ -12,6 +12,9 @@ struct ThirdPersonCameraConfig {
   float minDistance = 0.2f;
   float maxDistance = 0.6f;
   float followSharpness = 10.0f;
+  // yaw 平滑系数：越大转向越快。实际 yaw 以指数插值逼近目标 yaw，
+  // 避免视角转动时产生突兀。
+  float yawSharpness = 20.0f;
 };
 
 class ThirdPersonCamera {
@@ -35,6 +38,7 @@ class ThirdPersonCamera {
 
   ThirdPersonCameraConfig config_;
   float yaw_ = 0.0f;
+  float targetYaw_ = 0.0f;
   float pitch_ = 0.0f;
   float distance_ = 0.0f;
   Vec2 target_;
