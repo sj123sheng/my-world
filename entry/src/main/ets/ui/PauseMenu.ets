@@ -30,7 +30,7 @@ export struct PauseMenu {
       Button('II')
         .width(40)
         .height(40)
-        .buttonStyle(ButtonStyleType.Circle)
+        .type(ButtonType.Circle)
         .backgroundColor('rgba(20, 26, 38, 0.55)')
         .border({ width: 1, color: 'rgba(199, 208, 206, 0.35)' })
         .fontColor('#C7D0CE')

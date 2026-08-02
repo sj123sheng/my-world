@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: native_engine
+title: 原生游戏引擎核心（native/engine）
+scope:
+    - native/engine/
+source_files: []
+depends_on: []
+related_to: []

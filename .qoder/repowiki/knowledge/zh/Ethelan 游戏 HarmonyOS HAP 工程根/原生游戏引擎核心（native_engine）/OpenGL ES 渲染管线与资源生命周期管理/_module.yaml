@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: native_engine/render_pipeline
+title: OpenGL ES 渲染管线与资源生命周期管理
+scope:
+    - native/engine/render/
+source_files: []
+depends_on: []
+related_to:
+    - path: native_engine/core_loop
+    - path: native_engine/math_glm
+    - path: native_engine/presentation_vfx
+    - path: native_engine/resource_manager

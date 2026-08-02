@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: native_gameplay/entities
-title: Boss 与敌人实体状态管理
-scope:
-    - native/gameplay/entities/
-source_files: []
-depends_on: []
-related_to:
-    - path: native_gameplay/ai

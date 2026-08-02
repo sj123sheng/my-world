@@ -3,16 +3,25 @@
 <cite>
 **本文引用的文件**   
 - [CombatControls.ets](file://entry/src/main/ets/ui/CombatControls.ets)
+- [Joystick.ets](file://entry/src/main/ets/ui/Joystick.ets)
 - [GamePage.ets](file://entry/src/main/ets/pages/GamePage.ets)
 - [Bridge.ets](file://entry/src/main/ets/napi/Bridge.ets)
 - [native_bridge.cpp](file://entry/src/main/cpp/native_bridge.cpp)
-- [Joystick.ets](file://entry/src/main/ets/ui/Joystick.ets)
 - [Hud.ets](file://entry/src/main/ets/ui/Hud.ets)
 - [input_event.h](file://native/engine/input/input_event.h)
 - [pointer_input.h](file://native/engine/input/pointer_input.h)
 - [changed_pointer_forwarder.h](file://native/engine/input/changed_pointer_forwarder.h)
 - [touch_router.h](file://native/engine/input/touch_router.h)
 </cite>
+
+## 更新摘要
+**变更内容**   
+- CombatControls 组件完全重写为弧形圆形技能按钮布局
+- 新增冷却环动画系统，支持动态冷却总时长
+- 终结技高亮呼吸动画与按压反馈效果
+- 调试面板收纳为侧拉面板设计
+- 虚拟摇杆组件独立化，支持动态浮出显示
+- 触摸路由机制优化，确保多点触控识别
 
 ## 目录
 1. [简介](#简介)
@@ -27,12 +36,12 @@
 10. [附录：集成与配置示例](#附录集成与配置示例)
 
 ## 简介
-本技术文档围绕 my-world 的 CombatControls 战斗控制组件，系统阐述其触摸交互实现、事件处理机制、与 C++ 引擎的 NAPI 桥接通信、设备适配策略，以及在 GamePage 中的集成方式。该组件负责呈现并响应普攻、闪避、技能按键（辉印、脉流、蚀质）以及终结技等按钮，配合虚拟摇杆完成移动输入，并通过 NAPI 将用户操作传递给原生游戏逻辑层。
+本技术文档围绕 my-world 的 CombatControls 战斗控制组件，系统阐述其商业化重塑后的触摸交互实现、事件处理机制、与 C++ 引擎的 NAPI 桥接通信、设备适配策略，以及在 GamePage 中的集成方式。该组件现已完全重写为商业手游标准，包含弧形圆形技能按钮布局、动态冷却环动画、终结技高亮效果和侧拉调试面板，配合独立的虚拟摇杆组件完成移动输入，并通过 NAPI 将用户操作传递给原生游戏逻辑层。
 
 ## 项目结构
 - UI 层
-  - CombatControls.ets：战斗控制按钮布局与冷却动画、调试面板入口。
-  - Joystick.ets：左侧半屏虚拟摇杆，捕获触摸并转发坐标到原生。
+  - CombatControls.ets：右下角弧形技能按钮簇，包含普攻、闪避、辉印、脉流、蚀质、终结技；提供冷却环遮罩与呼吸动画；右上角调试入口，展开后提供多种测试功能。
+  - Joystick.ets：左侧半屏虚拟摇杆，捕获触摸并转发坐标到原生，支持动态浮出显示和空闲提示。
   - Hud.ets：HUD 信息展示，包含状态条、目标信息、调试信息等。
   - GamePage.ets：页面容器，承载 XComponent 渲染面、Joystick、Hud、CombatControls，并定时拉取快照驱动 UI 更新。
 - 桥接层
@@ -75,11 +84,11 @@ NB --> TR
 ```
 
 **图表来源** 
-- [CombatControls.ets:1-248](file://entry/src/main/ets/ui/CombatControls.ets#L1-L248)
-- [Joystick.ets:1-170](file://entry/src/main/ets/ui/Joystick.ets#L1-L170)
+- [CombatControls.ets:1-246](file://entry/src/main/ets/ui/CombatControls.ets#L1-L246)
+- [Joystick.ets:1-174](file://entry/src/main/ets/ui/Joystick.ets#L1-L174)
 - [Hud.ets:1-145](file://entry/src/main/ets/ui/Hud.ets#L1-L145)
-- [GamePage.ets:1-312](file://entry/src/main/ets/pages/GamePage.ets#L1-L312)
-- [Bridge.ets:1-94](file://entry/src/main/ets/napi/Bridge.ets#L1-L94)
+- [GamePage.ets:1-411](file://entry/src/main/ets/pages/GamePage.ets#L1-L411)
+- [Bridge.ets:1-100](file://entry/src/main/ets/napi/Bridge.ets#L1-L100)
 - [native_bridge.cpp:1-577](file://entry/src/main/cpp/native_bridge.cpp#L1-L577)
 - [input_event.h:1-24](file://native/engine/input/input_event.h#L1-L24)
 - [pointer_input.h:1-36](file://native/engine/input/pointer_input.h#L1-L36)
@@ -87,25 +96,25 @@ NB --> TR
 - [touch_router.h:1-59](file://native/engine/input/touch_router.h#L1-L59)
 
 **章节来源**
-- [CombatControls.ets:1-248](file://entry/src/main/ets/ui/CombatControls.ets#L1-L248)
-- [Joystick.ets:1-170](file://entry/src/main/ets/ui/Joystick.ets#L1-L170)
+- [CombatControls.ets:1-246](file://entry/src/main/ets/ui/CombatControls.ets#L1-L246)
+- [Joystick.ets:1-174](file://entry/src/main/ets/ui/Joystick.ets#L1-L174)
 - [Hud.ets:1-145](file://entry/src/main/ets/ui/Hud.ets#L1-L145)
-- [GamePage.ets:1-312](file://entry/src/main/ets/pages/GamePage.ets#L1-L312)
-- [Bridge.ets:1-94](file://entry/src/main/ets/napi/Bridge.ets#L1-L94)
+- [GamePage.ets:1-411](file://entry/src/main/ets/pages/GamePage.ets#L1-L411)
+- [Bridge.ets:1-100](file://entry/src/main/ets/napi/Bridge.ets#L1-L100)
 - [native_bridge.cpp:1-577](file://entry/src/main/cpp/native_bridge.cpp#L1-L577)
 
 ## 核心组件
-- CombatControls：右下角弧形技能按钮簇，包含普攻、闪避、辉印、脉流、蚀质、终结技；提供冷却环遮罩与呼吸动画；右上角调试入口，展开后提供多种测试功能。
-- Joystick：左侧半屏虚拟摇杆，按下生成底盘与旋钮，移动时计算位移并转换为原生半径下的满量程值，通过 pushInput 转发。
-- GamePage：页面容器，使用 XComponent 作为渲染面，叠加 Joystick、Hud、CombatControls，并以固定间隔拉取快照驱动 UI 状态同步。
-- Bridge：NAPI 方法封装，统一暴露 pushAction/pushInput/pullSnapshot 等能力。
-- native_bridge.cpp：N-API 绑定，负责参数校验、类型转换、事件入队、资源提交、生命周期回调注册。
+- **CombatControls**：右下角弧形技能按钮簇，采用圆形按钮布局，包含普攻（76vp主按钮）、闪避（56vp）、终结技（56vp，金色高亮呼吸）、辉印/脉流/蚀质（48vp扇形排列）；每个技能按钮带有圆形样式、边框、字体颜色与状态效果；冷却环遮罩使用 Progress(Ring) 组件，支持动态冷却总时长；右上角调试入口，点击展开侧拉面板。
+- **Joystick**：独立的虚拟摇杆组件，左侧半屏透明 Stack 捕获 onTouch，按下生成底盘与旋钮，移动时计算位移并转换为原生半径下的满量程值，通过 pushInput 转发；支持空闲提示淡出和视觉跟随效果。
+- **GamePage**：页面容器，使用 XComponent 作为渲染面，叠加 Joystick、Hud、CombatControls，并以固定间隔拉取快照驱动 UI 状态同步。
+- **Bridge**：NAPI 方法封装，统一暴露 pushAction/pushInput/pullSnapshot 等能力。
+- **native_bridge.cpp**：N-API 绑定，负责参数校验、类型转换、事件入队、资源提交、生命周期回调注册。
 
 **章节来源**
-- [CombatControls.ets:1-248](file://entry/src/main/ets/ui/CombatControls.ets#L1-L248)
-- [Joystick.ets:1-170](file://entry/src/main/ets/ui/Joystick.ets#L1-L170)
-- [GamePage.ets:1-312](file://entry/src/main/ets/pages/GamePage.ets#L1-L312)
-- [Bridge.ets:1-94](file://entry/src/main/ets/napi/Bridge.ets#L1-L94)
+- [CombatControls.ets:1-246](file://entry/src/main/ets/ui/CombatControls.ets#L1-L246)
+- [Joystick.ets:1-174](file://entry/src/main/ets/ui/Joystick.ets#L1-L174)
+- [GamePage.ets:1-411](file://entry/src/main/ets/pages/GamePage.ets#L1-L411)
+- [Bridge.ets:1-100](file://entry/src/main/ets/napi/Bridge.ets#L1-L100)
 - [native_bridge.cpp:1-577](file://entry/src/main/cpp/native_bridge.cpp#L1-L577)
 
 ## 架构总览
@@ -119,7 +128,7 @@ participant BJ as "Bridge.ets"
 participant NB as "native_bridge.cpp"
 participant L as "Loop(原生)"
 participant TR as "TouchRouter"
-U->>CC : 点击“普攻”
+U->>CC : 点击"普攻"
 CC->>BJ : pushAction(0)
 BJ->>NB : pushAction(type=0)
 NB->>NB : 校验参数/映射 InputAction : : Attack
@@ -146,20 +155,20 @@ TR-->>L : 返回角色(Movement/Camera/Ignored)
 
 ## 详细组件分析
 
-### CombatControls 组件
-- 布局与交互
-  - 右下角弧形按钮簇：普攻（主按钮）、闪避（左侧）、辉印/脉流/蚀质（扇形展开）、终结技（普攻上方）。
+### CombatControls 组件（商业化重塑版）
+- **布局与交互**
+  - 右下角弧形按钮簇：普攻（76vp主按钮，最右贴近底角）、闪避（56vp，普攻左侧）、终结技（56vp，普攻上方）、辉印/脉流/蚀质（48vp三按钮弧形排列）。
   - 每个技能按钮带有圆形样式、边框、字体颜色与状态效果；点击时调用 pushAction 传入对应动作类型。
-  - 冷却环遮罩：当剩余冷却时间大于 0 时，以环形进度覆盖按钮，显示倒计时秒数，颜色与技能主题一致。
-  - 终结技呼吸动画：当终结窗口开启时，按钮按周期缩放，提示可用。
-  - 调试面板：右上角小圆钮切换，展开后可快速启动不同遭遇模式、推进关卡、补给、重试首领、切换调试 HUD。
-- 数据绑定
-  - 通过 @Prop 接收 radianceCooldownMs、currentCooldownMs、corruptionCooldownMs、ultimateWindowMs，驱动按钮背景色与冷却环。
+  - **冷却环遮罩**：当剩余冷却时间大于 0 时，以环形进度覆盖按钮，显示倒计时秒数，颜色与技能主题一致（辉 `#D9A145`、流 `#43CDB5`、蚀 `#AB4F92`）。
+  - **终结技呼吸动画**：当终结窗口开启时，按钮按周期缩放（1.08倍），金色高亮提示可用。
+  - **调试面板收纳**：右上角小圆钮切换，展开后可快速启动不同遭遇模式、推进关卡、补给、重试首领、切换调试 HUD。
+- **数据绑定**
+  - 通过 @Prop 接收 radianceCooldownMs、currentCooldownMs、corruptionCooldownMs、ultimateWindowMs，以及冷却总时长 radianceCooldownTotalMs、currentCooldownTotalMs、corruptionCooldownTotalMs。
   - 内部 @State debugOpen 控制调试面板显隐；@State ultimatePulse 控制呼吸动画开关。
-- 事件处理
+- **事件处理**
   - 所有按钮 onClick 直接调用 pushAction(type)，由 Bridge 转交 N-API 层。
   - 冷却环使用 Progress(Ring) 与 animation 线性过渡，保证平滑收缩。
-- 可访问性与命中测试
+- **可访问性与命中测试**
   - 外层 Stack 设置 hitTestBehavior(HitTestMode.Transparent)，确保按钮区域不被遮挡影响命中。
 
 ```mermaid
@@ -183,21 +192,22 @@ Push5 --> End
 - [CombatControls.ets:74-167](file://entry/src/main/ets/ui/CombatControls.ets#L74-L167)
 
 **章节来源**
-- [CombatControls.ets:1-248](file://entry/src/main/ets/ui/CombatControls.ets#L1-L248)
+- [CombatControls.ets:1-246](file://entry/src/main/ets/ui/CombatControls.ets#L1-L246)
 
-### 虚拟摇杆（Joystick）
-- 触摸捕获
+### 虚拟摇杆（Joystick）组件
+- **触摸捕获**
   - 左侧半屏透明 Stack 捕获 onTouch，Down/Move/Up/Cancel 均被处理。
   - Down：记录 trackedPointer、originX/Y，初始化底盘与旋钮位置，active=true，并 forward(DOWN)。
   - Move：计算 dx/dy 与长度，限制在 KNOB_TRAVEL 内，换算为原生半径 NATIVE_RADIUS 下的坐标，forward(MOVE)。
   - Up/Cancel：forward(UP/CANCEL)，重置 trackedPointer 与 active。
-- 数值映射
+- **数值映射**
   - 视觉行程 KNOB_TRAVEL=50vp，原生半径 NATIVE_RADIUS=100，确保旋钮拉满即原生满速。
   - 死区：原生 VirtualJoystickConfig.deadZone=0.1f，小于死区则输出空值。
-- 事件转发
+- **事件转发**
   - ArkUI TouchType(0=Down/1=Up/2=Move/3=Cancel) 与原生 InputAction 序号一致，直接 pushInput。
-- 视觉表现
+- **视觉表现**
   - 空闲提示淡出，底盘与旋钮跟随手指移动，带阴影与渐变填充。
+  - 底盘尺寸 BASE_SIZE=120vp，旋钮尺寸 KNOB_SIZE=52vp，刻度点 TICK_SIZE=6vp。
 
 ```mermaid
 classDiagram
@@ -219,17 +229,18 @@ class Joystick {
 - [Joystick.ets:14-86](file://entry/src/main/ets/ui/Joystick.ets#L14-L86)
 
 **章节来源**
-- [Joystick.ets:1-170](file://entry/src/main/ets/ui/Joystick.ets#L1-L170)
+- [Joystick.ets:1-174](file://entry/src/main/ets/ui/Joystick.ets#L1-L174)
 - [pointer_input.h:27-35](file://native/engine/input/pointer_input.h#L27-L35)
 
 ### GamePage 集成与快照驱动
-- 渲染面
+- **渲染面**
   - XComponent(id='gameSurface', type='surface', libraryname='native_game') 作为原生渲染面。
-- 组件叠加
+- **组件叠加**
   - Joystick、Hud、CombatControls 均以 HitTestMode.Transparent 叠加于渲染面之上，互不拦截。
-- 快照驱动
+- **快照驱动**
   - setInterval 每 100ms 调用 pullSnapshot()，将原生状态映射到 @State 字段，驱动 HUD 与控制按钮的视觉反馈。
   - 关键字段包括 radianceCooldownMs、currentCooldownMs、corruptionCooldownMs、ultimateWindowMs 等，用于 CombatControls 的冷却与终结窗显示。
+  - 新增冷却总时长字段 radianceCooldownTotalMs、currentCooldownTotalMs、corruptionCooldownTotalMs。
 
 ```mermaid
 sequenceDiagram
@@ -256,16 +267,16 @@ end
 - [native_bridge.cpp:360-516](file://entry/src/main/cpp/native_bridge.cpp#L360-L516)
 
 **章节来源**
-- [GamePage.ets:1-312](file://entry/src/main/ets/pages/GamePage.ets#L1-L312)
+- [GamePage.ets:1-411](file://entry/src/main/ets/pages/GamePage.ets#L1-L411)
 
 ### 事件处理机制与优先级管理
-- 多点触控识别
+- **多点触控识别**
   - Joystick 仅处理 trackedPointer 对应的触摸，忽略其他指针，避免多指干扰。
   - TouchRouter 维护 roles_ 映射，按屏幕左右侧分配 Movement/Camera 角色，若已有相同角色则返回 Ignored，防止冲突。
-- 手势冲突处理
+- **手势冲突处理**
   - 左侧半屏透明 Stack 捕获移动触摸，右侧透传到 XComponent 原生回调，相机控制不受影响。
   - 非指针动作（攻击/闪避/技能）通过 pushAction 直接入队，不经过 TouchRouter，优先级高于指针事件。
-- 输入优先级
+- **输入优先级**
   - 按钮动作 > 指针移动（因为按钮动作不依赖 TouchRouter，且直接入队）。
   - 指针移动中，TouchRouter 决定是否接受该指针（Movement/Camera），否则忽略。
 
@@ -292,15 +303,15 @@ D --> |否| I["丢弃"]
 - [native_bridge.cpp:212-275](file://entry/src/main/cpp/native_bridge.cpp#L212-L275)
 
 ### 与 C++ 引擎的通信（NAPI 桥接）
-- 接口封装
+- **接口封装**
   - Bridge.ets 导出 pushAction、pushInput、pullSnapshot 等函数，供 UI 调用。
-- 参数校验与映射
+- **参数校验与映射**
   - native_bridge.cpp 对 pushAction 的类型进行范围校验（0~5），映射为 InputAction 枚举。
   - pushInput 要求对象包含 type/pointerId/x/y，并进行类型转换与有限性检查。
-- 事件入队
+- **事件入队**
   - 按钮动作：enqueueInput(action, -1, 0.0f, 0.0f)。
   - 指针事件：ForwardChangedPointer -> TryMapPointerAction -> enqueueInput(action, pointerId, x, y)。
-- 资源与生命周期
+- **资源与生命周期**
   - nativeSetModelAssets/nativeSetEnvironmentAssets 提交模型与环境资源。
   - OnSurfaceCreated/OnSurfaceChanged/OnSurfaceDestroyed 管理渲染面生命周期。
 
@@ -335,18 +346,18 @@ NativeBridge --> InputEvent : "构造/入队"
 - [input_event.h:1-24](file://native/engine/input/input_event.h#L1-L24)
 
 **章节来源**
-- [Bridge.ets:1-94](file://entry/src/main/ets/napi/Bridge.ets#L1-L94)
+- [Bridge.ets:1-100](file://entry/src/main/ets/napi/Bridge.ets#L1-L100)
 - [native_bridge.cpp:1-577](file://entry/src/main/cpp/native_bridge.cpp#L1-L577)
 - [input_event.h:1-24](file://native/engine/input/input_event.h#L1-L24)
 
 ### 设备适配策略
-- 屏幕尺寸适配
+- **屏幕尺寸适配**
   - CombatControls 使用百分比定位与 markAnchor，确保在不同分辨率下按钮相对位置稳定。
   - Joystick 使用 vp 单位与固定比例（KNOB_TRAVEL/NATIVE_RADIUS），保证视觉与原生速度一致。
-- 触摸区域优化
+- **触摸区域优化**
   - 左侧半屏透明 Stack 捕获移动触摸，右侧透传相机控制，避免重叠冲突。
   - 按钮区域通过 hitTestBehavior(HitTestMode.Transparent) 提升命中容错。
-- 响应式设计
+- **响应式设计**
   - 冷却环与呼吸动画基于 CSS-like 动画，随状态变化平滑过渡。
   - HUD 与调试面板采用自适应布局，文本与进度条宽度百分比化。
 
@@ -376,39 +387,41 @@ NB --> IE["input_event.h"]
 ```
 
 **图表来源** 
-- [CombatControls.ets:1-248](file://entry/src/main/ets/ui/CombatControls.ets#L1-L248)
-- [Joystick.ets:1-170](file://entry/src/main/ets/ui/Joystick.ets#L1-L170)
-- [GamePage.ets:1-312](file://entry/src/main/ets/pages/GamePage.ets#L1-L312)
-- [Bridge.ets:1-94](file://entry/src/main/ets/napi/Bridge.ets#L1-L94)
+- [CombatControls.ets:1-246](file://entry/src/main/ets/ui/CombatControls.ets#L1-L246)
+- [Joystick.ets:1-174](file://entry/src/main/ets/ui/Joystick.ets#L1-L174)
+- [GamePage.ets:1-411](file://entry/src/main/ets/pages/GamePage.ets#L1-L411)
+- [Bridge.ets:1-100](file://entry/src/main/ets/napi/Bridge.ets#L1-L100)
 - [native_bridge.cpp:1-577](file://entry/src/main/cpp/native_bridge.cpp#L1-L577)
 - [touch_router.h:1-59](file://native/engine/input/touch_router.h#L1-L59)
 - [input_event.h:1-24](file://native/engine/input/input_event.h#L1-L24)
 
 **章节来源**
-- [GamePage.ets:1-312](file://entry/src/main/ets/pages/GamePage.ets#L1-L312)
-- [Bridge.ets:1-94](file://entry/src/main/ets/napi/Bridge.ets#L1-L94)
+- [GamePage.ets:1-411](file://entry/src/main/ets/pages/GamePage.ets#L1-L411)
+- [Bridge.ets:1-100](file://entry/src/main/ets/napi/Bridge.ets#L1-L100)
 - [native_bridge.cpp:1-577](file://entry/src/main/cpp/native_bridge.cpp#L1-L577)
 
 ## 性能考量
-- 快照频率：GamePage 每 100ms 拉取一次快照，平衡刷新率与 CPU 占用。
-- 动画开销：冷却环与呼吸动画使用轻量级 CSS-like 动画，避免复杂计算。
-- 输入路径：按钮动作直接入队，指针事件经 ForwardChangedPointer 与 TouchRouter，路径短且无额外拷贝。
-- 内存与资源：模型与环境资源通过 ArrayBuffer 提交，避免频繁分配。
-
-[本节为通用指导，不直接分析具体文件]
+- **快照频率**：GamePage 每 100ms 拉取一次快照，平衡刷新率与 CPU 占用。
+- **动画开销**：冷却环与呼吸动画使用轻量级 CSS-like 动画，避免复杂计算。
+- **输入路径**：按钮动作直接入队，指针事件经 ForwardChangedPointer 与 TouchRouter，路径短且无额外拷贝。
+- **内存与资源**：模型与环境资源通过 ArrayBuffer 提交，避免频繁分配。
+- **组件独立性**：Joystick 组件独立化，减少不必要的重渲染。
 
 ## 故障排查指南
-- 按钮无响应
+- **按钮无响应**
   - 检查 pushAction 调用是否正确传入类型（0~5）。
   - 确认 Bridge 已正确导入并加载 libnative_game.so。
-- 摇杆无效
+- **摇杆无效**
   - 确认左侧半屏透明 Stack 未被遮挡。
   - 检查 TouchType 与 InputAction 映射是否一致（0=Down/1=Up/2=Move/3=Cancel）。
-- 快照未更新
+- **快照未更新**
   - 检查 setInterval 是否正常运行。
   - 确认 pullSnapshot 返回值字段完整。
-- 原生崩溃
+- **原生崩溃**
   - 查看 OH_LOG_Print 日志，关注 surface_init/resize 失败与参数校验错误。
+- **冷却环异常**
+  - 检查冷却总时长属性是否正确传递。
+  - 确认 Progress(Ring) 组件的 value 计算逻辑。
 
 **章节来源**
 - [native_bridge.cpp:252-275](file://entry/src/main/cpp/native_bridge.cpp#L252-L275)
@@ -416,21 +429,22 @@ NB --> IE["input_event.h"]
 - [GamePage.ets:226-312](file://entry/src/main/ets/pages/GamePage.ets#L226-L312)
 
 ## 结论
-CombatControls 组件通过清晰的 UI 分层、稳健的 NAPI 桥接与原生输入子系统协作，实现了移动端战斗控制的完整闭环。其事件处理机制兼顾多点触控识别与手势冲突处理，设备适配策略确保在不同屏幕尺寸下的一致体验。结合 GamePage 的快照驱动，UI 能够实时反映游戏状态，提供流畅的用户交互。
-
-[本节为总结，不直接分析具体文件]
+CombatControls 组件经过商业化重塑后，通过清晰的 UI 分层、稳健的 NAPI 桥接与原生输入子系统协作，实现了移动端战斗控制的完整闭环。新的弧形圆形按钮布局、冷却环动画系统和侧拉调试面板设计，显著提升了用户体验。其事件处理机制兼顾多点触控识别与手势冲突处理，设备适配策略确保在不同屏幕尺寸下的一致体验。结合 GamePage 的快照驱动，UI 能够实时反映游戏状态，提供流畅的用户交互。
 
 ## 附录：集成与配置示例
-- 在 GamePage 中使用 CombatControls
+- **在 GamePage 中使用 CombatControls**
   - 引入 CombatControls 组件，传入 radianceCooldownMs、currentCooldownMs、corruptionCooldownMs、ultimateWindowMs 等属性。
   - 设置 hitTestBehavior(HitTestMode.Transparent) 避免遮挡。
-- 自定义按键映射
+- **自定义按键映射**
   - 修改 CombatControls 中各按钮 onClick 调用的 pushAction(type)，确保与原生 InputAction 映射一致。
-- 布局调整
+- **布局调整**
   - 调整按钮 position 与 markAnchor，适应不同屏幕比例。
   - 调整 Joystick 的 BASE_SIZE/KNOB_TRAVEL/NATIVE_RADIUS 以匹配手感。
+- **冷却配置**
+  - 从快照中获取冷却总时长，不再硬编码常量。
+  - 支持动态调整技能冷却时间。
 
 **章节来源**
-- [GamePage.ets:215-221](file://entry/src/main/ets/pages/GamePage.ets#L215-L221)
+- [GamePage.ets:276-284](file://entry/src/main/ets/pages/GamePage.ets#L276-L284)
 - [CombatControls.ets:74-167](file://entry/src/main/ets/ui/CombatControls.ets#L74-L167)
 - [Joystick.ets:6-12](file://entry/src/main/ets/ui/Joystick.ets#L6-L12)

@@ -42,7 +42,7 @@ export struct HitFeedback {
         .width('100%')
         .height('100%')
         .radialGradient({
-          center: { x: '50%', y: '50%' },
+          center: ['50%', '50%'],
           radius: '75%',
           colors: [['rgba(180, 30, 40, 0)', 0.55], ['rgba(180, 30, 40, 0.9)', 1.0]]
         })
@@ -55,7 +55,7 @@ export struct HitFeedback {
           .width('100%')
           .height('100%')
           .radialGradient({
-            center: { x: '50%', y: '50%' },
+            center: ['50%', '50%'],
             radius: '78%',
             colors: [['rgba(160, 24, 34, 0)', 0.6], ['rgba(160, 24, 34, 0.85)', 1.0]]
           })

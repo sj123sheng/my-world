@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: native_gameplay/combat
+title: 战斗系统核心（动作状态机/伤害解析/源反应/训练脉冲）
+scope:
+    - native/gameplay/combat/
+source_files: []
+depends_on: []
+related_to:
+    - path: native_engine/core_loop
+    - path: native_gameplay/entities
+    - path: native_gameplay/player

@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: entry_app
+title: Ethelan 游戏 HarmonyOS Entry 模块（ArkUI + NAPI 桥接）
+scope:
+    - entry/
+source_files: []
+depends_on: []
+related_to:
+    - path: native_engine/core_loop
+    - path: native_platform
+    - path: tests
