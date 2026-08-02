@@ -56,6 +56,7 @@ namespace {
     "uniform bool uHasTexture;\n"
     "uniform vec3 uEnvironmentTint;\n"
     "uniform float uEnvironmentTintStrength;\n"
+    "uniform float uAlpha;\n"
     "in vec3 vNormal;\n"
     "in vec2 vUV;\n"
     "out vec4 fragColor;\n"
@@ -65,7 +66,7 @@ namespace {
     "  vec4 baseColor = uHasTexture ? texture(uTexture, vUV) : vec4(1.0);\n"
     "  vec3 lit = baseColor.rgb * (uAmbient + uLightColor * diff);\n"
     "  vec3 finalColor = mix(lit, uEnvironmentTint, uEnvironmentTintStrength);\n"
-    "  fragColor = vec4(finalColor, baseColor.a);\n"
+    "  fragColor = vec4(finalColor, baseColor.a * uAlpha);\n"
     "}\n";
 
 }  // namespace
@@ -149,6 +150,12 @@ bool Shader3D::init() {
       glGetUniformLocation(program_, "uEnvironmentTintStrength");
   locSkinned_ = glGetUniformLocation(program_, "uSkinned");
   locJoints_ = glGetUniformLocation(program_, "uJoints");
+  locAlpha_ = glGetUniformLocation(program_, "uAlpha");
+  // uniform 默认值为 0：显式把 uAlpha 初置为 1，避免未调用 setAlpha
+  // 的既有绘制路径被透明化。
+  glUseProgram(program_);
+  glUniform1f(locAlpha_, 1.0f);
+  glUseProgram(0);
   LOGI_3D("3D program linked: mvp=%{public}d model=%{public}d lightDir=%{public}d "
           "lightColor=%{public}d ambient=%{public}d hasTexture=%{public}d texture=%{public}d",
           locMVP_, locModel_, locLightDir_, locLightColor_, locAmbient_,
@@ -175,6 +182,7 @@ void Shader3D::destroy() {
     locEnvironmentTintStrength_ = -1;
     locSkinned_ = -1;
     locJoints_ = -1;
+    locAlpha_ = -1;
   }
 #endif
   skinPaletteValid_ = false;
@@ -197,6 +205,7 @@ void Shader3D::abandonGpuResources() {
   locEnvironmentTintStrength_ = -1;
   locSkinned_ = -1;
   locJoints_ = -1;
+  locAlpha_ = -1;
 #endif
 }
 
@@ -269,6 +278,16 @@ void Shader3D::setHasTexture(bool hasTexture) const {
   }
 #else
   (void)hasTexture;
+#endif
+}
+
+void Shader3D::setAlpha(float alpha) const {
+#ifdef OHOS_PLATFORM
+  if (locAlpha_ != -1) {
+    glUniform1f(locAlpha_, alpha);
+  }
+#else
+  (void)alpha;
 #endif
 }
 

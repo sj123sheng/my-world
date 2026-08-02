@@ -323,6 +323,24 @@ static napi_value NativeToggleDebugHud(napi_env env, napi_callback_info) {
   return nullptr;
 }
 
+static napi_value NativeSetPaused(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value args[1] = {nullptr};
+  if (napi_get_cb_info(env, info, &argc, args, nullptr, nullptr) != napi_ok ||
+      argc != 1) {
+    return ThrowInputTypeError(env, "setPaused expects exactly one boolean");
+  }
+  napi_valuetype valueType = napi_undefined;
+  if (args[0] == nullptr || napi_typeof(env, args[0], &valueType) != napi_ok ||
+      valueType != napi_boolean) {
+    return ThrowInputTypeError(env, "setPaused requires a boolean argument");
+  }
+  bool value = false;
+  napi_get_value_bool(env, args[0], &value);
+  g_loop.setPaused(value);
+  return nullptr;
+}
+
 static napi_value NativeSkipDemoPhase(napi_env env, napi_callback_info info) {
   size_t argc = 0;
   napi_get_cb_info(env, info, &argc, nullptr, nullptr, nullptr);
@@ -364,6 +382,7 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_value tickVal, hpVal, poiseVal, xVal, yVal, fpsVal, movingVal;
   napi_value moveXVal, moveYVal, cameraYawVal, cameraPitchVal, distVal;
   napi_value targetIdVal, bossPhaseVal, encounterModeVal, encounterStateVal, rendererReadyVal;
+  napi_value targetArchetypeVal, targetHpRatioVal;
   napi_value environmentReadyVal, environmentDrawCallsVal, environmentTrianglesVal;
   napi_value staminaVal, comboSegmentVal, invulnerableVal, insightMsVal;
   napi_value resonanceVal, targetHpVal, targetPoiseVal, pulseHitRemainingMsVal;
@@ -379,6 +398,8 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_create_double(env, snapshot.cameraYaw, &cameraYawVal);
   napi_create_double(env, snapshot.cameraPitch, &cameraPitchVal);
   napi_create_double(env, snapshot.targetDist, &distVal);
+  napi_create_int32(env, snapshot.targetArchetype, &targetArchetypeVal);
+  napi_create_double(env, snapshot.targetHpRatio, &targetHpRatioVal);
   napi_create_int32(env, snapshot.targetId, &targetIdVal);
   napi_create_int32(env, snapshot.bossPhase, &bossPhaseVal);
   napi_create_int32(env, snapshot.encounterMode, &encounterModeVal);
@@ -409,6 +430,8 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_set_named_property(env, result, "cameraYaw", cameraYawVal);
   napi_set_named_property(env, result, "cameraPitch", cameraPitchVal);
   napi_set_named_property(env, result, "targetDist", distVal);
+  napi_set_named_property(env, result, "targetArchetype", targetArchetypeVal);
+  napi_set_named_property(env, result, "targetHpRatio", targetHpRatioVal);
   napi_set_named_property(env, result, "targetId", targetIdVal);
   napi_set_named_property(env, result, "bossPhase", bossPhaseVal);
   napi_set_named_property(env, result, "encounterMode", encounterModeVal);
@@ -426,7 +449,7 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_set_named_property(env, result, "targetPoise", targetPoiseVal);
   napi_set_named_property(env, result, "pulseHitRemainingMs", pulseHitRemainingMsVal);
   napi_set_named_property(env, result, "lastRejectReason", lastRejectReasonVal);
-  napi_value extra[13];
+  napi_value extra[16];
   napi_create_int32(env, snapshot.currentAction, &extra[0]);
   napi_create_int64(env, snapshot.comboWindowMs, &extra[1]);
   napi_create_int64(env, snapshot.radianceCooldownMs, &extra[2]);
@@ -440,6 +463,9 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_get_boolean(env, snapshot.corroded, &extra[10]);
   napi_create_int32(env, snapshot.currentReaction, &extra[11]);
   napi_create_int32(env, snapshot.pulsePhase, &extra[12]);
+  napi_create_int64(env, snapshot.radianceCooldownTotalMs, &extra[13]);
+  napi_create_int64(env, snapshot.currentCooldownTotalMs, &extra[14]);
+  napi_create_int64(env, snapshot.corruptionCooldownTotalMs, &extra[15]);
   napi_value stage[7];
   napi_create_int32(env, snapshot.levelStage, &stage[0]);
   napi_create_int32(env, snapshot.gateState, &stage[1]);
@@ -461,6 +487,9 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_set_named_property(env, result, "radianceCooldownMs", extra[2]);
   napi_set_named_property(env, result, "currentCooldownMs", extra[3]);
   napi_set_named_property(env, result, "corruptionCooldownMs", extra[4]);
+  napi_set_named_property(env, result, "radianceCooldownTotalMs", extra[13]);
+  napi_set_named_property(env, result, "currentCooldownTotalMs", extra[14]);
+  napi_set_named_property(env, result, "corruptionCooldownTotalMs", extra[15]);
   napi_set_named_property(env, result, "ultimateWindowMs", extra[5]);
   napi_set_named_property(env, result, "targetPoiseBroken", extra[6]);
   napi_set_named_property(env, result, "radianceAttached", extra[7]);
@@ -530,6 +559,7 @@ static napi_value Init(napi_env env, napi_value exports) {
     {"useSupply", nullptr, NativeUseSupply, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"retryBoss", nullptr, NativeRetryBoss, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"toggleDebugHud", nullptr, NativeToggleDebugHud, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"setPaused", nullptr, NativeSetPaused, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"skipDemoPhase", nullptr, NativeSkipDemoPhase, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pullSnapshot", nullptr, NativePullSnapshot, nullptr, nullptr, nullptr, napi_default, nullptr},
   };

@@ -36,9 +36,49 @@ bool validArchetype(EnemyArchetype archetype) {
   return false;
 }
 
+// 原型血量/韧性差异化：利爪脆皮快速、祭司中等、守卫重甲坦克，
+// 与伤害差异化配合，使敌人角色分工清晰（先杀脆皮、重点破韧守卫）。
+FixedPoint archetypeMaxHp(EnemyArchetype archetype) {
+  switch (archetype) {
+    case EnemyArchetype::RiftClaw: return fp(180);  // 脆皮快速
+    case EnemyArchetype::Priest: return fp(240);    // 中等
+    case EnemyArchetype::Guard: return fp(420);     // 重甲坦克
+  }
+  return fp(300);
+}
+
+FixedPoint archetypeMaxPoise(EnemyArchetype archetype) {
+  switch (archetype) {
+    case EnemyArchetype::RiftClaw: return fp(80);
+    case EnemyArchetype::Priest: return fp(90);
+    case EnemyArchetype::Guard: return fp(160);
+  }
+  return fp(100);
+}
+
 EncounterEnemyConfig enemyConfig(EntityId id, EnemyArchetype archetype,
                                   Vec2 position) {
-  return {id, archetype, position, {0.5f, 0.5f}, fp(300), fp(100)};
+  return {id, archetype, position, {0.5f, 0.5f}, archetypeMaxHp(archetype),
+          archetypeMaxPoise(archetype)};
+}
+
+// 原型伤害差异化：快节奏敌人轻击、重甲敌人重击，形成风险与回报节奏。
+FixedPoint archetypeBaseDamage(EnemyArchetype archetype) {
+  switch (archetype) {
+    case EnemyArchetype::RiftClaw: return fp(8);   // 快速但轻击
+    case EnemyArchetype::Priest: return fp(12);    // 中距离法术
+    case EnemyArchetype::Guard: return fp(18);     // 缓慢但沉重
+  }
+  return fp(10);
+}
+
+FixedPoint archetypePoiseDamage(EnemyArchetype archetype) {
+  switch (archetype) {
+    case EnemyArchetype::RiftClaw: return fp(4);
+    case EnemyArchetype::Priest: return fp(6);
+    case EnemyArchetype::Guard: return fp(12);
+  }
+  return fp(5);
 }
 
 CombatConfig targetConfig(const EncounterEnemyConfig& enemy) {
@@ -119,9 +159,11 @@ struct EncounterController::EnemySlot {
     enemy.position = source.position;
     enemy.spawnPosition = source.position;
     enemy.safeReturnPosition = source.safeReturnPosition;
+    maxHp = source.hp;
   }
 
   Enemy enemy;
+  FixedPoint maxHp = 0;
   TrainingTarget target;
   EnemyAgent agent;
   Vec2 facing = {0.0f, -1.0f};
@@ -428,8 +470,8 @@ void EncounterController::update(const EncounterFrameInput& input) {
 
     EnemyExecutionContext execution;
     execution.targetAlive = combat_.snapshot().playerHp > 0;
-    execution.baseDamage = fp(10);
-    execution.poiseDamage = fp(5);
+    execution.baseDamage = archetypeBaseDamage(slot->enemy.archetype);
+    execution.poiseDamage = archetypePoiseDamage(slot->enemy.archetype);
     execution.sequence = nextStableSequence(nextSequence_);
     EnemyUpdateResult result =
         slot->agent.update({world, dtMs, execution, std::nullopt});
@@ -478,6 +520,13 @@ void EncounterController::update(const EncounterFrameInput& input) {
   }
 
   events_.combat = combat_.events();
+  // 玩家阵亡：与 Boss 战一致进入失败态，供结算界面与重试流程消费。
+  if (combat_.snapshot().playerHp <= 0) {
+    snapshot_.state = EncounterState::Defeat;
+    snapshot_.victory = false;
+    refreshSnapshot(true);
+    return;
+  }
   const bool anyAlive = std::any_of(
       enemies_.begin(), enemies_.end(),
       [](const std::unique_ptr<EnemySlot>& slot) {
@@ -525,6 +574,7 @@ void EncounterController::refreshSnapshot(bool includeCandidates) {
     enemy.archetype = slot->enemy.archetype;
     enemy.position = slot->enemy.position;
     enemy.hp = slot->target.hp();
+    enemy.maxHp = slot->maxHp;
     enemy.poise = slot->target.poise();
     enemy.shield = slot->enemy.shield;
     enemy.alive = slot->target.alive();

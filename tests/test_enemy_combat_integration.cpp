@@ -50,7 +50,7 @@ void testEnemyHitDamagesPlayer() {
   update(encounter, 0, 0);
   update(encounter, 180, 180);
 
-  assert(combat.snapshot().playerHp == fp(90));
+  assert(combat.snapshot().playerHp == fp(92));  // RiftClaw 轻击 8 伤害
   assert(std::any_of(
       encounter.events().combat.gameplay.begin(),
       encounter.events().combat.gameplay.end(),
@@ -83,7 +83,7 @@ void testShieldRequestAppliesAsShieldAtItsBoundary() {
 
   const EncounterEnemySnapshot& shielded =
       enemyByArchetype(encounter.snapshot(), EnemyArchetype::RiftClaw);
-  assert(shielded.hp == fp(300));
+  assert(shielded.hp == fp(180));  // RiftClaw 血量 180
   assert(shielded.shield == fp(40));
   assert(encounter.events().effects.size() == 1);
   assert(encounter.events().effects.front().type == CombatEffectType::Shield);
@@ -102,8 +102,37 @@ void testShieldRequestAppliesAsShieldAtItsBoundary() {
   update(encounter, 960, 144, riftId);
   const EncounterEnemySnapshot& afterHit =
       enemyByArchetype(encounter.snapshot(), EnemyArchetype::RiftClaw);
-  assert(afterHit.hp == fp(300));
+  assert(afterHit.hp == fp(180));  // 护盾吸收后本体血量不变
   assert(afterHit.shield == fp(32));
+}
+
+void testArchetypeDamageIsDifferentiated() {
+  // Guard 重击应对玩家造成显著高于 RiftClaw 的伤害。
+  CombatController combat(CombatConfig::defaults());
+  EncounterController encounter(combat);
+  assert(encounter.start(EncounterMode::Guard));
+  update(encounter, 0, 0);
+  update(encounter, 350, 350);  // Guard 重击前摇 350ms 后命中
+  const FixedPoint guardDamage = fp(100) - combat.snapshot().playerHp;
+  assert(guardDamage == fp(18));  // 显著高于 RiftClaw 的 8
+}
+
+void testArchetypeHpIsDifferentiated() {
+  // 血量随原型分化：利爪脆皮 < 祭司中等 < 守卫坦克。
+  CombatController combat(CombatConfig::defaults());
+  EncounterController encounter(combat);
+  assert(encounter.start(EncounterMode::Mixed));
+  update(encounter, 0, 0);
+  const FixedPoint clawHp =
+      enemyByArchetype(encounter.snapshot(), EnemyArchetype::RiftClaw).maxHp;
+  const FixedPoint priestHp =
+      enemyByArchetype(encounter.snapshot(), EnemyArchetype::Priest).maxHp;
+  const FixedPoint guardHp =
+      enemyByArchetype(encounter.snapshot(), EnemyArchetype::Guard).maxHp;
+  assert(clawHp == fp(180));
+  assert(priestHp == fp(240));
+  assert(guardHp == fp(420));
+  assert(clawHp < priestHp && priestHp < guardHp);
 }
 
 }  // namespace
@@ -113,4 +142,6 @@ int main() {
   testEnemyHitDamagesPlayer();
   testEnemyEncounterDoesNotGrantTrainingPulseInsight();
   testShieldRequestAppliesAsShieldAtItsBoundary();
+  testArchetypeDamageIsDifferentiated();
+  testArchetypeHpIsDifferentiated();
 }

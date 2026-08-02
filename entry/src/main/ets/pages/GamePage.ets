@@ -2,6 +2,15 @@ import { nativeSetEnvironmentAssets, nativeSetModelAssets, nativeStartIfForegrou
   nativeStop, pullSnapshot, Snapshot } from '../napi/Bridge';
 import { Hud } from '../ui/Hud';
 import { CombatControls } from '../ui/CombatControls';
+import { Joystick } from '../ui/Joystick';
+import { HitFeedback } from '../ui/HitFeedback';
+import { Haptics } from '../ui/Haptics';
+import { ActionToast } from '../ui/ActionToast';
+import { ComboCounter } from '../ui/ComboCounter';
+import { Tutorial } from '../ui/Tutorial';
+import { GameStateOverlay } from '../ui/GameStateOverlay';
+import { PauseMenu } from '../ui/PauseMenu';
+import { TargetFrame } from '../ui/TargetFrame';
 
 @Entry
 @Component
@@ -9,13 +18,15 @@ struct GamePage {
   private snapshot: Snapshot = {
     tick: 0, hp: 100, poise: 100, x: 0.5, y: 0.5, fps: 0, moving: false,
     moveX: 0, moveY: 0, cameraYaw: 0, cameraPitch: 0,
-    targetDist: 0, targetId: 0, bossPhase: 0, encounterMode: 0,
+    targetDist: 0, targetId: 0, targetArchetype: -1, targetHpRatio: 0, bossPhase: 0, encounterMode: 0,
     encounterState: 0, rendererReady: true, environmentReady: false,
     environmentDrawCalls: 0, environmentTriangles: 0,
     stamina: 100, comboSegment: 0, invulnerable: false, insightMs: 0,
     resonance: 0, targetHp: 300, targetPoise: 100, pulseHitRemainingMs: 0,
     lastRejectReason: 0, currentAction: 0, comboWindowMs: 0,
     radianceCooldownMs: 0, currentCooldownMs: 0, corruptionCooldownMs: 0,
+    radianceCooldownTotalMs: 3000, currentCooldownTotalMs: 4000,
+    corruptionCooldownTotalMs: 5000,
     ultimateWindowMs: 0, targetPoiseBroken: false, radianceAttached: false,
     currentAttached: false, corruptionAttached: false, corroded: false,
     currentReaction: -1, pulsePhase: 0,
@@ -41,6 +52,8 @@ struct GamePage {
   @State cameraPitch: number = 0;
   @State targetDist: number = 0;
   @State targetId: number = 0;
+  @State targetArchetype: number = -1;
+  @State targetHpRatio: number = 0;
   @State bossPhase: number = 0;
   @State encounterMode: number = 0;
   @State encounterState: number = 0;
@@ -62,6 +75,9 @@ struct GamePage {
   @State radianceCooldownMs: number = 0;
   @State currentCooldownMs: number = 0;
   @State corruptionCooldownMs: number = 0;
+  @State radianceCooldownTotalMs: number = 3000;
+  @State currentCooldownTotalMs: number = 4000;
+  @State corruptionCooldownTotalMs: number = 5000;
   @State ultimateWindowMs: number = 0;
   @State targetPoiseBroken: boolean = false;
   @State radianceAttached: boolean = false;
@@ -95,6 +111,52 @@ struct GamePage {
   private timer: number = -1;
   private pageActive: boolean = false;
   private modelLoadGeneration: number = 0;
+  // 快照边沿检测上一帧采样值，用于触发触感反馈。
+  private prevHpForHaptics: number = 100;
+  private prevInsightMs: number = 0;
+  private prevUltimateWindowMs: number = 0;
+  private prevRadianceCd: number = 0;
+  private prevCurrentCd: number = 0;
+  private prevCorruptionCd: number = 0;
+  private prevTargetPoiseBroken: boolean = false;
+
+  // 对比相邻两次快照的边沿变化，触发对应触感反馈。
+  private detectCombatEvents(): void {
+    const snap: Snapshot = this.snapshot;
+    // 受击：HP 下降；大额伤害重振。
+    if (snap.hp < this.prevHpForHaptics) {
+      if (this.prevHpForHaptics - snap.hp >= 15) {
+        Haptics.heavy();
+      } else {
+        Haptics.hit();
+      }
+    }
+    // 精准闪避：洞察窗口上升沿。
+    if (snap.insightMs > 0 && this.prevInsightMs <= 0) {
+      Haptics.sharp();
+    }
+    // 源技能命中：任一冷却上升沿。
+    if ((snap.radianceCooldownMs > 0 && this.prevRadianceCd <= 0) ||
+        (snap.currentCooldownMs > 0 && this.prevCurrentCd <= 0) ||
+        (snap.corruptionCooldownMs > 0 && this.prevCorruptionCd <= 0)) {
+      Haptics.light();
+    }
+    // 破韧：目标韧性击破上升沿。
+    if (snap.targetPoiseBroken && !this.prevTargetPoiseBroken) {
+      Haptics.heavy();
+    }
+    // 终结技就绪：终结窗口上升沿。
+    if (snap.ultimateWindowMs > 0 && this.prevUltimateWindowMs <= 0) {
+      Haptics.ultimateReady();
+    }
+    this.prevHpForHaptics = snap.hp;
+    this.prevInsightMs = snap.insightMs;
+    this.prevUltimateWindowMs = snap.ultimateWindowMs;
+    this.prevRadianceCd = snap.radianceCooldownMs;
+    this.prevCurrentCd = snap.currentCooldownMs;
+    this.prevCorruptionCd = snap.corruptionCooldownMs;
+    this.prevTargetPoiseBroken = snap.targetPoiseBroken;
+  }
 
   private isActiveModelLoad(generation: number): boolean {
     return this.pageActive && generation === this.modelLoadGeneration;
@@ -180,6 +242,9 @@ struct GamePage {
         .alignItems(HorizontalAlign.Center)
       }
 
+      Joystick()
+        .hitTestBehavior(HitTestMode.Transparent)
+
       Hud({ hp: this.hp, poise: this.poise, x: this.posX, y: this.posY,
         fps: this.fps, moving: this.moving, targetDist: this.targetDist,
         stamina: this.stamina, comboSegment: this.comboSegment,
@@ -208,15 +273,50 @@ struct GamePage {
         inputEventCount: this.inputEventCount })
         .hitTestBehavior(HitTestMode.Transparent)
 
-      CombatControls()
-        .align(Alignment.BottomEnd)
+      CombatControls({
+        radianceCooldownMs: this.radianceCooldownMs,
+        currentCooldownMs: this.currentCooldownMs,
+        corruptionCooldownMs: this.corruptionCooldownMs,
+        radianceCooldownTotalMs: this.radianceCooldownTotalMs,
+        currentCooldownTotalMs: this.currentCooldownTotalMs,
+        corruptionCooldownTotalMs: this.corruptionCooldownTotalMs,
+        ultimateWindowMs: this.ultimateWindowMs })
         .hitTestBehavior(HitTestMode.Transparent)
+
+      HitFeedback({ hp: this.hp })
+        .hitTestBehavior(HitTestMode.Transparent)
+
+      ActionToast({ lastRejectReason: this.lastRejectReason })
+        .hitTestBehavior(HitTestMode.Transparent)
+
+      ComboCounter({ comboSegment: this.comboSegment,
+        comboWindowMs: this.comboWindowMs })
+        .hitTestBehavior(HitTestMode.Transparent)
+
+      Tutorial({ moving: this.moving, comboSegment: this.comboSegment,
+        invulnerable: this.invulnerable,
+        radianceCooldownMs: this.radianceCooldownMs })
+        .hitTestBehavior(HitTestMode.Transparent)
+
+      GameStateOverlay({ encounterState: this.encounterState,
+        encounterMode: this.encounterMode })
+
+      TargetFrame({ targetId: this.targetId,
+        targetArchetype: this.targetArchetype,
+        targetHpRatio: this.targetHpRatio })
+        .hitTestBehavior(HitTestMode.Transparent)
+
+      PauseMenu({ encounterMode: this.encounterMode })
     }
     .width('100%')
     .height('100%')
   }
 
   aboutToAppear() {
+    // 新手引导完成状态跨会话持久化，需在组件绑定前初始化。
+    PersistentStorage.persistProp<boolean>('tutorialDone', false);
+    // 振动反馈开关跨会话持久化。
+    PersistentStorage.persistProp<boolean>('hapticsEnabled', true);
     this.pageActive = true;
     const generation = ++this.modelLoadGeneration;
     this.loadModelAssets(generation);
@@ -236,6 +336,8 @@ struct GamePage {
         this.cameraPitch = this.snapshot.cameraPitch;
         this.targetDist = this.snapshot.targetDist;
         this.targetId = this.snapshot.targetId;
+        this.targetArchetype = this.snapshot.targetArchetype;
+        this.targetHpRatio = this.snapshot.targetHpRatio;
         this.bossPhase = this.snapshot.bossPhase;
         this.encounterMode = this.snapshot.encounterMode;
         this.encounterState = this.snapshot.encounterState;
@@ -257,6 +359,9 @@ struct GamePage {
         this.radianceCooldownMs = this.snapshot.radianceCooldownMs;
         this.currentCooldownMs = this.snapshot.currentCooldownMs;
         this.corruptionCooldownMs = this.snapshot.corruptionCooldownMs;
+        this.radianceCooldownTotalMs = this.snapshot.radianceCooldownTotalMs;
+        this.currentCooldownTotalMs = this.snapshot.currentCooldownTotalMs;
+        this.corruptionCooldownTotalMs = this.snapshot.corruptionCooldownTotalMs;
         this.ultimateWindowMs = this.snapshot.ultimateWindowMs;
         this.targetPoiseBroken = this.snapshot.targetPoiseBroken;
         this.radianceAttached = this.snapshot.radianceAttached;
@@ -287,6 +392,7 @@ struct GamePage {
         this.bossSourceColor = this.snapshot.bossSourceColor;
         this.bossRingBroken = this.snapshot.bossRingBroken;
         this.inputEventCount = this.snapshot.inputEventCount;
+        this.detectCombatEvents();
       } catch (e) {
       }
     }, 100);

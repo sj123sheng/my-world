@@ -188,6 +188,37 @@ void testEnemySnapshotEqualityIncludesAnimationFacts() {
   assert(left == right);
 }
 
+void testPlayerDeathEntersDefeatInNonBossModes() {
+  CombatController combat(CombatConfig::defaults());
+  EncounterController encounter(combat);
+  assert(encounter.start(EncounterMode::Beast));
+  // 玩家不反击不闪避，被敌人击杀后应进入失败态。
+  Tick tick = 0;
+  while (encounter.snapshot().state == EncounterState::Running &&
+         tick < 120000) {
+    tick += 16;
+    update(encounter, tick, 16);
+  }
+  assert(encounter.snapshot().state == EncounterState::Defeat);
+  assert(!encounter.snapshot().victory);
+  // 失败后更新不再推进逻辑。
+  update(encounter, tick + 16, 16);
+  assert(encounter.snapshot().state == EncounterState::Defeat);
+}
+
+void testEnemySnapshotExposesMaxHp() {
+  CombatController combat(CombatConfig::defaults());
+  EncounterController encounter(combat);
+  assert(encounter.start(EncounterMode::Beast));
+  update(encounter, 0, 0);
+  const EncounterSnapshot snapshot = encounter.snapshot();
+  assert(!snapshot.enemies.empty());
+  for (const EncounterEnemySnapshot& enemy : snapshot.enemies) {
+    assert(enemy.maxHp > 0);
+    assert(enemy.hp == enemy.maxHp);  // 开局满血
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -199,4 +230,6 @@ int main() {
   testStandaloneModeClearsLevelFlowState();
   testEnemyAnimationFactsArePublished();
   testEnemySnapshotEqualityIncludesAnimationFacts();
+  testPlayerDeathEntersDefeatInNonBossModes();
+  testEnemySnapshotExposesMaxHp();
 }

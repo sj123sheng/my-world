@@ -70,6 +70,7 @@ struct EncounterEnemySnapshot {
   EnemyArchetype archetype = EnemyArchetype::RiftClaw;
   Vec2 position;
   FixedPoint hp = 0;
+  FixedPoint maxHp = 0;
   FixedPoint poise = 0;
   FixedPoint shield = 0;
   bool alive = false;

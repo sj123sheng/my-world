@@ -7,6 +7,7 @@
 #include "fixed_step.h"
 #include "../../engine/presentation/vfx_system.h"
 #include "../../engine/presentation/performance_guard.h"
+#include "../../engine/presentation/damage_numbers.h"
 #include "../../platform/harmony/audio_bridge.h"
 #include "lifecycle_state.h"
 #include "snapshot_store.h"
@@ -46,6 +47,7 @@ struct Loop {
   DemoDirector demoDirector;
   std::optional<TargetSelection> currentTarget;
   VfxSystem vfxSystem;
+  DamageNumberSystem damageNumbers;
   PerformanceGuard performanceGuard;
   AudioBridge audioBridge;
   bool debugHud_ = false;
@@ -60,6 +62,7 @@ struct Loop {
   int32_t inputEventCount_ = 0;
   std::atomic<bool> running{false};
   std::atomic<bool> shouldStop{false};
+  std::atomic<bool> paused{false};
   std::thread runner;
   float fps = 0.0f;
   float particleEmitTimer = 0.0f;
@@ -68,6 +71,10 @@ struct Loop {
 
   void start();
   void stop();
+  // 暂停/恢复帧循环逻辑：暂停期间冻结输入与固定步更新，
+  // 画面保持最后一帧，供暂停菜单与结算界面使用。
+  void setPaused(bool value);
+  bool isPaused() const { return paused.load(); }
   void tickOnce(int64_t elapsedMs);
   void updateFixed(Tick tick, int64_t dtMs);
   void processInput();

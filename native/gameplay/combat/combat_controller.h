@@ -38,6 +38,10 @@ struct CombatSnapshot {
   Tick radianceCooldownMs = 0;
   Tick currentCooldownMs = 0;
   Tick corruptionCooldownMs = 0;
+  // 冷却总时长（配置值），供 UI 计算冷却环比例，避免表现层硬编码。
+  Tick radianceCooldownTotalMs = 0;
+  Tick currentCooldownTotalMs = 0;
+  Tick corruptionCooldownTotalMs = 0;
   Tick ultimateWindowMs = 0;
   bool targetPoiseBroken = false;
   bool radianceAttached = false;

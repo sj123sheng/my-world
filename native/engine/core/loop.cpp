@@ -46,6 +46,9 @@ void ApplyCombatSnapshot(GameSnapshot& output, const CombatSnapshot& combat) {
   output.radianceCooldownMs = combat.radianceCooldownMs;
   output.currentCooldownMs = combat.currentCooldownMs;
   output.corruptionCooldownMs = combat.corruptionCooldownMs;
+  output.radianceCooldownTotalMs = combat.radianceCooldownTotalMs;
+  output.currentCooldownTotalMs = combat.currentCooldownTotalMs;
+  output.corruptionCooldownTotalMs = combat.corruptionCooldownTotalMs;
   output.ultimateWindowMs = combat.ultimateWindowMs;
   output.targetPoiseBroken = combat.targetPoiseBroken;
   output.radianceAttached = combat.radianceAttached;
@@ -126,6 +129,27 @@ void update3DCamera(Surface& surface, const ThirdPersonCamera& camera) {
   surface.camera3d.follow(target, camera.yaw(), camera.pitch(),
                           camera.distance());
 }
+
+// 按实体 ID 解析世界坐标，供伤害飘字定位。
+std::optional<Vec2> resolveEntityPosition(const Surface& surface,
+                                          const EncounterSnapshot& encounter,
+                                          EntityId id) {
+  if (id == CombatController::kPlayerId) {
+    return Vec2{surface.player.x, surface.player.y};
+  }
+  if (id == CombatController::kTrainingTargetId) {
+    return Vec2{surface.trainingTarget.x, surface.trainingTarget.y};
+  }
+  if (id == EncounterController::kBossId) {
+    return Vec2{surface.boss3d.x, surface.boss3d.y};
+  }
+  for (const EncounterEnemySnapshot& enemy : encounter.enemies) {
+    if (enemy.id == id) {
+      return enemy.position;
+    }
+  }
+  return std::nullopt;
+}
 }  // namespace
 
 void Loop::start() {
@@ -144,6 +168,7 @@ void Loop::start() {
     }
     if (!lifecycle.start([this]() {
       resetInput();
+      paused.store(false);
       (void)encounter.start(EncounterMode::Training);
       audioBridge.start();
       combatTimeMs_ = 0;
@@ -173,6 +198,14 @@ void Loop::start() {
   });
 }
 
+void Loop::setPaused(bool value) {
+  paused.store(value);
+  if (value) {
+    // 暂停时清空排队输入与摇杆状态，避免恢复后消费陈旧事件。
+    resetInput();
+  }
+}
+
 void Loop::stop() {
   withLifecycle([this]() {
     lifecycle.stop([this]() {
@@ -184,6 +217,8 @@ void Loop::stop() {
     encounter.stop();
     audioBridge.stop();
     combat.reset();
+    damageNumbers.clear();
+    surface.damageNumbers3d.clear();
     combatTimeMs_ = 0;
     {
       std::lock_guard<std::mutex> lock(combatEventMutex);
@@ -206,6 +241,8 @@ bool Loop::startEncounter(EncounterMode mode) {
   return withLifecycle([this, mode]() {
     currentTarget.reset();
     intent.actions.clear();
+    damageNumbers.clear();
+    surface.damageNumbers3d.clear();
     combatTimeMs_ = 0;
     {
       std::lock_guard<std::mutex> lock(combatEventMutex);
@@ -322,6 +359,10 @@ void Loop::tickOnce(int64_t elapsedMs) {
     publishRendererStopped();
     return;
   }
+  if (paused.load()) {
+    // 暂停：冻结输入与固定步逻辑，画面与快照保持最后一帧。
+    return;
+  }
   if (encounter.snapshot().state == EncounterState::Stopped) {
     (void)encounter.start(EncounterMode::Training);
   }
@@ -371,6 +412,21 @@ void Loop::tickOnce(int64_t elapsedMs) {
   snapshot.cameraYaw = camera.yaw();
   snapshot.cameraPitch = camera.pitch();
   snapshot.targetDist = currentTarget ? currentTarget->distance : 0.0f;
+  // 锁定目标焦点框：解析锁定敌人的原型与血量比例（首领已有专属血条，
+  // 不在敌人列表中，保持 archetype = -1 由 HUD 隐藏焦点框）。
+  snapshot.targetArchetype = -1;
+  snapshot.targetHpRatio = 0.0f;
+  if (currentTarget.has_value()) {
+    for (const EncounterEnemySnapshot& enemy : encounter.snapshot().enemies) {
+      if (enemy.id == static_cast<EntityId>(currentTarget->id) &&
+          enemy.maxHp > 0) {
+        snapshot.targetArchetype = static_cast<int32_t>(enemy.archetype);
+        snapshot.targetHpRatio = static_cast<float>(enemy.hp) /
+                                 static_cast<float>(enemy.maxHp);
+        break;
+      }
+    }
+  }
   const CombatSnapshot& combatSnapshot = combat.snapshot();
   ApplyCombatSnapshot(snapshot, combatSnapshot);
   snapshot.levelStage = static_cast<int32_t>(encounter.snapshot().levelStage);
@@ -452,6 +508,22 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       {surface.player.x, surface.player.y}, camera.yaw(), candidates,
       currentTarget ? std::optional<int32_t>{currentTarget->id} : std::nullopt);
 
+  // 锁定目标指示器：发布目标位置与脉冲相位，目标脚下绘制脉冲环。
+  surface.targetMarker3d.active = currentTarget.has_value();
+  if (currentTarget.has_value()) {
+    const std::optional<Vec2> markerPosition = resolveEntityPosition(
+        surface, encounter.snapshot(),
+        static_cast<EntityId>(currentTarget->id));
+    if (markerPosition.has_value()) {
+      surface.targetMarker3d.x = markerPosition->x;
+      surface.targetMarker3d.z = markerPosition->y;
+    } else {
+      surface.targetMarker3d.active = false;
+    }
+  }
+  surface.targetMarker3d.pulsePhase =
+      static_cast<float>(combatTimeMs_.load()) * 0.004f;
+
   for (const ActionRequest& action : intent.actions) combat.enqueue(action);
   intent.actions.clear();
   const Tick combatTime = AdvanceCombatTime(combatTimeMs_.load(), dtMs);
@@ -486,6 +558,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   }
 
   bool playerHitObserved = false;
+  std::size_t gameplayEventStart = 0;
   {
     std::lock_guard<std::mutex> lock(combatEventMutex);
     const CombatEventBatch& stepEvents = encounter.events().combat;
@@ -495,6 +568,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
           return event.target == CombatController::kPlayerId &&
                  event.type == PresentationEventType::HitFlash;
         });
+    gameplayEventStart = frameCombatEvents_.gameplay.size();
     frameCombatEvents_.gameplay.insert(frameCombatEvents_.gameplay.end(),
                                        stepEvents.gameplay.begin(),
                                        stepEvents.gameplay.end());
@@ -514,6 +588,50 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   vfxSystem.consume(frameCombatEvents_);
   vfxSystem.update(combatTime, dtMs);
   audioBridge.dispatch(frameCombatEvents_);
+
+  // 伤害飘字：仅从本步新增的 Damage 事件生成（避免同帧多步重复），
+  // 按目标实体定位；玩家受击红色、大额伤害金色、其余近白。
+  for (std::size_t eventIndex = gameplayEventStart;
+       eventIndex < frameCombatEvents_.gameplay.size(); ++eventIndex) {
+    const GameplayEvent& event = frameCombatEvents_.gameplay[eventIndex];
+    if (event.type != GameplayEventType::Damage) continue;
+    const std::optional<Vec2> position = resolveEntityPosition(
+        surface, encounter.snapshot(), event.target);
+    if (!position.has_value()) continue;
+    const float amount =
+        static_cast<float>(event.value) / static_cast<float>(FP_ONE);
+    DamageNumberKind kind = DamageNumberKind::Normal;
+    if (event.target == CombatController::kPlayerId) {
+      kind = DamageNumberKind::PlayerHit;
+    } else if (amount >= 15.0f) {
+      kind = DamageNumberKind::Heavy;
+    }
+    damageNumbers.spawn(*position, amount, kind);
+  }
+  damageNumbers.update(dtMs);
+  surface.damageNumbers3d.clear();
+  for (const DamageNumber& number : damageNumbers.active()) {
+    DamageNumberRenderState state;
+    state.x = number.origin.x;
+    state.z = number.origin.y;
+    state.rise = DamageNumberSystem::riseOffset(number);
+    state.driftX = number.driftX;
+    state.alpha = DamageNumberSystem::alpha(number);
+    state.value = number.value;
+    state.kind = static_cast<int>(number.kind);
+    surface.damageNumbers3d.push_back(state);
+  }
+
+  // 敌人头顶血条：仅发布存活敌人，比例 = 当前 HP / 最大 HP。
+  surface.enemyHpBars3d.clear();
+  for (const EncounterEnemySnapshot& enemy : encounter.snapshot().enemies) {
+    if (!enemy.alive || enemy.maxHp <= 0) continue;
+    EnemyHpBarRenderState bar;
+    bar.x = enemy.position.x;
+    bar.z = enemy.position.y;
+    bar.ratio = static_cast<float>(enemy.hp) / static_cast<float>(enemy.maxHp);
+    surface.enemyHpBars3d.push_back(bar);
+  }
 
   // 只从 gameplay 快照/事件投影动画意图，不反向写入战斗、AI 或玩家控制器。
   surface.playerHitAnimationSeconds = std::max(

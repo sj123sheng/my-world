@@ -43,6 +43,10 @@ class Shader3D {
   // 设置 uHasTexture：true 时片段着色器采样 uTexture。非平台侧为空操作。
   void setHasTexture(bool hasTexture) const;
 
+  // 设置 uAlpha：整体透明度缩放（默认 1.0），供伤害飘字淡出使用。
+  // 调用后由调用方负责恢复 1.0。非平台侧为空操作。
+  void setAlpha(float alpha) const;
+
   void setEnvironmentTint(const glm::vec3& tint, float strength) const;
 
   // 上传骨骼调色板。空调色板或超过 64 个矩阵时拒绝启用蒙皮绘制。
@@ -77,5 +81,6 @@ class Shader3D {
   GLint locEnvironmentTintStrength_ = -1;
   GLint locSkinned_ = -1;
   GLint locJoints_ = -1;
+  GLint locAlpha_ = -1;
 #endif
 };

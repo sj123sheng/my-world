@@ -240,6 +240,9 @@ void CombatController::refreshSnapshot(const TrainingTarget* target,
   snapshot_.radianceCooldownMs = actions_.sourceCooldownRemainingMs(SourceType::Radiance);
   snapshot_.currentCooldownMs = actions_.sourceCooldownRemainingMs(SourceType::Current);
   snapshot_.corruptionCooldownMs = actions_.sourceCooldownRemainingMs(SourceType::Corruption);
+  snapshot_.radianceCooldownTotalMs = config_.sourceCooldownMs[0];
+  snapshot_.currentCooldownTotalMs = config_.sourceCooldownMs[1];
+  snapshot_.corruptionCooldownTotalMs = config_.sourceCooldownMs[2];
   snapshot_.ultimateWindowMs = actions_.ultimateWindowRemainingMs();
   snapshot_.targetPoiseBroken =
       target != nullptr && target->poiseBroken(currentTick_);

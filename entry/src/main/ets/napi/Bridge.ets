@@ -20,6 +20,8 @@ export interface Snapshot {
   cameraYaw: number;
   cameraPitch: number;
   targetDist: number;
+  targetArchetype: number;
+  targetHpRatio: number;
   targetId: number;
   bossPhase: number;
   encounterMode: number;
@@ -42,6 +44,9 @@ export interface Snapshot {
   radianceCooldownMs: number;
   currentCooldownMs: number;
   corruptionCooldownMs: number;
+  radianceCooldownTotalMs: number;
+  currentCooldownTotalMs: number;
+  corruptionCooldownTotalMs: number;
   ultimateWindowMs: number;
   targetPoiseBroken: boolean;
   radianceAttached: boolean;
@@ -89,5 +94,6 @@ export const advanceLevel = (): boolean => native.advanceLevel();
 export const useSupply = (): boolean => native.useSupply();
 export const retryBoss = (): boolean => native.retryBoss();
 export const toggleDebugHud = (): void => native.toggleDebugHud();
+export const setPaused = (paused: boolean): void => native.setPaused(paused);
 export const skipDemoPhase = (phase: number): void => native.skipDemoPhase(phase);
 export const pullSnapshot = (): Snapshot => native.pullSnapshot();

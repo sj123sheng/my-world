@@ -1,9 +1,11 @@
 #include "surface.h"
+#include "native/engine/render/digit_atlas.h"
 #include "platform/harmony/fence_wait.h"
 #include <hilog/log.h>
 #include <unistd.h>
 #include <cmath>
 #include <cinttypes>
+#include <cstdio>
 #include <vector>
 #include <algorithm>
 #include <cstring>
@@ -603,6 +605,204 @@ static void drawCenterFallback(Surface& s, const glm::mat4& vp) {
   }
 }
 
+// -----------------------------------------------------------------------------
+// 面向相机的广告牌旋转：把四边形法线 (0,0,1) 转到相机观察方向，
+// 与 2D 相机约定一致（屏幕上 = 世界 {sin yaw, cos yaw}）。伤害飘字与
+// 敌人血条共用。
+// -----------------------------------------------------------------------------
+static glm::mat4 cameraBillboard(const Surface& s) {
+  const float yaw = s.cameraRenderState.yaw();
+  const float pitch = s.cameraRenderState.pitch();
+  return glm::rotate(glm::mat4(1.0f), yaw, glm::vec3(0.0f, 1.0f, 0.0f)) *
+         glm::rotate(glm::mat4(1.0f), pitch, glm::vec3(1.0f, 0.0f, 0.0f)) *
+         glm::rotate(glm::mat4(1.0f), 3.14159265f, glm::vec3(0.0f, 1.0f, 0.0f));
+}
+
+// -----------------------------------------------------------------------------
+// 锁定目标指示器：软瞄准目标脚下的脉冲环，提示当前攻击对象。
+// -----------------------------------------------------------------------------
+static void drawTargetMarker(Surface& s, const glm::mat4& vp) {
+  if (!s.targetMarker3d.active) return;
+  if (s.targetRingMesh.vbo == 0u) return;
+
+  const float phase = s.targetMarker3d.pulsePhase;
+  const float scalePulse = 1.0f + 0.10f * std::sin(phase * 2.0f);
+  // 环体旋转对称，无需旋转；仅做呼吸缩放脉冲。
+  const glm::mat4 model =
+      glm::translate(glm::mat4(1.0f),
+                     glm::vec3(s.targetMarker3d.x, 0.016f,
+                               s.targetMarker3d.z)) *
+      glm::scale(glm::mat4(1.0f), glm::vec3(scalePulse));
+  // 青金色锁定环，背光面仍保持可见。
+  const glm::vec3 markerColor{0.35f, 0.85f, 0.80f};
+  s.shader3d.setMVP(vp * model);
+  s.shader3d.setModel(model);
+  s.shader3d.setSkinned(false);
+  s.shader3d.setHasTexture(false);
+  s.shader3d.setLight(s.lightDir, markerColor * 0.7f, markerColor * 0.5f);
+  s.shader3d.setEnvironmentTint(glm::vec3(0.0f), 0.0f);
+  s.targetRingMesh.draw();
+}
+
+// -----------------------------------------------------------------------------
+// 伤害飘字：程序化数字图集 + 面向相机的广告牌绘制
+// -----------------------------------------------------------------------------
+static void ensureDigitAssets(Surface& s) {
+  if (s.digitAssetsReady) return;
+  s.digitAssetsReady = true;
+
+  const DigitAtlas atlas = DigitAtlas::build();
+  glGenTextures(1, &s.digitAtlasTexture);
+  glBindTexture(GL_TEXTURE_2D, s.digitAtlasTexture);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, atlas.width, atlas.height, 0,
+               GL_RGBA, GL_UNSIGNED_BYTE, atlas.pixels.data());
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glBindTexture(GL_TEXTURE_2D, 0);
+
+  // 每个数字一个单位四边形，UV 预烘焙到对应图集单元。
+  const float aspect = static_cast<float>(atlas.cellWidth) /
+                       static_cast<float>(atlas.cellHeight);
+  for (int digit = 0; digit < 10; ++digit) {
+    float u0 = 0.0f, v0 = 0.0f, u1 = 1.0f, v1 = 1.0f;
+    atlas.uvRect(static_cast<char>('0' + digit), u0, v0, u1, v1);
+    Mesh quad;
+    const float halfWidth = 0.5f * aspect;
+    quad.vertices = {
+        {{-halfWidth, -0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {u0, v0}},
+        {{halfWidth, -0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {u1, v0}},
+        {{halfWidth, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {u1, v1}},
+        {{-halfWidth, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {u0, v1}},
+    };
+    quad.indices = {0u, 1u, 2u, 0u, 2u, 3u};
+    quad.texture = s.digitAtlasTexture;
+    quad.upload();
+    s.digitMeshes[digit] = quad;
+  }
+}
+
+static void drawDamageNumbers(Surface& s, const glm::mat4& vp) {
+  if (s.damageNumbers3d.empty()) return;
+  ensureDigitAssets(s);
+  if (s.digitAtlasTexture == 0u) return;
+
+  glDisable(GL_CULL_FACE);
+  glDepthMask(GL_FALSE);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  s.shader3d.setSkinned(false);
+  s.shader3d.setHasTexture(true);
+  s.shader3d.setEnvironmentTint(glm::vec3(0.0f), 0.0f);
+
+  // 广告牌旋转：把四边形法线 (0,0,1) 转到相机观察方向。
+  const glm::mat4 billboard = cameraBillboard(s);
+  // 光向取广告牌法线：漫反射恒为 1，数字亮度不随相机旋转变化。
+  const glm::vec3 billboardNormal =
+      glm::normalize(glm::vec3(billboard * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f)));
+
+  constexpr float kCharHeight = 0.055f;
+  constexpr float kCharAspect = 0.8f;  // 数字图集单元 16x20
+  char buffer[16];
+  for (const DamageNumberRenderState& number : s.damageNumbers3d) {
+    glm::vec3 tint(0.92f, 0.95f, 0.94f);  // Normal：近白
+    if (number.kind == 1) {
+      tint = {1.0f, 0.84f, 0.40f};        // Heavy：金色
+    } else if (number.kind == 2) {
+      tint = {1.0f, 0.45f, 0.40f};        // PlayerHit：红色
+    }
+    s.shader3d.setLight(billboardNormal, tint * 0.7f, tint * 0.3f);
+    s.shader3d.setAlpha(number.alpha);
+
+    const int length = snprintf(buffer, sizeof(buffer), "%d", number.value);
+    const float charWidth = kCharHeight * kCharAspect;
+    const float totalWidth = charWidth * static_cast<float>(length);
+    const glm::vec3 basePosition(number.x + number.driftX,
+                                 0.16f + number.rise, number.z);
+    for (int index = 0; index < length && index < 15; ++index) {
+      if (buffer[index] < '0' || buffer[index] > '9') continue;
+      const int digit = buffer[index] - '0';
+      const float localX = -totalWidth * 0.5f +
+                           charWidth * (static_cast<float>(index) + 0.5f);
+      const glm::mat4 model =
+          glm::translate(glm::mat4(1.0f), basePosition) * billboard *
+          glm::translate(glm::mat4(1.0f), glm::vec3(localX, 0.0f, 0.0f)) *
+          glm::scale(glm::mat4(1.0f), glm::vec3(kCharHeight));
+      s.shader3d.setMVP(vp * model);
+      s.shader3d.setModel(model);
+      s.digitMeshes[digit].draw();
+    }
+  }
+
+  s.shader3d.setAlpha(1.0f);
+  s.shader3d.setHasTexture(false);
+  glDepthMask(GL_TRUE);
+}
+
+// -----------------------------------------------------------------------------
+// 敌人头顶血条：背景条 + 按血量比例缩短的前景条，颜色随血量分档。
+// -----------------------------------------------------------------------------
+static glm::vec3 hpBarFillColor(float ratio) {
+  if (ratio > 0.5f) return {0.31f, 0.83f, 0.73f};   // 高血量：青绿
+  if (ratio > 0.25f) return {0.85f, 0.63f, 0.27f};  // 中血量：琥珀
+  return {0.88f, 0.42f, 0.37f};                     // 低血量：警示红
+}
+
+static void drawEnemyHpBars(Surface& s, const glm::mat4& vp) {
+  if (s.enemyHpBars3d.empty()) return;
+  if (s.hpBarQuadMesh.vbo == 0u) return;
+
+  glDisable(GL_CULL_FACE);
+  glDepthMask(GL_FALSE);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  s.shader3d.setSkinned(false);
+  s.shader3d.setHasTexture(false);
+  s.shader3d.setEnvironmentTint(glm::vec3(0.0f), 0.0f);
+  s.shader3d.setAlpha(1.0f);
+
+  const glm::mat4 billboard = cameraBillboard(s);
+  const glm::vec3 billboardNormal =
+      glm::normalize(glm::vec3(billboard * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f)));
+  constexpr float kBarWidth = 0.09f;
+  constexpr float kBarHeight = 0.012f;
+  constexpr float kBarY = 0.185f;  // 敌人头顶上方
+
+  for (const EnemyHpBarRenderState& bar : s.enemyHpBars3d) {
+    const float ratio = std::clamp(bar.ratio, 0.0f, 1.0f);
+    const glm::vec3 basePosition(bar.x, kBarY, bar.z);
+
+    // 背景条（深色底）。
+    const glm::vec3 backColor{0.10f, 0.12f, 0.16f};
+    glm::mat4 model =
+        glm::translate(glm::mat4(1.0f), basePosition) * billboard *
+        glm::scale(glm::mat4(1.0f), glm::vec3(kBarWidth, kBarHeight, 1.0f));
+    s.shader3d.setMVP(vp * model);
+    s.shader3d.setModel(model);
+    s.shader3d.setLight(billboardNormal, backColor * 0.7f, backColor * 0.3f);
+    s.hpBarQuadMesh.draw();
+
+    // 前景条：左对齐，宽度按血量比例缩放。
+    if (ratio > 0.0f) {
+      const glm::vec3 fillColor = hpBarFillColor(ratio);
+      const float fillWidth = kBarWidth * ratio;
+      const float localX = -kBarWidth * 0.5f + fillWidth * 0.5f;
+      const glm::mat4 fillModel =
+          glm::translate(glm::mat4(1.0f), basePosition) * billboard *
+          glm::translate(glm::mat4(1.0f), glm::vec3(localX, 0.0f, 0.0005f)) *
+          glm::scale(glm::mat4(1.0f),
+                     glm::vec3(fillWidth, kBarHeight * 0.72f, 1.0f));
+      s.shader3d.setMVP(vp * fillModel);
+      s.shader3d.setModel(fillModel);
+      s.shader3d.setLight(billboardNormal, fillColor * 0.7f, fillColor * 0.3f);
+      s.hpBarQuadMesh.draw();
+    }
+  }
+
+  glDepthMask(GL_TRUE);
+}
+
 static void draw3DPhase(Surface& s) {
   // bridge 可能晚于 Surface 创建；surface_draw 已成功 makeCurrent，因此只在这里
   // 消费一次标脏字节，解析失败后保持静态 Mesh，不在每帧反复尝试。
@@ -712,6 +912,15 @@ static void draw3DPhase(Surface& s) {
              vp, bossColorByPhase(s.boss3d.phase), "boss");
     drawBossCinematicGeometry(s, vp);
   }
+
+  // 锁定目标指示器：绘制在飘字之下、实体之上。
+  drawTargetMarker(s, vp);
+
+  // 敌人头顶血条。
+  drawEnemyHpBars(s, vp);
+
+  // 伤害飘字：最后绘制，深度只读不写，被前景实体正确遮挡。
+  drawDamageNumbers(s, vp);
 
   glDisable(GL_CULL_FACE);
   glDisable(GL_DEPTH_TEST);
@@ -1088,6 +1297,15 @@ static void init3DResources(Surface& s) {
   s.enemyMesh = createCube(1.0f);
   s.bossMesh = createCube(1.0f);
   s.bossRingMesh = createRing(0.42f, 0.055f, 24);
+  s.targetRingMesh = createRing(0.075f, 0.014f, 40);
+  // 血条单位四边形（XY 平面，法线 +Z，无纹理）。
+  s.hpBarQuadMesh.vertices = {
+      {{-0.5f, -0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
+      {{0.5f, -0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
+      {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+      {{-0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+  };
+  s.hpBarQuadMesh.indices = {0u, 1u, 2u, 0u, 2u, 3u};
   s.fallbackPillarMesh = createCylinder(0.025f, 0.12f, 16);
   s.fallbackWallMesh = createCube(1.0f);
   s.riftPlaneMesh = createPlane(1.0f, 1.0f);
@@ -1096,6 +1314,8 @@ static void init3DResources(Surface& s) {
   s.enemyMesh.upload();
   s.bossMesh.upload();
   s.bossRingMesh.upload();
+  s.targetRingMesh.upload();
+  s.hpBarQuadMesh.upload();
   s.fallbackPillarMesh.upload();
   s.fallbackWallMesh.upload();
   s.riftPlaneMesh.upload();
@@ -1173,6 +1393,11 @@ static void abandon3DResources(Surface& s) {
   s.fallbackPillarMesh.abandonGpuResources();
   s.fallbackWallMesh.abandonGpuResources();
   s.riftPlaneMesh.abandonGpuResources();
+  s.targetRingMesh.abandonGpuResources();
+  s.hpBarQuadMesh.abandonGpuResources();
+  for (Mesh& digitMesh : s.digitMeshes) digitMesh.abandonGpuResources();
+  s.digitAtlasTexture = 0;
+  s.digitAssetsReady = false;
   s.shader3d.abandonGpuResources();
   s.shader3dReady = false;
   {

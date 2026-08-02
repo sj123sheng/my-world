@@ -200,6 +200,8 @@ int main() {
   const GameSnapshot targeted = targetingLoop.snapshot();
   assert(targeted.targetId == static_cast<int32_t>(CombatController::kTrainingTargetId));
   assert(targetingLoop.surface.props.size() == 1);
+  // 训练假人不是敌人原型，焦点框隐藏（archetype = -1）。
+  assert(targeted.targetArchetype == -1);
   // 出生点 (0.5, 0.12) 到训练假人 (0.5, 0.8) 的距离。
   assert(std::abs(targeted.targetDist - 0.68f) < 0.001f);
 
@@ -224,6 +226,10 @@ int main() {
       static_cast<EntityId>(enemyEncounterLoop.snapshot().targetId);
   assert(selectedEnemy != 0 &&
          selectedEnemy != CombatController::kTrainingTargetId);
+  // 焦点框：锁定敌人时暴露原型与血量比例。
+  assert(enemyEncounterLoop.snapshot().targetArchetype >= 0);
+  assert(enemyEncounterLoop.snapshot().targetHpRatio > 0.0f);
+  assert(enemyEncounterLoop.snapshot().targetHpRatio <= 1.0f);
   assert(enemyEncounterLoop.encounter.snapshot().enemies.size() ==
          EnemyAiConfig::kMaxEnemies);
   assert(enemyEncounterLoop.enqueueInput(InputAction::Attack, -1, 0.0f, 0.0f));
@@ -235,7 +241,7 @@ int main() {
         return enemy.id == selectedEnemy;
       });
   assert(damagedEnemy != enemyEncounterLoop.encounter.snapshot().enemies.end());
-  assert(damagedEnemy->hp < fp(300));
+  assert(damagedEnemy->hp < damagedEnemy->maxHp);  // 受击后血量低于上限
 
   CombatConfig fragileEnemyConfig = CombatConfig::defaults();
   fragileEnemyConfig.comboDamage = {fp(300), fp(300), fp(300), fp(300)};
@@ -352,6 +358,26 @@ int main() {
       EnvironmentController::defaultComposition();
   assert(restartedLoop.surface.player.x == restartedSpawn.spawn.x);
   assert(restartedLoop.surface.player.y == restartedSpawn.spawn.z);
+
+  // 暂停：冻结固定步与输入消费，恢复后继续推进。
+  Loop pauseLoop;
+  pauseLoop.surface.width = 1000;
+  pauseLoop.surface.height = 800;
+  pauseLoop.surface.ready = true;
+  pauseLoop.tickOnce(16);
+  const Tick tickBeforePause = pauseLoop.snapshot().tick;
+  assert(pauseLoop.enqueueInput(InputAction::PointerDown, 60, 100.0f, 400.0f));
+  assert(pauseLoop.enqueueInput(InputAction::PointerMove, 60, 180.0f, 400.0f));
+  pauseLoop.setPaused(true);  // 暂停同时清空排队输入
+  pauseLoop.tickOnce(16);
+  pauseLoop.tickOnce(16);
+  assert(pauseLoop.snapshot().tick == tickBeforePause);
+  pauseLoop.setPaused(false);
+  pauseLoop.tickOnce(16);
+  assert(pauseLoop.snapshot().tick > tickBeforePause);
+  // 暂停期间的陈旧输入已被清除，玩家不移动。
+  assert(!pauseLoop.surface.player.moving);
+  assert(pauseLoop.intent.move == Vec2{});
 
   for (int round = 0; round < 20; ++round) {
     Loop concurrentLoop;

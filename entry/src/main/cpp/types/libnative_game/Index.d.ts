@@ -11,6 +11,7 @@ export const advanceLevel: () => boolean;
 export const useSupply: () => boolean;
 export const retryBoss: () => boolean;
 export const toggleDebugHud: () => void;
+export const setPaused: (paused: boolean) => void;
 export const skipDemoPhase: (phase: number) => void;
 export const pullSnapshot: () => {
   tick: number,
@@ -25,6 +26,8 @@ export const pullSnapshot: () => {
   cameraYaw: number,
   cameraPitch: number,
   targetDist: number,
+  targetArchetype: number,
+  targetHpRatio: number,
   targetId: number,
   bossPhase: number,
   encounterMode: number,
@@ -47,6 +50,9 @@ export const pullSnapshot: () => {
   radianceCooldownMs: number,
   currentCooldownMs: number,
   corruptionCooldownMs: number,
+  radianceCooldownTotalMs: number,
+  currentCooldownTotalMs: number,
+  corruptionCooldownTotalMs: number,
   ultimateWindowMs: number,
   targetPoiseBroken: boolean,
   radianceAttached: boolean,

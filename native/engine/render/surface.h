@@ -95,6 +95,34 @@ struct Boss3DRenderState {
   bool ringBroken = false;
 };
 
+// 敌人头顶血条渲染状态：逻辑侧每帧生成，渲染层绘制为面向相机的
+// 背景条 + 按比例缩短的前景条。
+struct EnemyHpBarRenderState {
+  float x = 0.0f;
+  float z = 0.0f;
+  float ratio = 1.0f;  // hp / maxHp，[0, 1]
+};
+
+// 锁定目标指示器渲染状态：软瞄准命中的目标脚下绘制脉冲环。
+struct TargetMarkerRenderState {
+  float x = 0.0f;
+  float z = 0.0f;
+  float pulsePhase = 0.0f;  // 弧度，驱动缩放与旋转脉冲
+  bool active = false;
+};
+
+// 伤害飘字渲染状态：逻辑侧每帧生成，渲染层绘制为面向相机的
+// 数字广告牌（billboard），kind 对应 DamageNumberKind。
+struct DamageNumberRenderState {
+  float x = 0.0f;
+  float z = 0.0f;
+  float rise = 0.0f;
+  float driftX = 0.0f;
+  float alpha = 1.0f;
+  int32_t value = 0;
+  int kind = 0;
+};
+
 struct Surface {
   std::mutex windowMutex;
   OHNativeWindow* window = nullptr;
@@ -137,6 +165,20 @@ struct Surface {
   ActorRenderState player3dAnimation;
   ActorRenderState trainingTarget3dAnimation;
   float playerHitAnimationSeconds = 0.0f;
+
+  // ---- 伤害飘字字段 ----
+  std::vector<DamageNumberRenderState> damageNumbers3d;
+  Mesh digitMeshes[10];  // 每个数字一个单位四边形，UV 预烘焙到图集单元
+  unsigned int digitAtlasTexture = 0;
+  bool digitAssetsReady = false;
+
+  // ---- 锁定目标指示器字段 ----
+  TargetMarkerRenderState targetMarker3d;
+  Mesh targetRingMesh;
+
+  // ---- 敌人血条字段 ----
+  std::vector<EnemyHpBarRenderState> enemyHpBars3d;
+  Mesh hpBarQuadMesh;  // 单位四边形（XY 平面，法线 +Z）
 
   // 三类模型的 bridge 字节可早于或晚于 Surface 创建。setModelAsset 只保存 CPU
   // 数据并标脏；解析、上传、替换和销毁均由 current GL context 下的渲染路径完成。

@@ -85,7 +85,10 @@ export struct Hud {
         Progress({ value: this.poise, total: 100, type: ProgressType.Linear })
           .width(134).height(2).color('#D9A145')
         Progress({ value: this.stamina, total: 100, type: ProgressType.Linear })
-          .width(118).height(3).color('#4FD4BB')
+          .width(118).height(3)
+          // 体力低于闪避成本（30，对应 native CombatConfig.dodgeCost）时红色预警。
+          .color(this.stamina < 30 ? '#E06A5E' : '#4FD4BB')
+          .animation({ duration: 150, curve: Curve.EaseOut })
         Row({ space: 12 }) {
           Text('辉').fontSize(14)
             .fontColor(this.resonanceSlots[0] > 0 ? '#D9A145' : '#66706F')

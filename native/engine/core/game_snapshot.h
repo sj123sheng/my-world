@@ -22,6 +22,9 @@ struct GameSnapshot {
   float cameraYaw = 0.0f;
   float cameraPitch = 0.0f;
   float targetDist = 0.0f;
+  // 锁定目标焦点框：原型（-1 = 无普通敌人锁定）与血量比例。
+  int32_t targetArchetype = -1;
+  float targetHpRatio = 0.0f;
   uint8_t comboSegment = 0;
   FixedPoint targetHp = fp(300);
   FixedPoint targetPoise = fp(100);
@@ -37,6 +40,9 @@ struct GameSnapshot {
   Tick radianceCooldownMs = 0;
   Tick currentCooldownMs = 0;
   Tick corruptionCooldownMs = 0;
+  Tick radianceCooldownTotalMs = 0;
+  Tick currentCooldownTotalMs = 0;
+  Tick corruptionCooldownTotalMs = 0;
   Tick ultimateWindowMs = 0;
   bool targetPoiseBroken = false;
   bool radianceAttached = false;

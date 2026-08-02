@@ -52,12 +52,16 @@ add_library(native_game SHARED
     ${NATIVE_ROOT}/engine/render/static_model.cpp
    ${NATIVE_ROOT}/engine/render/environment.cpp
     ${NATIVE_ROOT}/engine/render/asset_profile.cpp
+    ${NATIVE_ROOT}/engine/render/digit_atlas.cpp
+    ${NATIVE_ROOT}/engine/render/digit_atlas.h
 
     # engine presentation
     ${NATIVE_ROOT}/engine/presentation/vfx_system.cpp
     ${NATIVE_ROOT}/engine/presentation/vfx_system.h
     ${NATIVE_ROOT}/engine/presentation/performance_guard.cpp
     ${NATIVE_ROOT}/engine/presentation/performance_guard.h
+    ${NATIVE_ROOT}/engine/presentation/damage_numbers.cpp
+    ${NATIVE_ROOT}/engine/presentation/damage_numbers.h
 
     # engine resource
     ${NATIVE_ROOT}/engine/resource/loader.cpp

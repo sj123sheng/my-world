@@ -10,6 +10,24 @@ const nativeBridge = fs.readFileSync('entry/src/main/cpp/native_bridge.cpp', 'ut
 const loop = fs.readFileSync('native/engine/core/loop.cpp', 'utf8');
 const controls = fs.existsSync('entry/src/main/ets/ui/CombatControls.ets')
   ? fs.readFileSync('entry/src/main/ets/ui/CombatControls.ets', 'utf8') : '';
+const joystick = fs.existsSync('entry/src/main/ets/ui/Joystick.ets')
+  ? fs.readFileSync('entry/src/main/ets/ui/Joystick.ets', 'utf8') : '';
+
+assert.match(joystick, /import \{ pushInput \} from ['"]\.\.\/napi\/Bridge['"];/,
+  'Joystick must import pushInput from the bridge');
+assert.match(joystick, /pushInput\(\{ type: type, pointerId: pointerId, x: x, y: y \}\)/,
+  'Joystick must forward raw touch coordinates via pushInput');
+assert.match(joystick, /NATIVE_RADIUS: number = 100;/,
+  'Joystick must scale to the native VirtualJoystick radius');
+assert.match(page, /import \{ Joystick \} from ['"]\.\.\/ui\/Joystick['"];/,
+  'GamePage must import the Joystick component');
+assert.match(page, /Joystick\(\)/, 'GamePage must mount the Joystick layer');
+assert.match(controls, /@Prop radianceCooldownMs: number = 0;/,
+  'CombatControls must accept radiance cooldown prop');
+assert.match(controls, /@Prop ultimateWindowMs: number = 0;/,
+  'CombatControls must accept ultimate window prop');
+assert.match(page, /CombatControls\(\{[\s\S]*?radianceCooldownMs: this\.radianceCooldownMs/,
+  'GamePage must feed cooldown props into CombatControls');
 
 const buttonActions = [['普攻', 0], ['闪避', 1], ['辉印', 2], ['脉流', 3], ['蚀质', 4], ['终结', 5]];
 for (const [label, type] of buttonActions) {
@@ -412,3 +430,217 @@ assert.match(setEnvironmentAssetsBody, /g_loop\.withLifecycle/);
 assert.match(loadModelAssetsBody,
   /nativeSetModelAssets[\s\S]*?try[\s\S]*?nativeSetEnvironmentAssets[\s\S]*?catch/,
   'character and environment assets must use separate failure domains');
+
+// ---- Stage 8: cooldown totals in snapshot, haptics and hit feedback ----
+const gameSnapshot = fs.readFileSync('native/engine/core/game_snapshot.h', 'utf8');
+const combatController = fs.readFileSync('native/gameplay/combat/combat_controller.cpp', 'utf8');
+const combatControllerHeader = fs.readFileSync('native/gameplay/combat/combat_controller.h', 'utf8');
+const moduleJson = fs.readFileSync('entry/src/main/module.json5', 'utf8');
+const haptics = fs.existsSync('entry/src/main/ets/ui/Haptics.ets')
+  ? fs.readFileSync('entry/src/main/ets/ui/Haptics.ets', 'utf8') : '';
+const hitFeedback = fs.existsSync('entry/src/main/ets/ui/HitFeedback.ets')
+  ? fs.readFileSync('entry/src/main/ets/ui/HitFeedback.ets', 'utf8') : '';
+
+for (const total of ['radianceCooldownTotalMs', 'currentCooldownTotalMs', 'corruptionCooldownTotalMs']) {
+  assert.match(combatControllerHeader, new RegExp(`Tick ${total} = 0;`),
+    `CombatSnapshot must expose ${total}`);
+  assert.match(gameSnapshot, new RegExp(`Tick ${total} = 0;`),
+    `GameSnapshot must expose ${total}`);
+  assert.match(combatController, new RegExp(`snapshot_\\.${total} = config_\\.sourceCooldownMs\\[`),
+    `combat controller must fill ${total} from config`);
+  assert.match(declarations, new RegExp(`${total}: number,`),
+    `Index.d.ts must declare ${total}`);
+  assert.match(bridge, new RegExp(`${total}: number;`),
+    `Bridge Snapshot must declare ${total}`);
+  assert.match(nativeBridge, new RegExp(`"${total}", extra\\[1[345]\\]`),
+    `native bridge must marshal ${total}`);
+  assert.match(page, new RegExp(`this\\.${total} = this\\.snapshot\\.${total};`),
+    `GamePage must copy ${total} from the snapshot`);
+}
+assert.match(controls, /@Prop radianceCooldownTotalMs: number = 3000;/,
+  'CombatControls must accept cooldown total props');
+assert.match(controls, /this\.cooldownRing\(this\.radianceCooldownMs, this\.radianceCooldownTotalMs/,
+  'CombatControls must use snapshot cooldown totals, not hardcoded constants');
+assert.doesNotMatch(controls, /RADIANCE_COOLDOWN_TOTAL_MS/,
+  'CombatControls must not keep hardcoded cooldown constants');
+
+assert.match(moduleJson, /"name": "ohos\.permission\.VIBRATE"/,
+  'module.json5 must request the VIBRATE permission');
+assert.match(haptics, /import \{ vibrator \} from ['"]@kit\.SensorServiceKit['"];/,
+  'Haptics must use the SensorServiceKit vibrator API');
+assert.match(haptics, /startVibration\(/, 'Haptics must trigger vibration');
+assert.match(haptics, /catch/, 'Haptics must degrade silently on failure');
+for (const method of ['light', 'sharp', 'hit', 'heavy', 'ultimateReady']) {
+  assert.match(haptics, new RegExp(`static ${method}\\(\\): void`),
+    `Haptics must expose ${method}()`);
+}
+assert.match(page, /import \{ Haptics \} from ['"]\.\.\/ui\/Haptics['"];/,
+  'GamePage must import Haptics');
+assert.match(page, /detectCombatEvents\(\);/,
+  'GamePage must run snapshot edge detection each poll');
+assert.match(page, /Haptics\.heavy\(\);[\s\S]*?Haptics\.hit\(\);/,
+  'GamePage must distinguish heavy and normal hits');
+assert.match(page, /snap\.insightMs > 0 && this\.prevInsightMs <= 0/,
+  'GamePage must detect precision dodge via insight rising edge');
+assert.match(page, /snap\.ultimateWindowMs > 0 && this\.prevUltimateWindowMs <= 0/,
+  'GamePage must detect ultimate readiness via rising edge');
+
+assert.match(hitFeedback, /@Watch\('onHpChanged'\) hp: number/,
+  'HitFeedback must watch hp changes');
+assert.match(hitFeedback, /radialGradient\(/,
+  'HitFeedback must render a vignette via radial gradient');
+assert.match(hitFeedback, /LOW_HP_THRESHOLD: number = 30;/,
+  'HitFeedback must pulse at low hp');
+assert.match(page, /import \{ HitFeedback \} from ['"]\.\.\/ui\/HitFeedback['"];/,
+  'GamePage must import HitFeedback');
+assert.match(page, /HitFeedback\(\{ hp: this\.hp \}\)/,
+  'GamePage must mount HitFeedback with hp');
+
+// ---- Stage 9: action reject toast ----
+const actionToast = fs.existsSync('entry/src/main/ets/ui/ActionToast.ets')
+  ? fs.readFileSync('entry/src/main/ets/ui/ActionToast.ets', 'utf8') : '';
+assert.match(actionToast, /@Watch\('onRejectChanged'\) lastRejectReason: number/,
+  'ActionToast must watch lastRejectReason');
+for (const [code, label] of [[3, '技能冷却中'], [4, '体力不足'], [5, '共鸣不足']]) {
+  assert.match(actionToast, new RegExp(`case ${code}: return ['"]${label}['"];`),
+    `ActionToast must map reject reason ${code} to ${label}`);
+}
+assert.match(page, /import \{ ActionToast \} from ['"]\.\.\/ui\/ActionToast['"];/,
+  'GamePage must import ActionToast');
+assert.match(page, /ActionToast\(\{ lastRejectReason: this\.lastRejectReason \}\)/,
+  'GamePage must mount ActionToast with lastRejectReason');
+
+// ---- Stage 10: lock-on target marker and combo counter ----
+const surfaceHeader = fs.readFileSync('native/engine/render/surface.h', 'utf8');
+const surfaceImpl = fs.readFileSync('native/engine/render/surface.cpp', 'utf8');
+const comboCounter = fs.existsSync('entry/src/main/ets/ui/ComboCounter.ets')
+  ? fs.readFileSync('entry/src/main/ets/ui/ComboCounter.ets', 'utf8') : '';
+
+assert.match(surfaceHeader, /struct TargetMarkerRenderState/,
+  'Surface must declare TargetMarkerRenderState');
+assert.match(surfaceHeader, /TargetMarkerRenderState targetMarker3d;/,
+  'Surface must hold target marker state');
+assert.match(surfaceHeader, /Mesh targetRingMesh;/,
+  'Surface must hold the target ring mesh');
+assert.match(surfaceImpl, /s\.targetRingMesh = createRing\(/,
+  'target ring mesh must be created');
+assert.match(surfaceImpl, /static void drawTargetMarker\(Surface& s, const glm::mat4& vp\)/,
+  'surface must implement drawTargetMarker');
+assert.match(surfaceImpl, /drawTargetMarker\(s, vp\);/,
+  '3D phase must draw the target marker');
+assert.match(loop, /surface\.targetMarker3d\.active = currentTarget\.has_value\(\);/,
+  'loop must publish lock-on marker activity from soft targeting');
+assert.match(loop, /surface\.targetMarker3d\.pulsePhase =/,
+  'loop must publish marker pulse phase');
+
+assert.match(comboCounter, /@Watch\('onComboChanged'\) comboSegment: number/,
+  'ComboCounter must watch combo segment');
+assert.match(comboCounter, /comboWindowMs > 0/,
+  'ComboCounter must hide outside the combo window');
+assert.match(page, /import \{ ComboCounter \} from ['"]\.\.\/ui\/ComboCounter['"];/,
+  'GamePage must import ComboCounter');
+assert.match(page, /ComboCounter\(\{ comboSegment: this\.comboSegment,[\s\S]*?comboWindowMs: this\.comboWindowMs \}\)/,
+  'GamePage must mount ComboCounter with combo props');
+
+// ---- Stage 11: onboarding tutorial ----
+const tutorial = fs.existsSync('entry/src/main/ets/ui/Tutorial.ets')
+  ? fs.readFileSync('entry/src/main/ets/ui/Tutorial.ets', 'utf8') : '';
+assert.match(tutorial, /@StorageLink\('tutorialDone'\)/,
+  'Tutorial must persist completion via StorageLink');
+assert.match(tutorial, /@Watch\('onMovingChanged'\) moving: boolean/,
+  'Tutorial must watch movement for the move step');
+for (const text of ['滑动屏幕左侧移动角色', '点击右下角普攻攻击敌人',
+  '点击闪避躲开敌人攻击', '释放辉印，开启三源共鸣']) {
+  assert.match(tutorial, new RegExp(text), `Tutorial must teach: ${text}`);
+}
+assert.match(page, /PersistentStorage\.persistProp<boolean>\('tutorialDone', false\);/,
+  'GamePage must initialize persistent tutorial state');
+assert.match(page, /import \{ Tutorial \} from ['"]\.\.\/ui\/Tutorial['"];/,
+  'GamePage must import Tutorial');
+assert.match(page, /Tutorial\(\{ moving: this\.moving/,
+  'GamePage must mount Tutorial with gameplay props');
+
+// ---- Stage 12: pause system and encounter result overlays ----
+const pauseMenu = fs.existsSync('entry/src/main/ets/ui/PauseMenu.ets')
+  ? fs.readFileSync('entry/src/main/ets/ui/PauseMenu.ets', 'utf8') : '';
+const stateOverlay = fs.existsSync('entry/src/main/ets/ui/GameStateOverlay.ets')
+  ? fs.readFileSync('entry/src/main/ets/ui/GameStateOverlay.ets', 'utf8') : '';
+
+assert.match(loop, /void Loop::setPaused\(bool value\)/,
+  'Loop must implement setPaused');
+assert.match(loop, /if \(paused\.load\(\)\) \{/,
+  'tickOnce must freeze while paused');
+assert.match(nativeBridge, /"setPaused", nullptr, NativeSetPaused/,
+  'native bridge must export setPaused');
+assert.match(declarations, /setPaused: \(paused: boolean\) => void;/,
+  'Index.d.ts must declare setPaused');
+assert.match(bridge, /export const setPaused/, 'Bridge must export setPaused');
+
+assert.match(pauseMenu, /setPaused\(true\)/, 'PauseMenu must pause the loop');
+assert.match(pauseMenu, /setPaused\(false\)/, 'PauseMenu must resume the loop');
+assert.match(pauseMenu, /@StorageLink\('hapticsEnabled'\)/,
+  'PauseMenu must expose the haptics toggle');
+assert.match(haptics, /AppStorage\.get<boolean>\('hapticsEnabled'\) === false/,
+  'Haptics must respect the hapticsEnabled setting');
+assert.match(page, /PersistentStorage\.persistProp<boolean>\('hapticsEnabled', true\);/,
+  'GamePage must persist the haptics setting');
+
+assert.match(stateOverlay, /ENCOUNTER_STATE_DEFEAT: number = 3;/,
+  'GameStateOverlay must handle the Defeat state');
+assert.match(stateOverlay, /retryBoss\(\);/,
+  'GameStateOverlay must retry boss defeats via retryBoss');
+assert.match(stateOverlay, /advanceLevel\(\);/,
+  'GameStateOverlay must advance after level-flow victory');
+assert.match(page, /import \{ PauseMenu \} from ['"]\.\.\/ui\/PauseMenu['"];/,
+  'GamePage must import PauseMenu');
+assert.match(page, /import \{ GameStateOverlay \} from ['"]\.\.\/ui\/GameStateOverlay['"];/,
+  'GamePage must import GameStateOverlay');
+assert.match(page, /GameStateOverlay\(\{ encounterState: this\.encounterState/,
+  'GamePage must mount GameStateOverlay');
+assert.match(page, /PauseMenu\(\{ encounterMode: this\.encounterMode \}\)/,
+  'GamePage must mount PauseMenu');
+
+// ---- Stage 13: enemy overhead health bars ----
+assert.match(surfaceHeader, /struct EnemyHpBarRenderState/,
+  'Surface must declare EnemyHpBarRenderState');
+assert.match(surfaceHeader, /std::vector<EnemyHpBarRenderState> enemyHpBars3d;/,
+  'Surface must hold enemy hp bar render states');
+assert.match(surfaceHeader, /Mesh hpBarQuadMesh;/,
+  'Surface must hold the hp bar quad mesh');
+assert.match(surfaceImpl, /static void drawEnemyHpBars\(Surface& s, const glm::mat4& vp\)/,
+  'surface must implement drawEnemyHpBars');
+assert.match(surfaceImpl, /drawEnemyHpBars\(s, vp\);/,
+  '3D phase must draw enemy hp bars');
+assert.match(surfaceImpl, /static glm::mat4 cameraBillboard\(const Surface& s\)/,
+  'surface must share a camera billboard helper');
+assert.match(loop, /surface\.enemyHpBars3d\.clear\(\);/,
+  'loop must publish enemy hp bars');
+assert.match(loop, /static_cast<float>\(enemy\.hp\) \/ static_cast<float>\(enemy\.maxHp\)/,
+  'loop must compute hp ratio from hp and maxHp');
+
+// ---- Stage 14: lock-on target focus frame ----
+const targetFrame = fs.existsSync('entry/src/main/ets/ui/TargetFrame.ets')
+  ? fs.readFileSync('entry/src/main/ets/ui/TargetFrame.ets', 'utf8') : '';
+assert.match(gameSnapshot, /int32_t targetArchetype = -1;/,
+  'GameSnapshot must expose targetArchetype');
+assert.match(gameSnapshot, /float targetHpRatio = 0\.0f;/,
+  'GameSnapshot must expose targetHpRatio');
+assert.match(loop, /snapshot\.targetArchetype = static_cast<int32_t>\(enemy\.archetype\);/,
+  'loop must resolve locked enemy archetype');
+assert.match(nativeBridge, /"targetArchetype", targetArchetypeVal/,
+  'native bridge must marshal targetArchetype');
+assert.match(declarations, /targetArchetype: number,/,
+  'Index.d.ts must declare targetArchetype');
+assert.match(bridge, /targetHpRatio: number;/,
+  'Bridge Snapshot must declare targetHpRatio');
+for (const name of ['裂隙之爪', '辉光祭司', '蚀壳守卫']) {
+  assert.match(targetFrame, new RegExp(name), `TargetFrame must name archetype ${name}`);
+}
+assert.match(targetFrame, /targetArchetype >= 0/,
+  'TargetFrame must hide without a locked enemy');
+assert.match(page, /TargetFrame\(\{ targetId: this\.targetId/,
+  'GamePage must mount TargetFrame');
+
+// ---- Stage 15: low stamina warning on HUD ----
+assert.match(hud, /this\.stamina < 30 \? '#E06A5E' : '#4FD4BB'/,
+  'HUD stamina bar must turn red below dodge cost');
