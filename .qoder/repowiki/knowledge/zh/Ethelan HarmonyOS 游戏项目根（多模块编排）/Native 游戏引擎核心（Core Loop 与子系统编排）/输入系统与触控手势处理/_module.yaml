@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: native_engine/input_system
+title: 输入系统与触控手势处理
+scope:
+    - native/engine/input/
+source_files: []
+depends_on: []
+related_to:
+    - path: native_engine/core_loop
+    - path: native_gameplay/player

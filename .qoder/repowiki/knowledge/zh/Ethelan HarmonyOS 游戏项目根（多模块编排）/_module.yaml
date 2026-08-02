@@ -1,0 +1,17 @@
+schema_version: 1
+module_path: ""
+title: Ethelan HarmonyOS 游戏项目根（多模块编排）
+scope:
+    - .gitignore
+    - build-profile.json5
+    - hvigorfile.ts
+    - oh-package.json5
+    - AppScope/
+    - assets/
+    - config/
+    - docs/
+    - automation/
+    - README.md
+source_files: []
+depends_on: []
+related_to: []

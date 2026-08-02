@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: tests
+title: 游戏引擎单元测试与契约测试套件
+scope:
+    - tests/
+source_files: []
+depends_on: []
+related_to:
+    - path: entry_app
+    - path: native_engine/core_loop
+    - path: native_engine/resource_manager

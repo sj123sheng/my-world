@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: native_gameplay/player
+title: 玩家角色与控制器（Player & Character）
+scope:
+    - native/gameplay/player/
+source_files: []
+depends_on: []
+related_to:
+    - path: native_engine/input_system

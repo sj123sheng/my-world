@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: native_engine/render_pipeline
+title: 3D/2D 渲染管线与 GPU 资源管理
+scope:
+    - native/engine/render/
+source_files: []
+depends_on: []
+related_to:
+    - path: native_engine/core_loop

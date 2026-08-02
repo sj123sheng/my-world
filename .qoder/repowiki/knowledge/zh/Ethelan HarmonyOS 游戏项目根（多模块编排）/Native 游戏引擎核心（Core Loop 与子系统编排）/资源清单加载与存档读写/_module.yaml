@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: native_engine/resource_manager
+title: 资源清单加载与存档读写
+scope:
+    - native/engine/resource/
+source_files: []
+depends_on: []
+related_to:
+    - path: native_gameplay/growth
+    - path: tests

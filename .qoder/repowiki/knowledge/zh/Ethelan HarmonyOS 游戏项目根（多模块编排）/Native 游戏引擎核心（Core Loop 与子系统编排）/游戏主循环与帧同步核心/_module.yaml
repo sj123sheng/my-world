@@ -1,0 +1,15 @@
+schema_version: 1
+module_path: native_engine/core_loop
+title: 游戏主循环与帧同步核心
+scope:
+    - native/engine/core/
+source_files: []
+depends_on: []
+related_to:
+    - path: native_engine/input_system
+    - path: native_engine/presentation_vfx
+    - path: native_engine/render_pipeline
+    - path: native_gameplay
+    - path: native_gameplay/flow_and_targeting
+    - path: native_platform
+    - path: tests
