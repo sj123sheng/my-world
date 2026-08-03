@@ -65,5 +65,8 @@ class VfxSystem {
  void refreshFlags();
 
   Tick cameraShakeRemainingMs_ = 0;
+  // 受击时记录的抖动峰值幅度；振荡衰减期间保持不变，
+  // 避免重复事件提前压低幅度。
+  float cameraShakeAmplitude_ = 0.0f;
   VfxSnapshot snapshot_;
 };

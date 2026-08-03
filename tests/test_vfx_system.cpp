@@ -70,9 +70,26 @@ void testCameraShakeDecays() {
   CombatEventBatch batch{};
   batch.presentation.push_back(makeEvent(PresentationEventType::CameraShake, 0, fp(30)));
   vfx.consume(batch);
-  assert(vfx.snapshot().cameraShakeX != 0.0f || vfx.snapshot().cameraShakeY != 0.0f);
+  assert(vfx.snapshot().vfxFlags & VfxCameraShake);
   for (int i = 0; i < 30; i++) vfx.update(16 * (i + 1), 16);
   assert(vfx.snapshot().cameraShakeX == 0.0f && vfx.snapshot().cameraShakeY == 0.0f);
+}
+
+void testCameraShakeOscillates() {
+  // 抖动必须在窗口内往复振荡（符号翻转），而非单向漂移。
+  VfxSystem vfx;
+  CombatEventBatch batch{};
+  batch.presentation.push_back(makeEvent(PresentationEventType::CameraShake, 0, fp(30)));
+  vfx.consume(batch);
+  vfx.update(16, 16);
+  const float firstX = vfx.snapshot().cameraShakeX;
+  assert(firstX != 0.0f);
+  bool signChanged = false;
+  for (int i = 2; i <= 18; i++) {
+    vfx.update(16 * i, 16);
+    if (vfx.snapshot().cameraShakeX * firstX < 0.0f) signChanged = true;
+  }
+  assert(signChanged);
 }
 
 void testRepeatEventRefreshesNotStacks() {
@@ -123,6 +140,7 @@ int main() {
   testPhaseTransitionTriggers();
   testCastBarBrokenTriggers();
   testCameraShakeDecays();
+  testCameraShakeOscillates();
   testRepeatEventRefreshesNotStacks();
   testVfxFlagsReflectActiveEffects();
   testEmptyBatchNoEffect();

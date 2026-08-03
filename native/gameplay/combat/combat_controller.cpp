@@ -94,6 +94,14 @@ void CombatController::updateAgainst(
     actions_.resetCombo();
     events_.gameplay.push_back({pulseEvent.tick, kTrainingTargetId, kPlayerId,
                                 GameplayEventType::Damage, applied, 0});
+    // 训练脉冲命中同样给出受击反馈：红色闪屏 + 相机抖动。
+    events_.presentation.push_back({pulseEvent.tick, kTrainingTargetId,
+                                    kPlayerId, PresentationEventType::HitFlash,
+                                    FP_ONE, 0});
+    events_.presentation.push_back({pulseEvent.tick, kTrainingTargetId,
+                                    kPlayerId,
+                                    PresentationEventType::CameraShake, FP_ONE,
+                                    0});
     if (playerHp_ == 0) {
       resetTrainingEncounter();
       events_.gameplay.push_back({pulseEvent.tick, kTrainingTargetId, kPlayerId,
@@ -182,6 +190,10 @@ void CombatController::applyEnemyHit(const HitRequest& hit) {
     events_.presentation.push_back(
         {hit.tick, hit.attacker, hit.target, PresentationEventType::HitFlash,
          FP_ONE, hit.sequence});
+    // 受击相机抖动：与红色闪屏叠加，强化被打中的冲击感。
+    events_.presentation.push_back(
+        {hit.tick, hit.attacker, hit.target,
+         PresentationEventType::CameraShake, FP_ONE, hit.sequence});
   }
   if (killed) {
     events_.gameplay.push_back(

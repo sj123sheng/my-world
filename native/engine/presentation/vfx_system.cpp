@@ -51,15 +51,12 @@ void VfxSystem::consume(const CombatEventBatch& batch) {
         snapshot_.castBarBrokenMs = kCastBarBrokenMs;
         break;
       case PresentationEventType::CameraShake: {
+        // 记录峰值幅度（取最大值，避免重复事件压低抖动）并重开窗口；
+        // 实际偏移在 update() 中按振荡×线性衰减逐帧计算。
         const float amp = RandomShake(e.intensity);
-        // Apply shake in both axes with opposite signs for a jitter feel.
-        if (snapshot_.cameraShakeX == 0.0f && snapshot_.cameraShakeY == 0.0f) {
-          snapshot_.cameraShakeX = amp;
-          snapshot_.cameraShakeY = -amp;
+        if (cameraShakeRemainingMs_ <= 0 || amp > cameraShakeAmplitude_) {
+          cameraShakeAmplitude_ = amp;
         }
-        // Track remaining shake time via a re-purposed field: we store
-        // the remaining ms in cameraShakeX sign by using a separate counter.
-        // Simpler: store remaining shake ms in a dedicated approach below.
         cameraShakeRemainingMs_ = kCameraShakeMs;
         break;
       }
@@ -90,14 +87,19 @@ void VfxSystem::update(Tick /*tick*/, int64_t dtMs) {
     if (cameraShakeRemainingMs_ == 0) {
       snapshot_.cameraShakeX = 0.0f;
       snapshot_.cameraShakeY = 0.0f;
+      cameraShakeAmplitude_ = 0.0f;
     } else {
-      // Decay amplitude linearly.
+      // 正弦振荡 × 线性衰减：约 2.5 个周期内振幅从峰值滑向 0，
+      // 相机目标点左右往复抖动而非单向漂移。
       const float ratio = static_cast<float>(cameraShakeRemainingMs_) /
                           static_cast<float>(kCameraShakeMs);
-      const float signX = (snapshot_.cameraShakeX >= 0.0f) ? 1.0f : -1.0f;
-      const float signY = (snapshot_.cameraShakeY >= 0.0f) ? 1.0f : -1.0f;
-      snapshot_.cameraShakeX = std::fabs(snapshot_.cameraShakeX) * ratio * signX;
-      snapshot_.cameraShakeY = std::fabs(snapshot_.cameraShakeY) * ratio * signY;
+      const float elapsed = static_cast<float>(kCameraShakeMs -
+                                                cameraShakeRemainingMs_);
+      constexpr float kOmega =
+          52.36f;  // 300ms 内约 2.5 个振荡周期
+      const float envelope = cameraShakeAmplitude_ * ratio;
+      snapshot_.cameraShakeX = envelope * std::cos(kOmega * elapsed);
+      snapshot_.cameraShakeY = -envelope * std::sin(kOmega * elapsed);
     }
   }
 
