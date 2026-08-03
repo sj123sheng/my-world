@@ -6,6 +6,9 @@ export struct Hud {
   @Prop y: number = 0.5;
   @Prop fps: number = 0;
   @Prop moving: boolean = false;
+  @Prop moveX: number = 0;
+  @Prop moveY: number = 0;
+  @Prop cameraYaw: number = 0;
   @Prop targetDist: number = 0;
   @Prop stamina: number = 100;
   @Prop comboSegment: number = 0;
@@ -175,6 +178,8 @@ export struct Hud {
             .fontColor(Color.Yellow).fontSize(12)
           Text(`X ${this.x.toFixed(3)}  Y ${this.y.toFixed(3)} · ${this.moving ? '移动中' : '待机'} · 目标 ${(this.targetDist * 100).toFixed(1)}%`)
             .fontColor(Color.Gray).fontSize(10)
+          Text(`输入 ${this.moveX.toFixed(2)}, ${this.moveY.toFixed(2)} · 相机 yaw ${this.cameraYaw.toFixed(2)}`)
+            .fontColor(Color.Yellow).fontSize(10)
           Text(`遭遇 ${this.encounterMode} · 状态 ${this.encounterState} · 性能 ${this.perfLevel} · VFX ${this.vfxFlags}`)
             .fontColor(Color.Gray).fontSize(10)
           Text(`关卡 ${this.levelStage} · 门 ${this.gateState} · 补给 ${this.supplyState}`)

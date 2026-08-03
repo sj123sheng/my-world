@@ -1,9 +1,4 @@
-import { pushInput } from '../napi/Bridge';
-
-// native VirtualJoystick 半径（VirtualJoystickConfig.radius）与死区比例。
-// 组件把视觉行程换算为该半径下的满量程值，保证旋钮视觉位置与实际移速严格一致：
-// 旋钮拉满（KNOB_TRAVEL）= native 满速，旋钮 5vp 内 = 死区静止。
-const NATIVE_RADIUS: number = 100;
+// 仅负责摇杆视觉反馈；生产输入由下层 XComponent 的 native 回调统一处理。
 // 旋钮视觉行程半径（vp）。
 const KNOB_TRAVEL: number = 50;
 const BASE_SIZE: number = 120;
@@ -20,11 +15,6 @@ export struct Joystick {
   private trackedPointer: number = -1;
   private originX: number = 0;
   private originY: number = 0;
-
-  private forward(type: number, pointerId: number, x: number, y: number): void {
-    // ArkUI TouchType(0=Down/1=Up/2=Move/3=Cancel) 与 native InputAction 序号一致。
-    pushInput({ type: type, pointerId: pointerId, x: x, y: y });
-  }
 
   private handleTouch(event: TouchEvent): void {
     let touch: TouchObject | undefined = undefined;
@@ -50,7 +40,6 @@ export struct Joystick {
       this.knobCenterX = touch.x;
       this.knobCenterY = touch.y;
       this.active = true;
-      this.forward(event.type as number, touch.id, touch.x, touch.y);
       return;
     }
 
@@ -64,27 +53,19 @@ export struct Joystick {
       const length: number = Math.sqrt(dx * dx + dy * dy);
       let knobOffsetX: number = 0;
       let knobOffsetY: number = 0;
-      let forwardX: number = this.originX;
-      let forwardY: number = this.originY;
       if (length > 0) {
         const clamped: number = Math.min(length, KNOB_TRAVEL);
         const unitX: number = dx / length;
         const unitY: number = dy / length;
         knobOffsetX = unitX * clamped;
         knobOffsetY = unitY * clamped;
-        // 视觉行程等比放大到 native 半径，旋钮拉满即满速。
-        const nativeLength: number = clamped / KNOB_TRAVEL * NATIVE_RADIUS;
-        forwardX = this.originX + unitX * nativeLength;
-        forwardY = this.originY + unitY * nativeLength;
       }
       this.knobCenterX = this.originX + knobOffsetX;
       this.knobCenterY = this.originY + knobOffsetY;
-      this.forward(event.type as number, touch.id, forwardX, forwardY);
       return;
     }
 
-    // Up / Cancel：转发原始坐标让 native 结束摇杆指针，并隐藏视觉摇杆。
-    this.forward(event.type as number, touch.id, touch.x, touch.y);
+    // Up / Cancel：native XComponent 会结束输入，这里只隐藏视觉摇杆。
     this.trackedPointer = -1;
     this.active = false;
   }
@@ -121,8 +102,8 @@ export struct Joystick {
       .opacity(this.active ? 0 : 1)
       .animation({ duration: 150, curve: Curve.EaseOut })
 
-      // 左半屏触摸面板：捕获移动触摸并经 pushInput 转发给 native。
-      // 右半屏不被覆盖，相机触摸继续透传到 XComponent 原生回调。
+      // 左半屏仅观察触摸以绘制摇杆；透明命中让事件继续到 XComponent。
+      // 右半屏不被覆盖，相机触摸同样由 XComponent native 回调处理。
       Stack()
         .width('50%')
         .height('100%')

@@ -230,6 +230,7 @@ export struct CombatControls {
         .stateEffect(true)
         .position({ x: '100%', y: 14 })
         .markAnchor({ x: 58, y: 0 })
+        .hitTestBehavior(HitTestMode.Block)
         .onClick(() => {
           this.debugOpen = !this.debugOpen;
         })
@@ -240,37 +241,47 @@ export struct CombatControls {
           Row({ space: 4 }) {
             Button('训练').width(36).height(28).fontSize(11).type(ButtonType.Normal)
               .borderRadius(8).backgroundColor('#2A3441').fontColor('#C7D0CE').stateEffect(true)
+              .hitTestBehavior(HitTestMode.Block)
               .onClick(() => { startEncounter(0); })
             Button('兽群').width(36).height(28).fontSize(11).type(ButtonType.Normal)
               .borderRadius(8).backgroundColor('#2A3441').fontColor('#C7D0CE').stateEffect(true)
+              .hitTestBehavior(HitTestMode.Block)
               .onClick(() => { startEncounter(1); })
             Button('混战').width(36).height(28).fontSize(11).type(ButtonType.Normal)
               .borderRadius(8).backgroundColor('#2A3441').fontColor('#C7D0CE').stateEffect(true)
+              .hitTestBehavior(HitTestMode.Block)
               .onClick(() => { startEncounter(2); })
             Button('守卫').width(36).height(28).fontSize(11).type(ButtonType.Normal)
               .borderRadius(8).backgroundColor('#2A3441').fontColor('#C7D0CE').stateEffect(true)
+              .hitTestBehavior(HitTestMode.Block)
               .onClick(() => { startEncounter(3); })
           }
           Row({ space: 4 }) {
             Button('流程').width(36).height(28).fontSize(11).type(ButtonType.Normal)
               .borderRadius(8).backgroundColor('#2A3441').fontColor('#C7D0CE').stateEffect(true)
+              .hitTestBehavior(HitTestMode.Block)
               .onClick(() => { startEncounter(4); })
             Button('首领').width(36).height(28).fontSize(11).type(ButtonType.Normal)
               .borderRadius(8).backgroundColor('#2A3441').fontColor('#C7D0CE').stateEffect(true)
+              .hitTestBehavior(HitTestMode.Block)
               .onClick(() => { startEncounter(5); })
             Button('推进').width(36).height(28).fontSize(11).type(ButtonType.Normal)
               .borderRadius(8).backgroundColor('#2A3441').fontColor('#C7D0CE').stateEffect(true)
+              .hitTestBehavior(HitTestMode.Block)
               .onClick(() => { advanceLevel(); })
           }
           Row({ space: 4 }) {
             Button('补给').width(36).height(28).fontSize(11).type(ButtonType.Normal)
               .borderRadius(8).backgroundColor('#2A3441').fontColor('#C7D0CE').stateEffect(true)
+              .hitTestBehavior(HitTestMode.Block)
               .onClick(() => { useSupply(); })
             Button('重试').width(36).height(28).fontSize(11).type(ButtonType.Normal)
               .borderRadius(8).backgroundColor('#2A3441').fontColor('#C7D0CE').stateEffect(true)
+              .hitTestBehavior(HitTestMode.Block)
               .onClick(() => { retryBoss(); })
             Button('调试').width(36).height(28).fontSize(11).type(ButtonType.Normal)
               .borderRadius(8).backgroundColor('#2A3441').fontColor('#C7D0CE').stateEffect(true)
+              .hitTestBehavior(HitTestMode.Block)
               .onClick(() => { toggleDebugHud(); })
           }
         }
@@ -284,6 +295,6 @@ export struct CombatControls {
     }
     .width('100%')
     .height('100%')
-    .hitTestBehavior(HitTestMode.Transparent)
+    .hitTestBehavior(HitTestMode.None)
   }
 }
