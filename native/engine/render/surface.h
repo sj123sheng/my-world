@@ -215,6 +215,9 @@ struct Surface {
   SkinnedAnimationState trainingTargetAnimationState;
   SkinnedAnimationState bossAnimationState;
   std::unordered_map<uint32_t, SkinnedAnimationState> enemyAnimationStates;
+  // 受击闪白计时器：实体 id → 剩余秒数。由逻辑层从 Damage 事件写入，
+  // 渲染层据此把模型配色向白色提亮，给出“打中了”的即时反馈。
+  std::unordered_map<uint32_t, float> enemyHitFlash;
   bool shader3dReady = false;
   AssetProfile playerAssetProfile = AssetProfile::forModel(ModelKind::Player);
   AssetProfile enemyAssetProfile = AssetProfile::forModel(ModelKind::Enemy);

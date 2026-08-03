@@ -336,6 +336,7 @@ void Loop::resetInput() {
   intent.actions.clear();
   surface.player.moving = false;
   surface.playerHitAnimationSeconds = 0.0f;
+  surface.enemyHitFlash.clear();
   surface.player3dAnimation.action = RenderAnimation::Idle;
   surface.player3dAnimation.hit = false;
   surface.player3dAnimation.moving = false;
@@ -594,6 +595,10 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
        eventIndex < frameCombatEvents_.gameplay.size(); ++eventIndex) {
     const GameplayEvent& event = frameCombatEvents_.gameplay[eventIndex];
     if (event.type != GameplayEventType::Damage) continue;
+    // 非玩家目标受击：启动模型闪白计时器，渲染层据此提亮配色。
+    if (event.target != CombatController::kPlayerId) {
+      surface.enemyHitFlash[static_cast<uint32_t>(event.target)] = 0.15f;
+    }
     const std::optional<Vec2> position = resolveEntityPosition(
         surface, encounter.snapshot(), event.target);
     if (!position.has_value()) continue;
@@ -636,6 +641,16 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   surface.playerHitAnimationSeconds = std::max(
       0.0f, surface.playerHitAnimationSeconds - dtSeconds);
   if (playerHitObserved) surface.playerHitAnimationSeconds = 0.2f;
+  // 受击闪白计时器逐帧衰减并清理到期项。
+  for (auto flash = surface.enemyHitFlash.begin();
+       flash != surface.enemyHitFlash.end();) {
+    flash->second -= dtSeconds;
+    if (flash->second <= 0.0f) {
+      flash = surface.enemyHitFlash.erase(flash);
+    } else {
+      ++flash;
+    }
+  }
   const CombatSnapshot& combatSnapshot = combat.snapshot();
   surface.player3dAnimation.alive = combatSnapshot.playerHp > 0;
   surface.player3dAnimation.action = PlayerRenderAnimation(

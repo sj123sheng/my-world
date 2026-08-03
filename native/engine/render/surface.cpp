@@ -366,6 +366,20 @@ static void applyEntityTint(const Surface& s, const glm::vec3& base) {
   s.shader3d.setEnvironmentTint(glm::vec3(0.0f), 0.0f);
 }
 
+// 受击闪白：按剩余闪白计时把基色向白色插值，给出“打中了”的即时反馈；
+// timer<=0 时返回原色，与升级前等价。
+static glm::vec3 hitFlashTint(const glm::vec3& base, float flashSeconds) {
+  if (flashSeconds <= 0.0f) return base;
+  const float factor = std::min(flashSeconds / 0.15f, 1.0f) * 0.7f;
+  return base + (glm::vec3(1.0f) - base) * factor;
+}
+
+// 查询实体的剩余闪白时间（无记录返回 0）。
+static float hitFlashRemaining(const Surface& s, uint32_t id) {
+  const auto flash = s.enemyHitFlash.find(id);
+  return flash != s.enemyHitFlash.end() ? flash->second : 0.0f;
+}
+
 static void drawMeshAt(Surface& s, const Mesh& mesh,
                        const glm::mat4& vp, const glm::vec3& position,
                        float scale, const glm::vec3& base) {
@@ -938,7 +952,9 @@ static void draw3DPhase(Surface& s) {
             actorModelMatrix(glm::vec3(s.player.x, 0.012f, s.player.y),
                              s.playerAssetProfile.scale,
                              s.player.angle + s.playerAssetProfile.yawOffsetRadians),
-            vp, s.playerAssetProfile.materialTint, "player");
+            vp, hitFlashTint(s.playerAssetProfile.materialTint,
+                             s.playerHitAnimationSeconds),
+            "player");
 
   // 训练假人立方体（按 alive 跳过）。
   drawActor(s, s.enemyModel, s.enemyMesh, s.trainingTargetAnimationState,
@@ -947,7 +963,9 @@ static void draw3DPhase(Surface& s) {
                 glm::vec3(s.trainingTarget.x, 0.011f, s.trainingTarget.y),
                 s.enemyAssetProfile.scale,
                 s.enemyAssetProfile.yawOffsetRadians),
-            vp, s.enemyAssetProfile.materialTint, "training-target");
+            vp, hitFlashTint(s.enemyAssetProfile.materialTint,
+                             hitFlashRemaining(s, s.trainingTarget.id)),
+            "training-target");
 
   // 敌人立方体（按存活状态跳过）。
   s.pruneEnemyAnimationStates();
@@ -957,7 +975,9 @@ static void draw3DPhase(Surface& s) {
               actorModelMatrix(glm::vec3(enemy.x, 0.011f, enemy.y),
                                s.enemyAssetProfile.scale,
                                enemy.angle + s.enemyAssetProfile.yawOffsetRadians),
-              vp, enemyColorByArchetype(enemy.archetype), "enemy");
+              vp, hitFlashTint(enemyColorByArchetype(enemy.archetype),
+                               hitFlashRemaining(s, enemy.id)),
+              "enemy");
   }
 
   // 首领立方体（按阶段配色，击败后跳过）。
@@ -967,7 +987,9 @@ static void draw3DPhase(Surface& s) {
               actorModelMatrix(glm::vec3(s.boss3d.x, 0.02f, s.boss3d.y),
                                s.bossAssetProfile.scale,
                                s.boss3d.angle + s.bossAssetProfile.yawOffsetRadians),
-             vp, bossColorByPhase(s.boss3d.phase), "boss");
+             vp, hitFlashTint(bossColorByPhase(s.boss3d.phase),
+                              s.boss3d.hitAnimationSeconds),
+             "boss");
     drawBossCinematicGeometry(s, vp);
   }
 
