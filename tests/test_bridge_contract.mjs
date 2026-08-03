@@ -13,12 +13,10 @@ const controls = fs.existsSync('entry/src/main/ets/ui/CombatControls.ets')
 const joystick = fs.existsSync('entry/src/main/ets/ui/Joystick.ets')
   ? fs.readFileSync('entry/src/main/ets/ui/Joystick.ets', 'utf8') : '';
 
-assert.match(joystick, /import \{ pushInput \} from ['"]\.\.\/napi\/Bridge['"];/,
-  'Joystick must import pushInput from the bridge');
-assert.match(joystick, /pushInput\(\{ type: type, pointerId: pointerId, x: x, y: y \}\)/,
-  'Joystick must forward raw touch coordinates via pushInput');
-assert.match(joystick, /NATIVE_RADIUS: number = 100;/,
-  'Joystick must scale to the native VirtualJoystick radius');
+assert.doesNotMatch(joystick, /\bpushInput\b/,
+  'Visual Joystick must not duplicate the native XComponent input stream');
+assert.match(joystick, /\.hitTestBehavior\(HitTestMode\.Transparent\)/,
+  'Visual Joystick must let the XComponent remain the only production input source');
 assert.match(page, /import \{ Joystick \} from ['"]\.\.\/ui\/Joystick['"];/,
   'GamePage must import the Joystick component');
 assert.match(page, /Joystick\(\)/, 'GamePage must mount the Joystick layer');
@@ -28,6 +26,9 @@ assert.match(controls, /@Prop ultimateWindowMs: number = 0;/,
   'CombatControls must accept ultimate window prop');
 assert.match(page, /CombatControls\(\{[\s\S]*?radianceCooldownMs: this\.radianceCooldownMs/,
   'GamePage must feed cooldown props into CombatControls');
+assert.doesNotMatch(page,
+  /CombatControls\(\{[\s\S]*?ultimateWindowMs:\s*this\.ultimateWindowMs\s*\}\)\s*\.hitTestBehavior\(HitTestMode\.Transparent\)/,
+  'GamePage must not override button-level blocking with an outer transparent hit-test mode');
 
 const buttonActions = [['普攻', 0], ['闪避', 1], ['辉印', 2], ['脉流', 3], ['蚀质', 4], ['终结', 5]];
 for (const [label, type] of buttonActions) {
@@ -35,6 +36,19 @@ for (const [label, type] of buttonActions) {
     new RegExp(`Button\\(['"]${label}['"]\\)(?:(?!Button\\().)*pushAction\\(${type}\\)`, 's'),
     `CombatControls must pair ${label} with pushAction(${type})`);
 }
+const blockingButtons = [
+  '普攻', '闪避', '辉印', '脉流', '蚀质', '终结', '☰',
+  '训练', '兽群', '混战', '守卫', '流程', '首领', '推进', '补给', '重试', '调试'
+];
+for (const label of blockingButtons) {
+  assert.match(controls,
+    new RegExp(`Button\\(['"]${label}['"]\\)(?:(?!Button\\().)*` +
+      `\\.hitTestBehavior\\(HitTestMode\\.Block\\)(?:(?!Button\\().)*\\.onClick`, 's'),
+    `${label} must block its pointer before invoking the action`);
+}
+assert.match(controls,
+  /\.hitTestBehavior\(HitTestMode\.None\)\s*\n\s*}\s*\n}/,
+  'CombatControls root must skip itself while preserving child button hit testing');
 assert.match(bridge, /export const pushAction/, 'Bridge must export pushAction');
 assert.match(bridge, /export const startEncounter/, 'Bridge must export startEncounter');
 assert.match(declarations, /startEncounter: \(mode: number\) => boolean;/,

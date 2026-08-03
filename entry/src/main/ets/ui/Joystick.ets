@@ -91,7 +91,7 @@ export struct Joystick {
             .fontSize(10)
             .letterSpacing(2)
             .fontColor('rgba(229, 236, 234, 0.35)')
-            .fontWeight(FontWeight.Light)
+            .fontWeight(FontWeight.Lighter)
         }
         .alignItems(HorizontalAlign.Center)
         .margin({ left: 52, bottom: 168 })

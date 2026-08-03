@@ -21,8 +21,9 @@ class Camera3D {
   glm::vec3 up{0.0f, 1.0f, 0.0f};
 
   // 用球坐标在 target 周围计算 position。
-  // position = target + distance * (sin(yaw)*cos(pitch), sin(pitch), -cos(yaw)*cos(pitch))
-  // yaw 增大时相机向目标右侧轨道，与 2D ThirdPersonCamera 方向约定一致。
+  // position = target + distance * (-sin(yaw)*cos(pitch),
+  //                                sin(pitch), -cos(yaw)*cos(pitch))
+  // 相机位于水平前向的反方向，与移动和二维投影共享同一 yaw 约定。
   void follow(glm::vec3 targetPos, float yaw, float pitch, float distance);
 
   // 返回 view 矩阵（glm::lookAt(position, target, up)）。

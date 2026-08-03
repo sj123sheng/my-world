@@ -1,6 +1,7 @@
 #pragma once
 
 #include "native/engine/math/vec2.h"
+#include "native/engine/math/camera_ground_basis.h"
 
 #include <cmath>
 
@@ -23,12 +24,15 @@ class CameraRenderState {
   float distance() const { return distance_; }
 
   Vec2 worldVectorToView(Vec2 worldVector) const {
-    const float cosine = std::cos(yaw_);
-    const float sine = std::sin(yaw_);
+    const CameraGroundBasis basis = CameraGroundBasisForYaw(yaw_);
     const float zoom = neutralDistance_ / distance_;
     const float pitchScale = std::cos(pitch_) / std::cos(neutralPitch_);
-    const float rotatedX = cosine * worldVector.x - sine * worldVector.y;
-    const float rotatedY = sine * worldVector.x + cosine * worldVector.y;
+    // View 使用左上为原点：x 向右为正，y 向下为正。因此相机前方
+    // 在 view 中是负 y，之后转 NDC 时才重新成为正 y。
+    const float rotatedX = basis.right.x * worldVector.x +
+                           basis.right.y * worldVector.y;
+    const float rotatedY = -(basis.forward.x * worldVector.x +
+                             basis.forward.y * worldVector.y);
     return {rotatedX * zoom, rotatedY * zoom * pitchScale};
   }
 

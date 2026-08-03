@@ -1,5 +1,7 @@
 #include "native/gameplay/player/player_controller.h"
 
+#include "native/engine/math/camera_ground_basis.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -33,21 +35,28 @@ void PlayerController::update(Player& player, Vec2 move, float cameraYaw,
   Vec2 targetVelocity{};
   if (move.finite() && move.length() > 0.0f) {
     move = ClampLength(move, 1.0f);
-    const Vec2 cameraForward{std::sin(cameraYaw), std::cos(cameraYaw)};
-    const Vec2 cameraRight{std::cos(cameraYaw), -std::sin(cameraYaw)};
+    const CameraGroundBasis cameraBasis =
+        CameraGroundBasisForYaw(cameraYaw);
     targetVelocity =
-        (cameraRight * move.x + cameraForward * move.y) * config_.speed;
+        (cameraBasis.right * move.x + cameraBasis.forward * move.y) *
+        config_.speed;
   }
 
-  // 指数平滑：输入时加速逼近目标速度，松开后快速衰减。
-  // 启动、转向、停止均连续，消除速度突跳带来的生硬感。
+  // 指数平滑速度大小，但有输入时立即采用当前目标方向。
+  // 这样既保留起步/停止的柔和感，也避免旧速度把角色继续推向错误方向。
   const bool hasInput = targetVelocity.length() > 0.0f;
   const float sharpness =
       hasInput ? std::max(0.0f, config_.accelSharpness)
                : std::max(0.0f, config_.decelSharpness);
   const float factor = 1.0f - std::exp(-sharpness * dtSeconds);
-  player.velocity = player.velocity +
-                    (targetVelocity - player.velocity) * factor;
+  if (hasInput) {
+    const float targetSpeed = targetVelocity.length();
+    const float currentSpeed = player.velocity.length();
+    const float speed = currentSpeed + (targetSpeed - currentSpeed) * factor;
+    player.velocity = targetVelocity * (speed / targetSpeed);
+  } else {
+    player.velocity = player.velocity * (1.0f - factor);
+  }
 
   if (player.velocity.length() < kStopSpeedThreshold) {
     player.velocity = {};
@@ -59,8 +68,10 @@ void PlayerController::update(Player& player, Vec2 move, float cameraYaw,
   player.y = clamp01(player.y + player.velocity.y * dtSeconds);
   player.moving = true;
 
+  // Player::angle 是绕 3D Y 轴的 yaw。模型局部 +Z 为前方，因此世界
+  // (x, z) 速度对应 atan2(x, z)，不是二维数学角 atan2(z, x)。
   const float targetAngle =
-      std::atan2(player.velocity.y, player.velocity.x);
+      std::atan2(player.velocity.x, player.velocity.y);
   const float maxTurn = std::max(0.0f, config_.turnSpeed * dtSeconds);
   const float turn = std::clamp(shortestAngleDelta(player.angle, targetAngle),
                                 -maxTurn, maxTurn);

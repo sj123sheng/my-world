@@ -74,6 +74,30 @@ int main() {
   assert(angleDelta > 0.0f);
   assert(angleDelta < 1.0f);  // 单帧不会瞬切 90 度
 
+  // 输入方向必须立即决定实际位移方向：反向输入后不能继续沿旧方向滑行。
+  player = {};
+  for (int frame = 0; frame < 25; ++frame) {
+    controller.update(player, {0, 1}, 0.0f, 0.016f);
+  }
+  const float yBeforeReverse = player.y;
+  controller.update(player, {0, -1}, 0.0f, 0.016f);
+  assert(player.y < yBeforeReverse);
+  assert(player.velocity.y < 0.0f);
+
+  // angle 使用 3D 绕 Y 轴 yaw：模型局部 +Z 前轴旋转后必须与世界速度一致。
+  const Vec2 directions[] = {{0, 1}, {1, 0}, {0, -1}, {-1, 0},
+                             {0.6f, 0.8f}};
+  PlayerController fastTurnController({1.0f, 1000.0f, 25.0f, 18.0f});
+  for (const Vec2 direction : directions) {
+    player = {};
+    fastTurnController.update(player, direction, 0.0f, 0.016f);
+    const Vec2 modelForward{std::sin(player.angle), std::cos(player.angle)};
+    const Vec2 velocityDirection =
+        player.velocity * (1.0f / player.velocity.length());
+    assert(close(modelForward.x, velocityDirection.x));
+    assert(close(modelForward.y, velocityDirection.y));
+  }
+
   // 无效输入防护。
   player = {};
   controller.update(player, {}, 1.5707963f, 0.25f);

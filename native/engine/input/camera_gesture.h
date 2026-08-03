@@ -3,8 +3,8 @@
 #include <cstdint>
 
 struct CameraGestureConfig {
-  float sensitivityX = 0.01f;
-  float sensitivityY = 0.01f;
+  float sensitivityX = 0.0035f;
+  float sensitivityY = 0.0035f;
 };
 
 class CameraGesture {

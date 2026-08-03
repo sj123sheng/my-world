@@ -14,8 +14,9 @@ void testProfilesProduceUsableActorTransforms() {
   const AssetProfile enemy = AssetProfile::forModel(ModelKind::Enemy);
   const AssetProfile boss = AssetProfile::forModel(ModelKind::Boss);
 
-  assert(player.scale > 0.0f);
-  assert(enemy.scale > 0.0f);
+  assert(nearlyEqual(player.scale, 0.025f / 3.0f));
+  assert(nearlyEqual(enemy.scale, 0.022f / 3.0f));
+  assert(nearlyEqual(boss.scale, 0.045f / 3.0f));
   assert(boss.scale > player.scale);
   assert(!nearlyEqual(boss.yawOffsetRadians, 0.0f));
 }

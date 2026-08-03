@@ -1,5 +1,7 @@
 #include "native/gameplay/targeting/soft_targeting.h"
 
+#include "native/engine/math/camera_ground_basis.h"
+
 #include <algorithm>
 #include <cmath>
 #include <tuple>
@@ -29,7 +31,7 @@ std::optional<TargetSelection> SoftTargeting::select(
     return std::nullopt;
   }
 
-  const Vec2 cameraForward{std::sin(cameraYaw), std::cos(cameraYaw)};
+  const Vec2 cameraForward = CameraGroundBasisForYaw(cameraYaw).forward;
   std::optional<TargetSelection> best;
   std::optional<TargetSelection> preferred;
   std::unordered_map<int32_t, std::size_t> idCounts;

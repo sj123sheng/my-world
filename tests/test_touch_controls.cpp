@@ -83,6 +83,13 @@ int main() {
   assert(invalidJoystick.value().finite());
   assert(invalidJoystick.value() == Vec2{});
 
+  CameraGesture defaultCamera(CameraGestureConfig{});
+  defaultCamera.begin(20, {800.0f, 200.0f});
+  defaultCamera.move(20, {900.0f, 150.0f});
+  const Vec2 defaultDelta = defaultCamera.consumeDelta();
+  assert(std::abs(defaultDelta.x - 0.35f) < 0.0001f);
+  assert(std::abs(defaultDelta.y + 0.175f) < 0.0001f);
+
   CameraGesture camera({0.01f, 0.01f});
   camera.begin(2, {800, 200});
   camera.move(2, {820, 190});

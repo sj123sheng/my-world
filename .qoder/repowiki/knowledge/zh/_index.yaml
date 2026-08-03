@@ -3,230 +3,23 @@ schema_version: 1
 locale: zh-CN
 branch: master
 nodes_managed: true
-exported_at: "2026-08-02T04:17:59Z"
+exported_at: "2026-08-03T09:32:10Z"
 modules:
     "":
-        dir_name: Ethelan 游戏 HarmonyOS HAP 工程根
-        title: Ethelan 游戏 HarmonyOS HAP 工程根
-        scope:
-            - .gitignore
-            - build-profile.json5
-            - hvigorfile.ts
-            - oh-package.json5
-            - AppScope/
-            - assets/
-            - config/
-            - docs/
-            - automation/
-            - README.md
+        dir_name: 艾瑟兰（Ethelan）HarmonyOS 开放世界动作 RPG 工程
+        title: 艾瑟兰（Ethelan）HarmonyOS 开放世界动作 RPG 工程
+        scope: []
         source_files: []
         children:
-            - entry_app
-            - native_engine
-            - native_gameplay
-            - native_platform
-            - tests
+            - appanalyzer
         depends_on: []
         related_to: []
-    entry_app:
-        dir_name: Ethelan 游戏 HarmonyOS Entry 模块（ArkUI + NAPI 桥接）
-        title: Ethelan 游戏 HarmonyOS Entry 模块（ArkUI + NAPI 桥接）
+    appanalyzer:
+        dir_name: AppAnalyzer 测试卡片配置
+        title: AppAnalyzer 测试卡片配置
         scope:
-            - entry/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: native_engine/core_loop
-            - path: native_platform
-            - path: tests
-    native_engine:
-        dir_name: 原生游戏引擎核心（native_engine）
-        title: 原生游戏引擎核心（native/engine）
-        scope:
-            - native/engine/
-        source_files: []
-        children:
-            - native_engine/core_loop
-            - native_engine/input_system
-            - native_engine/math_glm
-            - native_engine/presentation_vfx
-            - native_engine/render_pipeline
-            - native_engine/resource_manager
-        depends_on: []
-        related_to: []
-    native_engine/core_loop:
-        dir_name: 游戏核心循环与帧驱动
-        title: 游戏核心循环与帧驱动
-        scope:
-            - native/engine/core/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: entry_app
-            - path: native_engine/input_system
-            - path: native_engine/presentation_vfx
-            - path: native_engine/render_pipeline
-            - path: native_gameplay/ai
-            - path: native_gameplay/combat
-            - path: native_gameplay/flow_and_targeting
-            - path: native_platform
-            - path: tests
-    native_engine/input_system:
-        dir_name: 输入系统与触控手势处理
-        title: 输入系统与触控手势处理
-        scope:
-            - native/engine/input/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: native_engine/core_loop
-    native_engine/math_glm:
-        dir_name: GLM 数学库（OpenGL Mathematics）
-        title: GLM 数学库（OpenGL Mathematics）
-        scope:
-            - native/engine/math/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: native_engine/render_pipeline
-    native_engine/presentation_vfx:
-        dir_name: 战斗视觉特效与性能自适应系统
-        title: 战斗视觉特效与性能自适应系统
-        scope:
-            - native/engine/presentation/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: native_engine/core_loop
-            - path: native_engine/render_pipeline
-    native_engine/render_pipeline:
-        dir_name: OpenGL ES 渲染管线与资源生命周期管理
-        title: OpenGL ES 渲染管线与资源生命周期管理
-        scope:
-            - native/engine/render/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: native_engine/core_loop
-            - path: native_engine/math_glm
-            - path: native_engine/presentation_vfx
-            - path: native_engine/resource_manager
-    native_engine/resource_manager:
-        dir_name: 资源清单加载与存档读写
-        title: 资源清单加载与存档读写
-        scope:
-            - native/engine/resource/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: native_engine/render_pipeline
-    native_gameplay:
-        dir_name: 原生战斗玩法层（Gameplay）
-        title: 原生战斗玩法层（Gameplay）
-        scope:
-            - native/gameplay/
-        source_files: []
-        children:
-            - native_gameplay/ai
-            - native_gameplay/combat
-            - native_gameplay/entities
-            - native_gameplay/flow_and_targeting
-            - native_gameplay/growth
-            - native_gameplay/player
-        depends_on: []
-        related_to: []
-    native_gameplay/ai:
-        dir_name: 敌方 AI 感知-决策-战术-执行管线
-        title: 敌方 AI 感知-决策-战术-执行管线
-        scope:
-            - native/gameplay/ai/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: native_engine/core_loop
-            - path: native_gameplay/entities
-    native_gameplay/combat:
-        dir_name: 战斗系统核心（动作状态机_伤害解析_源反应_训练脉冲）
-        title: 战斗系统核心（动作状态机/伤害解析/源反应/训练脉冲）
-        scope:
-            - native/gameplay/combat/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: native_engine/core_loop
-            - path: native_gameplay/entities
-            - path: native_gameplay/player
-    native_gameplay/entities:
-        dir_name: Boss 与敌人实体状态管理
-        title: Boss 与敌人实体状态管理
-        scope:
-            - native/gameplay/entities/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: native_gameplay/ai
-            - path: native_gameplay/combat
-    native_gameplay/flow_and_targeting:
-        dir_name: 演示流程导演与软目标选择
-        title: 演示流程导演与软目标选择
-        scope:
-            - native/gameplay/flow/
-            - native/gameplay/targeting/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: native_engine/core_loop
-            - path: native_gameplay/player
-    native_gameplay/growth:
-        dir_name: 角色成长系统（阵营与遗物）
-        title: 角色成长系统（阵营与遗物）
-        scope:
-            - native/gameplay/growth/
+            - .appanalyzer/appanalyzerCardConfig/
         source_files: []
         children: []
         depends_on: []
         related_to: []
-    native_gameplay/player:
-        dir_name: 玩家角色与控制器（Player & Character）
-        title: 玩家角色与控制器（Player & Character）
-        scope:
-            - native/gameplay/player/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: native_gameplay/combat
-            - path: native_gameplay/flow_and_targeting
-    native_platform:
-        dir_name: HarmonyOS 平台适配层
-        title: HarmonyOS 平台适配层
-        scope:
-            - native/platform/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: entry_app
-            - path: native_engine/core_loop
-    tests:
-        dir_name: 引擎子系统单测与 ArkTS-N-API 契约测试集
-        title: 引擎子系统单测与 ArkTS-N-API 契约测试集
-        scope:
-            - tests/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: entry_app
-            - path: native_engine/core_loop

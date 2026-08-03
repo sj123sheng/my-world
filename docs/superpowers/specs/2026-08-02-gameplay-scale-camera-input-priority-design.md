@@ -29,8 +29,10 @@
 
 ### 按钮输入优先级
 
-XComponent 仍是移动和相机的唯一生产输入源。`CombatControls` 根容器和按钮簇空白区保持
-`HitTestMode.Transparent`，以便右半屏未覆盖按钮的区域仍可拖动视角。
+XComponent 仍是移动和相机的唯一生产输入源。`CombatControls` 全屏根容器使用
+`HitTestMode.None`，自身不进入响应链但允许子按钮正常命中；按钮簇空白区和冷却环保持
+`HitTestMode.Transparent`，以便右半屏未覆盖按钮的区域仍可拖动视角。`GamePage` 不得在
+`CombatControls` 外层再追加 `Transparent`，避免覆盖子按钮的阻断语义。
 
 每个真实可交互按钮的命中节点显式使用 `HitTestMode.Block`，包括普攻、闪避、三个源技能、
 终结技以及调试菜单中的按钮。当按键命中时，该 pointer 不再下传给 XComponent；另一根手指已在

@@ -6,6 +6,7 @@ struct Player {
   float x = 0.5f;
   float y = 0.5f;
   float size = 0.05f;
+  // 绕 3D Y 轴的 yaw；0 表示模型局部 +Z / 逻辑世界 +y。
   float angle = 0.0f;
   bool moving = false;
   // 当前速度（世界单位/秒），由控制器平滑驱动，

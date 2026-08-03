@@ -1,5 +1,7 @@
 #include "camera.h"
 
+#include "native/engine/math/camera_ground_basis.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -110,8 +112,8 @@ Vec2 ThirdPersonCamera::target() const { return target_; }
 
 Vec2 ThirdPersonCamera::position() const {
   const float projectedDistance = distance_ * std::cos(pitch_);
-  return {target_.x - std::sin(yaw_) * projectedDistance,
-          target_.y - std::cos(yaw_) * projectedDistance};
+  const CameraGroundBasis basis = CameraGroundBasisForYaw(yaw_);
+  return target_ - basis.forward * projectedDistance;
 }
 
 CameraRenderState ThirdPersonCamera::renderState() const {

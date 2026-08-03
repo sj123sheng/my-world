@@ -246,7 +246,8 @@ struct GamePage {
         .hitTestBehavior(HitTestMode.Transparent)
 
       Hud({ hp: this.hp, poise: this.poise, x: this.posX, y: this.posY,
-        fps: this.fps, moving: this.moving, targetDist: this.targetDist,
+        fps: this.fps, moving: this.moving, moveX: this.moveX, moveY: this.moveY,
+        cameraYaw: this.cameraYaw, targetDist: this.targetDist,
         stamina: this.stamina, comboSegment: this.comboSegment,
         invulnerable: this.invulnerable, insightMs: this.insightMs,
         resonance: this.resonance, targetHp: this.targetHp,
@@ -281,7 +282,6 @@ struct GamePage {
         currentCooldownTotalMs: this.currentCooldownTotalMs,
         corruptionCooldownTotalMs: this.corruptionCooldownTotalMs,
         ultimateWindowMs: this.ultimateWindowMs })
-        .hitTestBehavior(HitTestMode.Transparent)
 
       HitFeedback({ hp: this.hp })
         .hitTestBehavior(HitTestMode.Transparent)

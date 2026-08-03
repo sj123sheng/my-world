@@ -278,7 +278,7 @@ static void drawPlayerGL(const Surface& s) {
   drawSolidEllipseGL(s, x, y, radii, 24, 0.18f, 0.65f, 0.95f, 1.0f);
   drawSolidEllipseGL(s, x, y, radii * 0.75f, 20, 0.25f, 0.75f, 1.0f,
                      1.0f);
-  const Vec2 worldFacing{std::cos(s.player.angle), std::sin(s.player.angle)};
+  const Vec2 worldFacing{std::sin(s.player.angle), std::cos(s.player.angle)};
   const Vec2 viewFacing =
       s.cameraRenderState.worldVectorToView(worldFacing);
   const float viewAngle = std::atan2(viewFacing.y, viewFacing.x);
@@ -1119,7 +1119,7 @@ static void drawPlayerSW(const Surface& s, Canvas& c) {
   drawSolidEllipseSW(s, c, x, y, radii, 0.18f, 0.65f, 0.95f, 1.0f);
   drawSolidEllipseSW(s, c, x, y, radii * 0.75f, 0.25f, 0.75f, 1.0f,
                      1.0f);
-  const Vec2 worldFacing{std::cos(s.player.angle), std::sin(s.player.angle)};
+  const Vec2 worldFacing{std::sin(s.player.angle), std::cos(s.player.angle)};
   const Vec2 viewFacing =
       s.cameraRenderState.worldVectorToView(worldFacing);
   const float viewAngle = std::atan2(viewFacing.y, viewFacing.x);

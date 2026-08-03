@@ -85,9 +85,8 @@ void publish3DEncounterState(Surface& surface,
                                              : RenderAnimation::Idle;
     state.animation.hit = enemy.hit;
     state.animation.moving = enemy.moving;
-    // 从敌人 AI 的 facing 向量计算 yaw 弧度，用于 3D 模型旋转。
-    // facing 是归一化的 2D 向量，指向玩家方向；atan2(y, x) 给出标准数学角。
-    state.angle = std::atan2(enemy.facing.y, enemy.facing.x);
+    // 模型局部 +Z 为前方，逻辑 (x, y) 映射到 3D (x, z)。
+    state.angle = std::atan2(enemy.facing.x, enemy.facing.y);
     surface.enemies3d.push_back(state);
   }
 
@@ -116,7 +115,7 @@ void publish3DEncounterState(Surface& surface,
   const float bossDx = surface.player.x - surface.boss3d.x;
   const float bossDy = surface.player.y - surface.boss3d.y;
   if (bossDx != 0.0f || bossDy != 0.0f) {
-    surface.boss3d.angle = std::atan2(bossDy, bossDx);
+    surface.boss3d.angle = std::atan2(bossDx, bossDy);
   }
 }
 

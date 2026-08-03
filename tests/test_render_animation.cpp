@@ -288,8 +288,8 @@ void testEncounterEnemySnapshotHasFacingField() {
   assert(enemy.facing.y == 0.0f);
 
   enemy.facing = {0.6f, 0.8f};
-  const float angle = std::atan2(enemy.facing.y, enemy.facing.x);
-  assert(std::abs(angle - 0.927295218f) < 0.001f);
+  const float angle = std::atan2(enemy.facing.x, enemy.facing.y);
+  assert(std::abs(angle - 0.643501109f) < 0.001f);
 }
 
 void testEncounterEnemySnapshotEqualityIncludesFacing() {

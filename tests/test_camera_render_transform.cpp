@@ -20,27 +20,27 @@ int main() {
   const Vec2 worldPoint{0.75f, 0.65f};
   const CameraRenderState neutral({0.5f, 0.5f}, 0.0f, 0.45f, 0.35f,
                                   0.45f, 0.35f);
-  const Vec2 unchanged = neutral.worldToView(worldPoint);
-  assert(close(unchanged.x, worldPoint.x));
-  assert(close(unchanged.y, worldPoint.y));
+  const Vec2 neutralPoint = neutral.worldToView(worldPoint);
+  assert(close(neutralPoint.x, 1.0f - worldPoint.x));
+  assert(close(neutralPoint.y, 1.0f - worldPoint.y));
 
   const CameraRenderState yawed({0.5f, 0.5f}, 1.57079632679f, 0.45f,
                                 0.35f, 0.45f, 0.35f);
   const Vec2 yawedPoint = yawed.worldToView(worldPoint);
-  assert(close(yawedPoint.x, 0.35f));
-  assert(close(yawedPoint.y, 0.75f));
+  assert(close(yawedPoint.x, 0.65f));
+  assert(close(yawedPoint.y, 0.25f));
 
   const CameraRenderState pitched({0.5f, 0.5f}, 0.0f, 0.0f, 0.35f,
                                   0.45f, 0.35f);
   const Vec2 pitchedPoint = pitched.worldToView(worldPoint);
-  assert(close(pitchedPoint.x, worldPoint.x));
-  assert(pitchedPoint.y > worldPoint.y);
+  assert(close(pitchedPoint.x, 1.0f - worldPoint.x));
+  assert(pitchedPoint.y < neutralPoint.y);
 
   const CameraRenderState distant({0.5f, 0.5f}, 0.0f, 0.45f, 0.6f,
                                   0.45f, 0.35f);
   const Vec2 distantPoint = distant.worldToView(worldPoint);
-  assert(distantPoint.x > 0.5f && distantPoint.x < worldPoint.x);
-  assert(distantPoint.y > 0.5f && distantPoint.y < worldPoint.y);
+  assert(distantPoint.x > neutralPoint.x && distantPoint.x < 0.5f);
+  assert(distantPoint.y > neutralPoint.y && distantPoint.y < 0.5f);
 
   const Vec2 size = yawed.worldSizeToView({0.1f, 0.2f});
   assert(close(size.x, 0.1f));
@@ -78,11 +78,11 @@ int main() {
         state.worldToView({player.x, player.y}),
         state.worldToView(previous));
     assert(close(viewMove.x, move.x * 0.016f));
-    assert(close(viewMove.y, move.y * 0.016f));
+    assert(close(viewMove.y, -move.y * 0.016f));
 
-    const Vec2 worldFacing{std::cos(player.angle), std::sin(player.angle)};
+    const Vec2 worldFacing{std::sin(player.angle), std::cos(player.angle)};
     const Vec2 viewFacing = state.worldVectorToView(worldFacing);
-    assert(close(std::atan2(viewFacing.y, viewFacing.x),
+    assert(close(std::atan2(-viewFacing.y, viewFacing.x),
                  std::atan2(move.y, move.x)));
 
     const Vec2 forward{std::sin(yaw), std::cos(yaw)};
@@ -94,6 +94,6 @@ int main() {
     assert(selected && selected->id == 1);
     const Vec2 forwardInView = state.worldToView(forwardCandidate);
     assert(close(forwardInView.x, 0.5f));
-    assert(forwardInView.y > 0.5f);
+    assert(forwardInView.y < 0.5f);
   }
 }

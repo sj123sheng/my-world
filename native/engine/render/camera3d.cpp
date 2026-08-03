@@ -1,5 +1,7 @@
 #include "native/engine/render/camera3d.h"
 
+#include "native/engine/math/camera_ground_basis.h"
+
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/geometric.hpp>
 
@@ -9,12 +11,13 @@ void Camera3D::follow(glm::vec3 targetPos, float yaw, float pitch, float distanc
   target = targetPos;
   const float cp = std::cos(pitch);
   const float sp = std::sin(pitch);
-  const float cy = std::cos(yaw);
-  const float sy = std::sin(yaw);
-  // 轨道偏移与 2D ThirdPersonCamera 约定一致：
-  // 屏幕上方 = 世界 {sin(yaw), cos(yaw)}，屏幕右方 = {cos(yaw), -sin(yaw)}。
-  // 相机位于目标身后：backward = -forward，右移相机时 yaw 增大（标准第三人称）。
-  position = targetPos + glm::vec3(sy * cp, sp, -cy * cp) * distance;
+  const CameraGroundBasis basis = CameraGroundBasisForYaw(yaw);
+  // 相机位于水平前向的反方向。逻辑 y 映射到 3D z；右手坐标系下
+  // 屏幕右向为 {-cos(yaw), sin(yaw)}。
+  position = targetPos +
+             glm::vec3(-basis.forward.x * cp, sp,
+                       -basis.forward.y * cp) *
+                 distance;
 }
 
 glm::mat4 Camera3D::viewMatrix() const {

@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: appanalyzer
+title: AppAnalyzer 测试卡片配置
+scope:
+    - .appanalyzer/appanalyzerCardConfig/
+source_files: []
+depends_on: []
+related_to: []
