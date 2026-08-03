@@ -59,6 +59,10 @@ class Shader3D {
   // 非平台侧为空操作。
   void setSpecular(float strength, float shininess) const;
 
+  // 设置指数深度雾：uFogColor/uFogDensity，随片段到相机距离混合雾色。
+  // density=0 时与升级前等价。非平台侧为空操作。
+  void setFog(const glm::vec3& color, float density) const;
+
   void setEnvironmentTint(const glm::vec3& tint, float strength) const;
 
   // 上传骨骼调色板。空调色板或超过 64 个矩阵时拒绝启用蒙皮绘制。
@@ -99,5 +103,7 @@ class Shader3D {
   GLint locRimStrength_ = -1;
   GLint locSpecularStrength_ = -1;
   GLint locShininess_ = -1;
+  GLint locFogColor_ = -1;
+  GLint locFogDensity_ = -1;
 #endif
 };

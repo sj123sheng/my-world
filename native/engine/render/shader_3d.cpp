@@ -67,6 +67,8 @@ namespace {
     "uniform float uRimStrength;\n"
     "uniform float uSpecularStrength;\n"
     "uniform float uShininess;\n"
+    "uniform vec3 uFogColor;\n"
+    "uniform float uFogDensity;\n"
     "in vec3 vNormal;\n"
     "in vec2 vUV;\n"
     "in vec3 vWorldPos;\n"
@@ -85,6 +87,9 @@ namespace {
     "  float rim = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 3.0) * uRimStrength;\n"
     "  lit += uRimColor * rim;\n"
     "  vec3 finalColor = mix(lit, uEnvironmentTint, uEnvironmentTintStrength);\n"
+    "  float fogDistance = length(uCameraPos - vWorldPos);\n"
+    "  float fogFactor = clamp(1.0 - exp(-uFogDensity * fogDistance), 0.0, 1.0);\n"
+    "  finalColor = mix(finalColor, uFogColor, fogFactor);\n"
     "  fragColor = vec4(finalColor, baseColor.a * uAlpha);\n"
     "}\n";
 
@@ -175,13 +180,16 @@ bool Shader3D::init() {
   locRimStrength_ = glGetUniformLocation(program_, "uRimStrength");
   locSpecularStrength_ = glGetUniformLocation(program_, "uSpecularStrength");
   locShininess_ = glGetUniformLocation(program_, "uShininess");
+  locFogColor_ = glGetUniformLocation(program_, "uFogColor");
+  locFogDensity_ = glGetUniformLocation(program_, "uFogDensity");
   // uniform 默认值为 0：显式把 uAlpha 初置为 1，避免未调用 setAlpha
-  // 的既有绘制路径被透明化；轮廓光/高光强度置 0，保持未配置时与升级前等价。
+  // 的既有绘制路径被透明化；轮廓光/高光/雾强度置 0，保持未配置时与升级前等价。
   glUseProgram(program_);
   glUniform1f(locAlpha_, 1.0f);
   glUniform1f(locRimStrength_, 0.0f);
   glUniform1f(locSpecularStrength_, 0.0f);
   glUniform1f(locShininess_, 32.0f);
+  glUniform1f(locFogDensity_, 0.0f);
   glUseProgram(0);
   LOGI_3D("3D program linked: mvp=%{public}d model=%{public}d lightDir=%{public}d "
           "lightColor=%{public}d ambient=%{public}d hasTexture=%{public}d texture=%{public}d",
@@ -215,6 +223,8 @@ void Shader3D::destroy() {
     locRimStrength_ = -1;
     locSpecularStrength_ = -1;
     locShininess_ = -1;
+    locFogColor_ = -1;
+    locFogDensity_ = -1;
   }
 #endif
   skinPaletteValid_ = false;
@@ -243,6 +253,8 @@ void Shader3D::abandonGpuResources() {
   locRimStrength_ = -1;
   locSpecularStrength_ = -1;
   locShininess_ = -1;
+  locFogColor_ = -1;
+  locFogDensity_ = -1;
 #endif
 }
 
@@ -363,6 +375,20 @@ void Shader3D::setSpecular(float strength, float shininess) const {
 #else
   (void)strength;
   (void)shininess;
+#endif
+}
+
+void Shader3D::setFog(const glm::vec3& color, float density) const {
+#ifdef OHOS_PLATFORM
+  if (locFogColor_ != -1) {
+    glUniform3fv(locFogColor_, 1, &color[0]);
+  }
+  if (locFogDensity_ != -1) {
+    glUniform1f(locFogDensity_, density);
+  }
+#else
+  (void)color;
+  (void)density;
 #endif
 }
 

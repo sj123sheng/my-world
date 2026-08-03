@@ -80,6 +80,9 @@ Mesh createSphere(float radius, uint32_t segments, uint32_t rings);
 // 生成圆锥网格：底面圆心在原点，顶点朝 +Y，高度 height。
 Mesh createCone(float radius, float height, uint32_t segments);
 
+// 生成朝上的圆形盘（XZ 平面，y=0），用于角色接地接触阴影。
+Mesh createDisk(float radius, uint32_t segments);
+
 // 生成胶囊网格：沿 Y 轴，圆柱段高 height，两端为半径 radius 的半球。
 Mesh createCapsule(float radius, float height, uint32_t segments,
                    uint32_t rings);

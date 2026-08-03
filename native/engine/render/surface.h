@@ -176,6 +176,10 @@ struct Surface {
   TargetMarkerRenderState targetMarker3d;
   Mesh targetRingMesh;
 
+  // ---- 接地接触阴影字段 ----
+  // 单位圆盘（半径 0.5，法线 +Y），由 model 矩阵缩放到角色脚下尺寸。
+  Mesh shadowMesh;
+
   // ---- 敌人血条字段 ----
   std::vector<EnemyHpBarRenderState> enemyHpBars3d;
   Mesh hpBarQuadMesh;  // 单位四边形（XY 平面，法线 +Z）

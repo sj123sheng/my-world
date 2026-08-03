@@ -462,6 +462,26 @@ static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
   if (actor.alive) fallback.draw();
 }
 
+// 接地接触阴影：角色脚下平铺半透明黑色圆盘，提供接地感，
+// 代价远低于阴影贴图。调用方需已开启混合、关闭深度写入，
+// 并把轮廓光/高光/alpha 设为阴影状态。
+static void drawContactShadow(Surface& s, const glm::mat4& vp, float x, float z,
+                              float radius) {
+  if (s.shadowMesh.vbo == 0u) return;
+  // 略高于地面（y=0）避免 z-fighting，又低于角色基座（0.011+）。
+  const glm::mat4 model =
+      glm::translate(glm::mat4(1.0f), glm::vec3(x, 0.004f, z)) *
+      glm::scale(glm::mat4(1.0f),
+                 glm::vec3(radius * 2.0f, 1.0f, radius * 2.0f));
+  s.shader3d.setMVP(vp * model);
+  s.shader3d.setModel(model);
+  s.shader3d.setSkinned(false);
+  s.shader3d.setHasTexture(false);
+  // 纯黑无光照圆盘；光照/轮廓光/高光由调用方统一置为阴影状态。
+  s.shader3d.setLight(s.lightDir, glm::vec3(0.0f), glm::vec3(0.0f));
+  s.shadowMesh.draw();
+}
+
 static bool takePendingModelAsset(Surface& s, ModelKind kind,
                                   std::vector<uint8_t>& bytes) {
   std::lock_guard<std::mutex> lock(s.modelAssetMutex);
@@ -822,6 +842,10 @@ static void draw3DPhase(Surface& s) {
   s.shader3d.setCameraPosition(s.camera3d.position);
   s.shader3d.setRim({0.62f, 0.72f, 0.85f}, 0.45f);
   s.shader3d.setSpecular(0.28f, 24.0f);
+  // 指数深度雾：世界为归一化坐标（相机距离约 0.7~2），把调色板密度
+  // 缩到 0.55 使远处环境融入雾色而近处角色保持清晰。
+  s.shader3d.setFog(s.environmentPalette.fogColor,
+                    s.environmentPalette.fogDensity * 0.55f);
 
   if (s.width > 0 && s.height > 0) {
     s.camera3d.aspectRatio =
@@ -878,6 +902,35 @@ static void draw3DPhase(Surface& s) {
   // M3-1 地面索引按双面占位使用；角色模型阶段启用背面剔除。
   glEnable(GL_CULL_FACE);
   glCullFace(GL_BACK);
+
+  // 接地接触阴影 pass：先于角色绘制半透明黑色圆盘，深度只读不写；
+  // 结束后恢复轮廓光/高光/alpha 为角色阶段统一状态。
+  glDepthMask(GL_FALSE);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  s.shader3d.setRim(glm::vec3(0.0f), 0.0f);
+  s.shader3d.setSpecular(0.0f, 1.0f);
+  s.shader3d.setAlpha(0.38f);
+  drawContactShadow(s, vp, s.player.x, s.player.y,
+                    s.playerAssetProfile.scale * 0.36f);
+  if (s.trainingTarget.alive) {
+    drawContactShadow(s, vp, s.trainingTarget.x, s.trainingTarget.y,
+                      s.enemyAssetProfile.scale * 0.36f);
+  }
+  for (const Enemy3DRenderState& enemy : s.enemies3d) {
+    if (!enemy.alive) continue;
+    drawContactShadow(s, vp, enemy.x, enemy.y,
+                      s.enemyAssetProfile.scale * 0.36f);
+  }
+  if (s.boss3d.active && !s.boss3d.defeated) {
+    drawContactShadow(s, vp, s.boss3d.x, s.boss3d.y,
+                      s.bossAssetProfile.scale * 0.36f);
+  }
+  glDisable(GL_BLEND);
+  glDepthMask(GL_TRUE);
+  s.shader3d.setRim({0.62f, 0.72f, 0.85f}, 0.45f);
+  s.shader3d.setSpecular(0.28f, 24.0f);
+  s.shader3d.setAlpha(1.0f);
 
   // 玩家：模型可用时走蒙皮，否则保留 M3-1 立方体。
   drawActor(s, s.playerModel, s.playerMesh, s.playerAnimationState,
@@ -1304,6 +1357,8 @@ static void init3DResources(Surface& s) {
   s.bossMesh = createBeast();
   s.bossRingMesh = createRing(0.42f, 0.055f, 24);
   s.targetRingMesh = createRing(0.075f, 0.014f, 40);
+  // 接地接触阴影单位圆盘（半径 0.5，法线 +Y）。
+  s.shadowMesh = createDisk(0.5f, 24);
   // 血条单位四边形（XY 平面，法线 +Z，无纹理）。
   s.hpBarQuadMesh.vertices = {
       {{-0.5f, -0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
@@ -1322,6 +1377,7 @@ static void init3DResources(Surface& s) {
   s.bossRingMesh.upload();
   s.targetRingMesh.upload();
   s.hpBarQuadMesh.upload();
+  s.shadowMesh.upload();
   s.fallbackPillarMesh.upload();
   s.fallbackWallMesh.upload();
   s.riftPlaneMesh.upload();
@@ -1359,6 +1415,7 @@ static void destroy3DResource(Surface& s, SurfaceGlResource resource) {
       s.fallbackPillarMesh.destroy();
       s.fallbackWallMesh.destroy();
       s.riftPlaneMesh.destroy();
+      s.shadowMesh.destroy();
       break;
     case SurfaceGlResource::Shader3D:
       s.shader3d.destroy();
@@ -1401,6 +1458,7 @@ static void abandon3DResources(Surface& s) {
   s.riftPlaneMesh.abandonGpuResources();
   s.targetRingMesh.abandonGpuResources();
   s.hpBarQuadMesh.abandonGpuResources();
+  s.shadowMesh.abandonGpuResources();
   for (Mesh& digitMesh : s.digitMeshes) digitMesh.abandonGpuResources();
   s.digitAtlasTexture = 0;
   s.digitAssetsReady = false;

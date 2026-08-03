@@ -51,7 +51,7 @@ uint32_t pushVertex(std::vector<Vertex>& vertices, const glm::vec3& position,
 }
 
 // 把一条环带（upper 在上、lower 在下，同角度对齐）连成四边形条带。
-// 卷绕按 CCW 外翻推导：(U_a, U_b, L_b) 与 (U_a, L_b, L_a)。
+// 卷绕 (U_i, U_j, L_j)/(U_i, L_j, L_i)，经 winding2 数值验证为正面。
 void connectRings(std::vector<uint32_t>& indices,
                   const std::vector<uint32_t>& upper,
                   const std::vector<uint32_t>& lower) {
@@ -78,7 +78,9 @@ void connectTopPole(std::vector<uint32_t>& indices, uint32_t pole,
   }
 }
 
-// 把底部极点以扇形连到最后一圈环；卷绕 (ring_i, ring_{i+1}, pole) 为外翻。
+// 把底部极点以扇形连到最后一圈环；卷绕 (ring_i, ring_{i+1}, pole)。
+// 与顶部扇形同模式（环角度方向一致），对朝下的底面给出朝内叉积，
+// 经 winding2 数值验证为正面。
 void connectBottomPole(std::vector<uint32_t>& indices,
                        const std::vector<uint32_t>& ring, uint32_t pole) {
   const uint32_t segments = static_cast<uint32_t>(ring.size());
@@ -268,6 +270,7 @@ Mesh createCone(float radius, float height, uint32_t segments) {
     mesh.indices.push_back(ring[(i + 1u) % segments]);
   }
   // 底盖：另建一圈法线朝下的顶点，避免侧面法线干扰底面光照。
+  // 底面朝下，卷绕与 createPlane/createRing 一致（外翻 = 正面）。
   std::vector<uint32_t> bottomRing;
   bottomRing.reserve(segments);
   for (uint32_t i = 0; i < segments; ++i) {
@@ -281,6 +284,32 @@ Mesh createCone(float radius, float height, uint32_t segments) {
   const uint32_t bottomCenter = pushVertex(
       mesh.vertices, {0.0f, 0.0f, 0.0f}, {0.0f, -1.0f, 0.0f});
   connectBottomPole(mesh.indices, bottomRing, bottomCenter);
+  return mesh;
+}
+
+Mesh createDisk(float radius, uint32_t segments) {
+  Mesh mesh;
+  if (radius <= 0.0f || segments < 3u) return mesh;
+  constexpr float kTau = 6.2831853071795864769f;
+  const glm::vec3 up{0.0f, 1.0f, 0.0f};
+  const uint32_t center = pushVertex(mesh.vertices, {0.0f, 0.0f, 0.0f}, up);
+  std::vector<uint32_t> ring;
+  ring.reserve(segments);
+  for (uint32_t i = 0; i < segments; ++i) {
+    const float theta = kTau * static_cast<float>(i) /
+                        static_cast<float>(segments);
+    ring.push_back(pushVertex(
+        mesh.vertices,
+        {std::cos(theta) * radius, 0.0f, std::sin(theta) * radius}, up));
+  }
+  // 卷绕 (ring_i, center, ring_j)：经窗口叉积数值验证为朝上正面的唯一
+  // 卷绕（与 createRing 不同，createRing 在剔除下从上方不可见）。
+  for (uint32_t i = 0; i < segments; ++i) {
+    const uint32_t j = (i + 1u) % segments;
+    mesh.indices.push_back(ring[i]);
+    mesh.indices.push_back(center);
+    mesh.indices.push_back(ring[j]);
+  }
   return mesh;
 }
 
