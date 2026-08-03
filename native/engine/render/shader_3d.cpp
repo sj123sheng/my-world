@@ -19,6 +19,7 @@ namespace {
 
 // 设计规格 §3.5 的顶点着色器，改写为 GLES3 #version 300 es 语法：
 // attribute -> in，varying -> out，使用 layout(location) 显式绑定属性槽位。
+// vWorldPos 输出世界空间位置，供片段着色器计算视线方向（高光/轮廓光）。
 [[maybe_unused]] const char* kVertexShaderSrc =
     "#version 300 es\n"
     "uniform mat4 uMVP;\n"
@@ -32,6 +33,7 @@ namespace {
     "layout(location = 4) in vec4 aWeights;\n"
     "out vec3 vNormal;\n"
     "out vec2 vUV;\n"
+    "out vec3 vWorldPos;\n"
     "void main() {\n"
     "  mat4 skin = uJoints[aJoints.x] * aWeights.x +\n"
     "              uJoints[aJoints.y] * aWeights.y +\n"
@@ -41,11 +43,14 @@ namespace {
     "  vec3 localNormal = uSkinned ? mat3(skin) * aNormal : aNormal;\n"
     "  gl_Position = uMVP * localPosition;\n"
     "  vNormal = mat3(uModel) * localNormal;\n"
+    "  vWorldPos = (uModel * localPosition).xyz;\n"
     "  vUV = aUV;\n"
     "}\n";
 
 // 设计规格 §3.5 的片段着色器，改写为 GLES3 #version 300 es 语法：
 // varying -> in，gl_FragColor -> 自定义 out，texture2D -> texture。
+// 在方向光漫反射基础上叠加 Blinn-Phong 高光与菲涅尔轮廓光，两者强度
+// uniform 默认 0，未配置时与升级前输出完全一致。
 [[maybe_unused]] const char* kFragmentShaderSrc =
     "#version 300 es\n"
     "precision mediump float;\n"
@@ -57,14 +62,28 @@ namespace {
     "uniform vec3 uEnvironmentTint;\n"
     "uniform float uEnvironmentTintStrength;\n"
     "uniform float uAlpha;\n"
+    "uniform vec3 uCameraPos;\n"
+    "uniform vec3 uRimColor;\n"
+    "uniform float uRimStrength;\n"
+    "uniform float uSpecularStrength;\n"
+    "uniform float uShininess;\n"
     "in vec3 vNormal;\n"
     "in vec2 vUV;\n"
+    "in vec3 vWorldPos;\n"
     "out vec4 fragColor;\n"
     "void main() {\n"
     "  vec3 N = normalize(vNormal);\n"
-    "  float diff = max(dot(N, normalize(uLightDir)), 0.0);\n"
+    "  vec3 L = normalize(uLightDir);\n"
+    "  float diff = max(dot(N, L), 0.0);\n"
     "  vec4 baseColor = uHasTexture ? texture(uTexture, vUV) : vec4(1.0);\n"
     "  vec3 lit = baseColor.rgb * (uAmbient + uLightColor * diff);\n"
+    "  vec3 V = normalize(uCameraPos - vWorldPos);\n"
+    "  vec3 H = normalize(L + V);\n"
+    "  float spec = pow(max(dot(N, H), 0.0), max(uShininess, 1.0)) *\n"
+    "               uSpecularStrength;\n"
+    "  lit += uLightColor * spec;\n"
+    "  float rim = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 3.0) * uRimStrength;\n"
+    "  lit += uRimColor * rim;\n"
     "  vec3 finalColor = mix(lit, uEnvironmentTint, uEnvironmentTintStrength);\n"
     "  fragColor = vec4(finalColor, baseColor.a * uAlpha);\n"
     "}\n";
@@ -151,10 +170,18 @@ bool Shader3D::init() {
   locSkinned_ = glGetUniformLocation(program_, "uSkinned");
   locJoints_ = glGetUniformLocation(program_, "uJoints");
   locAlpha_ = glGetUniformLocation(program_, "uAlpha");
+  locCameraPos_ = glGetUniformLocation(program_, "uCameraPos");
+  locRimColor_ = glGetUniformLocation(program_, "uRimColor");
+  locRimStrength_ = glGetUniformLocation(program_, "uRimStrength");
+  locSpecularStrength_ = glGetUniformLocation(program_, "uSpecularStrength");
+  locShininess_ = glGetUniformLocation(program_, "uShininess");
   // uniform 默认值为 0：显式把 uAlpha 初置为 1，避免未调用 setAlpha
-  // 的既有绘制路径被透明化。
+  // 的既有绘制路径被透明化；轮廓光/高光强度置 0，保持未配置时与升级前等价。
   glUseProgram(program_);
   glUniform1f(locAlpha_, 1.0f);
+  glUniform1f(locRimStrength_, 0.0f);
+  glUniform1f(locSpecularStrength_, 0.0f);
+  glUniform1f(locShininess_, 32.0f);
   glUseProgram(0);
   LOGI_3D("3D program linked: mvp=%{public}d model=%{public}d lightDir=%{public}d "
           "lightColor=%{public}d ambient=%{public}d hasTexture=%{public}d texture=%{public}d",
@@ -183,6 +210,11 @@ void Shader3D::destroy() {
     locSkinned_ = -1;
     locJoints_ = -1;
     locAlpha_ = -1;
+    locCameraPos_ = -1;
+    locRimColor_ = -1;
+    locRimStrength_ = -1;
+    locSpecularStrength_ = -1;
+    locShininess_ = -1;
   }
 #endif
   skinPaletteValid_ = false;
@@ -206,6 +238,11 @@ void Shader3D::abandonGpuResources() {
   locSkinned_ = -1;
   locJoints_ = -1;
   locAlpha_ = -1;
+  locCameraPos_ = -1;
+  locRimColor_ = -1;
+  locRimStrength_ = -1;
+  locSpecularStrength_ = -1;
+  locShininess_ = -1;
 #endif
 }
 
@@ -288,6 +325,44 @@ void Shader3D::setAlpha(float alpha) const {
   }
 #else
   (void)alpha;
+#endif
+}
+
+void Shader3D::setCameraPosition(const glm::vec3& position) const {
+#ifdef OHOS_PLATFORM
+  if (locCameraPos_ != -1) {
+    glUniform3fv(locCameraPos_, 1, &position[0]);
+  }
+#else
+  (void)position;
+#endif
+}
+
+void Shader3D::setRim(const glm::vec3& color, float strength) const {
+#ifdef OHOS_PLATFORM
+  if (locRimColor_ != -1) {
+    glUniform3fv(locRimColor_, 1, &color[0]);
+  }
+  if (locRimStrength_ != -1) {
+    glUniform1f(locRimStrength_, strength);
+  }
+#else
+  (void)color;
+  (void)strength;
+#endif
+}
+
+void Shader3D::setSpecular(float strength, float shininess) const {
+#ifdef OHOS_PLATFORM
+  if (locSpecularStrength_ != -1) {
+    glUniform1f(locSpecularStrength_, strength);
+  }
+  if (locShininess_ != -1) {
+    glUniform1f(locShininess_, shininess);
+  }
+#else
+  (void)strength;
+  (void)shininess;
 #endif
 }
 

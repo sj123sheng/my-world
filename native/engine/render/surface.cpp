@@ -817,6 +817,11 @@ static void draw3DPhase(Surface& s) {
 
   s.shader3d.use();
   s.shader3d.setHasTexture(false);
+  // 相机位置与轮廓光/高光参数逐帧写入：轮廓光把角色从暗色背景中勾出，
+  // 高光提升盔甲/皮肤材质观感；骨骼模型与回退几何体共享同一套光照。
+  s.shader3d.setCameraPosition(s.camera3d.position);
+  s.shader3d.setRim({0.62f, 0.72f, 0.85f}, 0.45f);
+  s.shader3d.setSpecular(0.28f, 24.0f);
 
   if (s.width > 0 && s.height > 0) {
     s.camera3d.aspectRatio =
@@ -1290,12 +1295,13 @@ static bool testGLFunctionality() {
 // current 时调用，因此放在 tryInitGL 成功路径内、eglMakeCurrent 解绑之前。
 static void init3DResources(Surface& s) {
 #ifdef OHOS_PLATFORM
-  // 使用单位网格（size=1.0），通过 model 矩阵在 draw3DPhase 中缩放定位，
-  // 避免为每种实体单独生成不同尺寸的几何体。
-  s.playerMesh = createCube(1.0f);
+  // 使用单位包络网格，通过 model 矩阵在 draw3DPhase 中缩放定位，
+  // 避免为每种实体单独生成不同尺寸的几何体。角色回退使用多部件
+  // 风格化人形（玩家英雄/敌人壮汉/Boss巨兽），保持与立方体同样的单位包络。
+  s.playerMesh = createHumanoid();
   s.groundMesh = createPlane(1.0f, 1.0f);
-  s.enemyMesh = createCube(1.0f);
-  s.bossMesh = createCube(1.0f);
+  s.enemyMesh = createBrute();
+  s.bossMesh = createBeast();
   s.bossRingMesh = createRing(0.42f, 0.055f, 24);
   s.targetRingMesh = createRing(0.075f, 0.014f, 40);
   // 血条单位四边形（XY 平面，法线 +Z，无纹理）。

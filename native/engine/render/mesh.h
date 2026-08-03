@@ -9,6 +9,7 @@
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
+#include <glm/mat4x4.hpp>
 
 #include <cstdint>
 #include <vector>
@@ -71,3 +72,25 @@ Mesh createCube(float size);
 Mesh createPlane(float width, float depth);
 Mesh createCylinder(float radius, float height, uint32_t segments);
 Mesh createRing(float radius, float thickness, uint32_t segments);
+
+// 生成球体网格：球心在原点，rings 为纬度分层数（>=2），segments 为经向分段（>=3）。
+// 卷绕为标准 CCW 外翻，可安全配合 GL_BACK 背面剔除使用。
+Mesh createSphere(float radius, uint32_t segments, uint32_t rings);
+
+// 生成圆锥网格：底面圆心在原点，顶点朝 +Y，高度 height。
+Mesh createCone(float radius, float height, uint32_t segments);
+
+// 生成胶囊网格：沿 Y 轴，圆柱段高 height，两端为半径 radius 的半球。
+Mesh createCapsule(float radius, float height, uint32_t segments,
+                   uint32_t rings);
+
+// 将 src 的变换副本追加到 dst：位置经 transform 变换，法线经左上 3x3
+// 旋转后重新归一化。用于把多个部件合并为单次绘制的角色网格。
+void mergeMesh(Mesh& dst, const Mesh& src, const glm::mat4& transform);
+
+// 风格化角色回退几何体：主体包络 y ∈ [-0.5, +0.5]（Boss 角/刺略超出以增强体量感），
+// 脚底贴 y=-0.5，面向 +Z，与 createCube(1.0) 同样的单位包络约定，
+// 可直接复用 AssetProfile 缩放。
+Mesh createHumanoid();  // 英雄比例：头/躯干/四肢/头盔冠饰（玩家）
+Mesh createBrute();     // 粗壮比例：宽肩、肩刺、短腿（敌人）
+Mesh createBeast();     // 巨型比例：双角、背棘、巨爪（首领）

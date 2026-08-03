@@ -39,10 +39,19 @@ void testEnvironmentTintSetterIsSafeWithoutGlContext() {
   shader.setEnvironmentTint({0.35f, 0.03f, 0.02f}, 0.5f);
 }
 
+void testPresentationLightingSettersAreSafeWithoutGlContext() {
+  Shader3D shader;
+  shader.setCameraPosition({0.5f, 0.4f, 0.2f});
+  shader.setRim({0.62f, 0.72f, 0.85f}, 0.45f);
+  shader.setSpecular(0.28f, 24.0f);
+  shader.setAlpha(1.0f);
+}
+
 }  // namespace
 
 int main() {
   testSkinPaletteBoundariesAndInvalidation();
   testEnvironmentTintSetterIsSafeWithoutGlContext();
+  testPresentationLightingSettersAreSafeWithoutGlContext();
   return 0;
 }

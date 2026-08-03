@@ -47,6 +47,18 @@ class Shader3D {
   // 调用后由调用方负责恢复 1.0。非平台侧为空操作。
   void setAlpha(float alpha) const;
 
+  // 设置 uCameraPos：世界空间相机位置，供高光与菲涅尔轮廓光计算视线方向。
+  // 非平台侧为空操作。
+  void setCameraPosition(const glm::vec3& position) const;
+
+  // 设置菲涅尔轮廓光：uRimColor/uRimStrength。strength=0 时与升级前等价。
+  // 非平台侧为空操作。
+  void setRim(const glm::vec3& color, float strength) const;
+
+  // 设置 Blinn-Phong 高光：uSpecularStrength/uShininess。strength=0 时关闭。
+  // 非平台侧为空操作。
+  void setSpecular(float strength, float shininess) const;
+
   void setEnvironmentTint(const glm::vec3& tint, float strength) const;
 
   // 上传骨骼调色板。空调色板或超过 64 个矩阵时拒绝启用蒙皮绘制。
@@ -82,5 +94,10 @@ class Shader3D {
   GLint locSkinned_ = -1;
   GLint locJoints_ = -1;
   GLint locAlpha_ = -1;
+  GLint locCameraPos_ = -1;
+  GLint locRimColor_ = -1;
+  GLint locRimStrength_ = -1;
+  GLint locSpecularStrength_ = -1;
+  GLint locShininess_ = -1;
 #endif
 };
