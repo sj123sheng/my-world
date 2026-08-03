@@ -135,6 +135,7 @@ int main() {
   Loop orderedCameraLoop;
   orderedCameraLoop.surface.width = 1000;
   orderedCameraLoop.surface.height = 800;
+  // 期望值从默认灵敏度推导，避免调参后硬编码过期。
   assert(orderedCameraLoop.enqueueInput(InputAction::PointerDown, 10, 700.0f,
                                         400.0f));
   assert(orderedCameraLoop.enqueueInput(InputAction::PointerMove, 10, 750.0f,
@@ -144,7 +145,10 @@ int main() {
   assert(orderedCameraLoop.enqueueInput(InputAction::PointerDown, 11, 800.0f,
                                         400.0f));
   orderedCameraLoop.processInput();
-  assert((orderedCameraLoop.intent.lookDelta == Vec2{0.5f, 0.3f}));
+  const CameraGestureConfig gestureDefaults{};
+  assert((orderedCameraLoop.intent.lookDelta ==
+          Vec2{50.0f * gestureDefaults.sensitivityX,
+               30.0f * gestureDefaults.sensitivityY}));
 
   Loop cancelLoop;
   cancelLoop.surface.width = 1000;
@@ -165,7 +169,9 @@ int main() {
   assert(cancelLoop.touchRouter.activeCount() == 1);
   assert(cancelLoop.touchRouter.role(20) == TouchRole::Movement);
   assert(std::abs(cancelLoop.intent.move.x - 0.8f) < 0.0001f);
-  assert((cancelLoop.intent.lookDelta == Vec2{0.3f, 0.2f}));
+  assert((cancelLoop.intent.lookDelta ==
+          Vec2{30.0f * gestureDefaults.sensitivityX,
+               20.0f * gestureDefaults.sensitivityY}));
 
   assert(loop.enqueueInput(InputAction::PointerDown, 3, 100.0f, 400.0f));
   assert(loop.enqueueInput(InputAction::PointerMove, 3, 180.0f, 400.0f));
