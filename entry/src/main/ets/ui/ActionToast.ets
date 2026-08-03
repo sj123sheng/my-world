@@ -52,13 +52,18 @@ export struct ActionToast {
           .fontColor('#F2D9A8')
           .fontWeight(FontWeight.Medium)
           .letterSpacing(1.5)
-          .padding({ left: 16, right: 16, top: 7, bottom: 7 })
-          .backgroundColor('#B311181D')
-          .borderRadius(14)
-          .border({ width: 1, color: 'rgba(217, 161, 69, 0.4)' })
+          .padding({ left: 18, right: 18, top: 8, bottom: 8 })
+          .backgroundColor('#CC11181D')
+          .borderRadius(16)
+          .border({ width: 1, color: 'rgba(217, 161, 69, 0.45)' })
+          .shadow({ radius: 10, color: '#40000000', offsetX: 0, offsetY: 3 })
           .textShadow({ radius: 6, color: '#80000000', offsetX: 0, offsetY: 1 })
           .margin({ bottom: 196 })
-          .transition({ type: TransitionType.All, opacity: 0.0 })
+          .transition({
+            type: TransitionType.All,
+            opacity: 0.0,
+            translate: { y: 20 }
+          })
       }
     }
     .width('100%')

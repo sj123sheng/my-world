@@ -12,6 +12,7 @@ export struct CombatControls {
   @Prop ultimateWindowMs: number = 0;
   @State debugOpen: boolean = false;
   @State ultimatePulse: boolean = false;
+  @State sourceReadyPulse: boolean = false;
 
   aboutToAppear(): void {
     // 终结技可用时的呼吸脉冲。
@@ -22,6 +23,15 @@ export struct CombatControls {
       curve: Curve.EaseInOut
     }, () => {
       this.ultimatePulse = true;
+    });
+    // 源技能可用时的微光呼吸。
+    animateTo({
+      duration: 1200,
+      iterations: -1,
+      playMode: PlayMode.Alternate,
+      curve: Curve.EaseInOut
+    }, () => {
+      this.sourceReadyPulse = true;
     });
   }
 
@@ -34,16 +44,18 @@ export struct CombatControls {
           .width('100%')
           .height('100%')
           .color(color)
-          .backgroundColor('rgba(8, 12, 18, 0.55)')
-          .style({ strokeWidth: 4 })
-          .animation({ duration: 100, curve: Curve.Linear })
+          .backgroundColor('rgba(6, 8, 14, 0.7)')
+          .style({ strokeWidth: 3.5 })
+          .animation({ duration: 80, curve: Curve.Linear })
         Text(`${Math.ceil(remainingMs / 1000)}`)
-          .fontSize(14)
+          .fontSize(13)
           .fontWeight(FontWeight.Bold)
           .fontColor('#E5ECEA')
+          .textShadow({ radius: 4, color: '#80000000', offsetX: 0, offsetY: 1 })
       }
       .width('100%')
       .height('100%')
+      .borderRadius('50%')
       .hitTestBehavior(HitTestMode.Transparent)
     }
   }
@@ -59,16 +71,23 @@ export struct CombatControls {
             .height(56)
             .type(ButtonType.Circle)
             .backgroundColor(this.ultimateWindowMs > 0 ? '#C89B3C' : '#343A40')
-            .border({ width: 2, color: this.ultimateWindowMs > 0 ? '#F5D78E' : '#4A5058' })
+            .linearGradient(this.ultimateWindowMs > 0
+              ? { angle: 135, colors: [['#E5B84A', 0.0], ['#C89B3C', 0.5], ['#A67D2F', 1.0]] }
+              : { angle: 135, colors: [['#4A5058', 0.0], ['#343A40', 0.5], ['#1E2428', 1.0]] })
+            .border({ width: this.ultimateWindowMs > 0 ? 2.5 : 2,
+              color: this.ultimateWindowMs > 0 ? '#F5D78E' : '#4A5058' })
             .fontColor(this.ultimateWindowMs > 0 ? '#1A1408' : '#7B8288')
             .fontSize(14)
             .fontWeight(FontWeight.Bold)
-            .stateEffect(true)
+            .shadow({ radius: this.ultimateWindowMs > 0 ? 18 : 8,
+              color: this.ultimateWindowMs > 0 ? '#60F5D78E' : '#40000000',
+              offsetX: 0, offsetY: 2 })
             .scale({
               x: this.ultimateWindowMs > 0 && this.ultimatePulse ? 1.08 : 1.0,
               y: this.ultimateWindowMs > 0 && this.ultimatePulse ? 1.08 : 1.0
             })
             .animation({ duration: 300, curve: Curve.EaseInOut })
+            .hitTestBehavior(HitTestMode.Block)
             .onClick(() => { pushAction(5); })
         }
         .width(56)
@@ -82,11 +101,18 @@ export struct CombatControls {
             .height(48)
             .type(ButtonType.Circle)
             .backgroundColor(this.corruptionCooldownMs > 0 ? '#3A1B34' : '#5A2750')
-            .border({ width: 1.5, color: '#8B4A7C' })
+            .linearGradient(this.corruptionCooldownMs > 0
+              ? { angle: 135, colors: [['#4A2540', 0.0], ['#3A1B34', 0.5], ['#2A1024', 1.0]] }
+              : { angle: 135, colors: [['#7A3A68', 0.0], ['#5A2750', 0.5], ['#3A1530', 1.0]] })
+            .border({ width: this.corruptionCooldownMs <= 0 && this.sourceReadyPulse ? 2 : 1.5,
+              color: this.corruptionCooldownMs <= 0 ? '#AB6A9C' : '#8B4A7C' })
             .fontColor('#F0C4E4')
             .fontSize(13)
             .fontWeight(FontWeight.Medium)
-            .stateEffect(true)
+            .shadow({ radius: this.corruptionCooldownMs <= 0 ? 12 : 6,
+              color: this.corruptionCooldownMs <= 0 ? '#50AB4F92' : '#30000000',
+              offsetX: 0, offsetY: 2 })
+            .hitTestBehavior(HitTestMode.Block)
             .onClick(() => { pushAction(4); })
           this.cooldownRing(this.corruptionCooldownMs, this.corruptionCooldownTotalMs, '#AB4F92')
         }
@@ -101,11 +127,18 @@ export struct CombatControls {
             .height(48)
             .type(ButtonType.Circle)
             .backgroundColor(this.currentCooldownMs > 0 ? '#173B36' : '#1F5A50')
-            .border({ width: 1.5, color: '#3E8B7E' })
+            .linearGradient(this.currentCooldownMs > 0
+              ? { angle: 135, colors: [['#1F4A44', 0.0], ['#173B36', 0.5], ['#0D2622', 1.0]] }
+              : { angle: 135, colors: [['#2E7A6C', 0.0], ['#1F5A50', 0.5], ['#103830', 1.0]] })
+            .border({ width: this.currentCooldownMs <= 0 && this.sourceReadyPulse ? 2 : 1.5,
+              color: this.currentCooldownMs <= 0 ? '#5EAB9E' : '#3E8B7E' })
             .fontColor('#B8F2E6')
             .fontSize(13)
             .fontWeight(FontWeight.Medium)
-            .stateEffect(true)
+            .shadow({ radius: this.currentCooldownMs <= 0 ? 12 : 6,
+              color: this.currentCooldownMs <= 0 ? '#5043CDB5' : '#30000000',
+              offsetX: 0, offsetY: 2 })
+            .hitTestBehavior(HitTestMode.Block)
             .onClick(() => { pushAction(3); })
           this.cooldownRing(this.currentCooldownMs, this.currentCooldownTotalMs, '#43CDB5')
         }
@@ -120,11 +153,18 @@ export struct CombatControls {
             .height(48)
             .type(ButtonType.Circle)
             .backgroundColor(this.radianceCooldownMs > 0 ? '#33291A' : '#7A5A22')
-            .border({ width: 1.5, color: '#A8853F' })
+            .linearGradient(this.radianceCooldownMs > 0
+              ? { angle: 135, colors: [['#443820', 0.0], ['#33291A', 0.5], ['#221A10', 1.0]] }
+              : { angle: 135, colors: [['#9A7A3A', 0.0], ['#7A5A22', 0.5], ['#5A3A12', 1.0]] })
+            .border({ width: this.radianceCooldownMs <= 0 && this.sourceReadyPulse ? 2 : 1.5,
+              color: this.radianceCooldownMs <= 0 ? '#C8A55F' : '#A8853F' })
             .fontColor('#F2E0B8')
             .fontSize(13)
             .fontWeight(FontWeight.Medium)
-            .stateEffect(true)
+            .shadow({ radius: this.radianceCooldownMs <= 0 ? 12 : 6,
+              color: this.radianceCooldownMs <= 0 ? '#50D9A145' : '#30000000',
+              offsetX: 0, offsetY: 2 })
+            .hitTestBehavior(HitTestMode.Block)
             .onClick(() => { pushAction(2); })
           this.cooldownRing(this.radianceCooldownMs, this.radianceCooldownTotalMs, '#D9A145')
         }
@@ -139,11 +179,13 @@ export struct CombatControls {
             .height(56)
             .type(ButtonType.Circle)
             .backgroundColor('#274043')
+            .linearGradient({ angle: 135, colors: [['#3A5A5E', 0.0], ['#274043', 0.5], ['#18282A', 1.0]] })
             .border({ width: 1.5, color: '#3E6B62' })
             .fontColor('#9FD8CB')
             .fontSize(14)
             .fontWeight(FontWeight.Medium)
-            .stateEffect(true)
+            .shadow({ radius: 8, color: '#40000000', offsetX: 0, offsetY: 2 })
+            .hitTestBehavior(HitTestMode.Block)
             .onClick(() => { pushAction(1); })
         }
         .width(56)
@@ -157,11 +199,13 @@ export struct CombatControls {
             .height(76)
             .type(ButtonType.Circle)
             .backgroundColor('#2F4858')
+            .linearGradient({ angle: 135, colors: [['#4A6A7A', 0.0], ['#2F4858', 0.5], ['#1A2E38', 1.0]] })
             .border({ width: 2, color: '#5B8FA8' })
             .fontColor('#D6E2DF')
             .fontSize(18)
             .fontWeight(FontWeight.Bold)
-            .stateEffect(true)
+            .shadow({ radius: 12, color: '#505B8FA8', offsetX: 0, offsetY: 3 })
+            .hitTestBehavior(HitTestMode.Block)
             .onClick(() => { pushAction(0); })
         }
         .width(76)

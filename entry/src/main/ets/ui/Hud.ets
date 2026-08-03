@@ -66,15 +66,23 @@ export struct Hud {
 
       if (this.encounterMode == 5) {
         Column() {
-          Progress({ value: this.bossHpRatio * 100, total: 100, type: ProgressType.Linear })
-            .width('54%').height(6)
-            .color('#AA4F86')
           Text('共鸣核心祭司')
             .fontColor('#CBD5D3').fontSize(11).letterSpacing(2)
+            .textShadow({ radius: 6, color: '#80AA4F86', offsetX: 0, offsetY: 1 })
+            .margin({ bottom: 4 })
+          Progress({ value: this.bossHpRatio * 100, total: 100, type: ProgressType.Linear })
+            .width('54%').height(7)
+            .color('#AA4F86')
+            .backgroundColor('rgba(20, 10, 18, 0.6)')
+            .animation({ duration: 120, curve: Curve.EaseOut })
         }
         .alignItems(HorizontalAlign.Center)
         .width('100%')
+        .padding({ top: 8, bottom: 8 })
         .margin({ top: 10 })
+        .backgroundColor('rgba(15, 8, 14, 0.45)')
+        .borderRadius(12)
+        .border({ width: 1, color: 'rgba(170, 79, 134, 0.3)' })
       }
 
       Blank().layoutWeight(1)
@@ -82,26 +90,82 @@ export struct Hud {
       Column({ space: 5 }) {
         Progress({ value: this.hp, total: 100, type: ProgressType.Linear })
           .width(150).height(5).color('#D6E2DF')
+          .backgroundColor('rgba(20, 26, 30, 0.5)')
+          .animation({ duration: 120, curve: Curve.EaseOut })
         Progress({ value: this.poise, total: 100, type: ProgressType.Linear })
           .width(134).height(2).color('#D9A145')
+          .backgroundColor('rgba(20, 26, 30, 0.4)')
+          .animation({ duration: 120, curve: Curve.EaseOut })
         Progress({ value: this.stamina, total: 100, type: ProgressType.Linear })
           .width(118).height(3)
           // 体力低于闪避成本（30，对应 native CombatConfig.dodgeCost）时红色预警。
           .color(this.stamina < 30 ? '#E06A5E' : '#4FD4BB')
+          .backgroundColor('rgba(20, 26, 30, 0.4)')
           .animation({ duration: 150, curve: Curve.EaseOut })
-        Row({ space: 12 }) {
-          Text('辉').fontSize(14)
-            .fontColor(this.resonanceSlots[0] > 0 ? '#D9A145' : '#66706F')
-          Text('流').fontSize(14)
-            .fontColor(this.resonanceSlots[1] > 0 ? '#43CDB5' : '#66706F')
-          Text('蚀').fontSize(14)
-            .fontColor(this.resonanceSlots[2] > 0 ? '#AB4F92' : '#66706F')
+        // 三源共鸣槽位：发光圆球指示器，激活时发光脉冲。
+        Row({ space: 14 }) {
+          // 辉（Radiance）金色
+          Stack() {
+            Circle()
+              .width(16)
+              .height(16)
+              .fill(this.resonanceSlots[0] > 0 ? '#D9A145' : '#3A3E3D')
+              .shadow(this.resonanceSlots[0] > 0
+                ? { radius: 10, color: '#80D9A145', offsetX: 0, offsetY: 0 }
+                : { radius: 2, color: '#20000000', offsetX: 0, offsetY: 1 })
+            if (this.resonanceSlots[0] > 0) {
+              Circle()
+                .width(8)
+                .height(8)
+                .fill('#F2E0B8')
+            }
+          }
+          .width(16)
+          .height(16)
+          // 流（Flow）青色
+          Stack() {
+            Circle()
+              .width(16)
+              .height(16)
+              .fill(this.resonanceSlots[1] > 0 ? '#43CDB5' : '#3A3E3D')
+              .shadow(this.resonanceSlots[1] > 0
+                ? { radius: 10, color: '#8043CDB5', offsetX: 0, offsetY: 0 }
+                : { radius: 2, color: '#20000000', offsetX: 0, offsetY: 1 })
+            if (this.resonanceSlots[1] > 0) {
+              Circle()
+                .width(8)
+                .height(8)
+                .fill('#B8F2E6')
+            }
+          }
+          .width(16)
+          .height(16)
+          // 蚀（Corruption）紫色
+          Stack() {
+            Circle()
+              .width(16)
+              .height(16)
+              .fill(this.resonanceSlots[2] > 0 ? '#AB4F92' : '#3A3E3D')
+              .shadow(this.resonanceSlots[2] > 0
+                ? { radius: 10, color: '#80AB4F92', offsetX: 0, offsetY: 0 }
+                : { radius: 2, color: '#20000000', offsetX: 0, offsetY: 1 })
+            if (this.resonanceSlots[2] > 0) {
+              Circle()
+                .width(8)
+                .height(8)
+                .fill('#F0C4E4')
+            }
+          }
+          .width(16)
+          .height(16)
         }
+        .margin({ top: 2 })
       }
       .alignItems(HorizontalAlign.Center)
       .padding({ left: 16, right: 16, top: 8, bottom: 8 })
       .backgroundColor('#8A11181D')
         .borderRadius(18)
+        .border({ width: 1, color: 'rgba(199, 208, 206, 0.15)' })
         .margin({ bottom: 22 })
 
       if (this.showDebugHud) {

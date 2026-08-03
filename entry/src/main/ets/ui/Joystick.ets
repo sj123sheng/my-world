@@ -95,19 +95,22 @@ export struct Joystick {
       Stack({ alignContent: Alignment.BottomStart }) {
         Column({ space: 6 }) {
           Stack() {
-            Circle({ width: 8, height: 8 })
-              .fill('rgba(214, 226, 223, 0.30)')
+            // 内圈小圆点，增加视觉锚点。
+            Circle({ width: 6, height: 6 })
+              .fill('rgba(214, 226, 223, 0.35)')
           }
           .width(72)
           .height(72)
           .borderRadius(36)
-          .border({ width: 2, color: 'rgba(214, 226, 223, 0.28)' })
-          .backgroundColor('rgba(20, 26, 38, 0.18)')
+          .border({ width: 1.5, color: 'rgba(214, 226, 223, 0.22)' })
+          .backgroundColor('rgba(20, 26, 38, 0.15)')
+          .shadow({ radius: 8, color: '#20000000', offsetX: 0, offsetY: 2 })
 
           Text('移动')
-            .fontSize(11)
+            .fontSize(10)
             .letterSpacing(2)
-            .fontColor('rgba(229, 236, 234, 0.45)')
+            .fontColor('rgba(229, 236, 234, 0.35)')
+            .fontWeight(FontWeight.Light)
         }
         .alignItems(HorizontalAlign.Center)
         .margin({ left: 52, bottom: 168 })
@@ -132,38 +135,55 @@ export struct Joystick {
       if (this.active) {
         Stack() {
           Circle({ width: TICK_SIZE, height: TICK_SIZE })
-            .fill('rgba(214, 226, 223, 0.55)')
+            .fill('rgba(214, 226, 223, 0.50)')
             .position({ x: BASE_SIZE / 2 - TICK_SIZE / 2, y: 9 })
           Circle({ width: TICK_SIZE, height: TICK_SIZE })
-            .fill('rgba(214, 226, 223, 0.55)')
+            .fill('rgba(214, 226, 223, 0.50)')
             .position({ x: BASE_SIZE / 2 - TICK_SIZE / 2, y: BASE_SIZE - 9 - TICK_SIZE })
           Circle({ width: TICK_SIZE, height: TICK_SIZE })
-            .fill('rgba(214, 226, 223, 0.55)')
+            .fill('rgba(214, 226, 223, 0.50)')
             .position({ x: 9, y: BASE_SIZE / 2 - TICK_SIZE / 2 })
           Circle({ width: TICK_SIZE, height: TICK_SIZE })
-            .fill('rgba(214, 226, 223, 0.55)')
+            .fill('rgba(214, 226, 223, 0.50)')
             .position({ x: BASE_SIZE - 9 - TICK_SIZE, y: BASE_SIZE / 2 - TICK_SIZE / 2 })
+          // 中心十字准星，增强方向感。
+          Circle({ width: 4, height: 4 })
+            .fill('rgba(214, 226, 223, 0.25)')
+            .position({ x: BASE_SIZE / 2 - 2, y: BASE_SIZE / 2 - 2 })
         }
         .width(BASE_SIZE)
         .height(BASE_SIZE)
         .borderRadius(BASE_SIZE / 2)
-        .backgroundColor('rgba(20, 26, 38, 0.38)')
-        .border({ width: 2, color: 'rgba(214, 226, 223, 0.45)' })
+        .backgroundColor('rgba(20, 26, 38, 0.35)')
+        .border({ width: 1.5, color: 'rgba(214, 226, 223, 0.38)' })
+        .shadow({ radius: 10, color: '#30000000', offsetX: 0, offsetY: 2 })
         .position({ x: this.baseCenterX - BASE_SIZE / 2, y: this.baseCenterY - BASE_SIZE / 2 })
         .hitTestBehavior(HitTestMode.Transparent)
       }
 
       // 旋钮：跟手移动，行程限制在 KNOB_TRAVEL 内。
       if (this.active) {
-        Stack()
-          .width(KNOB_SIZE)
-          .height(KNOB_SIZE)
-          .borderRadius(KNOB_SIZE / 2)
-          .linearGradient({ angle: 135, colors: [['#8FE0D0', 0.0], ['#2E8F81', 1.0]] })
-          .border({ width: 1.5, color: 'rgba(229, 236, 234, 0.75)' })
-          .shadow({ radius: 12, color: '#66000000', offsetX: 0, offsetY: 3 })
-          .position({ x: this.knobCenterX - KNOB_SIZE / 2, y: this.knobCenterY - KNOB_SIZE / 2 })
-          .hitTestBehavior(HitTestMode.Transparent)
+        Stack() {
+          // 旋钮主体。
+          Stack()
+            .width(KNOB_SIZE)
+            .height(KNOB_SIZE)
+            .borderRadius(KNOB_SIZE / 2)
+            .linearGradient({ angle: 135,
+              colors: [['#A8F0E4', 0.0], ['#4DB8A8', 0.45], ['#2E8F81', 1.0]] })
+            .border({ width: 1.5, color: 'rgba(229, 236, 234, 0.80)' })
+            .shadow({ radius: 14, color: '#70000000', offsetX: 0, offsetY: 3 })
+          // 内圈高光，增加立体感。
+          Circle()
+            .width(KNOB_SIZE * 0.55)
+            .height(KNOB_SIZE * 0.55)
+            .fill('rgba(255, 255, 255, 0.12)')
+            .position({ x: KNOB_SIZE * 0.12, y: KNOB_SIZE * 0.08 })
+        }
+        .width(KNOB_SIZE)
+        .height(KNOB_SIZE)
+        .position({ x: this.knobCenterX - KNOB_SIZE / 2, y: this.knobCenterY - KNOB_SIZE / 2 })
+        .hitTestBehavior(HitTestMode.Transparent)
       }
     }
     .width('100%')
