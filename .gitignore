@@ -17,4 +17,4 @@ screen*.png
 layout.json
 /.clang-tidy
 /.clangd
-.qoder/
+/.qoder/
