@@ -56,6 +56,37 @@ int main() {
   multiStepLoop.tickOnce(16);
   assert(multiStepLoop.combatEvents().gameplay.empty());
 
+  // 命中卡肉：玩家命中后逻辑短暂冻结，tick 不推进；顿帧结束后恢复。
+  Loop hitStopLoop;
+  hitStopLoop.surface.width = 1000;
+  hitStopLoop.surface.height = 800;
+  hitStopLoop.surface.ready = true;
+  assert(hitStopLoop.enqueueInput(InputAction::Attack, -1, 0.0f, 0.0f));
+  Tick tickAtHit = 0;
+  bool hitObserved = false;
+  for (int frame = 0; frame < 20 && !hitObserved; ++frame) {
+    hitStopLoop.tickOnce(16);
+    if (!hitStopLoop.combatEvents().gameplay.empty()) {
+      hitObserved = true;
+      tickAtHit = hitStopLoop.snapshot().tick;
+    }
+  }
+  assert(hitObserved);
+  assert(hitStopLoop.hitStopRemainingMs > 0);
+  // 顿帧窗口（40ms）内 tick 冻结。
+  hitStopLoop.tickOnce(16);
+  assert(hitStopLoop.snapshot().tick == tickAtHit);
+  hitStopLoop.tickOnce(16);
+  assert(hitStopLoop.snapshot().tick == tickAtHit);
+  // 顿帧结束后逻辑恢复推进。
+  hitStopLoop.tickOnce(16);
+  hitStopLoop.tickOnce(16);
+  assert(hitStopLoop.snapshot().tick > tickAtHit);
+  // resetInput 清空未消化的顿帧。
+  hitStopLoop.hitStopRemainingMs = 40;
+  hitStopLoop.resetInput();
+  assert(hitStopLoop.hitStopRemainingMs == 0);
+
   Loop restartCombatLoop;
   restartCombatLoop.surface.width = 1000;
   restartCombatLoop.surface.height = 800;

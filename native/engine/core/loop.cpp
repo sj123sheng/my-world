@@ -369,6 +369,7 @@ void Loop::resetInput() {
   surface.playerHitAnimationSeconds = 0.0f;
   surface.enemyHitFlash.clear();
   surface.hitSparks3d.clear();
+  hitStopRemainingMs = 0;
   surface.player3dAnimation.action = RenderAnimation::Idle;
   surface.player3dAnimation.hit = false;
   surface.player3dAnimation.moving = false;
@@ -399,9 +400,15 @@ void Loop::tickOnce(int64_t elapsedMs) {
     (void)encounter.start(EncounterMode::Training);
   }
   processInput();
-  fixedStep.advance(elapsedMs, [this](Tick tick, int64_t dtMs) {
-    updateFixed(tick, dtMs);
-  });
+  if (hitStopRemainingMs > 0) {
+    // 命中卡肉：吞掉本帧时间不进入固定步累加器，逻辑冻结而渲染继续，
+    // 命中瞬间的顿帧强化打击感；结束后从干净累加器恢复。
+    hitStopRemainingMs -= elapsedMs > 0 ? elapsedMs : 0;
+  } else {
+    fixedStep.advance(elapsedMs, [this](Tick tick, int64_t dtMs) {
+      updateFixed(tick, dtMs);
+    });
+  }
 #ifdef OHOS_PLATFORM
   update3DCamera(surface, camera);
   surface.environmentPerfLevel = performanceGuard.level();
@@ -651,6 +658,11 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       kind = DamageNumberKind::PlayerHit;
     } else if (amount >= 15.0f) {
       kind = DamageNumberKind::Heavy;
+    }
+    // 命中卡肉：玩家命中敌人时短暂顿帧；重击/击杀更重。
+    if (event.source == CombatController::kPlayerId) {
+      const int64_t stopMs = amount >= 15.0f ? 64 : 40;
+      hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + stopMs, 80);
     }
     damageNumbers.spawn(*position, amount, kind);
     // 命中火花：与飘字同源，玩家受击用红色火花，其余金橙。
