@@ -317,7 +317,9 @@ struct GamePage {
 
       TargetFrame({ targetId: this.targetId,
         targetArchetype: this.targetArchetype,
-        targetHpRatio: this.targetHpRatio })
+        targetHpRatio: this.targetHpRatio,
+        targetPoise: this.targetPoise,
+        targetPoiseBroken: this.targetPoiseBroken })
         .hitTestBehavior(HitTestMode.Transparent)
 
       PauseMenu({ encounterMode: this.encounterMode })

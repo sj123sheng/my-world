@@ -2,9 +2,9 @@ import { pushAction, startEncounter, advanceLevel, useSupply, retryBoss, toggleD
 
 @Component
 export struct CombatControls {
-  @Prop radianceCooldownMs: number = 0;
-  @Prop currentCooldownMs: number = 0;
-  @Prop corruptionCooldownMs: number = 0;
+  @Prop @Watch('onRadianceCd') radianceCooldownMs: number = 0;
+  @Prop @Watch('onCurrentCd') currentCooldownMs: number = 0;
+  @Prop @Watch('onCorruptionCd') corruptionCooldownMs: number = 0;
   // 冷却总时长由快照下发（native CombatConfig.sourceCooldownMs），不再硬编码。
   @Prop radianceCooldownTotalMs: number = 3000;
   @Prop currentCooldownTotalMs: number = 4000;
@@ -13,6 +13,18 @@ export struct CombatControls {
   @State debugOpen: boolean = false;
   @State ultimatePulse: boolean = false;
   @State sourceReadyPulse: boolean = false;
+  @State attackPressed: boolean = false;
+  @State dodgePressed: boolean = false;
+  @State radiancePressed: boolean = false;
+  @State currentPressed: boolean = false;
+  @State corruptionPressed: boolean = false;
+  @State ultimatePressed: boolean = false;
+  @State radianceFlash: number = 0;
+  @State currentFlash: number = 0;
+  @State corruptionFlash: number = 0;
+  private prevRadianceCd: number = 0;
+  private prevCurrentCd: number = 0;
+  private prevCorruptionCd: number = 0;
 
   aboutToAppear(): void {
     // 终结技可用时的呼吸脉冲。
@@ -33,6 +45,36 @@ export struct CombatControls {
     }, () => {
       this.sourceReadyPulse = true;
     });
+  }
+
+  onRadianceCd(): void {
+    if (this.radianceCooldownMs > 0 && this.prevRadianceCd <= 0) {
+      this.radianceFlash = 1;
+      animateTo({ duration: 300, curve: Curve.EaseOut }, () => {
+        this.radianceFlash = 0;
+      });
+    }
+    this.prevRadianceCd = this.radianceCooldownMs;
+  }
+
+  onCurrentCd(): void {
+    if (this.currentCooldownMs > 0 && this.prevCurrentCd <= 0) {
+      this.currentFlash = 1;
+      animateTo({ duration: 300, curve: Curve.EaseOut }, () => {
+        this.currentFlash = 0;
+      });
+    }
+    this.prevCurrentCd = this.currentCooldownMs;
+  }
+
+  onCorruptionCd(): void {
+    if (this.corruptionCooldownMs > 0 && this.prevCorruptionCd <= 0) {
+      this.corruptionFlash = 1;
+      animateTo({ duration: 300, curve: Curve.EaseOut }, () => {
+        this.corruptionFlash = 0;
+      });
+    }
+    this.prevCorruptionCd = this.corruptionCooldownMs;
   }
 
   // 冷却环遮罩：剩余时间 > 0 时覆盖按钮，环形进度随快照平滑收缩。
@@ -83,11 +125,17 @@ export struct CombatControls {
               color: this.ultimateWindowMs > 0 ? '#60F5D78E' : '#40000000',
               offsetX: 0, offsetY: 2 })
             .scale({
-              x: this.ultimateWindowMs > 0 && this.ultimatePulse ? 1.08 : 1.0,
-              y: this.ultimateWindowMs > 0 && this.ultimatePulse ? 1.08 : 1.0
+              x: this.ultimatePressed ? 0.9 :
+                (this.ultimateWindowMs > 0 && this.ultimatePulse ? 1.08 : 1.0),
+              y: this.ultimatePressed ? 0.9 :
+                (this.ultimateWindowMs > 0 && this.ultimatePulse ? 1.08 : 1.0)
             })
             .animation({ duration: 300, curve: Curve.EaseInOut })
             .hitTestBehavior(HitTestMode.Block)
+            .onTouch((e: TouchEvent) => {
+              if (e.type === TouchType.Down) this.ultimatePressed = true;
+              if (e.type === TouchType.Up || e.type === TouchType.Cancel) this.ultimatePressed = false;
+            })
             .onClick(() => { pushAction(5); })
         }
         .width(56)
@@ -112,9 +160,20 @@ export struct CombatControls {
             .shadow({ radius: this.corruptionCooldownMs <= 0 ? 12 : 6,
               color: this.corruptionCooldownMs <= 0 ? '#50AB4F92' : '#30000000',
               offsetX: 0, offsetY: 2 })
+            .scale({ x: this.corruptionPressed ? 0.88 : 1.0, y: this.corruptionPressed ? 0.88 : 1.0 })
+            .animation({ duration: 120, curve: Curve.EaseOut })
             .hitTestBehavior(HitTestMode.Block)
+            .onTouch((e: TouchEvent) => {
+              if (e.type === TouchType.Down) this.corruptionPressed = true;
+              if (e.type === TouchType.Up || e.type === TouchType.Cancel) this.corruptionPressed = false;
+            })
             .onClick(() => { pushAction(4); })
           this.cooldownRing(this.corruptionCooldownMs, this.corruptionCooldownTotalMs, '#AB4F92')
+          Circle()
+            .width(48).height(48)
+            .fill('rgba(240, 200, 230, 0.6)')
+            .opacity(this.corruptionFlash)
+            .hitTestBehavior(HitTestMode.Transparent)
         }
         .width(48)
         .height(48)
@@ -138,9 +197,20 @@ export struct CombatControls {
             .shadow({ radius: this.currentCooldownMs <= 0 ? 12 : 6,
               color: this.currentCooldownMs <= 0 ? '#5043CDB5' : '#30000000',
               offsetX: 0, offsetY: 2 })
+            .scale({ x: this.currentPressed ? 0.88 : 1.0, y: this.currentPressed ? 0.88 : 1.0 })
+            .animation({ duration: 120, curve: Curve.EaseOut })
             .hitTestBehavior(HitTestMode.Block)
+            .onTouch((e: TouchEvent) => {
+              if (e.type === TouchType.Down) this.currentPressed = true;
+              if (e.type === TouchType.Up || e.type === TouchType.Cancel) this.currentPressed = false;
+            })
             .onClick(() => { pushAction(3); })
           this.cooldownRing(this.currentCooldownMs, this.currentCooldownTotalMs, '#43CDB5')
+          Circle()
+            .width(48).height(48)
+            .fill('rgba(200, 255, 240, 0.6)')
+            .opacity(this.currentFlash)
+            .hitTestBehavior(HitTestMode.Transparent)
         }
         .width(48)
         .height(48)
@@ -164,9 +234,21 @@ export struct CombatControls {
             .shadow({ radius: this.radianceCooldownMs <= 0 ? 12 : 6,
               color: this.radianceCooldownMs <= 0 ? '#50D9A145' : '#30000000',
               offsetX: 0, offsetY: 2 })
+            .scale({ x: this.radiancePressed ? 0.88 : 1.0, y: this.radiancePressed ? 0.88 : 1.0 })
+            .animation({ duration: 120, curve: Curve.EaseOut })
             .hitTestBehavior(HitTestMode.Block)
+            .onTouch((e: TouchEvent) => {
+              if (e.type === TouchType.Down) this.radiancePressed = true;
+              if (e.type === TouchType.Up || e.type === TouchType.Cancel) this.radiancePressed = false;
+            })
             .onClick(() => { pushAction(2); })
           this.cooldownRing(this.radianceCooldownMs, this.radianceCooldownTotalMs, '#D9A145')
+          // 技能释放闪光叠加。
+          Circle()
+            .width(48).height(48)
+            .fill('rgba(255, 240, 200, 0.6)')
+            .opacity(this.radianceFlash)
+            .hitTestBehavior(HitTestMode.Transparent)
         }
         .width(48)
         .height(48)
@@ -185,7 +267,13 @@ export struct CombatControls {
             .fontSize(14)
             .fontWeight(FontWeight.Medium)
             .shadow({ radius: 8, color: '#40000000', offsetX: 0, offsetY: 2 })
+            .scale({ x: this.dodgePressed ? 0.9 : 1.0, y: this.dodgePressed ? 0.9 : 1.0 })
+            .animation({ duration: 120, curve: Curve.EaseOut })
             .hitTestBehavior(HitTestMode.Block)
+            .onTouch((e: TouchEvent) => {
+              if (e.type === TouchType.Down) this.dodgePressed = true;
+              if (e.type === TouchType.Up || e.type === TouchType.Cancel) this.dodgePressed = false;
+            })
             .onClick(() => { pushAction(1); })
         }
         .width(56)
@@ -205,7 +293,13 @@ export struct CombatControls {
             .fontSize(18)
             .fontWeight(FontWeight.Bold)
             .shadow({ radius: 12, color: '#505B8FA8', offsetX: 0, offsetY: 3 })
+            .scale({ x: this.attackPressed ? 0.9 : 1.0, y: this.attackPressed ? 0.9 : 1.0 })
+            .animation({ duration: 120, curve: Curve.EaseOut })
             .hitTestBehavior(HitTestMode.Block)
+            .onTouch((e: TouchEvent) => {
+              if (e.type === TouchType.Down) this.attackPressed = true;
+              if (e.type === TouchType.Up || e.type === TouchType.Cancel) this.attackPressed = false;
+            })
             .onClick(() => { pushAction(0); })
         }
         .width(76)

@@ -1,6 +1,6 @@
 @Component
 export struct Hud {
-  @Prop hp: number = 100;
+  @Prop @Watch('onHpChanged') hp: number = 100;
   @Prop poise: number = 100;
   @Prop x: number = 0.5;
   @Prop y: number = 0.5;
@@ -10,7 +10,7 @@ export struct Hud {
   @Prop moveY: number = 0;
   @Prop cameraYaw: number = 0;
   @Prop targetDist: number = 0;
-  @Prop stamina: number = 100;
+  @Prop @Watch('onStaminaChanged') stamina: number = 100;
   @Prop comboSegment: number = 0;
   @Prop invulnerable: boolean = false;
   @Prop insightMs: number = 0;
@@ -48,7 +48,7 @@ export struct Hud {
   @Prop bossHpRatio: number = 0;
   @Prop bossCastRatio: number = 0;
   @Prop objectiveLabel: string = '';
-  @Prop resonanceSlots: number[] = [0, 0, 0];
+  @Prop @Watch('onSlotsChanged') resonanceSlots: number[] = [0, 0, 0];
   @Prop showDebugHud: boolean = false;
   @Prop bossCinematicProgress: number = 0;
   @Prop bossShardCount: number = 0;
@@ -56,6 +56,50 @@ export struct Hud {
   @Prop bossRingBroken: boolean = false;
   @Prop inputEventCount: number = 0;
   @State auras: string[] = [];
+  @State hpFlash: number = 0;
+  @State staminaFlash: number = 0;
+  @State slotPulse: number[] = [0, 0, 0];
+  private prevHp: number = 100;
+  private prevStamina: number = 100;
+  private prevSlots: number[] = [0, 0, 0];
+
+  aboutToAppear(): void {
+    this.prevHp = this.hp;
+    this.prevStamina = this.stamina;
+    this.prevSlots = [...this.resonanceSlots];
+  }
+
+  onHpChanged(): void {
+    if (this.hp < this.prevHp) {
+      this.hpFlash = 1;
+      animateTo({ duration: 350, curve: Curve.EaseOut }, () => {
+        this.hpFlash = 0;
+      });
+    }
+    this.prevHp = this.hp;
+  }
+
+  onStaminaChanged(): void {
+    if (this.stamina !== this.prevStamina) {
+      this.staminaFlash = 1;
+      animateTo({ duration: 300, curve: Curve.EaseOut }, () => {
+        this.staminaFlash = 0;
+      });
+    }
+    this.prevStamina = this.stamina;
+  }
+
+  onSlotsChanged(): void {
+    for (let i = 0; i < 3; i++) {
+      if (this.resonanceSlots[i] > 0 && this.prevSlots[i] <= 0) {
+        this.slotPulse[i] = 1;
+        animateTo({ duration: 500, curve: Curve.EaseOut }, () => {
+          this.slotPulse[i] = 0;
+        });
+      }
+    }
+    this.prevSlots = [...this.resonanceSlots];
+  }
 
   build() {
     Column() {
@@ -91,31 +135,89 @@ export struct Hud {
       Blank().layoutWeight(1)
 
       Column({ space: 5 }) {
-        Progress({ value: this.hp, total: 100, type: ProgressType.Linear })
-          .width(150).height(5).color('#D6E2DF')
-          .backgroundColor('rgba(20, 26, 30, 0.5)')
-          .animation({ duration: 120, curve: Curve.EaseOut })
-        Progress({ value: this.poise, total: 100, type: ProgressType.Linear })
-          .width(134).height(2).color('#D9A145')
-          .backgroundColor('rgba(20, 26, 30, 0.4)')
-          .animation({ duration: 120, curve: Curve.EaseOut })
-        Progress({ value: this.stamina, total: 100, type: ProgressType.Linear })
-          .width(118).height(3)
-          // 体力低于闪避成本（30，对应 native CombatConfig.dodgeCost）时红色预警。
-          .color(this.stamina < 30 ? '#E06A5E' : '#4FD4BB')
-          .backgroundColor('rgba(20, 26, 30, 0.4)')
-          .animation({ duration: 150, curve: Curve.EaseOut })
-        // 三源共鸣槽位：发光圆球指示器，激活时发光脉冲。
-        Row({ space: 14 }) {
-          // 辉（Radiance）金色
+        // HP 条：♥ 图标 + 进度条 + 受击闪烁叠加层。
+        Row({ space: 6 }) {
+          Text('♥')
+            .fontSize(13)
+            .fontColor(this.hpFlash > 0.3 ? '#E06A5E' : '#D6E2DF')
+            .textShadow({ radius: 6, color: this.hpFlash > 0.3 ? '#60E06A5E' : '#30D6E2DF',
+              offsetX: 0, offsetY: 0 })
+            .animation({ duration: 200, curve: Curve.EaseOut })
           Stack() {
+            Progress({ value: this.hp, total: 100, type: ProgressType.Linear })
+              .width(150).height(5).color('#D6E2DF')
+              .backgroundColor('rgba(20, 26, 30, 0.5)')
+              .animation({ duration: 120, curve: Curve.EaseOut })
+            Stack()
+              .width(150).height(5)
+              .backgroundColor('#E06A5E')
+              .opacity(this.hpFlash * 0.5)
+              .borderRadius(3)
+          }
+        }
+        .alignItems(VerticalAlign.Center)
+
+        // 韧性条：◆ 图标 + 进度条。
+        Row({ space: 6 }) {
+          Text('◆')
+            .fontSize(10)
+            .fontColor('#D9A145')
+            .textShadow({ radius: 4, color: '#30D9A145', offsetX: 0, offsetY: 0 })
+          Progress({ value: this.poise, total: 100, type: ProgressType.Linear })
+            .width(134).height(2).color('#D9A145')
+            .backgroundColor('rgba(20, 26, 30, 0.4)')
+            .animation({ duration: 120, curve: Curve.EaseOut })
+        }
+        .alignItems(VerticalAlign.Center)
+
+        // 分隔线。
+        Stack()
+          .width(100).height(0.5)
+          .backgroundColor('rgba(199, 208, 206, 0.08)')
+          .margin({ top: 1, bottom: 1 })
+
+        // 体力条：⚡ 图标 + 进度条 + 变化闪烁。
+        Row({ space: 6 }) {
+          Text('⚡')
+            .fontSize(11)
+            .fontColor(this.stamina < 30 ? '#E06A5E' : '#4FD4BB')
+            .textShadow({ radius: 4,
+              color: this.stamina < 30 ? '#40E06A5E' : '#304FD4BB',
+              offsetX: 0, offsetY: 0 })
+            .animation({ duration: 200, curve: Curve.EaseOut })
+          Stack() {
+            Progress({ value: this.stamina, total: 100, type: ProgressType.Linear })
+              .width(118).height(3)
+              .color(this.stamina < 30 ? '#E06A5E' : '#4FD4BB')
+              .backgroundColor('rgba(20, 26, 30, 0.4)')
+              .animation({ duration: 150, curve: Curve.EaseOut })
+            Stack()
+              .width(118).height(3)
+              .backgroundColor(this.stamina < 30 ? '#E06A5E' : '#4FD4BB')
+              .opacity(this.staminaFlash * 0.4)
+              .borderRadius(2)
+          }
+        }
+        .alignItems(VerticalAlign.Center)
+
+        // 三源共鸣槽位：发光圆球指示器，激活时脉冲扩散。
+        Row({ space: 14 }) {
+          // 辉（Radiance）金色。
+          Stack() {
+            Circle()
+              .width(16 + this.slotPulse[0] * 14)
+              .height(16 + this.slotPulse[0] * 14)
+              .fill('transparent')
+              .border({ width: 1.5, color: `rgba(217, 161, 69, ${0.5 * (1 - this.slotPulse[0])})` })
+              .opacity(this.resonanceSlots[0] > 0 ? 1 : 0)
             Circle()
               .width(16)
               .height(16)
               .fill(this.resonanceSlots[0] > 0 ? '#D9A145' : '#3A3E3D')
               .shadow(this.resonanceSlots[0] > 0
-                ? { radius: 10, color: '#80D9A145', offsetX: 0, offsetY: 0 }
+                ? { radius: 10 + this.slotPulse[0] * 8, color: '#80D9A145', offsetX: 0, offsetY: 0 }
                 : { radius: 2, color: '#20000000', offsetX: 0, offsetY: 1 })
+              .animation({ duration: 200, curve: Curve.EaseOut })
             if (this.resonanceSlots[0] > 0) {
               Circle()
                 .width(8)
@@ -125,15 +227,22 @@ export struct Hud {
           }
           .width(16)
           .height(16)
-          // 流（Flow）青色
+          // 流（Flow）青色。
           Stack() {
+            Circle()
+              .width(16 + this.slotPulse[1] * 14)
+              .height(16 + this.slotPulse[1] * 14)
+              .fill('transparent')
+              .border({ width: 1.5, color: `rgba(67, 205, 181, ${0.5 * (1 - this.slotPulse[1])})` })
+              .opacity(this.resonanceSlots[1] > 0 ? 1 : 0)
             Circle()
               .width(16)
               .height(16)
               .fill(this.resonanceSlots[1] > 0 ? '#43CDB5' : '#3A3E3D')
               .shadow(this.resonanceSlots[1] > 0
-                ? { radius: 10, color: '#8043CDB5', offsetX: 0, offsetY: 0 }
+                ? { radius: 10 + this.slotPulse[1] * 8, color: '#8043CDB5', offsetX: 0, offsetY: 0 }
                 : { radius: 2, color: '#20000000', offsetX: 0, offsetY: 1 })
+              .animation({ duration: 200, curve: Curve.EaseOut })
             if (this.resonanceSlots[1] > 0) {
               Circle()
                 .width(8)
@@ -143,15 +252,22 @@ export struct Hud {
           }
           .width(16)
           .height(16)
-          // 蚀（Corruption）紫色
+          // 蚀（Corruption）紫色。
           Stack() {
+            Circle()
+              .width(16 + this.slotPulse[2] * 14)
+              .height(16 + this.slotPulse[2] * 14)
+              .fill('transparent')
+              .border({ width: 1.5, color: `rgba(171, 79, 146, ${0.5 * (1 - this.slotPulse[2])})` })
+              .opacity(this.resonanceSlots[2] > 0 ? 1 : 0)
             Circle()
               .width(16)
               .height(16)
               .fill(this.resonanceSlots[2] > 0 ? '#AB4F92' : '#3A3E3D')
               .shadow(this.resonanceSlots[2] > 0
-                ? { radius: 10, color: '#80AB4F92', offsetX: 0, offsetY: 0 }
+                ? { radius: 10 + this.slotPulse[2] * 8, color: '#80AB4F92', offsetX: 0, offsetY: 0 }
                 : { radius: 2, color: '#20000000', offsetX: 0, offsetY: 1 })
+              .animation({ duration: 200, curve: Curve.EaseOut })
             if (this.resonanceSlots[2] > 0) {
               Circle()
                 .width(8)
