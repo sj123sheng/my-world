@@ -449,6 +449,18 @@ static void drawWindupWarnings(Surface& s, const glm::mat4& vp) {
   glDepthMask(GL_TRUE);
 }
 
+// 受击后仰：命中闪白窗口内沿朝向反方向微位移，
+// 用身位反应把“被打实了”可视化；位移平方衰减，前强后弱更干脆。
+static glm::vec2 hitKnockback(const Surface& s, uint32_t id, float angle) {
+  const float remaining = hitFlashRemaining(s, id);
+  if (remaining <= 0.0f) return glm::vec2(0.0f);
+  constexpr float kFlashDuration = 0.15f;
+  const float strength = std::min(remaining / kFlashDuration, 1.0f);
+  const float amount = 0.004f * strength * strength;
+  // 世界前向 (sin, cos)，后仰取反方向。
+  return glm::vec2(-std::sin(angle) * amount, -std::cos(angle) * amount);
+}
+
 static void drawMeshAt(Surface& s, const Mesh& mesh,
                        const glm::mat4& vp, const glm::vec3& position,
                        float scale, const glm::vec3& base) {
@@ -1095,10 +1107,12 @@ static void draw3DPhase(Surface& s) {
   s.pruneEnemyAnimationStates();
   for (const Enemy3DRenderState& enemy : s.enemies3d) {
     SkinnedAnimationState& animationState = s.enemyAnimationStates[enemy.id];
+    const glm::vec2 knock = hitKnockback(s, enemy.id, enemy.angle);
     drawActor(s, s.enemyModel, s.enemyMesh, animationState, enemy.animation,
-              actorModelMatrix(glm::vec3(enemy.x, 0.011f, enemy.y),
-                               s.enemyAssetProfile.scale,
-                               enemy.angle + s.enemyAssetProfile.yawOffsetRadians),
+              actorModelMatrix(
+                  glm::vec3(enemy.x + knock.x, 0.011f, enemy.y + knock.y),
+                  s.enemyAssetProfile.scale,
+                  enemy.angle + s.enemyAssetProfile.yawOffsetRadians),
               vp, hitFlashTint(enemyColorByArchetype(enemy.archetype),
                                hitFlashRemaining(s, enemy.id)),
               "enemy");
@@ -1106,11 +1120,22 @@ static void draw3DPhase(Surface& s) {
 
   // 首领立方体（按阶段配色，击败后跳过）。
   if (s.boss3d.active) {
+    // 首领受击后仰：体型更大，位移幅度略增。
+    glm::vec2 bossKnock(0.0f);
+    const float bossStrength =
+        std::min(s.boss3d.hitAnimationSeconds / 0.2f, 1.0f);
+    if (bossStrength > 0.0f) {
+      const float amount = 0.006f * bossStrength * bossStrength;
+      bossKnock = glm::vec2(-std::sin(s.boss3d.angle) * amount,
+                            -std::cos(s.boss3d.angle) * amount);
+    }
     drawActor(s, s.bossModel, s.bossMesh, s.bossAnimationState,
               s.boss3d.animation,
-              actorModelMatrix(glm::vec3(s.boss3d.x, 0.02f, s.boss3d.y),
-                               s.bossAssetProfile.scale,
-                               s.boss3d.angle + s.bossAssetProfile.yawOffsetRadians),
+              actorModelMatrix(
+                  glm::vec3(s.boss3d.x + bossKnock.x, 0.02f,
+                            s.boss3d.y + bossKnock.y),
+                  s.bossAssetProfile.scale,
+                  s.boss3d.angle + s.bossAssetProfile.yawOffsetRadians),
              vp, hitFlashTint(bossColorByPhase(s.boss3d.phase),
                               s.boss3d.hitAnimationSeconds),
              "boss");
