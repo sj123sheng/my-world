@@ -244,6 +244,47 @@ void testBossJudgmentBeamPeriodicallyDamagesPlayer() {
   assert(hpBefore - combat.snapshot().playerHp == fp(15));
 }
 
+// 电流节点：二阶段免疫期间玩家命中逐个击破节点，全部击破后恢复易伤。
+void testCurrentStormNodesBrokenByPlayerHits() {
+  CombatController combat(CombatConfig::defaults());
+  EncounterController encounter(combat);
+  assert(encounter.start(EncounterMode::Boss));
+  uint64_t sequence = 1;
+  Tick tick = 0;
+  auto attack = [&]() {
+    combat.enqueue({CombatAction::Attack, sequence++});
+  };
+  // 持续攻击直至进入电流风暴（HP < 700）。
+  bool phaseTwo = false;
+  for (int frame = 0; frame < 6000 && !phaseTwo; ++frame) {
+    tick += 16;
+    if (frame % 30 == 0) attack();
+    encounter.update({tick, 16, {0.5f, 0.5f}, false,
+                      EncounterController::kBossId});
+    phaseTwo =
+        encounter.snapshot().boss.phase == BossPhase::CurrentStorm;
+  }
+  assert(phaseTwo);
+  assert(!encounter.snapshot().boss.vulnerable);  // 免疫期不可受伤
+
+  // 免疫期继续攻击：逐个击破节点，伴随共鸣进发反馈事件。
+  bool resonanceEmitted = false;
+  for (int frame = 0;
+       frame < 2400 && encounter.snapshot().boss.nodesBroken < 2; ++frame) {
+    tick += 16;
+    if (frame % 30 == 0) attack();
+    encounter.update({tick, 16, {0.5f, 0.5f}, false,
+                      EncounterController::kBossId});
+    for (const GameplayEvent& event :
+         encounter.events().combat.gameplay) {
+      if (event.type == GameplayEventType::Resonance) resonanceEmitted = true;
+    }
+  }
+  assert(encounter.snapshot().boss.nodesBroken == 2);
+  assert(resonanceEmitted);
+  assert(encounter.snapshot().boss.vulnerable);  // 节点尽破，恢复易伤
+}
+
 int main() {
   testStartsAllModesWithStableEntities();
   testRejectsInvalidConfigurationAtomically();
@@ -256,4 +297,5 @@ int main() {
   testPlayerDeathEntersDefeatInNonBossModes();
   testEnemySnapshotExposesMaxHp();
   testBossJudgmentBeamPeriodicallyDamagesPlayer();
+  testCurrentStormNodesBrokenByPlayerHits();
 }

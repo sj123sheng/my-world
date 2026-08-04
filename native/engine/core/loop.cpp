@@ -524,7 +524,15 @@ void Loop::tickOnce(int64_t elapsedMs) {
       snapshot.objectiveLabel = "唤醒第一道共鸣";
       break;
     case EncounterMode::Boss:
-      snapshot.objectiveLabel = "击破共鸣核心";
+      if (encounter.snapshot().boss.phase == BossPhase::CurrentStorm &&
+          !encounter.snapshot().boss.defeated) {
+        snapshot.objectiveLabel =
+            std::string("击碎电流节点 ") +
+            std::to_string(encounter.snapshot().boss.nodesBroken) + "/" +
+            std::to_string(BossConfig::karounDefaults().currentNodeCount);
+      } else {
+        snapshot.objectiveLabel = "击破共鸣核心";
+      }
       break;
     default:
       snapshot.objectiveLabel = "前往共鸣祭坛";

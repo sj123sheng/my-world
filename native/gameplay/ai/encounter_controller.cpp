@@ -357,9 +357,15 @@ void EncounterController::update(const EncounterFrameInput& input) {
   }
 
   if (config_.mode == EncounterMode::Boss) {
+    // 免疫阶段（电流风暴）保持战斗代理满血：防止代理在免疫期被磨死，
+    // 同时保证玩家攻击仍可命中，驱动电流节点交互。
+    if (bossTarget_ != nullptr && !boss_.snapshot().vulnerable &&
+        !boss_.snapshot().defeated) {
+      bossTarget_->reset();
+    }
     const bool targetSelected =
         input.targetId == kBossId && bossTarget_ != nullptr &&
-        bossTarget_->alive() && boss_.snapshot().vulnerable;
+        bossTarget_->alive();
     const FixedPoint hpBefore =
         bossTarget_ == nullptr ? 0 : bossTarget_->hp();
     const FixedPoint poiseBefore =
@@ -401,6 +407,30 @@ void EncounterController::update(const EncounterFrameInput& input) {
       combat_.applyEnemyHit(beam);
     }
     events_.combat = combat_.events();
+    // 电流节点（二阶段机制）：电流风暴期间首领免疫，玩家命中可逐个
+    // 击破节点，全部击破后首领恢复易伤；击破瞬间给共鸣进发反馈。
+    if (boss_.snapshot().phase == BossPhase::CurrentStorm &&
+        !boss_.snapshot().defeated) {
+      bool playerLandedHit = false;
+      for (const GameplayEvent& event : events_.combat.gameplay) {
+        if (event.type == GameplayEventType::Damage &&
+            event.source == CombatController::kPlayerId &&
+            event.target == kBossId) {
+          playerLandedHit = true;
+          break;
+        }
+      }
+      if (playerLandedHit &&
+          boss_.breakCurrentNode(boss_.snapshot().nodesBroken, tick)) {
+        const uint64_t sequence = nextStableSequence(nextSequence_);
+        events_.combat.gameplay.push_back(
+            {tick, CombatController::kPlayerId, kBossId,
+             GameplayEventType::Resonance, 0, sequence});
+        events_.combat.presentation.push_back(
+            {tick, CombatController::kPlayerId, kBossId,
+             PresentationEventType::ResonanceBurst, FP_ONE, sequence});
+      }
+    }
     snapshot_.boss = boss_.snapshot();
     if (combat_.snapshot().playerHp <= 0) {
       snapshot_.state = EncounterState::Defeat;
