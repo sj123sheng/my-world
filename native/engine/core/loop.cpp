@@ -150,6 +150,30 @@ std::optional<Vec2> resolveEntityPosition(const Surface& surface,
   }
   return std::nullopt;
 }
+
+// 命中火花发射：LCG 伪随机确定方向/速度（同输入可重现），
+// 在命中点爆发一圈向外上扬的短命粒子。kind：0=金橙，1=红。
+void spawnHitSparks(Surface& surface, Vec2 position, int kind) {
+  if (surface.hitSparks3d.size() > 128) return;
+  constexpr int kSparkCount = 6;
+  constexpr float kTau = 6.2831853f;
+  for (int i = 0; i < kSparkCount; ++i) {
+    surface.hitSparkSeed = surface.hitSparkSeed * 1664525u + 1013904223u;
+    const float r0 =
+        static_cast<float>((surface.hitSparkSeed >> 8) & 0xFFFFu) / 65535.0f;
+    surface.hitSparkSeed = surface.hitSparkSeed * 1664525u + 1013904223u;
+    const float r1 =
+        static_cast<float>((surface.hitSparkSeed >> 8) & 0xFFFFu) / 65535.0f;
+    const float angle =
+        (static_cast<float>(i) / static_cast<float>(kSparkCount)) * kTau +
+        (r0 - 0.5f) * 0.9f;
+    const float speed = 0.02f + 0.025f * r1;
+    const float life = 0.22f + 0.1f * r0;
+    surface.hitSparks3d.push_back(
+        {position.x, 0.02f, position.y, std::cos(angle) * speed,
+         0.04f + 0.04f * r1, std::sin(angle) * speed, life, life, kind});
+  }
+}
 }  // namespace
 
 void Loop::start() {
@@ -338,6 +362,7 @@ void Loop::resetInput() {
   surface.player.moving = false;
   surface.playerHitAnimationSeconds = 0.0f;
   surface.enemyHitFlash.clear();
+  surface.hitSparks3d.clear();
   surface.player3dAnimation.action = RenderAnimation::Idle;
   surface.player3dAnimation.hit = false;
   surface.player3dAnimation.moving = false;
@@ -612,6 +637,9 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       kind = DamageNumberKind::Heavy;
     }
     damageNumbers.spawn(*position, amount, kind);
+    // 命中火花：与飘字同源，玩家受击用红色火花，其余金橙。
+    spawnHitSparks(surface, *position,
+                   event.target == CombatController::kPlayerId ? 1 : 0);
   }
   damageNumbers.update(dtMs);
   surface.damageNumbers3d.clear();
@@ -655,6 +683,21 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   // 预警环脉冲时钟：按 0.8s 周期回绕，避免浮点长时间累加精度退化。
   surface.windupPulseSeconds += dtSeconds;
   if (surface.windupPulseSeconds >= 0.8f) surface.windupPulseSeconds -= 0.8f;
+  // 命中火花：速度积分 + 重力回落，寿命到期或落地后清理。
+  constexpr float kSparkGravity = 0.35f;
+  for (HitSpark3D& spark : surface.hitSparks3d) {
+    spark.life -= dtSeconds;
+    spark.vy -= kSparkGravity * dtSeconds;
+    spark.x += spark.vx * dtSeconds;
+    spark.y += spark.vy * dtSeconds;
+    spark.z += spark.vz * dtSeconds;
+  }
+  surface.hitSparks3d.erase(
+      std::remove_if(surface.hitSparks3d.begin(), surface.hitSparks3d.end(),
+                     [](const HitSpark3D& spark) {
+                       return spark.life <= 0.0f || spark.y < 0.0f;
+                     }),
+      surface.hitSparks3d.end());
   const CombatSnapshot& combatSnapshot = combat.snapshot();
   surface.player3dAnimation.alive = combatSnapshot.playerHp > 0;
   surface.player3dAnimation.action = PlayerRenderAnimation(

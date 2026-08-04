@@ -47,6 +47,20 @@ struct Particle {
   float maxLife;
 };
 
+// 3D 命中火花：伤害命中时在目标位置爆发的短命粒子，
+// 由逻辑层做速度积分与寿命衰减，渲染层画广告牌四边形。
+struct HitSpark3D {
+  float x;
+  float y;  // 高度（3D 空间 Y）
+  float z;
+  float vx;
+  float vy;
+  float vz;
+  float life;
+  float maxLife;
+  int kind;  // 0 = 命中敌人（金橙），1 = 玩家受击（红）
+};
+
 struct Prop {
   float x;
   float y;
@@ -232,6 +246,11 @@ struct Surface {
   float vfxCameraShakeY = 0.0f;
   // 预警环脉冲时钟（秒），由逻辑层逐帧累加，供渲染层做呼吸动画。
   float windupPulseSeconds = 0.0f;
+
+  // ---- 命中火花字段 ----
+  std::vector<HitSpark3D> hitSparks3d;
+  // 火花发射伪随机种子（LCG），保证同输入下方向可重现。
+  uint32_t hitSparkSeed = 0;
 
   void applyAssetProfile(ModelKind kind, const AssetProfile& profile) {
     switch (kind) {

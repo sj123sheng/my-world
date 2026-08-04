@@ -764,6 +764,41 @@ static void ensureDigitAssets(Surface& s) {
   }
 }
 
+// 命中火花：加法混合的广告牌四边形，尺寸与透明度随寿命衰减。
+// 深度只读不写，被前景实体正确遮挡。调用后需恢复轮廓光/高光。
+static void drawHitSparks(Surface& s, const glm::mat4& vp) {
+  if (s.hitSparks3d.empty() || s.hpBarQuadMesh.vbo == 0u) return;
+  glDepthMask(GL_FALSE);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE);  // 加法混合：火花在暗场景上更醒目
+  s.shader3d.setSkinned(false);
+  s.shader3d.setHasTexture(false);
+  s.shader3d.setRim(glm::vec3(0.0f), 0.0f);
+  s.shader3d.setSpecular(0.0f, 1.0f);
+  s.shader3d.setEnvironmentTint(glm::vec3(0.0f), 0.0f);
+  const glm::mat4 billboard = cameraBillboard(s);
+  const glm::vec3 billboardNormal =
+      glm::normalize(glm::vec3(billboard * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f)));
+  for (const HitSpark3D& spark : s.hitSparks3d) {
+    const float t = std::clamp(spark.life / spark.maxLife, 0.0f, 1.0f);
+    const glm::vec3 color = spark.kind == 1 ? glm::vec3(1.0f, 0.35f, 0.30f)
+                                            : glm::vec3(1.0f, 0.78f, 0.32f);
+    s.shader3d.setLight(billboardNormal, color * 0.8f, color * 0.6f);
+    s.shader3d.setAlpha(t);
+    const float size = 0.0035f + 0.004f * t;
+    const glm::mat4 model =
+        glm::translate(glm::mat4(1.0f),
+                       glm::vec3(spark.x, spark.y, spark.z)) *
+        billboard * glm::scale(glm::mat4(1.0f), glm::vec3(size));
+    s.shader3d.setMVP(vp * model);
+    s.shader3d.setModel(model);
+    s.hpBarQuadMesh.draw();
+  }
+  s.shader3d.setAlpha(1.0f);
+  glDisable(GL_BLEND);
+  glDepthMask(GL_TRUE);
+}
+
 static void drawDamageNumbers(Surface& s, const glm::mat4& vp) {
   if (s.damageNumbers3d.empty()) return;
   ensureDigitAssets(s);
@@ -1050,6 +1085,11 @@ static void draw3DPhase(Surface& s) {
 
   // 敌人头顶血条。
   drawEnemyHpBars(s, vp);
+
+  // 命中火花：实体与飘字之间，结束后恢复轮廓光/高光状态。
+  drawHitSparks(s, vp);
+  s.shader3d.setRim({0.62f, 0.72f, 0.85f}, 0.45f);
+  s.shader3d.setSpecular(0.28f, 24.0f);
 
   // 伤害飘字：最后绘制，深度只读不写，被前景实体正确遮挡。
   drawDamageNumbers(s, vp);
