@@ -803,11 +803,16 @@ static void drawHitSparks(Surface& s, const glm::mat4& vp) {
       glm::normalize(glm::vec3(billboard * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f)));
   for (const HitSpark3D& spark : s.hitSparks3d) {
     const float t = std::clamp(spark.life / spark.maxLife, 0.0f, 1.0f);
-    const glm::vec3 color = spark.kind == 1 ? glm::vec3(1.0f, 0.35f, 0.30f)
-                                            : glm::vec3(1.0f, 0.78f, 0.32f);
+    glm::vec3 color{1.0f, 0.78f, 0.32f};      // 0 = 命中金橙
+    if (spark.kind == 1) {
+      color = {1.0f, 0.35f, 0.30f};            // 1 = 玩家受击红
+    } else if (spark.kind == 2) {
+      color = {1.0f, 0.92f, 0.62f};            // 2 = 击杀亮金
+    }
     s.shader3d.setLight(billboardNormal, color * 0.8f, color * 0.6f);
     s.shader3d.setAlpha(t);
-    const float size = 0.0035f + 0.004f * t;
+    const float baseSize = spark.kind == 2 ? 0.005f : 0.0035f;
+    const float size = baseSize + 0.004f * t;
     const glm::mat4 model =
         glm::translate(glm::mat4(1.0f),
                        glm::vec3(spark.x, spark.y, spark.z)) *

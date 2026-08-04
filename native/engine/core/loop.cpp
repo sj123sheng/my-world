@@ -156,12 +156,13 @@ std::optional<Vec2> resolveEntityPosition(const Surface& surface,
 }
 
 // 命中火花发射：LCG 伪随机确定方向/速度（同输入可重现），
-// 在命中点爆发一圈向外上扬的短命粒子。kind：0=金橙，1=红。
-void spawnHitSparks(Surface& surface, Vec2 position, int kind) {
+// 在命中点爆发一圈向外上扬的短命粒子。
+// kind：0=金橙命中，1=红色玩家受击，2=亮金击杀爆裂。
+void spawnHitSparks(Surface& surface, Vec2 position, int kind, int count = 6,
+                    float speedScale = 1.0f, float lifeScale = 1.0f) {
   if (surface.hitSparks3d.size() > 128) return;
-  constexpr int kSparkCount = 6;
   constexpr float kTau = 6.2831853f;
-  for (int i = 0; i < kSparkCount; ++i) {
+  for (int i = 0; i < count; ++i) {
     surface.hitSparkSeed = surface.hitSparkSeed * 1664525u + 1013904223u;
     const float r0 =
         static_cast<float>((surface.hitSparkSeed >> 8) & 0xFFFFu) / 65535.0f;
@@ -169,13 +170,14 @@ void spawnHitSparks(Surface& surface, Vec2 position, int kind) {
     const float r1 =
         static_cast<float>((surface.hitSparkSeed >> 8) & 0xFFFFu) / 65535.0f;
     const float angle =
-        (static_cast<float>(i) / static_cast<float>(kSparkCount)) * kTau +
+        (static_cast<float>(i) / static_cast<float>(count)) * kTau +
         (r0 - 0.5f) * 0.9f;
-    const float speed = 0.02f + 0.025f * r1;
-    const float life = 0.22f + 0.1f * r0;
+    const float speed = (0.02f + 0.025f * r1) * speedScale;
+    const float life = (0.22f + 0.1f * r0) * lifeScale;
     surface.hitSparks3d.push_back(
         {position.x, 0.02f, position.y, std::cos(angle) * speed,
-         0.04f + 0.04f * r1, std::sin(angle) * speed, life, life, kind});
+         (0.04f + 0.04f * r1) * speedScale, std::sin(angle) * speed, life,
+         life, kind});
   }
 }
 }  // namespace
@@ -624,6 +626,16 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   for (std::size_t eventIndex = gameplayEventStart;
        eventIndex < frameCombatEvents_.gameplay.size(); ++eventIndex) {
     const GameplayEvent& event = frameCombatEvents_.gameplay[eventIndex];
+    // 击杀爆裂：非玩家死亡时爆发更大规模的亮金火花，强化击杀确认感。
+    if (event.type == GameplayEventType::Death &&
+        event.target != CombatController::kPlayerId) {
+      const std::optional<Vec2> deathPos = resolveEntityPosition(
+          surface, encounter.snapshot(), event.target);
+      if (deathPos.has_value()) {
+        spawnHitSparks(surface, *deathPos, 2, 14, 1.8f, 1.4f);
+      }
+      continue;
+    }
     if (event.type != GameplayEventType::Damage) continue;
     // 非玩家目标受击：启动模型闪白计时器，渲染层据此提亮配色。
     if (event.target != CombatController::kPlayerId) {
