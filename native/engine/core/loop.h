@@ -66,6 +66,9 @@ struct Loop {
   std::thread runner;
   float fps = 0.0f;
   float particleEmitTimer = 0.0f;
+  // 3D 移动尾迹发射计时与连击升阶检测用上一帧值。
+  float trailEmitTimer = 0.0f;
+  int prevComboSegment = 0;
   // 命中卡肉（hitstop）剩余毫秒：>0 时冻结固定步逻辑、渲染继续，
   // 制造命中瞬间的顿帧打击感。仅在玩家命中敌人时触发。
   int64_t hitStopRemainingMs = 0;

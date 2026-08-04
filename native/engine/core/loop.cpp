@@ -374,6 +374,8 @@ void Loop::resetInput() {
   surface.player3dAnimation.hit = false;
   surface.player3dAnimation.moving = false;
   particleEmitTimer = 0.0f;
+  trailEmitTimer = 0.0f;
+  prevComboSegment = 0;
   currentTarget.reset();
   input.clear();
 }
@@ -443,6 +445,13 @@ void Loop::tickOnce(int64_t elapsedMs) {
     }
     lastEncounterStateForAudio = encounterStateNow;
   }
+
+  // 连击升阶音效：连击段数上升且达到 2 段及以上时播放升阶确认音。
+  const int comboNow = static_cast<int>(combat.snapshot().comboSegment);
+  if (comboNow > prevComboSegment && comboNow >= 2) {
+    audioBridge.playUiSound(SoundEffect::AuraApplied);
+  }
+  prevComboSegment = comboNow;
 
   GameSnapshot snapshot;
   snapshot.tick = fixedStep.tick();
@@ -551,6 +560,18 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                        return particle.life <= 0.0f;
                      }),
       surface.particles.end());
+
+  // 3D 移动尾迹：移动中每 0.09s 在脚下发射一颗缓升淡蓝粒子（kind=3），
+  // 在 3D 场景中给出运动轨迹感；与 2D 脚步粒子同源条件。
+  trailEmitTimer += dtSeconds;
+  if (surface.player.moving && intent.move.length() > 0.0f &&
+      trailEmitTimer > 0.09f) {
+    trailEmitTimer = 0.0f;
+    if (surface.hitSparks3d.size() <= 128) {
+      surface.hitSparks3d.push_back({surface.player.x, 0.006f, surface.player.y,
+                                     0.0f, 0.012f, 0.0f, 0.45f, 0.45f, 3});
+    }
+  }
 
   const std::vector<TargetCandidate>& candidates =
       encounter.snapshot().candidates;
@@ -722,11 +743,12 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   // 预警环脉冲时钟：按 0.8s 周期回绕，避免浮点长时间累加精度退化。
   surface.windupPulseSeconds += dtSeconds;
   if (surface.windupPulseSeconds >= 0.8f) surface.windupPulseSeconds -= 0.8f;
-  // 命中火花：速度积分 + 重力回落，寿命到期或落地后清理。
+  // 命中火花：速度积分 + 重力回落，寿命到期或落地后清理；
+  // 尾迹粒子（kind=3）不受重力，保持缓升消散。
   constexpr float kSparkGravity = 0.35f;
   for (HitSpark3D& spark : surface.hitSparks3d) {
     spark.life -= dtSeconds;
-    spark.vy -= kSparkGravity * dtSeconds;
+    if (spark.kind != 3) spark.vy -= kSparkGravity * dtSeconds;
     spark.x += spark.vx * dtSeconds;
     spark.y += spark.vy * dtSeconds;
     spark.z += spark.vz * dtSeconds;

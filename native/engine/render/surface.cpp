@@ -820,10 +820,15 @@ static void drawHitSparks(Surface& s, const glm::mat4& vp) {
       color = {1.0f, 0.35f, 0.30f};            // 1 = 玩家受击红
     } else if (spark.kind == 2) {
       color = {1.0f, 0.92f, 0.62f};            // 2 = 击杀亮金
+    } else if (spark.kind == 3) {
+      color = {0.55f, 0.78f, 0.95f};           // 3 = 移动尾迹淡蓝
     }
     s.shader3d.setLight(billboardNormal, color * 0.8f, color * 0.6f);
-    s.shader3d.setAlpha(t);
-    const float baseSize = spark.kind == 2 ? 0.005f : 0.0035f;
+    // 尾迹粒子低透明度小尺寸，不与战斗火花争夺注意力。
+    s.shader3d.setAlpha(spark.kind == 3 ? t * 0.45f : t);
+    const float baseSize = spark.kind == 2  ? 0.005f
+                           : spark.kind == 3 ? 0.0022f
+                                             : 0.0035f;
     const float size = baseSize + 0.004f * t;
     const glm::mat4 model =
         glm::translate(glm::mat4(1.0f),
