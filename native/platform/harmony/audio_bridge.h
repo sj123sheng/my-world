@@ -41,6 +41,10 @@ class AudioBridge {
   void stopAmbient();
   bool ambientPlaying() const { return ambientVoice_ >= 0; }
 
+  // 总开关：关闭后静音（清声部、停垫底），重开时恢复垫底。
+  void setEnabled(bool enabled);
+  bool enabled() const { return enabled_; }
+
   // 最近一次 dispatch 触发的音效序列（按事件顺序），供宿主机状态测试。
   const std::vector<SoundEffect>& lastDispatched() const {
     return lastDispatched_;
@@ -65,6 +69,7 @@ class AudioBridge {
   void play(SoundEffect effect, bool looping = false);
 
   bool initialized_ = false;
+  bool enabled_ = true;
   std::mutex mutex_;
   std::vector<SoundEffect> lastDispatched_;
   std::array<std::vector<int16_t>, kSoundEffectCount> samples_;

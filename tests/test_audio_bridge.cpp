@@ -195,6 +195,27 @@ void testAmbientLoop() {
   for (int16_t sample : buffer) assert(sample == 0);
 }
 
+// 总开关：关闭后不触发音效且填充静音，重开后恢复。
+void testEnabledToggle() {
+  AudioBridge audio;
+  audio.startAmbient();
+  audio.setEnabled(false);
+  assert(!audio.ambientPlaying());
+  CombatEventBatch batch{};
+  GameplayEvent damage{};
+  damage.type = GameplayEventType::Damage;
+  damage.value = fp(8);
+  batch.gameplay.push_back(damage);
+  audio.dispatch(batch);
+  assert(audio.lastDispatched().empty());
+  std::vector<int16_t> buffer(512, 1);
+  audio.fillBuffer(buffer.data(), 512);
+  for (int16_t sample : buffer) assert(sample == 0);
+  audio.setEnabled(true);
+  audio.dispatch(batch);
+  assert(audio.lastDispatched().size() == 1);
+}
+
 }  // namespace
 
 int main() {
@@ -208,5 +229,6 @@ int main() {
   testSynthesis();
   testVoiceStealing();
   testAmbientLoop();
+  testEnabledToggle();
   return 0;
 }

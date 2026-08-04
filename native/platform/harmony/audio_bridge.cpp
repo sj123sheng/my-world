@@ -81,6 +81,7 @@ void AudioBridge::stop() {
 }
 
 void AudioBridge::dispatch(const CombatEventBatch& batch) {
+  if (!enabled_) return;
   lastDispatched_.clear();
   for (const GameplayEvent& event : batch.gameplay) {
     std::optional<SoundEffect> effect = soundForGameplayEvent(event.type);
@@ -101,6 +102,19 @@ void AudioBridge::dispatch(const CombatEventBatch& batch) {
       lastDispatched_.push_back(*effect);
       play(*effect);
     }
+  }
+}
+
+void AudioBridge::setEnabled(bool enabled) {
+  if (enabled_ == enabled) return;
+  enabled_ = enabled;
+  if (enabled) {
+    if (initialized_) startAmbient();
+  } else {
+    stopAmbient();
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (Voice& voice : voices_) voice.active = false;
+    ambientVoice_ = -1;
   }
 }
 
@@ -154,6 +168,10 @@ void AudioBridge::play(SoundEffect effect, bool looping) {
 
 int32_t AudioBridge::fillBuffer(int16_t* output, int32_t frameCount) {
   if (output == nullptr || frameCount <= 0) return 0;
+  if (!enabled_) {
+    std::fill(output, output + frameCount, static_cast<int16_t>(0));
+    return frameCount * static_cast<int32_t>(sizeof(int16_t));
+  }
   std::lock_guard<std::mutex> lock(mutex_);
   for (int32_t frame = 0; frame < frameCount; ++frame) {
     int32_t mix = 0;

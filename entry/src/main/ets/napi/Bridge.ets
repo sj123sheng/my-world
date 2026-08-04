@@ -94,6 +94,7 @@ export const advanceLevel = (): boolean => native.advanceLevel();
 export const useSupply = (): boolean => native.useSupply();
 export const retryBoss = (): boolean => native.retryBoss();
 export const toggleDebugHud = (): void => native.toggleDebugHud();
+export const setAudioEnabled = (enabled: boolean): void => native.setAudioEnabled(enabled);
 export const setPaused = (paused: boolean): void => native.setPaused(paused);
 export const skipDemoPhase = (phase: number): void => native.skipDemoPhase(phase);
 export const pullSnapshot = (): Snapshot => native.pullSnapshot();

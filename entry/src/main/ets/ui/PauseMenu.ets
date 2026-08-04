@@ -1,11 +1,12 @@
-import { setPaused, startEncounter } from '../napi/Bridge';
+import { setAudioEnabled, setPaused, startEncounter } from '../napi/Bridge';
 
 // 暂停菜单：右上角暂停入口，冻结原生帧循环；
-// 面板提供继续、重开本战与振动反馈开关。
+// 面板提供继续、重开本战与振动/音效开关。
 @Component
 export struct PauseMenu {
   @Prop encounterMode: number = 0;
   @StorageLink('hapticsEnabled') hapticsEnabled: boolean = true;
+  @StorageLink('audioEnabled') audioEnabled: boolean = true;
   @State menuOpen: boolean = false;
 
   private pause(): void {
@@ -92,6 +93,19 @@ export struct PauseMenu {
                 .selectedColor('#43CDB5')
                 .onChange((isOn: boolean) => {
                   this.hapticsEnabled = isOn;
+                })
+            }
+            .margin({ top: 4 })
+
+            Row({ space: 10 }) {
+              Text('音效')
+                .fontSize(14)
+                .fontColor('#C7D0CE')
+              Toggle({ type: ToggleType.Switch, isOn: this.audioEnabled })
+                .selectedColor('#43CDB5')
+                .onChange((isOn: boolean) => {
+                  this.audioEnabled = isOn;
+                  setAudioEnabled(isOn);
                 })
             }
             .margin({ top: 4 })

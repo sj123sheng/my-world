@@ -88,6 +88,8 @@ struct Loop {
   bool useSupply();
   bool retryBoss();
   void toggleDebugHud();
+  // 音效总开关：由设置界面下发，关闭后静音并停环境垫底。
+  void setAudioEnabled(bool enabled) { audioBridge.setEnabled(enabled); }
   void skipDemoPhase(DemoPhase phase) { demoDirector.skipTo(phase); }
 
   template <typename Fn>

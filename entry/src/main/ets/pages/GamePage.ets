@@ -1,5 +1,5 @@
 import { nativeSetEnvironmentAssets, nativeSetModelAssets, nativeStartIfForeground,
-  nativeStop, pullSnapshot, Snapshot } from '../napi/Bridge';
+  nativeStop, pullSnapshot, setAudioEnabled, Snapshot } from '../napi/Bridge';
 import { Hud } from '../ui/Hud';
 import { CombatControls } from '../ui/CombatControls';
 import { Joystick } from '../ui/Joystick';
@@ -324,6 +324,9 @@ struct GamePage {
     PersistentStorage.persistProp<boolean>('tutorialDone', false);
     // 振动反馈开关跨会话持久化。
     PersistentStorage.persistProp<boolean>('hapticsEnabled', true);
+    // 音效开关跨会话持久化，并把当前值下发给原生音频桥。
+    PersistentStorage.persistProp<boolean>('audioEnabled', true);
+    setAudioEnabled(AppStorage.get<boolean>('audioEnabled') !== false);
     this.pageActive = true;
     const generation = ++this.modelLoadGeneration;
     this.loadModelAssets(generation);

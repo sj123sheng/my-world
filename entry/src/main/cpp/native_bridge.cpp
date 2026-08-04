@@ -323,6 +323,24 @@ static napi_value NativeToggleDebugHud(napi_env env, napi_callback_info) {
   return nullptr;
 }
 
+static napi_value NativeSetAudioEnabled(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value args[1] = {nullptr};
+  if (napi_get_cb_info(env, info, &argc, args, nullptr, nullptr) != napi_ok ||
+      argc != 1) {
+    return ThrowInputTypeError(env, "setAudioEnabled expects exactly one boolean");
+  }
+  napi_valuetype valueType = napi_undefined;
+  if (args[0] == nullptr || napi_typeof(env, args[0], &valueType) != napi_ok ||
+      valueType != napi_boolean) {
+    return ThrowInputTypeError(env, "setAudioEnabled requires a boolean argument");
+  }
+  bool value = false;
+  napi_get_value_bool(env, args[0], &value);
+  g_loop.setAudioEnabled(value);
+  return nullptr;
+}
+
 static napi_value NativeSetPaused(napi_env env, napi_callback_info info) {
   size_t argc = 1;
   napi_value args[1] = {nullptr};
@@ -559,6 +577,7 @@ static napi_value Init(napi_env env, napi_value exports) {
     {"useSupply", nullptr, NativeUseSupply, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"retryBoss", nullptr, NativeRetryBoss, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"toggleDebugHud", nullptr, NativeToggleDebugHud, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"setAudioEnabled", nullptr, NativeSetAudioEnabled, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"setPaused", nullptr, NativeSetPaused, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"skipDemoPhase", nullptr, NativeSkipDemoPhase, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pullSnapshot", nullptr, NativePullSnapshot, nullptr, nullptr, nullptr, napi_default, nullptr},
