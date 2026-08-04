@@ -39,11 +39,15 @@ void testClipResolutionFallsBackToIdle() {
                      RenderAnimation::Attack) == "attack");
   assert(ResolveClip({"run"}, RenderAnimation::Death) == "run");
   assert(ResolveClip({}, RenderAnimation::Idle).empty());
+  // 闪避专用剪辑存在时优先使用，缺失时回退 run。
+  assert(ResolveClip({"idle", "run", "Dodge_Forward"},
+                     RenderAnimation::Dodge) == "Dodge_Forward");
+  assert(ResolveClip({"idle", "run"}, RenderAnimation::Dodge) == "run");
 }
 
 void testDedicatedActionClipNames() {
   assert(std::string(RenderAnimationName(RenderAnimation::Dodge)) ==
-         "Running_Strafe_Right");
+         "Dodge_Forward");
   assert(std::string(RenderAnimationName(RenderAnimation::Radiance)) ==
          "Spellcast_Raise");
   assert(std::string(RenderAnimationName(RenderAnimation::Current)) ==

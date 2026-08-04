@@ -69,7 +69,7 @@ inline const char* RenderAnimationName(RenderAnimation animation) {
     case RenderAnimation::Attack:
       return "attack";
     case RenderAnimation::Dodge:
-      return "Running_Strafe_Right";
+      return "Dodge_Forward";
     case RenderAnimation::Radiance:
       return "Spellcast_Raise";
     case RenderAnimation::Current:
