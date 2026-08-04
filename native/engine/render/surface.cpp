@@ -822,12 +822,19 @@ static void drawHitSparks(Surface& s, const glm::mat4& vp) {
       color = {1.0f, 0.92f, 0.62f};            // 2 = 击杀亮金
     } else if (spark.kind == 3) {
       color = {0.55f, 0.78f, 0.95f};           // 3 = 移动尾迹淡蓝
+    } else if (spark.kind == 4) {
+      color = {1.0f, 0.96f, 0.72f};            // 4 = 辉印金白
+    } else if (spark.kind == 5) {
+      color = {0.45f, 0.85f, 1.0f};            // 5 = 脉流青蓝
+    } else if (spark.kind == 6) {
+      color = {0.72f, 0.45f, 0.95f};           // 6 = 蚀质暗紫
     }
     s.shader3d.setLight(billboardNormal, color * 0.8f, color * 0.6f);
     // 尾迹粒子低透明度小尺寸，不与战斗火花争夺注意力。
     s.shader3d.setAlpha(spark.kind == 3 ? t * 0.45f : t);
     const float baseSize = spark.kind == 2  ? 0.005f
                            : spark.kind == 3 ? 0.0022f
+                           : spark.kind >= 4 ? 0.0042f
                                              : 0.0035f;
     const float size = baseSize + 0.004f * t;
     const glm::mat4 model =

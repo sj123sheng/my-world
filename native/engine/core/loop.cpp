@@ -157,7 +157,8 @@ std::optional<Vec2> resolveEntityPosition(const Surface& surface,
 
 // 命中火花发射：LCG 伪随机确定方向/速度（同输入可重现），
 // 在命中点爆发一圈向外上扬的短命粒子。
-// kind：0=金橙命中，1=红色玩家受击，2=亮金击杀爆裂。
+// kind：0=金橙命中，1=红色玩家受击，2=亮金击杀爆裂，
+// 4=辉印金白，5=脉流青蓝，6=蚀质暗紫（技能释放）。
 void spawnHitSparks(Surface& surface, Vec2 position, int kind, int count = 6,
                     float speedScale = 1.0f, float lifeScale = 1.0f) {
   if (surface.hitSparks3d.size() > 128) return;
@@ -376,6 +377,9 @@ void Loop::resetInput() {
   particleEmitTimer = 0.0f;
   trailEmitTimer = 0.0f;
   prevComboSegment = 0;
+  prevRadianceCdMs = 0;
+  prevCurrentCdMs = 0;
+  prevCorruptionCdMs = 0;
   currentTarget.reset();
   input.clear();
 }
@@ -543,6 +547,19 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   playerController.update(surface.player, intent.move, camera.yaw(),
                           dtSeconds);
 
+  // 朝向锁定：存在软锁定目标时主角平滑转向目标，与敌人/首领保持
+  // 面对面对峙姿态，解决“双方方向不一致”的观感问题。
+  if (currentTarget.has_value() &&
+      currentTarget->direction.length() > 0.0f) {
+    const Vec2 facing = currentTarget->direction;
+    const float targetAngle = std::atan2(facing.x, facing.y);
+    constexpr float kTwoPi = 6.2831853071795864769f;
+    const float maxTurn = 8.0f * dtSeconds;
+    float delta = std::remainder(targetAngle - surface.player.angle, kTwoPi);
+    delta = std::clamp(delta, -maxTurn, maxTurn);
+    surface.player.angle += delta;
+  }
+
   // 仅在摇杆有有效输入时发射脚步粒子，避免减速滑行期间误发。
   particleEmitTimer += dtSeconds;
   if (surface.player.moving && intent.move.length() > 0.0f &&
@@ -571,6 +588,25 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       surface.hitSparks3d.push_back({surface.player.x, 0.006f, surface.player.y,
                                      0.0f, 0.012f, 0.0f, 0.45f, 0.45f, 3});
     }
+  }
+
+  // 源技能释放特效：冷却开始（上升沿）时在主角周身爆发一圈技能色火花，
+  // 辉印=金白、脉流=青蓝、蚀质=暗紫，让施法瞬间可见。
+  {
+    const CombatSnapshot& skillSnapshot = combat.snapshot();
+    const Vec2 playerPos{surface.player.x, surface.player.y};
+    if (skillSnapshot.radianceCooldownMs > 0 && prevRadianceCdMs <= 0) {
+      spawnHitSparks(surface, playerPos, 4, 12, 1.3f, 1.3f);
+    }
+    if (skillSnapshot.currentCooldownMs > 0 && prevCurrentCdMs <= 0) {
+      spawnHitSparks(surface, playerPos, 5, 12, 1.3f, 1.3f);
+    }
+    if (skillSnapshot.corruptionCooldownMs > 0 && prevCorruptionCdMs <= 0) {
+      spawnHitSparks(surface, playerPos, 6, 12, 1.3f, 1.3f);
+    }
+    prevRadianceCdMs = skillSnapshot.radianceCooldownMs;
+    prevCurrentCdMs = skillSnapshot.currentCooldownMs;
+    prevCorruptionCdMs = skillSnapshot.corruptionCooldownMs;
   }
 
   const std::vector<TargetCandidate>& candidates =
@@ -744,11 +780,11 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   surface.windupPulseSeconds += dtSeconds;
   if (surface.windupPulseSeconds >= 0.8f) surface.windupPulseSeconds -= 0.8f;
   // 命中火花：速度积分 + 重力回落，寿命到期或落地后清理；
-  // 尾迹粒子（kind=3）不受重力，保持缓升消散。
+  // 尾迹与技能粒子（kind>=3）不受重力，保持上扬消散。
   constexpr float kSparkGravity = 0.35f;
   for (HitSpark3D& spark : surface.hitSparks3d) {
     spark.life -= dtSeconds;
-    if (spark.kind != 3) spark.vy -= kSparkGravity * dtSeconds;
+    if (spark.kind <= 2) spark.vy -= kSparkGravity * dtSeconds;
     spark.x += spark.vx * dtSeconds;
     spark.y += spark.vy * dtSeconds;
     spark.z += spark.vz * dtSeconds;

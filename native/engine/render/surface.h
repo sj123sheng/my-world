@@ -58,7 +58,8 @@ struct HitSpark3D {
   float vz;
   float life;
   float maxLife;
-  int kind;  // 0 = 命中敌人（金橙），1 = 玩家受击（红）
+  int kind;  // 0=命中金橙 1=玩家受击红 2=击杀亮金 3=移动尾迹
+             // 4=辉印金白 5=脉流青蓝 6=蚀质暗紫
 };
 
 struct Prop {
