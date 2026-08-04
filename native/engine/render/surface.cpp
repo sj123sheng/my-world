@@ -449,6 +449,49 @@ static void drawWindupWarnings(Surface& s, const glm::mat4& vp) {
   glDepthMask(GL_TRUE);
 }
 
+// 审判光束轨迹预演：吟唱期间在地面铺设从首领指向玩家的脉冲红条，
+// 提前暴露光束路径，让闪避躲避有明确的空间参考。
+static void drawJudgmentBeam(Surface& s, const glm::mat4& vp) {
+  if (!s.boss3d.active || s.boss3d.defeated || !s.boss3d.windingUp) return;
+  if (s.boss3d.mechanic != 1) return;  // 1 = JudgmentBeam
+  if (s.hpBarQuadMesh.vbo == 0u) return;
+
+  const glm::vec3 bossPos(s.boss3d.x, 0.005f, s.boss3d.y);
+  const glm::vec3 playerPos(s.player.x, 0.005f, s.player.y);
+  const glm::vec3 dir = playerPos - bossPos;
+  const float length = glm::length(dir);
+  if (length < 0.001f) return;
+
+  const float yaw = std::atan2(dir.x, dir.z);
+  const float pulse =
+      0.5f + 0.5f * std::sin(s.windupPulseSeconds / 0.8f * 6.2831853f);
+
+  glDepthMask(GL_FALSE);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  s.shader3d.setRim(glm::vec3(0.0f), 0.0f);
+  s.shader3d.setSpecular(0.0f, 1.0f);
+  const glm::vec3 beamColor{1.0f, 0.30f, 0.20f};
+  s.shader3d.setLight(s.lightDir, beamColor * 0.7f, beamColor * 0.5f);
+  s.shader3d.setAlpha(0.22f + 0.28f * pulse);
+  s.shader3d.setSkinned(false);
+  s.shader3d.setHasTexture(false);
+
+  // 单位四边形（XY 平面）：绕 X 转 90° 铺到地面，长轴对齐光束方向。
+  const glm::mat4 model =
+      glm::translate(glm::mat4(1.0f), bossPos + dir * 0.5f) *
+      glm::rotate(glm::mat4(1.0f), yaw, glm::vec3(0.0f, 1.0f, 0.0f)) *
+      glm::rotate(glm::mat4(1.0f), 1.5707963f, glm::vec3(1.0f, 0.0f, 0.0f)) *
+      glm::scale(glm::mat4(1.0f), glm::vec3(0.03f, length, 1.0f));
+  s.shader3d.setMVP(vp * model);
+  s.shader3d.setModel(model);
+  s.hpBarQuadMesh.draw();
+
+  s.shader3d.setAlpha(1.0f);
+  glDisable(GL_BLEND);
+  glDepthMask(GL_TRUE);
+}
+
 // 受击后仰：命中闪白窗口内沿朝向反方向微位移，
 // 用身位反应把“被打实了”可视化；位移平方衰减，前强后弱更干脆。
 static glm::vec2 hitKnockback(const Surface& s, uint32_t id, float angle) {
@@ -1081,6 +1124,8 @@ static void draw3DPhase(Surface& s) {
 
   // 攻击前摇预警环：先于角色绘制，结束后函数内部恢复状态。
   drawWindupWarnings(s, vp);
+  // 审判光束地面轨迹预演：同样先于角色，结束后恢复状态。
+  drawJudgmentBeam(s, vp);
   s.shader3d.setRim({0.62f, 0.72f, 0.85f}, 0.45f);
   s.shader3d.setSpecular(0.28f, 24.0f);
 

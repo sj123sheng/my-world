@@ -103,6 +103,7 @@ void publish3DEncounterState(Surface& surface,
   surface.boss3d.windingUp =
       snapshot.boss.mechanic != BossMechanic::None &&
       snapshot.boss.castRemainingMs > 0;
+  surface.boss3d.mechanic = static_cast<int>(snapshot.boss.mechanic);
   surface.boss3d.animation.alive = !snapshot.boss.defeated;
   surface.boss3d.hitAnimationSeconds = std::max(
       0.0f, surface.boss3d.hitAnimationSeconds - dtSeconds);

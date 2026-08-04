@@ -104,6 +104,8 @@ struct Boss3DRenderState {
   bool active = false;
   // 首领正在吟唱机制（前摇）：渲染层据此绘制脚下预警环。
   bool windingUp = false;
+  // 当前机制（与 BossMechanic 数值一致）：1=JudgmentBeam 时绘制光束轨迹。
+  int mechanic = 0;
   ActorRenderState animation;
   float angle = 0.0f;  // 朝向角，弧度
   int64_t previousHp = 0;
