@@ -17,7 +17,7 @@
 // OHOS 侧通过 OHAudio 低延迟渲染流输出，创建失败时静默降级（无音）。
 class AudioBridge {
  public:
-  static constexpr int kSoundEffectCount = 9;
+  static constexpr int kSoundEffectCount = ::kSoundEffectCount;
   static constexpr int kVoiceCount = 8;
 
   AudioBridge() = default;
@@ -35,6 +35,12 @@ class AudioBridge {
   // 按批内事件映射并触发音效；大额伤害升级为重击音色。
   void dispatch(const CombatEventBatch& batch);
 
+  // 环境音垫：启动/停止循环垫底音乐（幂等）。
+  // start() 成功后自动启动；stop() 时随之停止。
+  void startAmbient();
+  void stopAmbient();
+  bool ambientPlaying() const { return ambientVoice_ >= 0; }
+
   // 最近一次 dispatch 触发的音效序列（按事件顺序），供宿主机状态测试。
   const std::vector<SoundEffect>& lastDispatched() const {
     return lastDispatched_;
@@ -51,10 +57,12 @@ class AudioBridge {
     int effect = -1;
     size_t offset = 0;
     bool active = false;
+    bool looping = false;
   };
 
   // 触发一个音效：懒合成 PCM 缓存，占用空闲声部，无空闲时轮转抢占。
-  void play(SoundEffect effect);
+  // 循环声部不参与抢占，仅可被 stopAmbient 释放。
+  void play(SoundEffect effect, bool looping = false);
 
   bool initialized_ = false;
   std::mutex mutex_;
@@ -63,6 +71,8 @@ class AudioBridge {
   std::array<bool, kSoundEffectCount> synthesized_{};
   std::array<Voice, kVoiceCount> voices_{};
   int nextStealVoice_ = 0;
+  // 环境音垫占用的声部索引；-1 表示未播放。
+  int ambientVoice_ = -1;
 
 #ifdef OHOS_PLATFORM
   OH_AudioRenderer* renderer_ = nullptr;

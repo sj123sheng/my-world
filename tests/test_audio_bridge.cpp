@@ -121,7 +121,7 @@ void testSynthesis() {
       SoundEffect::Dodge,    SoundEffect::Kill,
       SoundEffect::PoiseBreak, SoundEffect::CastBarBroken,
       SoundEffect::Resonance, SoundEffect::AuraApplied,
-      SoundEffect::PhaseChanged};
+      SoundEffect::PhaseChanged, SoundEffect::Ambient};
   for (SoundEffect effect : all) {
     const std::vector<int16_t> pcm = synthesizeSound(effect);
     assert(pcm.size() > 1000);  // 均 >22ms
@@ -155,6 +155,46 @@ void testVoiceStealing() {
   assert(audio.fillBuffer(buffer.data(), 256) == 512);
 }
 
+// 环境音垫：循环播放超过自身长度后仍有输出；停止后归零。
+void testAmbientLoop() {
+  AudioBridge audio;
+  audio.startAmbient();
+  assert(audio.ambientPlaying());
+  audio.startAmbient();  // 幂等：不重复占声部。
+  assert(audio.ambientPlaying());
+  std::vector<int16_t> buffer(8192, 0);
+  // Ambient 段长 4s = 176400 帧；填充超过一个循环验证回绕。
+  bool nonZeroBeyondLoop = false;
+  for (int chunk = 0; chunk < 24; ++chunk) {
+    audio.fillBuffer(buffer.data(), static_cast<int32_t>(buffer.size()));
+    if (chunk >= 22) {
+      for (int16_t sample : buffer) {
+        if (sample != 0) {
+          nonZeroBeyondLoop = true;
+          break;
+        }
+      }
+    }
+  }
+  assert(nonZeroBeyondLoop);
+  // 一次性音效与垫底共存：垫底不被抢占。
+  CombatEventBatch batch{};
+  GameplayEvent damage{};
+  damage.type = GameplayEventType::Damage;
+  damage.value = fp(8);
+  batch.gameplay.push_back(damage);
+  audio.dispatch(batch);
+  assert(audio.ambientPlaying());
+  audio.stopAmbient();
+  assert(!audio.ambientPlaying());
+  // 一次性 Hit 播完后（0.07s），整体归静。
+  for (int chunk = 0; chunk < 6; ++chunk) {
+    audio.fillBuffer(buffer.data(), static_cast<int32_t>(buffer.size()));
+  }
+  audio.fillBuffer(buffer.data(), static_cast<int32_t>(buffer.size()));
+  for (int16_t sample : buffer) assert(sample == 0);
+}
+
 }  // namespace
 
 int main() {
@@ -167,5 +207,6 @@ int main() {
   testMixingProducesThenSilence();
   testSynthesis();
   testVoiceStealing();
+  testAmbientLoop();
   return 0;
 }

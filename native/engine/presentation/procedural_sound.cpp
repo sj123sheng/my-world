@@ -130,6 +130,26 @@ std::vector<int16_t> synthesizePhaseChanged() {
   });
 }
 
+// 环境音垫：D 小调四音和弦垫底 + 0.25Hz 呼吸 LFO，4 秒循环段。
+// 首尾 15% 淡入淡出使循环接缝不可闻。
+std::vector<int16_t> synthesizeAmbient() {
+  return render(4.0f, [&](float t, float t01) {
+    const float chord = std::sin(kTwoPi * 73.42f * t) * 0.5f +
+                        std::sin(kTwoPi * 110.0f * t) * 0.4f +
+                        std::sin(kTwoPi * 146.83f * t) * 0.3f +
+                        std::sin(kTwoPi * 174.61f * t) * 0.25f;
+    const float breath = 0.75f + 0.25f * std::sin(kTwoPi * 0.25f * t);
+    constexpr float kFade = 0.15f;
+    float fade = 1.0f;
+    if (t01 < kFade) {
+      fade = t01 / kFade;
+    } else if (t01 > 1.0f - kFade) {
+      fade = (1.0f - t01) / kFade;
+    }
+    return chord * breath * fade * 0.10f;
+  });
+}
+
 }  // namespace
 
 std::vector<int16_t> synthesizeSound(SoundEffect effect) {
@@ -143,6 +163,7 @@ std::vector<int16_t> synthesizeSound(SoundEffect effect) {
     case SoundEffect::Resonance: return synthesizeResonance();
     case SoundEffect::AuraApplied: return synthesizeAuraApplied();
     case SoundEffect::PhaseChanged: return synthesizePhaseChanged();
+    case SoundEffect::Ambient: return synthesizeAmbient();
   }
   return {};
 }

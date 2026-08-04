@@ -18,7 +18,9 @@ enum class SoundEffect : uint8_t {
   Resonance,     // 共鸣爆发：三音和弦
   AuraApplied,   // 源技能附着：柔和正弦
   PhaseChanged,  // Boss 阶段转换：低沉警示
+  Ambient,       // 环境音垫：循环播放的低音量弦乐垫底
 };
+constexpr int kSoundEffectCount = static_cast<int>(SoundEffect::Ambient) + 1;
 
 // 合成指定音效的完整 PCM 缓冲（44100 Hz、单声道、int16）。
 std::vector<int16_t> synthesizeSound(SoundEffect effect);

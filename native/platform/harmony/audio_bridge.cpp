@@ -61,6 +61,7 @@ void AudioBridge::start() {
     return;
   }
   initialized_ = true;
+  startAmbient();  // 初始化成功即开始环境垫底音乐。
 #else
   // 非平台侧不发声，但保持映射/声部状态可测。
   initialized_ = false;
@@ -68,6 +69,7 @@ void AudioBridge::start() {
 }
 
 void AudioBridge::stop() {
+  stopAmbient();
 #ifdef OHOS_PLATFORM
   if (renderer_ != nullptr) {
     OH_AudioRenderer_Stop(renderer_);
@@ -102,13 +104,29 @@ void AudioBridge::dispatch(const CombatEventBatch& batch) {
   }
 }
 
-void AudioBridge::play(SoundEffect effect) {
+void AudioBridge::startAmbient() {
+  play(SoundEffect::Ambient, true);
+}
+
+void AudioBridge::stopAmbient() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (ambientVoice_ >= 0 && ambientVoice_ < kVoiceCount) {
+    voices_[static_cast<size_t>(ambientVoice_)].active = false;
+    voices_[static_cast<size_t>(ambientVoice_)].looping = false;
+  }
+  ambientVoice_ = -1;
+}
+
+void AudioBridge::play(SoundEffect effect, bool looping) {
   const int index = static_cast<int>(effect);
   if (index < 0 || index >= kSoundEffectCount) return;
   std::lock_guard<std::mutex> lock(mutex_);
   if (!synthesized_[static_cast<size_t>(index)]) {
     samples_[static_cast<size_t>(index)] = synthesizeSound(effect);
     synthesized_[static_cast<size_t>(index)] = true;
+  }
+  if (looping && ambientVoice_ >= 0 && ambientVoice_ < kVoiceCount) {
+    return;  // 幂等：环境音垫已在播放。
   }
   int slot = -1;
   for (int i = 0; i < kVoiceCount; ++i) {
@@ -118,11 +136,20 @@ void AudioBridge::play(SoundEffect effect) {
     }
   }
   if (slot < 0) {
-    // 声部占满：轮转抢占最旧的声部，保证新反馈永远可闻。
-    slot = nextStealVoice_;
-    nextStealVoice_ = (nextStealVoice_ + 1) % kVoiceCount;
+    if (looping) return;  // 无空闲声部时不抢占一次性音效来放垫底。
+    // 声部占满：轮转抢占最旧的非循环声部，保证新反馈永远可闻。
+    for (int probe = 0; probe < kVoiceCount; ++probe) {
+      const int candidate = (nextStealVoice_ + probe) % kVoiceCount;
+      if (!voices_[static_cast<size_t>(candidate)].looping) {
+        slot = candidate;
+        break;
+      }
+    }
+    if (slot < 0) return;  // 仅剩循环声部，不抢占。
+    nextStealVoice_ = (slot + 1) % kVoiceCount;
   }
-  voices_[static_cast<size_t>(slot)] = {index, 0, true};
+  voices_[static_cast<size_t>(slot)] = {index, 0, true, looping};
+  if (looping) ambientVoice_ = slot;
 }
 
 int32_t AudioBridge::fillBuffer(int16_t* output, int32_t frameCount) {
@@ -136,8 +163,12 @@ int32_t AudioBridge::fillBuffer(int16_t* output, int32_t frameCount) {
       const std::vector<int16_t>& pcm =
           samples_[static_cast<size_t>(voice.effect)];
       if (voice.offset >= pcm.size()) {
-        voice.active = false;
-        continue;
+        if (voice.looping && !pcm.empty()) {
+          voice.offset = 0;  // 循环声部回绕重播。
+        } else {
+          voice.active = false;
+          continue;
+        }
       }
       mix += pcm[voice.offset];
       ++voice.offset;
