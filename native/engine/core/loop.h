@@ -69,6 +69,8 @@ struct Loop {
   // 命中卡肉（hitstop）剩余毫秒：>0 时冻结固定步逻辑、渲染继续，
   // 制造命中瞬间的顿帧打击感。仅在玩家命中敌人时触发。
   int64_t hitStopRemainingMs = 0;
+  // 上一帧遭遇状态：用于结算音效的状态转移检测。
+  int lastEncounterStateForAudio = 0;
   int tickCount = 0;
   std::chrono::steady_clock::time_point lastFpsTime;
 

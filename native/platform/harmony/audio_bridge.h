@@ -45,6 +45,11 @@ class AudioBridge {
   void setEnabled(bool enabled);
   bool enabled() const { return enabled_; }
 
+  // UI/流程音效入口：不经战斗事件映射直接播放（如胜利/失败结算）。
+  void playUiSound(SoundEffect effect) {
+    if (enabled_) play(effect);
+  }
+
   // 最近一次 dispatch 触发的音效序列（按事件顺序），供宿主机状态测试。
   const std::vector<SoundEffect>& lastDispatched() const {
     return lastDispatched_;

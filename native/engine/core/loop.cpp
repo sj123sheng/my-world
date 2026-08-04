@@ -433,6 +433,17 @@ void Loop::tickOnce(int64_t elapsedMs) {
   }
   performanceGuard.sample(fixedStep.tick(), 16, fps);
 
+  // 结算音效：遭遇状态进入胜利/失败的转移沿播放确认音。
+  const int encounterStateNow = static_cast<int>(encounter.snapshot().state);
+  if (encounterStateNow != lastEncounterStateForAudio) {
+    if (encounterStateNow == static_cast<int>(EncounterState::Victory)) {
+      audioBridge.playUiSound(SoundEffect::Resonance);
+    } else if (encounterStateNow == static_cast<int>(EncounterState::Defeat)) {
+      audioBridge.playUiSound(SoundEffect::PhaseChanged);
+    }
+    lastEncounterStateForAudio = encounterStateNow;
+  }
+
   GameSnapshot snapshot;
   snapshot.tick = fixedStep.tick();
   snapshot.playerX = surface.player.x;
