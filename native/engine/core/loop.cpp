@@ -822,19 +822,50 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     state.rise = DamageNumberSystem::riseOffset(number);
     state.driftX = number.driftX;
     state.alpha = DamageNumberSystem::alpha(number);
+    state.scale = DamageNumberSystem::popScale(number);
     state.value = number.value;
     state.kind = static_cast<int>(number.kind);
     surface.damageNumbers3d.push_back(state);
   }
 
   // 敌人头顶血条：仅发布存活敌人，比例 = 当前 HP / 最大 HP。
+  // 滞后条在受击后停留片刻再匀速收缩，突出单次扣血量。
+  constexpr Tick kTrailHoldMs = 150;
+  constexpr float kTrailChasePerSec = 2.4f;  // 约 0.42 秒排空整条
+  const float trailDtSeconds = static_cast<float>(dtMs) / 1000.0f;
   surface.enemyHpBars3d.clear();
   for (const EncounterEnemySnapshot& enemy : encounter.snapshot().enemies) {
-    if (!enemy.alive || enemy.maxHp <= 0) continue;
+    if (!enemy.alive || enemy.maxHp <= 0) {
+      enemyHpTrails.erase(enemy.id);
+      continue;
+    }
     EnemyHpBarRenderState bar;
     bar.x = enemy.position.x;
     bar.z = enemy.position.y;
     bar.ratio = static_cast<float>(enemy.hp) / static_cast<float>(enemy.maxHp);
+    EnemyHpTrailState& trail = enemyHpTrails[enemy.id];
+    if (bar.ratio >= trail.trail) {
+      // 回血或满血：立即贴合，不残留滞后条。
+      trail.trail = bar.ratio;
+      trail.holdMs = 0;
+      trail.chasing = false;
+    } else {
+      if (!trail.chasing && trail.holdMs <= 0) {
+        // 新一次扣血：先进入停留期，让玩家看清整段损失。
+        trail.holdMs = kTrailHoldMs;
+      }
+      if (trail.holdMs > 0) {
+        trail.holdMs -= dtMs;
+      } else {
+        trail.chasing = true;
+        trail.trail -= kTrailChasePerSec * trailDtSeconds;
+        if (trail.trail <= bar.ratio) {
+          trail.trail = bar.ratio;
+          trail.chasing = false;
+        }
+      }
+    }
+    bar.trailRatio = trail.trail;
     surface.enemyHpBars3d.push_back(bar);
   }
 

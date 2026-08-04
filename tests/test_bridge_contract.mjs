@@ -20,7 +20,7 @@ assert.match(joystick, /\.hitTestBehavior\(HitTestMode\.Transparent\)/,
 assert.match(page, /import \{ Joystick \} from ['"]\.\.\/ui\/Joystick['"];/,
   'GamePage must import the Joystick component');
 assert.match(page, /Joystick\(\)/, 'GamePage must mount the Joystick layer');
-assert.match(controls, /@Prop radianceCooldownMs: number = 0;/,
+assert.match(controls, /@Prop (@Watch\('[^']+'\) )?radianceCooldownMs: number = 0;/,
   'CombatControls must accept radiance cooldown prop');
 assert.match(controls, /@Prop ultimateWindowMs: number = 0;/,
   'CombatControls must accept ultimate window prop');
@@ -71,7 +71,7 @@ assert.match(hud,
   'HUD must highlight exactly the closed 100..500ms precision window');
 assert.match(hud, /@Prop objectiveLabel: string = '';/,
   'HUD must accept the current objective label');
-assert.match(hud, /@Prop resonanceSlots: number\[\] = \[0, 0, 0\];/,
+assert.match(hud, /@Prop (@Watch\('[^']+'\) )?resonanceSlots: number\[\] = \[0, 0, 0\];/,
   'HUD must accept exactly three resonance slots');
 assert.match(hud, /if \(this\.showDebugHud\)/,
   'HUD debug diagnostics must be opt-in');

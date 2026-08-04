@@ -956,7 +956,10 @@ static void drawDamageNumbers(Surface& s, const glm::mat4& vp) {
   const glm::vec3 billboardNormal =
       glm::normalize(glm::vec3(billboard * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f)));
 
-  constexpr float kCharHeight = 0.055f;
+  // 字号缩小约 40%（0.055 → 0.034）：原版飘字过大遮挡敌人，
+  // 大额伤害略大但仍显著小于旧尺寸，保持层级感。
+  constexpr float kCharHeight = 0.034f;
+  constexpr float kHeavyHeight = 0.044f;
   constexpr float kCharAspect = 0.8f;  // 数字图集单元 16x20
   char buffer[16];
   for (const DamageNumberRenderState& number : s.damageNumbers3d) {
@@ -970,10 +973,14 @@ static void drawDamageNumbers(Surface& s, const glm::mat4& vp) {
     s.shader3d.setAlpha(number.alpha);
 
     const int length = snprintf(buffer, sizeof(buffer), "%d", number.value);
-    const float charWidth = kCharHeight * kCharAspect;
+    // 入场弹出缩放：生成瞬间从 0.6 倍放大到常尺寸。
+    const float charHeight =
+        (number.kind == 1 ? kHeavyHeight : kCharHeight) *
+        std::clamp(number.scale, 0.1f, 1.5f);
+    const float charWidth = charHeight * kCharAspect;
     const float totalWidth = charWidth * static_cast<float>(length);
     const glm::vec3 basePosition(number.x + number.driftX,
-                                 0.16f + number.rise, number.z);
+                                 0.145f + number.rise, number.z);
     for (int index = 0; index < length && index < 15; ++index) {
       if (buffer[index] < '0' || buffer[index] > '9') continue;
       const int digit = buffer[index] - '0';
@@ -982,7 +989,7 @@ static void drawDamageNumbers(Surface& s, const glm::mat4& vp) {
       const glm::mat4 model =
           glm::translate(glm::mat4(1.0f), basePosition) * billboard *
           glm::translate(glm::mat4(1.0f), glm::vec3(localX, 0.0f, 0.0f)) *
-          glm::scale(glm::mat4(1.0f), glm::vec3(kCharHeight));
+          glm::scale(glm::mat4(1.0f), glm::vec3(charHeight));
       s.shader3d.setMVP(vp * model);
       s.shader3d.setModel(model);
       s.digitMeshes[digit].draw();
@@ -1036,6 +1043,25 @@ static void drawEnemyHpBars(Surface& s, const glm::mat4& vp) {
     s.shader3d.setModel(model);
     s.shader3d.setLight(billboardNormal, backColor * 0.7f, backColor * 0.3f);
     s.hpBarQuadMesh.draw();
+
+    // 滞后条（扣血追赶动效）：受击后短暂停留再向实际血量收缩，
+    // 暖红底衬托前景条，让单次扣血量清晰可读。
+    const float trail = std::clamp(bar.trailRatio, ratio, 1.0f);
+    if (trail > ratio) {
+      const glm::vec3 trailColor{0.85f, 0.42f, 0.30f};
+      const float trailWidth = kBarWidth * trail;
+      const float trailX = -kBarWidth * 0.5f + trailWidth * 0.5f;
+      const glm::mat4 trailModel =
+          glm::translate(glm::mat4(1.0f), basePosition) * billboard *
+          glm::translate(glm::mat4(1.0f), glm::vec3(trailX, 0.0f, 0.0002f)) *
+          glm::scale(glm::mat4(1.0f),
+                     glm::vec3(trailWidth, kBarHeight * 0.72f, 1.0f));
+      s.shader3d.setMVP(vp * trailModel);
+      s.shader3d.setModel(trailModel);
+      s.shader3d.setLight(billboardNormal, trailColor * 0.7f,
+                          trailColor * 0.3f);
+      s.hpBarQuadMesh.draw();
+    }
 
     // 前景条：左对齐，宽度按血量比例缩放。
     if (ratio > 0.0f) {

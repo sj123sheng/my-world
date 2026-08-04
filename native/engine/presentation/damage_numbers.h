@@ -18,7 +18,7 @@ struct DamageNumber {
   int32_t value = 0;             // 显示数值
   DamageNumberKind kind = DamageNumberKind::Normal;
   Tick elapsedMs = 0;
-  Tick lifetimeMs = 900;
+  Tick lifetimeMs = 700;
   float driftX = 0.0f;           // 水平散布偏移，避免多条飘字重叠
   uint64_t sequence = 0;
 
@@ -36,8 +36,10 @@ class DamageNumberSystem {
  public:
   // 同时存在的飘字上限，超出时淘汰最旧条目。
   static constexpr std::size_t kCapacity = 24;
-  // 上浮总高度（世界单位）。
-  static constexpr float kRiseHeight = 0.07f;
+  // 上浮总高度（世界单位）：缩小后避免遮挡敌人本体。
+  static constexpr float kRiseHeight = 0.05f;
+  // 入场弹出动画时长：期间字号从 0.6 倍放大到 1.0 倍。
+  static constexpr Tick kPopInMs = 120;
 
   void spawn(Vec2 position, float value, DamageNumberKind kind);
   void update(int64_t dtMs);
@@ -49,6 +51,8 @@ class DamageNumberSystem {
   static float riseOffset(const DamageNumber& number);
   // 透明度：前 60% 生命保持不透明，后 40% 线性淡出。
   static float alpha(const DamageNumber& number);
+  // 入场弹出缩放：0.6 → 1.0（ease-out），提升生成瞬间的可读性。
+  static float popScale(const DamageNumber& number);
 
  private:
   std::vector<DamageNumber> numbers_;
