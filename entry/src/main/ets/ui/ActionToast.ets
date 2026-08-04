@@ -1,5 +1,7 @@
 // 动作拒绝反馈浮层：技能冷却/体力不足/共鸣不足等拒绝原因即时提示，
 // 让玩家明白按键为何没有生效，避免无效操作困惑。
+import { Haptics } from './Haptics';
+
 const TOAST_DURATION_MS: number = 900;
 
 @Component
@@ -22,6 +24,8 @@ export struct ActionToast {
     }
     this.label = ActionToast.labelFor(this.lastRejectReason);
     this.visible = true;
+    // 拒绝轻振：与命中/受击振动区分，提示“按键未生效”。
+    Haptics.light();
     if (this.hideTimer !== -1) {
       clearTimeout(this.hideTimer);
     }
