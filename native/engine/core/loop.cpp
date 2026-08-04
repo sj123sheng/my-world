@@ -99,6 +99,10 @@ void publish3DEncounterState(Surface& surface,
   surface.boss3d.active =
       snapshot.mode == EncounterMode::Boss &&
       snapshot.state != EncounterState::Stopped;
+  // 首领吟唱机制期间是玩家的应对窗口：有机制且吟唱未完时显示预警环。
+  surface.boss3d.windingUp =
+      snapshot.boss.mechanic != BossMechanic::None &&
+      snapshot.boss.castRemainingMs > 0;
   surface.boss3d.animation.alive = !snapshot.boss.defeated;
   surface.boss3d.hitAnimationSeconds = std::max(
       0.0f, surface.boss3d.hitAnimationSeconds - dtSeconds);
