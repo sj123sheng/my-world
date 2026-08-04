@@ -130,11 +130,12 @@ struct Boss3DRenderState {
 };
 
 // 敌人头顶血条渲染状态：逻辑侧每帧生成，渲染层绘制为面向相机的
-// 背景条 + 按比例缩短的前景条。
+// 背景条 + 按比例缩短的前景条；trailRatio 为延迟追赶的扣血滞后条。
 struct EnemyHpBarRenderState {
   float x = 0.0f;
   float z = 0.0f;
   float ratio = 1.0f;  // hp / maxHp，[0, 1]
+  float trailRatio = 1.0f;  // 滞后条比例，受击后延迟追赶 ratio
 };
 
 // 锁定目标指示器渲染状态：软瞄准命中的目标脚下绘制脉冲环。
@@ -156,6 +157,7 @@ struct DamageNumberRenderState {
   float rise = 0.0f;
   float driftX = 0.0f;
   float alpha = 1.0f;
+  float scale = 1.0f;  // 入场弹出缩放（0.6 → 1.0）
   int32_t value = 0;
   int kind = 0;
 };

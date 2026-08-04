@@ -4,6 +4,7 @@
 #include <chrono>
 #include <optional>
 #include <mutex>
+#include <unordered_map>
 #include "fixed_step.h"
 #include "../../engine/presentation/vfx_system.h"
 #include "../../engine/presentation/performance_guard.h"
@@ -48,6 +49,14 @@ struct Loop {
   std::optional<TargetSelection> currentTarget;
   VfxSystem vfxSystem;
   DamageNumberSystem damageNumbers;
+  // 敌人头顶血条滞后条状态：受击后短暂停留再匀速追赶实际血量，
+  // 让单次扣血量清晰可读（key = EntityId）。
+  struct EnemyHpTrailState {
+    float trail = 1.0f;
+    Tick holdMs = 0;
+    bool chasing = false;
+  };
+  std::unordered_map<EntityId, EnemyHpTrailState> enemyHpTrails;
   PerformanceGuard performanceGuard;
   AudioBridge audioBridge;
   bool debugHud_ = false;

@@ -35,7 +35,7 @@ int main() {
   system.update(500);
   assert(system.active().size() == 2);
   assert(system.active()[0].elapsedMs == 500);
-  system.update(400);  // 900ms 到期
+  system.update(400);  // 900ms 累计超过 700ms 寿命，到期移除
   assert(system.active().empty());
 
   // 容量上限：超出时淘汰最旧条目。
@@ -73,6 +73,20 @@ int main() {
   assert(close(DamageNumberSystem::alpha(number), 0.5f));
   number.elapsedMs = 1000;
   assert(close(DamageNumberSystem::alpha(number), 0.0f));
+
+  // 入场弹出缩放：起点 0.6，kPopInMs 后收敛到 1.0，期间单调递增。
+  number.elapsedMs = 0;
+  assert(close(DamageNumberSystem::popScale(number), 0.6f));
+  float prevScale = 0.0f;
+  for (Tick t = 20; t <= DamageNumberSystem::kPopInMs; t += 20) {
+    number.elapsedMs = t;
+    const float s = DamageNumberSystem::popScale(number);
+    assert(s > prevScale);
+    prevScale = s;
+  }
+  assert(close(DamageNumberSystem::popScale(number), 1.0f));
+  number.elapsedMs = 500;
+  assert(close(DamageNumberSystem::popScale(number), 1.0f));
 
   // 水平散布确定性：相同序号模式产生相同偏移，且范围受限。
   DamageNumberSystem first;

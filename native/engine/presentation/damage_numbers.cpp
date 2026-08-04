@@ -56,3 +56,13 @@ float DamageNumberSystem::alpha(const DamageNumber& number) {
   const float t = std::clamp(number.progress(), 0.0f, 1.0f);
   return t < 0.6f ? 1.0f : (1.0f - t) / 0.4f;
 }
+
+float DamageNumberSystem::popScale(const DamageNumber& number) {
+  if (number.lifetimeMs <= 0 || kPopInMs <= 0) return 1.0f;
+  const float t = std::clamp(
+      static_cast<float>(number.elapsedMs) / static_cast<float>(kPopInMs),
+      0.0f, 1.0f);
+  // ease-out：弹出起始快、末段收敛到 1.0。
+  const float ease = 1.0f - (1.0f - t) * (1.0f - t);
+  return 0.6f + 0.4f * ease;
+}
