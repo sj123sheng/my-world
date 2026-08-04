@@ -73,6 +73,8 @@ struct Enemy3DRenderState {
   // 0 = RiftClaw, 1 = Priest, 2 = Guard（与 EnemyArchetype 数值一致）。
   int archetype = 0;
   bool alive = false;
+  // 处于攻击前摇：渲染层据此绘制脚下预警环。
+  bool windingUp = false;
   ActorRenderState animation;
   float angle = 0.0f;  // 朝向角，弧度
 };
@@ -228,6 +230,8 @@ struct Surface {
   float vfxResonanceBurst = 0.0f;
   float vfxCameraShakeX = 0.0f;
   float vfxCameraShakeY = 0.0f;
+  // 预警环脉冲时钟（秒），由逻辑层逐帧累加，供渲染层做呼吸动画。
+  float windupPulseSeconds = 0.0f;
 
   void applyAssetProfile(ModelKind kind, const AssetProfile& profile) {
     switch (kind) {

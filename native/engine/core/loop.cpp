@@ -85,6 +85,7 @@ void publish3DEncounterState(Surface& surface,
                                              : RenderAnimation::Idle;
     state.animation.hit = enemy.hit;
     state.animation.moving = enemy.moving;
+    state.windingUp = enemy.windingUp;
     // 模型局部 +Z 为前方，逻辑 (x, y) 映射到 3D (x, z)。
     state.angle = std::atan2(enemy.facing.x, enemy.facing.y);
     surface.enemies3d.push_back(state);
@@ -651,6 +652,9 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       ++flash;
     }
   }
+  // 预警环脉冲时钟：按 0.8s 周期回绕，避免浮点长时间累加精度退化。
+  surface.windupPulseSeconds += dtSeconds;
+  if (surface.windupPulseSeconds >= 0.8f) surface.windupPulseSeconds -= 0.8f;
   const CombatSnapshot& combatSnapshot = combat.snapshot();
   surface.player3dAnimation.alive = combatSnapshot.playerHp > 0;
   surface.player3dAnimation.action = PlayerRenderAnimation(

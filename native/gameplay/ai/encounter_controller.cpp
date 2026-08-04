@@ -215,7 +215,7 @@ bool EncounterEnemySnapshot::operator==(
          corruptionAttached == other.corruptionAttached &&
          corroded == other.corroded && facing == other.facing &&
          moving == other.moving && attacking == other.attacking &&
-         hit == other.hit;
+         hit == other.hit && windingUp == other.windingUp;
 }
 
 bool EncounterSnapshot::operator==(const EncounterSnapshot& other) const {
@@ -588,6 +588,7 @@ void EncounterController::refreshSnapshot(bool includeCandidates) {
     enemy.moving = slot->moving;
     enemy.attacking = slot->attacking;
     enemy.hit = slot->hit;
+    enemy.windingUp = slot->phase == EnemyActionPhase::Windup;
     snapshot_.enemies.push_back(enemy);
     if (includeCandidates && snapshot_.state == EncounterState::Running &&
         enemy.alive) {

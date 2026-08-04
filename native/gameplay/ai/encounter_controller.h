@@ -82,6 +82,8 @@ struct EncounterEnemySnapshot {
   bool moving = false;
   bool attacking = false;
   bool hit = false;
+  // 处于攻击前摇（Windup）：供渲染层绘制预警提示，让玩家有精确闪避窗口。
+  bool windingUp = false;
 
   bool operator==(const EncounterEnemySnapshot& other) const;
 };

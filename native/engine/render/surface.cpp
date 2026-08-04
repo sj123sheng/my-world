@@ -380,6 +380,53 @@ static float hitFlashRemaining(const Surface& s, uint32_t id) {
   return flash != s.enemyHitFlash.end() ? flash->second : 0.0f;
 }
 
+// 攻击前摇预警 pass：在前摇敌人脚下绘制呼吸闪烁的红色警示环，
+// 给玩家精确闪避的时机窗口。深度只读 + 混合，先于角色绘制。
+static void drawWindupWarnings(Surface& s, const glm::mat4& vp) {
+  if (s.targetRingMesh.vbo == 0u) return;
+  bool any = false;
+  for (const Enemy3DRenderState& enemy : s.enemies3d) {
+    if (enemy.alive && enemy.windingUp) {
+      any = true;
+      break;
+    }
+  }
+  if (!any) return;
+
+  glDepthMask(GL_FALSE);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  s.shader3d.setRim(glm::vec3(0.0f), 0.0f);
+  s.shader3d.setSpecular(0.0f, 1.0f);
+
+  // 0.8s 呼吸周期：环体缩放与透明度同步脉冲，营造紧迫感。
+  const float phase = s.windupPulseSeconds / 0.8f * 6.2831853f;
+  const float pulse = 0.5f + 0.5f * std::sin(phase);
+  const glm::vec3 warnColor{1.0f, 0.32f, 0.22f};
+  s.shader3d.setLight(s.lightDir, warnColor * 0.7f, warnColor * 0.5f);
+  s.shader3d.setAlpha(0.35f + 0.4f * pulse);
+
+  for (const Enemy3DRenderState& enemy : s.enemies3d) {
+    if (!enemy.alive || !enemy.windingUp) continue;
+    // 环半径略大于接地阴影（scale*0.36）；单位环外半径 0.075+0.014/2=0.082。
+    const float ringScale =
+        s.enemyAssetProfile.scale * 0.44f / 0.082f * (1.0f + 0.08f * pulse);
+    const glm::mat4 model =
+        glm::translate(glm::mat4(1.0f),
+                       glm::vec3(enemy.x, 0.006f, enemy.y)) *
+        glm::scale(glm::mat4(1.0f), glm::vec3(ringScale));
+    s.shader3d.setMVP(vp * model);
+    s.shader3d.setModel(model);
+    s.shader3d.setSkinned(false);
+    s.shader3d.setHasTexture(false);
+    s.targetRingMesh.draw();
+  }
+
+  s.shader3d.setAlpha(1.0f);
+  glDisable(GL_BLEND);
+  glDepthMask(GL_TRUE);
+}
+
 static void drawMeshAt(Surface& s, const Mesh& mesh,
                        const glm::mat4& vp, const glm::vec3& position,
                        float scale, const glm::vec3& base) {
@@ -945,6 +992,11 @@ static void draw3DPhase(Surface& s) {
   s.shader3d.setRim({0.62f, 0.72f, 0.85f}, 0.45f);
   s.shader3d.setSpecular(0.28f, 24.0f);
   s.shader3d.setAlpha(1.0f);
+
+  // 攻击前摇预警环：先于角色绘制，结束后函数内部恢复状态。
+  drawWindupWarnings(s, vp);
+  s.shader3d.setRim({0.62f, 0.72f, 0.85f}, 0.45f);
+  s.shader3d.setSpecular(0.28f, 24.0f);
 
   // 玩家：模型可用时走蒙皮，否则保留 M3-1 立方体。
   drawActor(s, s.playerModel, s.playerMesh, s.playerAnimationState,
