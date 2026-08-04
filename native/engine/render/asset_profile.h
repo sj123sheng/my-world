@@ -22,6 +22,16 @@ struct AssetProfile {
   static AssetProfile forModel(ModelKind kind);
 };
 
+// VFX 粒子尺寸的参考基准：取特效调参时的原始模型缩放。
+// 火花/投射物等特效按“当前模型缩放 / 基准”的比例动态放大，
+// 之后模型尺寸再调整时特效自动同步跟随，无需修改粒子代码。
+inline float VfxSizeRatio(const AssetProfile& profile, ModelKind kind) {
+  const float reference = kind == ModelKind::Player  ? 0.025f / 3.0f
+                          : kind == ModelKind::Enemy ? 0.022f / 3.0f
+                                                     : 0.045f / 3.0f;
+  return reference > 0.0f ? profile.scale / reference : 1.0f;
+}
+
 struct ActorRimLight {
   glm::vec3 color{0.0f};
   float strength = 0.0f;

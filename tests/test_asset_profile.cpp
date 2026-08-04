@@ -14,11 +14,13 @@ void testProfilesProduceUsableActorTransforms() {
   const AssetProfile enemy = AssetProfile::forModel(ModelKind::Enemy);
   const AssetProfile boss = AssetProfile::forModel(ModelKind::Boss);
 
-  assert(nearlyEqual(player.scale, 0.025f / 3.0f));
-  assert(nearlyEqual(enemy.scale, 0.022f / 3.0f));
-  assert(nearlyEqual(boss.scale, 0.045f / 3.0f));
+  assert(nearlyEqual(player.scale, 0.05f / 3.0f));
+  assert(nearlyEqual(enemy.scale, 0.044f / 3.0f));
+  assert(nearlyEqual(boss.scale, 0.09f / 3.0f));
   assert(boss.scale > player.scale);
-  assert(!nearlyEqual(boss.yawOffsetRadians, 0.0f));
+  // boss3d.angle 已按 boss→player 方向计算，模型局部 +Z 为前方，
+  // yawOffset 必须为 0，否则首领永远背对玩家。
+  assert(nearlyEqual(boss.yawOffsetRadians, 0.0f));
 }
 
 void testProfilesKeepVisualRolesDistinct() {

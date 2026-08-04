@@ -73,6 +73,11 @@ struct Loop {
   Tick prevRadianceCdMs = 0;
   Tick prevCurrentCdMs = 0;
   Tick prevCorruptionCdMs = 0;
+  // 上一帧连击段数（特效专用）：变化即视为一次普攻挥击，
+  // 用于向目标发射释放过程投射物。
+  int prevComboSegmentForVfx = 0;
+  // 上一帧动作状态（特效专用）：检测终结技吟唱上升沿释放大招动效。
+  uint8_t prevActionForVfx = 0;
   // 命中卡肉（hitstop）剩余毫秒：>0 时冻结固定步逻辑、渲染继续，
   // 制造命中瞬间的顿帧打击感。仅在玩家命中敌人时触发。
   int64_t hitStopRemainingMs = 0;

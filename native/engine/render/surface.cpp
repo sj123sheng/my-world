@@ -923,7 +923,8 @@ static void drawHitSparks(Surface& s, const glm::mat4& vp) {
                            : spark.kind == 3 ? 0.0022f
                            : spark.kind >= 4 ? 0.0042f
                                              : 0.0035f;
-    const float size = baseSize + 0.004f * t;
+    // sizeScale 随归属实体的模型缩放同步，模型放大后特效等大跟随。
+    const float size = (baseSize + 0.004f * t) * std::max(0.0f, spark.sizeScale);
     const glm::mat4 model =
         glm::translate(glm::mat4(1.0f),
                        glm::vec3(spark.x, spark.y, spark.z)) *

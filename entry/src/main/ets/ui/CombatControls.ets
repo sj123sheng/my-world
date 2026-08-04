@@ -87,7 +87,7 @@ export struct CombatControls {
           .height('100%')
           .color(color)
           .backgroundColor('rgba(6, 8, 14, 0.7)')
-          .style({ strokeWidth: 3.5 })
+          .style({ strokeWidth: 5 })
           .animation({ duration: 80, curve: Curve.Linear })
         Text(`${Math.ceil(remainingMs / 1000)}`)
           .fontSize(13)
@@ -98,6 +98,40 @@ export struct CombatControls {
       .width('100%')
       .height('100%')
       .borderRadius('50%')
+      .hitTestBehavior(HitTestMode.Transparent)
+    }
+  }
+
+  // 冷却线性进度条：填充宽度 = 已恢复比例，随冷却恢复从左向右增长，
+  // 搭配右侧剩余秒数，让冷却进度在按钮环之外也有清晰读数。
+  @Builder
+  cooldownBar(label: string, remainingMs: number, totalMs: number, color: string) {
+    if (remainingMs > 0) {
+      Row({ space: 5 }) {
+        Text(label)
+          .fontSize(10)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(color)
+          .width(12)
+          .textAlign(TextAlign.Center)
+        Stack({ alignContent: Alignment.Start }) {
+          Stack()
+            .width(118)
+            .height(5)
+            .borderRadius(3)
+            .backgroundColor('rgba(6, 8, 14, 0.6)')
+          Stack()
+            .width(Math.max(5, (1 - remainingMs / Math.max(totalMs, 1)) * 118))
+            .height(5)
+            .borderRadius(3)
+            .backgroundColor(color)
+            .animation({ duration: 120, curve: Curve.Linear })
+        }
+        Text(`${(remainingMs / 1000).toFixed(1)}`)
+          .fontSize(9)
+          .fontColor('#C7D0CE')
+          .width(24)
+      }
       .hitTestBehavior(HitTestMode.Transparent)
     }
   }
@@ -311,6 +345,28 @@ export struct CombatControls {
       .position({ x: '100%', y: '100%' })
       .markAnchor({ x: 278, y: 244 })
       .hitTestBehavior(HitTestMode.Transparent)
+
+      // 三源冷却进度条面板：任一技能冷却中时显示在按钮簇上方，
+      // 填充随恢复增长，走完即消失，与按钮上的冷却环互补。
+      if (this.radianceCooldownMs > 0 || this.currentCooldownMs > 0 ||
+        this.corruptionCooldownMs > 0) {
+        Column({ space: 4 }) {
+          this.cooldownBar('辉', this.radianceCooldownMs, this.radianceCooldownTotalMs, '#D9A145')
+          this.cooldownBar('流', this.currentCooldownMs, this.currentCooldownTotalMs, '#43CDB5')
+          this.cooldownBar('蚀', this.corruptionCooldownMs, this.corruptionCooldownTotalMs, '#AB4F92')
+        }
+        .alignItems(HorizontalAlign.End)
+        .justifyContent(FlexAlign.End)
+        .width(172)
+        .height(58)
+        .padding({ left: 8, right: 8, top: 6, bottom: 6 })
+        .backgroundColor('rgba(17, 24, 29, 0.45)')
+        .borderRadius(10)
+        .border({ width: 1, color: 'rgba(199, 208, 206, 0.15)' })
+        .hitTestBehavior(HitTestMode.Transparent)
+        .position({ x: '100%', y: '100%' })
+        .markAnchor({ x: 278, y: 308 })
+      }
 
       // 调试入口：右上小型圆钮，展开/收起调试面板。
       Button('☰')

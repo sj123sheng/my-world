@@ -211,8 +211,10 @@ std::optional<Vec2> resolveEntityPosition(const Surface& surface,
 // 在命中点爆发一圈向外上扬的短命粒子。
 // kind：0=金橙命中，1=红色玩家受击，2=亮金击杀爆裂，
 // 4=辉印金白，5=脉流青蓝，6=蚀质暗紫（技能释放）。
+// sizeScale：归属实体的模型缩放比例，火花尺寸与扩散速度同步放大。
 void spawnHitSparks(Surface& surface, Vec2 position, int kind, int count = 6,
-                    float speedScale = 1.0f, float lifeScale = 1.0f) {
+                    float speedScale = 1.0f, float lifeScale = 1.0f,
+                    float sizeScale = 1.0f) {
   if (surface.hitSparks3d.size() > 128) return;
   constexpr float kTau = 6.2831853f;
   for (int i = 0; i < count; ++i) {
@@ -225,12 +227,48 @@ void spawnHitSparks(Surface& surface, Vec2 position, int kind, int count = 6,
     const float angle =
         (static_cast<float>(i) / static_cast<float>(count)) * kTau +
         (r0 - 0.5f) * 0.9f;
-    const float speed = (0.02f + 0.025f * r1) * speedScale;
+    const float speed = (0.02f + 0.025f * r1) * speedScale * sizeScale;
     const float life = (0.22f + 0.1f * r0) * lifeScale;
     surface.hitSparks3d.push_back(
         {position.x, 0.02f, position.y, std::cos(angle) * speed,
-         (0.04f + 0.04f * r1) * speedScale, std::sin(angle) * speed, life,
-         life, kind});
+         (0.04f + 0.04f * r1) * speedScale * sizeScale, std::sin(angle) * speed,
+         life, life, kind, sizeScale});
+  }
+}
+
+// 特效尺寸比例：按实体归属的模型档案缩放 / 基准缩放派生，
+// 模型放大后命中火花、技能爆发与投射物尺寸同步跟随。
+float actorVfxRatio(const Surface& surface, EntityId id) {
+  if (id == CombatController::kPlayerId) {
+    return VfxSizeRatio(surface.playerAssetProfile, ModelKind::Player);
+  }
+  if (id == EncounterController::kBossId) {
+    return VfxSizeRatio(surface.bossAssetProfile, ModelKind::Boss);
+  }
+  return VfxSizeRatio(surface.enemyAssetProfile, ModelKind::Enemy);
+}
+
+// 释放过程投射物：从主角胸口朝目标发射沿直线飞行的粒子，
+// 飞行时长按距离取 0.12~0.26s；寿命结束恰与命中点爆裂火花衔接，
+// 形成“释放→飞行→命中”的完整动效。kind 复用火花配色。
+// count>1 时沿飞行方向法线横向错开起点，呈轻微束流状。
+void spawnAttackProjectiles(Surface& surface, Vec2 from, Vec2 to, int kind,
+                            float sizeScale, int count = 1) {
+  const Vec2 delta = to - from;
+  const float distance = delta.length();
+  if (!delta.finite() || distance < 0.02f || surface.hitSparks3d.size() > 120) {
+    return;
+  }
+  const float travelSeconds = std::clamp(distance / 1.6f, 0.12f, 0.26f);
+  const Vec2 velocity = delta * (1.0f / travelSeconds);
+  const Vec2 side{-delta.y / distance, delta.x / distance};
+  for (int i = 0; i < count; ++i) {
+    const float offset = (static_cast<float>(i) -
+                          static_cast<float>(count - 1) * 0.5f) * 0.02f;
+    const Vec2 origin = from + side * offset;
+    surface.hitSparks3d.push_back(
+        {origin.x, 0.035f, origin.y, velocity.x, 0.012f, velocity.y,
+         travelSeconds, travelSeconds, kind, sizeScale * 2.0f});
   }
 }
 }  // namespace
@@ -432,6 +470,8 @@ void Loop::resetInput() {
   prevRadianceCdMs = 0;
   prevCurrentCdMs = 0;
   prevCorruptionCdMs = 0;
+  prevComboSegmentForVfx = 0;
+  prevActionForVfx = 0;
   currentTarget.reset();
   input.clear();
 }
@@ -614,9 +654,9 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   playerController.update(surface.player, intent.move, camera.yaw(),
                           dtSeconds);
 
-  // 朝向锁定：存在软锁定目标时主角平滑转向目标，与敌人/首领保持
-  // 面对面对峙姿态，解决“双方方向不一致”的观感问题。
-  if (currentTarget.has_value() &&
+  // 朝向锁定：仅在主角停步时平滑转向软锁定目标，保持面对面对峙姿态；
+  // 跑动中不覆盖朝向，脸部始终跟随移动方向（由 PlayerController 驱动）。
+  if (!surface.player.moving && currentTarget.has_value() &&
       currentTarget->direction.length() > 0.0f) {
     const Vec2 facing = currentTarget->direction;
     const float targetAngle = std::atan2(facing.x, facing.y);
@@ -652,25 +692,80 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       trailEmitTimer > 0.09f) {
     trailEmitTimer = 0.0f;
     if (surface.hitSparks3d.size() <= 128) {
-      surface.hitSparks3d.push_back({surface.player.x, 0.006f, surface.player.y,
-                                     0.0f, 0.012f, 0.0f, 0.45f, 0.45f, 3});
+      surface.hitSparks3d.push_back(
+          {surface.player.x, 0.006f, surface.player.y, 0.0f, 0.012f, 0.0f,
+           0.45f, 0.45f, 3,
+           VfxSizeRatio(surface.playerAssetProfile, ModelKind::Player)});
     }
   }
 
   // 源技能释放特效：冷却开始（上升沿）时在主角周身爆发一圈技能色火花，
-  // 辉印=金白、脉流=青蓝、蚀质=暗紫，让施法瞬间可见。
+  // 辉印=金白、脉流=青蓝、蚀质=暗紫，让施法瞬间可见；
+  // 同时向目标发射飞行投射物，给出“主角→目标”的释放过程动效。
   {
     const CombatSnapshot& skillSnapshot = combat.snapshot();
     const Vec2 playerPos{surface.player.x, surface.player.y};
+    const float playerRatio =
+        actorVfxRatio(surface, CombatController::kPlayerId);
+    // 释放目标：优先软锁定目标；未锁定时退回首领（首领战），
+    // 保证投射物始终有明确去处。
+    std::optional<Vec2> releaseTarget;
+    if (currentTarget.has_value()) {
+      releaseTarget = resolveEntityPosition(
+          surface, encounter.snapshot(),
+          static_cast<EntityId>(currentTarget->id));
+    }
+    if (!releaseTarget.has_value() &&
+        encounter.snapshot().mode == EncounterMode::Boss &&
+        encounter.snapshot().boss.hp > 0) {
+      releaseTarget = Vec2{surface.boss3d.x, surface.boss3d.y};
+    }
     if (skillSnapshot.radianceCooldownMs > 0 && prevRadianceCdMs <= 0) {
-      spawnHitSparks(surface, playerPos, 4, 12, 1.3f, 1.3f);
+      spawnHitSparks(surface, playerPos, 4, 12, 1.3f, 1.3f, playerRatio);
+      if (releaseTarget.has_value()) {
+        spawnAttackProjectiles(surface, playerPos, *releaseTarget, 4,
+                               playerRatio, 5);
+      }
     }
     if (skillSnapshot.currentCooldownMs > 0 && prevCurrentCdMs <= 0) {
-      spawnHitSparks(surface, playerPos, 5, 12, 1.3f, 1.3f);
+      spawnHitSparks(surface, playerPos, 5, 12, 1.3f, 1.3f, playerRatio);
+      if (releaseTarget.has_value()) {
+        spawnAttackProjectiles(surface, playerPos, *releaseTarget, 5,
+                               playerRatio, 5);
+      }
     }
     if (skillSnapshot.corruptionCooldownMs > 0 && prevCorruptionCdMs <= 0) {
-      spawnHitSparks(surface, playerPos, 6, 12, 1.3f, 1.3f);
+      spawnHitSparks(surface, playerPos, 6, 12, 1.3f, 1.3f, playerRatio);
+      if (releaseTarget.has_value()) {
+        spawnAttackProjectiles(surface, playerPos, *releaseTarget, 6,
+                               playerRatio, 5);
+      }
     }
+    // 终结技释放动效：进入吟唱状态瞬间在主角周身爆发大规模金白火花，
+    // 并向目标齐射更粗更亮的密集束流，强化“终结一击”的仪式感。
+    const uint8_t actionNow = skillSnapshot.currentAction;
+    if (actionNow == static_cast<uint8_t>(ActionState::CastingUltimate) &&
+        prevActionForVfx !=
+            static_cast<uint8_t>(ActionState::CastingUltimate)) {
+      spawnHitSparks(surface, playerPos, 4, 20, 2.0f, 1.6f,
+                     playerRatio * 1.5f);
+      if (releaseTarget.has_value()) {
+        spawnAttackProjectiles(surface, playerPos, *releaseTarget, 4,
+                               playerRatio * 1.5f, 7);
+      }
+    }
+    prevActionForVfx = actionNow;
+    // 普攻释放动效：连击段数变化（每次挥击升阶/回绕）时，主角周身
+    // 爆出小型挥击火花，并朝目标发射双投射物，命中点由爆裂火花收束。
+    const int comboSegmentNow = static_cast<int>(skillSnapshot.comboSegment);
+    if (comboSegmentNow != prevComboSegmentForVfx && comboSegmentNow > 0) {
+      spawnHitSparks(surface, playerPos, 0, 4, 0.8f, 0.8f, playerRatio);
+      if (releaseTarget.has_value()) {
+        spawnAttackProjectiles(surface, playerPos, *releaseTarget, 0,
+                               playerRatio, 2);
+      }
+    }
+    prevComboSegmentForVfx = comboSegmentNow;
     prevRadianceCdMs = skillSnapshot.radianceCooldownMs;
     prevCurrentCdMs = skillSnapshot.currentCooldownMs;
     prevCorruptionCdMs = skillSnapshot.corruptionCooldownMs;
@@ -781,7 +876,8 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       const std::optional<Vec2> deathPos = resolveEntityPosition(
           surface, encounter.snapshot(), event.target);
       if (deathPos.has_value()) {
-        spawnHitSparks(surface, *deathPos, 2, 14, 1.8f, 1.4f);
+        spawnHitSparks(surface, *deathPos, 2, 14, 1.8f, 1.4f,
+                       actorVfxRatio(surface, event.target));
       }
       continue;
     }
@@ -809,9 +905,11 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + stopMs, 80);
     }
     damageNumbers.spawn(*position, amount, kind);
-    // 命中火花：与飘字同源，玩家受击用红色火花，其余金橙。
+    // 命中火花：与飘字同源，玩家受击用红色火花，其余金橙；
+    // 尺寸按受击实体的模型缩放同步，大体型目标火花更大。
     spawnHitSparks(surface, *position,
-                   event.target == CombatController::kPlayerId ? 1 : 0);
+                   event.target == CombatController::kPlayerId ? 1 : 0, 6,
+                   1.0f, 1.0f, actorVfxRatio(surface, event.target));
   }
   damageNumbers.update(dtMs);
   surface.damageNumbers3d.clear();
