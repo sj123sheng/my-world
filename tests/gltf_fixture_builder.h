@@ -204,6 +204,26 @@ inline std::vector<uint8_t> makeMinimalGlb(bool includeAttack = false) {
   return glb;
 }
 
+// 在最小 GLB 上追加 Hit_B 受击变体 clip（复用 run 的平移通道，
+// LINEAR 0→2），供受击变体轮换测试使用。
+inline std::vector<uint8_t> makeHitVariantGlb() {
+  return replaceJsonText(
+      makeMinimalGlb(), R"("translation"}}]}]})",
+      R"("translation"}}]},
+    {"name":"Hit_B","samplers":[{"input":7,"output":9,"interpolation":"LINEAR"}],
+      "channels":[{"sampler":0,"target":{"node":1,"path":"translation"}}]}]})");
+}
+
+// 在最小 GLB 上追加 Walking_B 行走 clip（复用 run 的平移通道，
+// LINEAR 0→2），供低速行走切换测试使用。
+inline std::vector<uint8_t> makeWalkVariantGlb() {
+  return replaceJsonText(
+      makeMinimalGlb(), R"("translation"}}]}]})",
+      R"("translation"}}]},
+    {"name":"Walking_B","samplers":[{"input":7,"output":9,"interpolation":"LINEAR"}],
+      "channels":[{"sampler":0,"target":{"node":1,"path":"translation"}}]}]})");
+}
+
 inline std::vector<uint8_t> makeStaticSceneGlb(bool embeddedTexture = true) {
   BinaryBuilder bin;
   const BufferSlice positions = bin.append<float>({

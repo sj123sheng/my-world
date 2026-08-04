@@ -78,6 +78,8 @@ struct OwnedChannel {
 struct OwnedClip {
   std::string name;
   float duration = 0.0f;
+  // 一次性 clip（非 idle/run）播完钳制尾帧，不循环重播。
+  bool oneShot = false;
   std::vector<OwnedChannel> channels;
 };
 
@@ -447,6 +449,7 @@ bool copyAnimations(const cgltf_data& data, RuntimeData& output,
     const cgltf_animation& animation = data.animations[animationIndex];
     OwnedClip clip;
     clip.name = animation.name == nullptr ? std::string{} : animation.name;
+    clip.oneShot = !IsLoopingClip(clip.name);
     clip.channels.reserve(animation.channels_count);
     for (std::size_t channelIndex = 0; channelIndex < animation.channels_count;
          ++channelIndex) {
@@ -654,7 +657,11 @@ std::vector<PoseNode> samplePose(const RuntimeData& data, int clipIndex,
     return pose;
   }
   const OwnedClip& clip = data.clips[static_cast<std::size_t>(clipIndex)];
-  const float sampleTime = wrappedClipTime(time, clip.duration);
+  // 循环 clip 按周期取模；一次性 clip 钳制在尾帧，避免播完后
+  // 循环重播造成尸体倒地动作或攻击挥砍鬼畜。
+  const float sampleTime =
+      clip.oneShot ? std::min(time, clip.duration)
+                   : wrappedClipTime(time, clip.duration);
   for (const OwnedChannel& channel : clip.channels) {
     if (channel.path == ChannelPath::Rotation) {
       AnimationChannel<glm::quat> source{channel.times, channel.quatValues,
@@ -732,10 +739,6 @@ int findClip(const RuntimeData& data, const std::string& name) {
   return -1;
 }
 
-bool isLocomotionClip(const std::string& name) {
-  return name == "idle" || name == "run";
-}
-
 }  // namespace
 
 struct SkinnedModel::Impl {
@@ -756,6 +759,10 @@ void SkinnedAnimationState::reset() {
   currentTime = 0.0f;
   previousTime = 0.0f;
   blendElapsed = 0.0f;
+  blendDurationSeconds = 0.0f;
+  requestedAnimation = RenderAnimation::Idle;
+  currentRate = 1.0f;
+  previousRate = 1.0f;
   logState.reset();
 }
 
@@ -1014,34 +1021,40 @@ SkinPalette SkinnedModel::update(SkinnedAnimationState& animation,
   }
   const float dt = std::max(dtSeconds, 0.0f);
   const RenderAnimation requestedAnimation = ChooseAnimation(actor);
-  const std::string desiredName =
-      ResolveClip(impl_->data.clipNames, requestedAnimation);
+  // 跑动步频随输入幅度缩放，与地面移速匹配；其余动作保持原速率。
+  const float playbackRate =
+      requestedAnimation == RenderAnimation::Run
+          ? RunPlaybackRate(actor.moveRatio)
+          : 1.0f;
+  const std::string desiredName = ResolveClip(
+      impl_->data.clipNames, requestedAnimation, actor.variant,
+      actor.moveRatio);
   const int desiredClip = findClip(impl_->data, desiredName);
   if (desiredClip != animation.currentClip) {
-    const std::string currentName =
-        animation.currentClip >= 0
-            ? impl_->data.clips[static_cast<std::size_t>(animation.currentClip)].name
-            : std::string{};
-    const bool requestedLocomotion =
-        requestedAnimation == RenderAnimation::Idle ||
-        requestedAnimation == RenderAnimation::Run;
-    if (requestedLocomotion && animation.currentClip >= 0 && desiredClip >= 0 &&
-        isLocomotionClip(currentName) && isLocomotionClip(desiredName)) {
+    const float blendSeconds = AnimationBlendSeconds(
+        animation.requestedAnimation, requestedAnimation);
+    if (animation.currentClip >= 0 && desiredClip >= 0 && blendSeconds > 0.0f) {
+      // 任意动作转场都走交叉混合，避免上架品质下可见的姿态硬切。
       animation.previousClip = animation.currentClip;
       animation.previousTime = animation.currentTime;
       animation.blendElapsed = 0.0f;
+      animation.blendDurationSeconds = blendSeconds;
     } else {
       animation.previousClip = -1;
       animation.previousTime = 0.0f;
       animation.blendElapsed = 0.0f;
+      animation.blendDurationSeconds = 0.0f;
     }
+    animation.previousRate = animation.currentRate;
     animation.currentClip = desiredClip;
     animation.currentTime = 0.0f;
   }
+  animation.requestedAnimation = requestedAnimation;
+  animation.currentRate = playbackRate;
 
-  animation.currentTime += dt;
+  animation.currentTime += dt * playbackRate;
   if (animation.previousClip >= 0) {
-    animation.previousTime += dt;
+    animation.previousTime += dt * animation.previousRate;
     animation.blendElapsed += dt;
   }
 
@@ -1050,12 +1063,13 @@ SkinPalette SkinnedModel::update(SkinnedAnimationState& animation,
   if (animation.previousClip >= 0) {
     const std::vector<PoseNode> previous =
         samplePose(impl_->data, animation.previousClip, animation.previousTime);
-    constexpr float kLocomotionBlendSeconds = 0.15f;
-    blendPoses(pose, previous, animation.blendElapsed / kLocomotionBlendSeconds);
-    if (animation.blendElapsed >= kLocomotionBlendSeconds) {
+    blendPoses(pose, previous,
+               animation.blendElapsed / animation.blendDurationSeconds);
+    if (animation.blendElapsed >= animation.blendDurationSeconds) {
       animation.previousClip = -1;
       animation.previousTime = 0.0f;
       animation.blendElapsed = 0.0f;
+      animation.blendDurationSeconds = 0.0f;
     }
   }
   return buildRuntimePalette(impl_->data, pose);

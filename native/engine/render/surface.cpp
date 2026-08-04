@@ -568,20 +568,57 @@ static void drawBossCinematicGeometry(Surface& s, const glm::mat4& vp) {
   }
 }
 
+// 角色阶段默认的中性轮廓光：环境/预警环等非角色几何体共用。
+static const glm::vec3 kNeutralRimColor{0.62f, 0.72f, 0.85f};
+static constexpr float kNeutralRimStrength = 0.45f;
+// 角色阶段默认的中性高光：与逐帧全局状态一致，drawActor 结束后恢复。
+static constexpr float kNeutralSpecularStrength = 0.28f;
+static constexpr float kNeutralSpecularShininess = 24.0f;
+
 static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
                       SkinnedAnimationState& animationState,
                       const ActorRenderState& actor, const glm::mat4& matrix,
                       const glm::mat4& vp, const glm::vec3& base,
+                      const AssetProfile& profile, float hitFlashSeconds,
+                      bool targeted, float fadeAlpha, float appearance,
                       const char* actorName) {
+  if (fadeAlpha <= 0.0f) return;  // 尸体淡出完毕：整体跳过绘制。
+  // 逐角色轮廓光：玩家青绿/敌人紫/Boss 品红，受击窗口内增强，
+  // 被软锁定时常亮抬升，出场进度驱动渐入；绘制结束后恢复中性轮廓光，
+  // 避免泄漏到后续非角色绘制。
+  const ActorRimLight rim =
+      ActorRimLightFor(profile, hitFlashSeconds, targeted, appearance);
+  s.shader3d.setRim(rim.color, rim.strength);
+  // 逐角色高光分档：主角盔甲强锐、敌人哑光、Boss 宽厚，
+  // 绘制结束后与轮廓光一并恢复中性值。
+  s.shader3d.setSpecular(profile.specularStrength, profile.specularShininess);
   s.shader3d.setMVP(vp * matrix);
   s.shader3d.setModel(matrix);
   applyEntityTint(s, base);
+
+  // 尸体淡出：alpha 通道线性淡出，两条绘制路径结束后统一恢复状态。
+  const bool fading = fadeAlpha < 1.0f;
+  if (fading) {
+#ifdef OHOS_PLATFORM
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+#endif
+    s.shader3d.setAlpha(fadeAlpha);
+  }
+  const auto restoreFade = [&s, fading] {
+    if (!fading) return;
+    s.shader3d.setAlpha(1.0f);
+#ifdef OHOS_PLATFORM
+    glDisable(GL_BLEND);
+#endif
+  };
 
   if (model.ready()) {
     s.shader3d.setSkinPalette(model.update(animationState, actor, 1.0f / 60.0f));
 #ifdef OHOS_PLATFORM
     const RenderAnimation animation = ChooseAnimation(actor);
-    const std::string clip = ResolveClip(model.clipNames(), animation);
+    const std::string clip = ResolveClip(model.clipNames(), animation,
+                                         actor.variant, actor.moveRatio);
     if (animationState.shouldReport(animation, clip)) {
       LOGI("animation actor=%{public}s action=%{public}s clip=%{public}s",
            actorName, RenderAnimationName(animation), clip.c_str());
@@ -590,6 +627,10 @@ static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
     s.shader3d.setSkinned(true);
     if (s.shader3d.skinningEnabled()) {
       model.draw(s.shader3d);
+      restoreFade();
+      s.shader3d.setRim(kNeutralRimColor, kNeutralRimStrength);
+      s.shader3d.setSpecular(kNeutralSpecularStrength,
+                             kNeutralSpecularShininess);
       return;
     }
   }
@@ -598,6 +639,9 @@ static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
   s.shader3d.setHasTexture(fallback.texture != 0u);
   // 静态 Mesh 没有死亡姿态；死亡实体保持隐藏，而可用的骨骼模型可播放 death。
   if (actor.alive) fallback.draw();
+  restoreFade();
+  s.shader3d.setRim(kNeutralRimColor, kNeutralRimStrength);
+  s.shader3d.setSpecular(kNeutralSpecularStrength, kNeutralSpecularShininess);
 }
 
 // 接地接触阴影：角色脚下平铺半透明黑色圆盘，提供接地感，
@@ -1143,7 +1187,8 @@ static void draw3DPhase(Surface& s) {
                              s.player.angle + s.playerAssetProfile.yawOffsetRadians),
             vp, hitFlashTint(s.playerAssetProfile.materialTint,
                              s.playerHitAnimationSeconds),
-            "player");
+            s.playerAssetProfile, s.playerHitAnimationSeconds,
+            false, 1.0f, 1.0f, "player");
   if (s.playerInvulnerable) {
     s.shader3d.setAlpha(1.0f);
     glDisable(GL_BLEND);
@@ -1158,7 +1203,8 @@ static void draw3DPhase(Surface& s) {
                 s.enemyAssetProfile.yawOffsetRadians),
             vp, hitFlashTint(s.enemyAssetProfile.materialTint,
                              hitFlashRemaining(s, s.trainingTarget.id)),
-            "training-target");
+            s.enemyAssetProfile, hitFlashRemaining(s, s.trainingTarget.id),
+            false, 1.0f, 1.0f, "training-target");
 
   // 敌人立方体（按存活状态跳过）。
   s.pruneEnemyAnimationStates();
@@ -1172,6 +1218,9 @@ static void draw3DPhase(Surface& s) {
                   enemy.angle + s.enemyAssetProfile.yawOffsetRadians),
               vp, hitFlashTint(enemyColorByArchetype(enemy.archetype),
                                hitFlashRemaining(s, enemy.id)),
+              s.enemyAssetProfile, hitFlashRemaining(s, enemy.id),
+              enemy.id == s.targetMarker3d.targetId,
+              DeathFadeAlpha(enemy.deathSeconds), 1.0f,
               "enemy");
   }
 
@@ -1195,7 +1244,9 @@ static void draw3DPhase(Surface& s) {
                   s.boss3d.angle + s.bossAssetProfile.yawOffsetRadians),
              vp, hitFlashTint(bossColorByPhase(s.boss3d.phase),
                               s.boss3d.hitAnimationSeconds),
-             "boss");
+             s.bossAssetProfile, s.boss3d.hitAnimationSeconds,
+             s.boss3d.targeted, 1.0f,
+             BossEntranceReveal(s.boss3d.entranceSeconds), "boss");
     drawBossCinematicGeometry(s, vp);
   }
 

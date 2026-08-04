@@ -92,6 +92,10 @@ struct Enemy3DRenderState {
   bool windingUp = false;
   ActorRenderState animation;
   float angle = 0.0f;  // 朝向角，弧度
+  // 死亡后的累计秒数：驱动尸体淡出曲线（DeathFadeAlpha）。
+  float deathSeconds = 0.0f;
+  // 累计受击次数：按奇偶驱动受击/死亡动画变体轮换。
+  uint32_t hitCount = 0;
 };
 
 struct Boss3DRenderState {
@@ -114,6 +118,10 @@ struct Boss3DRenderState {
   uint8_t shardCount = 3;
   uint8_t sourceColor = 0;
   bool ringBroken = false;
+  // 软锁定当前命中首领：渲染层据此给首领轮廓光常亮增强。
+  bool targeted = false;
+  // 首领激活后的累计秒数：驱动出场轮廓光渐入（BossEntranceReveal）。
+  float entranceSeconds = 0.0f;
 };
 
 // 敌人头顶血条渲染状态：逻辑侧每帧生成，渲染层绘制为面向相机的
@@ -130,6 +138,9 @@ struct TargetMarkerRenderState {
   float z = 0.0f;
   float pulsePhase = 0.0f;  // 弧度，驱动缩放与旋转脉冲
   bool active = false;
+  // 当前锁定目标的 EntityId（0 = 无锁定）：渲染层据此给对应
+  // 敌人轮廓光常亮增强，与脚下指示环形成双重锁定反馈。
+  uint32_t targetId = 0;
 };
 
 // 伤害飘字渲染状态：逻辑侧每帧生成，渲染层绘制为面向相机的
@@ -239,6 +250,11 @@ struct Surface {
   // 受击闪白计时器：实体 id → 剩余秒数。由逻辑层从 Damage 事件写入，
   // 渲染层据此把模型配色向白色提亮，给出“打中了”的即时反馈。
   std::unordered_map<uint32_t, float> enemyHitFlash;
+  // 死亡淡出计时器：实体 id → 死亡后累计秒数。逻辑层逐帧推进，
+  // 渲染层据此把尸体模型线性淡出到完全移除。
+  std::unordered_map<uint32_t, float> enemyDeathSeconds;
+  // 受击计数器：实体 id → 累计受击次数，驱动受击/死亡动画变体轮换。
+  std::unordered_map<uint32_t, uint32_t> enemyHitCounts;
   bool shader3dReady = false;
   AssetProfile playerAssetProfile = AssetProfile::forModel(ModelKind::Player);
   AssetProfile enemyAssetProfile = AssetProfile::forModel(ModelKind::Enemy);

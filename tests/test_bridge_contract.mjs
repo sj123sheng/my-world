@@ -546,6 +546,37 @@ assert.match(loop, /surface\.targetMarker3d\.active = currentTarget\.has_value\(
   'loop must publish lock-on marker activity from soft targeting');
 assert.match(loop, /surface\.targetMarker3d\.pulsePhase =/,
   'loop must publish marker pulse phase');
+assert.match(loop, /surface\.targetMarker3d\.targetId =/,
+  'loop must publish the locked target id for rim highlighting');
+assert.match(loop, /surface\.boss3d\.targeted =/,
+  'loop must publish boss lock-on state for rim highlighting');
+assert.match(loop, /surface\.player3dAnimation\.moveRatio =/,
+  'loop must publish joystick magnitude to scale run stride rate');
+assert.match(loop, /surface\.enemyDeathSeconds\[enemy\.id\] \+= dtSeconds/,
+  'loop must advance per-enemy death fade timers');
+assert.match(loop, /surface\.boss3d\.entranceSeconds \+= dtSeconds/,
+  'loop must advance boss entrance reveal timer');
+assert.match(loop, /surface\.enemyHitCounts\[/,
+  'loop must count enemy hits to rotate reaction variants');
+assert.match(loop, /state\.animation\.variant =/,
+  'loop must publish hit/death animation variant per enemy');
+assert.match(surfaceHeader, /enemyDeathSeconds/,
+  'Surface must keep per-enemy death fade timers');
+assert.match(surfaceImpl, /DeathFadeAlpha\(enemy\.deathSeconds\)/,
+  'dead enemies must fade out via DeathFadeAlpha when drawn');
+assert.match(surfaceImpl, /BossEntranceReveal\(s\.boss3d\.entranceSeconds\)/,
+  'boss rim must ramp in with the entrance reveal curve');
+assert.match(surfaceImpl, /setSpecular\(profile\.specularStrength, profile\.specularShininess\)/,
+  'actors must use per-profile specular material when drawn');
+assert.match(surfaceHeader, /uint32_t targetId = 0;/,
+  'TargetMarkerRenderState must carry the locked target id');
+assert.match(surfaceHeader, /bool targeted = false;/,
+  'Boss3DRenderState must carry lock-on state');
+assert.match(surfaceImpl, /enemy\.id == s\.targetMarker3d\.targetId/,
+  'locked enemy must be identified by marker target id when drawing actors');
+const skinnedModelImpl = fs.readFileSync('native/engine/render/skinned_model.cpp', 'utf8');
+assert.match(skinnedModelImpl, /actor\.variant,\s*\n\s*actor\.moveRatio/,
+  'clip resolution must consider hit variant and move ratio for gait layering');
 
 assert.match(comboCounter, /@Watch\('onComboChanged'\) comboSegment: number/,
   'ComboCounter must watch combo segment');

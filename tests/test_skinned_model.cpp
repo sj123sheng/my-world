@@ -194,23 +194,26 @@ void testUsesNonJointAncestorsAndAnimationTransitions() {
   const SkinPalette completeBlend = model.update(animation, running, 0.075f);
   assert(close(completeBlend.matrices[0][3].x, 3.3f));
 
-  const auto expectImmediateFallback = [&model, &running](
-                                           const ActorRenderState& intent) {
+  const auto expectBlendedFallback = [&model, &running](
+                                          const ActorRenderState& intent) {
     SkinnedAnimationState fallbackAnimation;
     model.update(fallbackAnimation, running, 0.15f);
     const SkinPalette fallback =
         model.update(fallbackAnimation, intent, 0.01f);
-    assert(close(fallback.matrices[0][3].x, 3.0f));
+    // 动作 clip 缺失时回退到 idle，但仍走交叉混合而不是硬切：
+    // 首帧应仍接近 run 姿态（x≈3.32）而不是直接落到 idle（x=3.0）。
+    assert(fallback.matrices[0][3].x > 3.0f);
+    assert(fallback.matrices[0][3].x < 3.32f);
   };
   ActorRenderState attackWithoutClip;
   attackWithoutClip.action = RenderAnimation::Attack;
-  expectImmediateFallback(attackWithoutClip);
+  expectBlendedFallback(attackWithoutClip);
   ActorRenderState hitWithoutClip;
   hitWithoutClip.hit = true;
-  expectImmediateFallback(hitWithoutClip);
+  expectBlendedFallback(hitWithoutClip);
   ActorRenderState deathWithoutClip;
   deathWithoutClip.alive = false;
-  expectImmediateFallback(deathWithoutClip);
+  expectBlendedFallback(deathWithoutClip);
 
   SkinnedModel attackModel;
   SkinnedAnimationState attackAnimation;
@@ -221,9 +224,18 @@ void testUsesNonJointAncestorsAndAnimationTransitions() {
   assert(close(runPose.matrices[0][3].x, 4.0f));
   ActorRenderState attacking;
   attacking.action = RenderAnimation::Attack;
-  const SkinPalette immediateAttack =
-      attackModel.update(attackAnimation, attacking, 0.0f);
-  assert(close(immediateAttack.matrices[0][3].x, 3.0f));
+  // run→attack 进入动作用 0.12s 交叉混合：半程应在 run 姿态与 attack 姿态之间。
+  const SkinPalette midAttack =
+      attackModel.update(attackAnimation, attacking, 0.06f);
+  assert(close(midAttack.matrices[0][3].x, 3.56f));
+  const SkinPalette completeAttack =
+      attackModel.update(attackAnimation, attacking, 0.06f);
+  assert(close(completeAttack.matrices[0][3].x, 3.0f));
+
+  // attack→run 恢复转场用更长的 0.2s 混合，而不是瞬间跳回 run。
+  const SkinPalette recovery =
+      attackModel.update(attackAnimation, running, 0.05f);
+  assert(close(recovery.matrices[0][3].x, 3.025f));
 }
 
 void testKeepsAnimationPlaybackStatePerInstance() {
@@ -404,6 +416,94 @@ void testRejectsOver64Joints() {
   assert(reason == "unnamed asset: exactly one skin is required");
 }
 
+void testRunStrideRateScalesWithInputMagnitude() {
+  SkinnedModel model;
+  assert(model.tryInitialize(gltf_fixture::makeMinimalGlb(), "stride.glb"));
+
+  ActorRenderState fullRun;
+  fullRun.moving = true;
+  fullRun.moveRatio = 1.0f;
+  SkinnedAnimationState fullAnimation;
+  model.update(fullAnimation, fullRun, 0.15f);  // idle→run 混合完成
+  const SkinPalette full = model.update(fullAnimation, fullRun, 0.2f);
+  assert(close(full.matrices[0][3].x, 3.7f));
+
+  ActorRenderState halfRun;
+  halfRun.moving = true;
+  halfRun.moveRatio = 0.5f;
+  SkinnedAnimationState halfAnimation;
+  model.update(halfAnimation, halfRun, 0.15f);
+  const SkinPalette half = model.update(halfAnimation, halfRun, 0.2f);
+  // 半幅摇杆：步频按 0.725 速率推进（0.15*0.725 + 0.2*0.725 = 0.25375），
+  // 同一墙钟时间位移更小，与降速后的地面移速匹配，消除滑步。
+  assert(close(half.matrices[0][3].x, 3.5075f));
+  assert(half.matrices[0][3].x < full.matrices[0][3].x);
+}
+
+void testOneShotClipsHoldFinalFrameInsteadOfLooping() {
+  SkinnedModel model;
+  SkinnedAnimationState animation;
+  assert(model.tryInitialize(gltf_fixture::makeMinimalGlb(true), "oneshot.glb"));
+  ActorRenderState attacking;
+  attacking.action = RenderAnimation::Attack;
+  model.update(animation, attacking, 0.12f);  // idle→attack 混合完成
+  const SkinPalette mid = model.update(animation, attacking, 0.4f);
+  assert(close(mid.matrices[0][3].x, 3.0f));  // STEP 保持首段关键帧
+  const SkinPalette tail = model.update(animation, attacking, 0.8f);
+  // t=1.32 超出 clip 时长：attack 是一次性 clip，必须钳制在尾帧
+  // （平移 2 → x=5），而不是循环回到首帧（x=3）造成尸体/攻击鬼畜。
+  assert(close(tail.matrices[0][3].x, 5.0f));
+}
+
+void testHitVariantSelectsAlternateReactionClip() {
+  SkinnedModel model;
+  assert(model.tryInitialize(gltf_fixture::makeHitVariantGlb(), "variants.glb"));
+
+  ActorRenderState hitA;
+  hitA.hit = true;
+  hitA.variant = 0;
+  SkinnedAnimationState animationA;
+  model.update(animationA, hitA, 0.12f);
+  const SkinPalette defaultHit = model.update(animationA, hitA, 0.38f);
+  // 资产无主 hit clip：变体 0 按原有回退链落到 idle（x=3.0）。
+  assert(close(defaultHit.matrices[0][3].x, 3.0f));
+
+  ActorRenderState hitB;
+  hitB.hit = true;
+  hitB.variant = 1;
+  SkinnedAnimationState animationB;
+  model.update(animationB, hitB, 0.12f);  // idle→Hit_B 混合完成
+  const SkinPalette variantHit = model.update(animationB, hitB, 0.13f);
+  // 变体 1 选中 Hit_B（LINEAR 0→2/1s）：t=0.25 → x=3.5，
+  // 证明受击反应在变体间真正切换而不是回退到同一 clip。
+  assert(close(variantHit.matrices[0][3].x, 3.5f));
+}
+
+void testLowSpeedMovementSwitchesToWalkClip() {
+  SkinnedModel model;
+  assert(model.tryInitialize(gltf_fixture::makeWalkVariantGlb(), "walk.glb"));
+
+  ActorRenderState slow;
+  slow.moving = true;
+  slow.moveRatio = 0.2f;
+  SkinnedAnimationState slowAnimation;
+  model.update(slowAnimation, slow, 0.15f);  // idle→Walking_B 混合完成
+  const SkinPalette slowPose = model.update(slowAnimation, slow, 0.16f);
+  // 低速切换行走 clip，并按 RunPlaybackRate(0.2)≈0.56 推进：
+  // t=(0.15+0.16)*0.56≈0.1736 → x≈3.3472。
+  assert(close(slowPose.matrices[0][3].x, 3.3472f));
+
+  ActorRenderState fast;
+  fast.moving = true;
+  fast.moveRatio = 0.8f;
+  SkinnedAnimationState fastAnimation;
+  model.update(fastAnimation, fast, 0.15f);
+  const SkinPalette fastPose = model.update(fastAnimation, fast, 0.16f);
+  // 高速保持 run：rate=0.89 → t=0.31*0.89≈0.2759 → x≈3.5518。
+  assert(close(fastPose.matrices[0][3].x, 3.5518f));
+  assert(fastPose.matrices[0][3].x > slowPose.matrices[0][3].x);
+}
+
 }  // namespace
 
 int main() {
@@ -415,6 +515,10 @@ int main() {
   testRejectsUnsupportedBaseColorUvSet();
   testUsesNonJointAncestorsAndAnimationTransitions();
   testKeepsAnimationPlaybackStatePerInstance();
+  testRunStrideRateScalesWithInputMagnitude();
+  testOneShotClipsHoldFinalFrameInsteadOfLooping();
+  testHitVariantSelectsAlternateReactionClip();
+  testLowSpeedMovementSwitchesToWalkClip();
   testDestroyAndAbandonClearAllTracking();
   testWrapAndStepSampling();
   testLinearSampling();

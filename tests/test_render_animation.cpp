@@ -306,6 +306,101 @@ void testEncounterEnemySnapshotEqualityIncludesFacing() {
   assert(a == b);
 }
 
+void testAnimationBlendDurationsMatchTransitionClasses() {
+  const auto close = [](float actual, float expected) {
+    return std::fabs(actual - expected) < 0.0001f;
+  };
+  // 移动状态互切保持原有快节奏混合。
+  assert(close(AnimationBlendSeconds(RenderAnimation::Idle, RenderAnimation::Run), 0.15f));
+  assert(close(AnimationBlendSeconds(RenderAnimation::Run, RenderAnimation::Idle), 0.15f));
+  // 进入动作要快但有过渡，避免硬切。
+  assert(close(AnimationBlendSeconds(RenderAnimation::Idle, RenderAnimation::Attack), 0.12f));
+  assert(close(AnimationBlendSeconds(RenderAnimation::Run, RenderAnimation::Dodge), 0.12f));
+  assert(close(AnimationBlendSeconds(RenderAnimation::Run, RenderAnimation::Hit), 0.12f));
+  assert(close(AnimationBlendSeconds(RenderAnimation::Idle, RenderAnimation::Radiance), 0.12f));
+  // 动作结束回到移动/待机用更长的恢复混合。
+  assert(close(AnimationBlendSeconds(RenderAnimation::Attack, RenderAnimation::Idle), 0.2f));
+  assert(close(AnimationBlendSeconds(RenderAnimation::Hit, RenderAnimation::Run), 0.2f));
+  assert(close(AnimationBlendSeconds(RenderAnimation::Ultimate, RenderAnimation::Idle), 0.2f));
+  // 死亡转场最长，保证倒地动作承接自然。
+  assert(close(AnimationBlendSeconds(RenderAnimation::Run, RenderAnimation::Death), 0.25f));
+  assert(close(AnimationBlendSeconds(RenderAnimation::Idle, RenderAnimation::Death), 0.25f));
+}
+
+void testRunPlaybackRateTracksInputMagnitude() {
+  const auto close = [](float actual, float expected) {
+    return std::fabs(actual - expected) < 0.0001f;
+  };
+  // 满幅摇杆匹配动画原步频，半幅降速，下限保持步态稳定。
+  assert(close(RunPlaybackRate(1.0f), 1.0f));
+  assert(close(RunPlaybackRate(0.5f), 0.725f));
+  assert(close(RunPlaybackRate(0.0f), 0.45f));
+  // 越界输入被夹取。
+  assert(close(RunPlaybackRate(2.0f), 1.0f));
+  assert(close(RunPlaybackRate(-1.0f), 0.45f));
+  // 单调：输入越大步频越快。
+  assert(RunPlaybackRate(0.8f) > RunPlaybackRate(0.3f));
+}
+
+void testLoopingClipClassification() {
+  // 待机/跑动与持续吟唱循环播放；攻击、受击、死亡、闪避、
+  // 单次施法都是一次性 clip，必须钳制在尾帧而不是循环重播。
+  assert(IsLoopingClip("idle"));
+  assert(IsLoopingClip("run"));
+  assert(IsLoopingClip("Spellcasting"));
+  assert(!IsLoopingClip("attack"));
+  assert(!IsLoopingClip("hit"));
+  assert(!IsLoopingClip("death"));
+  assert(!IsLoopingClip("Dodge_Forward"));
+  assert(!IsLoopingClip("Spellcast_Long"));
+}
+
+void testDeathFadeAlphaHoldsThenFadesToZero() {
+  const auto close = [](float actual, float expected) {
+    return std::fabs(actual - expected) < 0.0001f;
+  };
+  // 死亡后先保持尾帧 0.35s，再用 0.55s 线性淡出到完全移除。
+  assert(close(DeathFadeAlpha(0.0f), 1.0f));
+  assert(close(DeathFadeAlpha(0.35f), 1.0f));
+  assert(close(DeathFadeAlpha(0.625f), 0.5f));
+  assert(close(DeathFadeAlpha(0.9f), 0.0f));
+  assert(close(DeathFadeAlpha(5.0f), 0.0f));
+  assert(close(DeathFadeAlpha(-1.0f), 1.0f));
+  assert(DeathFadeAlpha(0.4f) > DeathFadeAlpha(0.8f));
+}
+
+void testClipVariantsAlternateByVariantIndex() {
+  // 受击：变体 0 用主 hit，变体 1 优先 Hit_B，缺失时回退主 hit。
+  const std::vector<std::string> withVariants{"idle", "run", "attack", "hit",
+                                              "Hit_B", "death", "Death_B"};
+  assert(ResolveClip(withVariants, RenderAnimation::Hit, 0) == "hit");
+  assert(ResolveClip(withVariants, RenderAnimation::Hit, 1) == "Hit_B");
+  assert(ResolveClip(withVariants, RenderAnimation::Death, 1) == "Death_B");
+  // 变体 clip 缺失时回退主 clip，再走原有回退链。
+  const std::vector<std::string> noVariants{"idle", "run", "attack", "hit",
+                                            "death"};
+  assert(ResolveClip(noVariants, RenderAnimation::Hit, 1) == "hit");
+  assert(ResolveClip(noVariants, RenderAnimation::Death, 1) == "death");
+  // 非受击/死亡动作不受变体影响。
+  assert(ResolveClip(withVariants, RenderAnimation::Attack, 1) == "attack");
+  assert(ResolveClip(withVariants, RenderAnimation::Idle, 1) == "idle");
+}
+
+void testLowSpeedLocomotionPrefersWalkClip() {
+  // 低幅度输入切换行走 clip：阈值 0.35，低于时优先 Walking_B，
+  // 缺失时回退 run；高速与非移动意图不受影响。
+  assert(ShouldUseWalkClip(0.0f));
+  assert(ShouldUseWalkClip(0.2f));
+  assert(!ShouldUseWalkClip(0.35f));
+  assert(!ShouldUseWalkClip(1.0f));
+  const std::vector<std::string> clips{"idle", "run", "Walking_B"};
+  assert(ResolveClip(clips, RenderAnimation::Run, 0, 0.2f) == "Walking_B");
+  assert(ResolveClip(clips, RenderAnimation::Run, 0, 0.8f) == "run");
+  const std::vector<std::string> noWalk{"idle", "run"};
+  assert(ResolveClip(noWalk, RenderAnimation::Run, 0, 0.2f) == "run");
+  assert(ResolveClip(clips, RenderAnimation::Idle, 0, 0.2f) == "idle");
+}
+
 }  // namespace
 
 int main() {
@@ -316,6 +411,12 @@ int main() {
   testExplicitActionPriority();
   testPlayerCombatActionMapsToDedicatedAnimation();
   testBossSnapshotMapsToCastHitDeathAndIdle();
+  testAnimationBlendDurationsMatchTransitionClasses();
+  testRunPlaybackRateTracksInputMagnitude();
+  testLoopingClipClassification();
+  testDeathFadeAlphaHoldsThenFadesToZero();
+  testClipVariantsAlternateByVariantIndex();
+  testLowSpeedLocomotionPrefersWalkClip();
   testAnimationLogOnlyReportsIntentOrResolvedClipChanges();
   testUnavailableRuntimeModelStaysOnFallbackPath();
   testSurfaceStoresLateModelAssetsForContextBoundInitialization();

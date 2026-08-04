@@ -4,6 +4,7 @@
 
 #include <glm/vec3.hpp>
 
+#include <algorithm>
 #include <cstdint>
 
 struct AssetProfile {
@@ -13,6 +14,44 @@ struct AssetProfile {
   glm::vec3 outlineColor{0.0f};
   float outlineStrength = 0.0f;
   uint8_t coreMountCount = 0;
+  // Blinn-Phong 高光分档：主角盔甲强而锐利，敌人哑光退后，
+  // Boss 居中；默认值与升级前的全局高光一致。
+  float specularStrength = 0.28f;
+  float specularShininess = 24.0f;
 
   static AssetProfile forModel(ModelKind kind);
 };
+
+struct ActorRimLight {
+  glm::vec3 color{0.0f};
+  float strength = 0.0f;
+};
+
+// 角色轮廓光决策：从档案的 outlineColor/outlineStrength 派生逐角色
+// 个性化轮廓光；受击闪白窗口（0.15s 封顶）内同时增强并向白色靠拢，
+// 把“打中了”从材质闪白扩展到轮廓层。被软锁定时轮廓常亮并向
+// 锁定环青金色靠拢，与脚下锁定指示环共享视觉语言。
+// appearance（0..1）是出场显现进度：线性缩放最终强度，让 Boss
+// 登场时轮廓光从黑暗中渐入；颜色不受影响。
+// 档案未配置轮廓光时退回中性轮廓光。
+inline ActorRimLight ActorRimLightFor(const AssetProfile& profile,
+                                      float hitFlashSeconds,
+                                      bool targeted = false,
+                                      float appearance = 1.0f) {
+  if (profile.outlineStrength <= 0.0f) {
+    return {{0.62f, 0.72f, 0.85f}, 0.45f};
+  }
+  const float flash = std::min(std::max(hitFlashSeconds, 0.0f) / 0.15f, 1.0f);
+  ActorRimLight rim;
+  rim.color = profile.outlineColor +
+              (glm::vec3(1.0f) - profile.outlineColor) * (flash * 0.5f);
+  rim.strength = profile.outlineStrength + flash * 0.9f;
+  if (targeted) {
+    // 锁定环同色（surface 锁定指示环 markerColor），按 0.45 占比混合。
+    constexpr glm::vec3 kLockColor{0.35f, 0.85f, 0.80f};
+    rim.color = rim.color * 0.55f + kLockColor * 0.45f;
+    rim.strength += 0.55f;
+  }
+  rim.strength *= std::clamp(appearance, 0.0f, 1.0f);
+  return rim;
+}

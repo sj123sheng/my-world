@@ -88,7 +88,51 @@ void publish3DEncounterState(Surface& surface,
     state.windingUp = enemy.windingUp;
     // 模型局部 +Z 为前方，逻辑 (x, y) 映射到 3D (x, z)。
     state.angle = std::atan2(enemy.facing.x, enemy.facing.y);
+    // 尸体淡出计时：死亡期间持续累加，复活则归零；
+    // 渲染层按 DeathFadeAlpha 把尸体线性淡出到完全移除。
+    if (!enemy.alive) {
+      state.deathSeconds = surface.enemyDeathSeconds[enemy.id] += dtSeconds;
+    } else {
+      surface.enemyDeathSeconds.erase(enemy.id);
+    }
+    // 受击/死亡动画变体轮换：存活时按受击次数奇偶切换 hit/Hit_B；
+    // 死亡时叠加实体 id，让群体死亡的倒地姿态互不相同，且死亡
+    // 期间变体恒定，避免尸体在两个倒地姿态间跳变。
+    const auto hitCount = surface.enemyHitCounts.find(enemy.id);
+    state.hitCount = hitCount != surface.enemyHitCounts.end() ? hitCount->second : 0u;
+    state.animation.variant = enemy.alive
+        ? static_cast<uint8_t>(state.hitCount & 1u)
+        : static_cast<uint8_t>((state.hitCount + enemy.id) & 1u);
     surface.enemies3d.push_back(state);
+  }
+  // 清理已离开快照的敌人的淡出计时与受击计数，避免长期泄漏。
+  for (auto death = surface.enemyDeathSeconds.begin();
+       death != surface.enemyDeathSeconds.end();) {
+    const bool present = std::any_of(
+        surface.enemies3d.begin(), surface.enemies3d.end(),
+        [id = death->first](const Enemy3DRenderState& enemy) {
+          return enemy.id == id;
+        });
+    if (present) {
+      ++death;
+    } else {
+      surface.enemyHitCounts.erase(death->first);
+      death = surface.enemyDeathSeconds.erase(death);
+    }
+  }
+  // 受击计数独立清理：未被击杀过的敌人不会进入淡出计时表。
+  for (auto count = surface.enemyHitCounts.begin();
+       count != surface.enemyHitCounts.end();) {
+    const bool present = std::any_of(
+        surface.enemies3d.begin(), surface.enemies3d.end(),
+        [id = count->first](const Enemy3DRenderState& enemy) {
+          return enemy.id == id;
+        });
+    if (present) {
+      ++count;
+    } else {
+      count = surface.enemyHitCounts.erase(count);
+    }
   }
 
   // BossSnapshot 不含位置，按 refreshSnapshot 的首领 candidate 坐标固定。
@@ -99,6 +143,13 @@ void publish3DEncounterState(Surface& surface,
   surface.boss3d.active =
       snapshot.mode == EncounterMode::Boss &&
       snapshot.state != EncounterState::Stopped;
+  // 出场渐入计时：激活且未击败期间累加，退出或击败归零，
+  // 渲染层按 BossEntranceReveal 抬升轮廓光强度。
+  if (surface.boss3d.active && !snapshot.boss.defeated) {
+    surface.boss3d.entranceSeconds += dtSeconds;
+  } else {
+    surface.boss3d.entranceSeconds = 0.0f;
+  }
   // 首领吟唱机制期间是玩家的应对窗口：有机制且吟唱未完时显示预警环。
   surface.boss3d.windingUp =
       snapshot.boss.mechanic != BossMechanic::None &&
@@ -633,6 +684,12 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
 
   // 锁定目标指示器：发布目标位置与脉冲相位，目标脚下绘制脉冲环。
   surface.targetMarker3d.active = currentTarget.has_value();
+  surface.targetMarker3d.targetId =
+      currentTarget.has_value() ? static_cast<uint32_t>(currentTarget->id) : 0u;
+  // 首领锁定态同步发布，供渲染层轮廓光常亮增强。
+  surface.boss3d.targeted =
+      currentTarget.has_value() &&
+      static_cast<EntityId>(currentTarget->id) == EncounterController::kBossId;
   if (currentTarget.has_value()) {
     const std::optional<Vec2> markerPosition = resolveEntityPosition(
         surface, encounter.snapshot(),
@@ -642,6 +699,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       surface.targetMarker3d.z = markerPosition->y;
     } else {
       surface.targetMarker3d.active = false;
+      surface.targetMarker3d.targetId = 0u;
     }
   }
   surface.targetMarker3d.pulsePhase =
@@ -728,9 +786,11 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       continue;
     }
     if (event.type != GameplayEventType::Damage) continue;
-    // 非玩家目标受击：启动模型闪白计时器，渲染层据此提亮配色。
+    // 非玩家目标受击：启动模型闪白计时器，渲染层据此提亮配色；
+    // 累计受击次数按奇偶驱动受击动画变体轮换。
     if (event.target != CombatController::kPlayerId) {
       surface.enemyHitFlash[static_cast<uint32_t>(event.target)] = 0.15f;
+      surface.enemyHitCounts[static_cast<uint32_t>(event.target)] += 1u;
     }
     const std::optional<Vec2> position = resolveEntityPosition(
         surface, encounter.snapshot(), event.target);
@@ -828,6 +888,10 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       combatSnapshot.activeCombatAction);
   surface.player3dAnimation.hit = surface.playerHitAnimationSeconds > 0.0f;
   surface.player3dAnimation.moving = surface.player.moving;
+  // 摇杆幅度驱动跑动步频缩放：地面移速与输入幅度成正比，
+  // 动画步频同比缩放才能消除半推摇杆时的滑步。
+  surface.player3dAnimation.moveRatio =
+      std::clamp(intent.move.length(), 0.0f, 1.0f);
   surface.trainingTarget3dAnimation.alive = surface.trainingTarget.alive;
   publish3DEncounterState(surface, encounter.snapshot(), dtSeconds);
 
