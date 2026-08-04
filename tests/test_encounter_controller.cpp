@@ -221,6 +221,29 @@ void testEnemySnapshotExposesMaxHp() {
 
 }  // namespace
 
+// 审判光束：Boss 战周期性吟唱并在落地时对玩家结算伤害。
+void testBossJudgmentBeamPeriodicallyDamagesPlayer() {
+  CombatController combat(CombatConfig::defaults());
+  EncounterController encounter(combat);
+  assert(encounter.start(EncounterMode::Boss));
+  // 首次光束：2.5s 延迟 + 1.5s 吟唱 ≈ 4s 落地；模拟至多 6s。
+  const FixedPoint hpBefore = combat.snapshot().playerHp;
+  bool beamLanded = false;
+  bool castObserved = false;
+  for (Tick tick = 1; tick <= 375 && !beamLanded; ++tick) {
+    encounter.update({tick, 16, {0.5f, 0.5f}, false, 0});
+    if (encounter.snapshot().boss.mechanic == BossMechanic::JudgmentBeam &&
+        encounter.snapshot().boss.castRemainingMs > 0) {
+      castObserved = true;
+    }
+    if (combat.snapshot().playerHp < hpBefore) beamLanded = true;
+  }
+  assert(castObserved);   // Boss 确实进入吟唱
+  assert(beamLanded);     // 光束落地对玩家造成伤害
+  // 伤害值与配置一致（15 点）。
+  assert(hpBefore - combat.snapshot().playerHp == fp(15));
+}
+
 int main() {
   testStartsAllModesWithStableEntities();
   testRejectsInvalidConfigurationAtomically();
@@ -232,4 +255,5 @@ int main() {
   testEnemySnapshotEqualityIncludesAnimationFacts();
   testPlayerDeathEntersDefeatInNonBossModes();
   testEnemySnapshotExposesMaxHp();
+  testBossJudgmentBeamPeriodicallyDamagesPlayer();
 }

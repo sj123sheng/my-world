@@ -30,6 +30,9 @@ struct BossConfig {
   Tick judgmentBeamCooldownMs = 4000;
   // 开战后首次施法的延迟，给玩家进入状态的缓冲。
   Tick judgmentBeamFirstDelayMs = 2500;
+  // 审判光束落地对玩家的伤害（可用闪避无敌帧规避）。
+  FixedPoint judgmentBeamDamage = fp(15);
+  FixedPoint judgmentBeamPoiseDamage = fp(10);
   uint8_t currentNodeCount = 2;
 
   static BossConfig karounDefaults();

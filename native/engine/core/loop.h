@@ -78,6 +78,8 @@ struct Loop {
   int64_t hitStopRemainingMs = 0;
   // 上一帧遭遇状态：用于结算音效的状态转移检测。
   int lastEncounterStateForAudio = 0;
+  // 上一帧首领机制：用于吟唱警示音的上升沿检测。
+  int lastBossMechanicForAudio = 0;
   int tickCount = 0;
   std::chrono::steady_clock::time_point lastFpsTime;
 

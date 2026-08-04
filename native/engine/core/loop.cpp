@@ -500,6 +500,13 @@ void Loop::tickOnce(int64_t elapsedMs) {
   snapshot.bossPhase = static_cast<int32_t>(encounter.snapshot().boss.phase);
   snapshot.bossMechanic = static_cast<int32_t>(encounter.snapshot().boss.mechanic);
   snapshot.bossCastMs = encounter.snapshot().boss.castRemainingMs;
+  // 首领吟唱警示音：机制开始（上升沿）时播放低沉警示，
+  // 与预警环/吟唱条同步给玩家应对提示。
+  if (snapshot.bossMechanic != lastBossMechanicForAudio &&
+      snapshot.bossMechanic != 0) {
+    audioBridge.playUiSound(SoundEffect::PhaseChanged);
+  }
+  lastBossMechanicForAudio = snapshot.bossMechanic;
   snapshot.perfLevel = performanceGuard.level();
   snapshot.vfxFlags = vfxSystem.snapshot().vfxFlags;
   snapshot.cameraShakeX = vfxSystem.snapshot().cameraShakeX;

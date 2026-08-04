@@ -381,8 +381,25 @@ void EncounterController::update(const EncounterFrameInput& input) {
     const bool ultimateUsed = ability == kUltimateAbilityId &&
                               lastObservedBossAbility_ != kUltimateAbilityId;
     lastObservedBossAbility_ = ability;
+    const BossMechanic mechanicBefore = boss_.snapshot().mechanic;
+    const Tick castBefore = boss_.snapshot().castRemainingMs;
     boss_.update({tick, dtMs, combat_.snapshot().resonance > 0,
                   ultimateUsed, nextSequence_});
+    // 审判光束吟唱完成落地：对玩家结算伤害；闪避无敌帧可规避
+    // （applyEnemyHit 内部判定 wasInvulnerableAt 并转为闪避事件）。
+    if (mechanicBefore == BossMechanic::JudgmentBeam && castBefore > 0 &&
+        (boss_.snapshot().mechanic != BossMechanic::JudgmentBeam ||
+         boss_.snapshot().castRemainingMs <= 0) &&
+        combat_.snapshot().playerHp > 0) {
+      HitRequest beam{};
+      beam.attacker = kBossId;
+      beam.target = CombatController::kPlayerId;
+      beam.baseDamage = boss_.config().judgmentBeamDamage;
+      beam.poiseDamage = boss_.config().judgmentBeamPoiseDamage;
+      beam.tick = tick;
+      beam.sequence = nextStableSequence(nextSequence_);
+      combat_.applyEnemyHit(beam);
+    }
     events_.combat = combat_.events();
     snapshot_.boss = boss_.snapshot();
     if (combat_.snapshot().playerHp <= 0) {
