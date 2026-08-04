@@ -24,6 +24,12 @@ struct BossConfig {
   FixedPoint phaseTwoHp = fp(700);
   FixedPoint phaseThreeHp = fp(350);
   Tick finalForgeCastMs = 5000;
+  // 审判光束周期性施法：吟唱时长与两次施法间隔，
+  // 让首领在血量阈值机制之外持续向玩家施压。
+  Tick judgmentBeamCastMs = 1500;
+  Tick judgmentBeamCooldownMs = 4000;
+  // 开战后首次施法的延迟，给玩家进入状态的缓冲。
+  Tick judgmentBeamFirstDelayMs = 2500;
   uint8_t currentNodeCount = 2;
 
   static BossConfig karounDefaults();
@@ -89,5 +95,7 @@ class BossController {
   bool running_ = false;
   bool phaseTwoTriggered_ = false;
   bool phaseThreeTriggered_ = false;
+  // 审判光束施法冷却：归零时开始下一次吟唱。
+  Tick castCooldownMs_ = 0;
   std::array<bool, 2> currentNodesBroken_{{false, false}};
 };

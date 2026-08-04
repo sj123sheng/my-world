@@ -15,10 +15,11 @@ struct Player {
 };
 
 struct PlayerControllerConfig {
-  float speed = 0.5f;
+  // 移动速度（世界单位/秒）：真机手感调优，0.5 过快灵敏，降至 0.3。
+  float speed = 0.3f;
   float turnSpeed = 8.0f;
-  // 加速平滑系数：越大起步越快（指数插值）。
-  float accelSharpness = 25.0f;
+  // 加速平滑系数：越大起步越快（指数插值）；降低使起步更可控。
+  float accelSharpness = 16.0f;
   // 减速平滑系数：越大停止越快（指数插值）。
   float decelSharpness = 18.0f;
 };

@@ -7,6 +7,7 @@ BossConfig BossConfig::karounDefaults() { return {}; }
 bool BossConfig::valid() const {
   return maxHp > 0 && maxPoise > 0 && phaseTwoHp > phaseThreeHp &&
          phaseTwoHp < maxHp && phaseThreeHp > 0 && finalForgeCastMs > 0 &&
+         judgmentBeamCastMs > 0 && judgmentBeamCooldownMs > 0 &&
          currentNodeCount > 0 && currentNodeCount <= 2;
 }
 
@@ -28,6 +29,8 @@ void BossController::resetRuntime(Tick retryTick) {
   phaseTwoTriggered_ = false;
   phaseThreeTriggered_ = false;
   currentNodesBroken_ = {{false, false}};
+  // 首次施法延迟，避免开战即吟唱。
+  castCooldownMs_ = config_.judgmentBeamFirstDelayMs;
   snapshot_ = {};
   snapshot_.phase = BossPhase::RadianceLockdown;
   snapshot_.mechanic = BossMechanic::None;
@@ -61,25 +64,45 @@ void BossController::applyDamage(FixedPoint hpDamage, FixedPoint poiseDamage,
 void BossController::update(const BossFrameInput& input) {
   if (!running_ || snapshot_.defeated) return;
   checkPhaseTransitions(input.tick);
-
-  if (snapshot_.phase != BossPhase::CorruptionCollapse ||
-      snapshot_.mechanic != BossMechanic::FinalForge ||
-      snapshot_.castRemainingMs == 0 || snapshot_.failedMechanic) {
-    return;
-  }
-  if (input.resonanceAvailable && input.ultimateUsed) {
-    snapshot_.mechanic = BossMechanic::None;
-    snapshot_.castRemainingMs = 0;
-    snapshot_.vulnerable = true;
-    return;
-  }
   const Tick elapsed = input.dtMs <= 0 ? 0 : static_cast<Tick>(input.dtMs);
-  if (elapsed >= snapshot_.castRemainingMs) {
-    snapshot_.castRemainingMs = 0;
-    snapshot_.failedMechanic = true;
-    snapshot_.vulnerable = true;
-  } else {
-    snapshot_.castRemainingMs -= elapsed;
+
+  // 终锻（三阶段机制）：玩家需在吟唱内用共鸣终结技打断。
+  if (snapshot_.phase == BossPhase::CorruptionCollapse &&
+      snapshot_.mechanic == BossMechanic::FinalForge &&
+      snapshot_.castRemainingMs > 0 && !snapshot_.failedMechanic) {
+    if (input.resonanceAvailable && input.ultimateUsed) {
+      snapshot_.mechanic = BossMechanic::None;
+      snapshot_.castRemainingMs = 0;
+      snapshot_.vulnerable = true;
+      return;
+    }
+    if (elapsed >= snapshot_.castRemainingMs) {
+      snapshot_.castRemainingMs = 0;
+      snapshot_.failedMechanic = true;
+      snapshot_.vulnerable = true;
+    } else {
+      snapshot_.castRemainingMs -= elapsed;
+    }
+    return;
+  }
+
+  // 审判光束周期性施法：固定机制（电流节点/终锻）之外，
+  // 首领持续吟唱施压，预警环与吟唱条给玩家应对窗口。
+  if (snapshot_.mechanic == BossMechanic::None) {
+    if (castCooldownMs_ > elapsed) {
+      castCooldownMs_ -= elapsed;
+    } else {
+      snapshot_.mechanic = BossMechanic::JudgmentBeam;
+      snapshot_.castRemainingMs = config_.judgmentBeamCastMs;
+    }
+  } else if (snapshot_.mechanic == BossMechanic::JudgmentBeam) {
+    if (elapsed >= snapshot_.castRemainingMs) {
+      snapshot_.castRemainingMs = 0;
+      snapshot_.mechanic = BossMechanic::None;
+      castCooldownMs_ = config_.judgmentBeamCooldownMs;
+    } else {
+      snapshot_.castRemainingMs -= elapsed;
+    }
   }
 }
 
