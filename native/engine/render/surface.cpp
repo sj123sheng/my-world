@@ -1061,6 +1061,12 @@ static void draw3DPhase(Surface& s) {
   s.shader3d.setSpecular(0.28f, 24.0f);
 
   // 玩家：模型可用时走蒙皮，否则保留 M3-1 立方体。
+  // 闪避无敌帧：半透明化给出清晰的免伤窗口反馈。
+  if (s.playerInvulnerable) {
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    s.shader3d.setAlpha(0.55f);
+  }
   drawActor(s, s.playerModel, s.playerMesh, s.playerAnimationState,
             s.player3dAnimation,
             actorModelMatrix(glm::vec3(s.player.x, 0.012f, s.player.y),
@@ -1069,6 +1075,10 @@ static void draw3DPhase(Surface& s) {
             vp, hitFlashTint(s.playerAssetProfile.materialTint,
                              s.playerHitAnimationSeconds),
             "player");
+  if (s.playerInvulnerable) {
+    s.shader3d.setAlpha(1.0f);
+    glDisable(GL_BLEND);
+  }
 
   // 训练假人立方体（按 alive 跳过）。
   drawActor(s, s.enemyModel, s.enemyMesh, s.trainingTargetAnimationState,

@@ -736,6 +736,8 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   surface.playerHpRatio = playerMaxHp > 0.0f
                               ? std::clamp(playerHp / playerMaxHp, 0.0f, 1.0f)
                               : 1.0f;
+  // 无敌帧状态：闪避期间渲染层半透明化玩家模型。
+  surface.playerInvulnerable = combatSnapshot.invulnerable;
   surface.player3dAnimation.action = PlayerRenderAnimation(
       static_cast<ActionState>(combatSnapshot.currentAction),
       combatSnapshot.activeCombatAction);

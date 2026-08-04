@@ -256,6 +256,8 @@ struct Surface {
 
   // 玩家当前血量比例（0..1）：低于阈值时渲染层绘制边缘脉冲警示。
   float playerHpRatio = 1.0f;
+  // 玩家处于无敌帧（闪避中）：渲染层半透明化给出清晰的免伤反馈。
+  bool playerInvulnerable = false;
 
   void applyAssetProfile(ModelKind kind, const AssetProfile& profile) {
     switch (kind) {
