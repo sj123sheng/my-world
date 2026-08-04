@@ -305,6 +305,20 @@ static void drawVfxOverlayGL(const Surface& s) {
   if (s.vfxResonanceBurst > 0.0f) {
     drawSolidRectGL(s, 0.0f, 0.0f, 2.0f, 2.0f, 0.85f, 0.63f, 0.16f, s.vfxResonanceBurst * 0.2f);
   }
+  // 低血量警示：血量低于 35% 时屏幕四边红色脉冲，越低越强烈。
+  if (s.playerHpRatio < 0.35f) {
+    const float phase = s.windupPulseSeconds / 0.8f * 6.2831853f;
+    const float pulse = 0.5f + 0.5f * std::sin(phase);
+    const float urgency = (0.35f - s.playerHpRatio) / 0.35f;
+    const float alpha = urgency * (0.12f + 0.14f * pulse);
+    constexpr float kEdge = 0.28f;
+    drawSolidRectGL(s, 0.0f, 0.0f, kEdge, 2.0f, 0.75f, 0.08f, 0.05f, alpha);
+    drawSolidRectGL(s, 2.0f - kEdge, 0.0f, kEdge, 2.0f, 0.75f, 0.08f, 0.05f,
+                    alpha);
+    drawSolidRectGL(s, 0.0f, 0.0f, 2.0f, kEdge, 0.75f, 0.08f, 0.05f, alpha);
+    drawSolidRectGL(s, 0.0f, 2.0f - kEdge, 2.0f, kEdge, 0.75f, 0.08f, 0.05f,
+                    alpha);
+  }
   glDisable(GL_BLEND);
 }
 

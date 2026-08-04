@@ -704,6 +704,14 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       surface.hitSparks3d.end());
   const CombatSnapshot& combatSnapshot = combat.snapshot();
   surface.player3dAnimation.alive = combatSnapshot.playerHp > 0;
+  // 玩家血量比例：供低血量边缘脉冲警示推导强度。
+  const float playerMaxHp = static_cast<float>(combat.config().trainingPlayerHp) /
+                            static_cast<float>(FP_ONE);
+  const float playerHp = static_cast<float>(combatSnapshot.playerHp) /
+                         static_cast<float>(FP_ONE);
+  surface.playerHpRatio = playerMaxHp > 0.0f
+                              ? std::clamp(playerHp / playerMaxHp, 0.0f, 1.0f)
+                              : 1.0f;
   surface.player3dAnimation.action = PlayerRenderAnimation(
       static_cast<ActionState>(combatSnapshot.currentAction),
       combatSnapshot.activeCombatAction);

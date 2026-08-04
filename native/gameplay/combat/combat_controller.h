@@ -81,6 +81,8 @@ class CombatController {
 
   const CombatSnapshot& snapshot() const { return snapshot_; }
   const CombatEventBatch& events() const { return events_; }
+  // 战斗配置只读访问，供表现层推导血量比例等派生量。
+  const CombatConfig& config() const { return config_; }
 
  private:
   ActionContext contextFor(const CombatFrameInput& input, EntityId expectedTarget,

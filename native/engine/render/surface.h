@@ -254,6 +254,9 @@ struct Surface {
   // 火花发射伪随机种子（LCG），保证同输入下方向可重现。
   uint32_t hitSparkSeed = 0;
 
+  // 玩家当前血量比例（0..1）：低于阈值时渲染层绘制边缘脉冲警示。
+  float playerHpRatio = 1.0f;
+
   void applyAssetProfile(ModelKind kind, const AssetProfile& profile) {
     switch (kind) {
       case ModelKind::Player:
