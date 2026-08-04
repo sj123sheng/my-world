@@ -62,6 +62,8 @@ add_library(native_game SHARED
     ${NATIVE_ROOT}/engine/presentation/performance_guard.h
     ${NATIVE_ROOT}/engine/presentation/damage_numbers.cpp
     ${NATIVE_ROOT}/engine/presentation/damage_numbers.h
+    ${NATIVE_ROOT}/engine/presentation/procedural_sound.cpp
+    ${NATIVE_ROOT}/engine/presentation/procedural_sound.h
 
     # engine resource
     ${NATIVE_ROOT}/engine/resource/loader.cpp
@@ -135,4 +137,5 @@ target_link_libraries(native_game PUBLIC
     libEGL.so
     libGLESv3.so
     libhilog_ndk.z.so
+    libohaudio.so
 )
