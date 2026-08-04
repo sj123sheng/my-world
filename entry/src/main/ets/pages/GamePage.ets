@@ -121,6 +121,8 @@ struct GamePage {
   private prevTargetPoiseBroken: boolean = false;
   // 上一帧锁定目标 HP：>0 归零视为击杀，触发确认触感。
   private prevTargetHp: number = 0;
+  // 上一帧遭遇状态：胜利上升沿触发确认触感（2 = Victory）。
+  private prevEncounterState: number = 0;
 
   // 对比相邻两次快照的边沿变化，触发对应触感反馈。
   private detectCombatEvents(): void {
@@ -151,6 +153,10 @@ struct GamePage {
     if (this.prevTargetHp > 0 && snap.targetHp === 0) {
       Haptics.heavy();
     }
+    // 胜利确认：遭遇状态进入胜利的上升沿。
+    if (snap.encounterState === 2 && this.prevEncounterState !== 2) {
+      Haptics.ultimateReady();
+    }
     // 终结技就绪：终结窗口上升沿。
     if (snap.ultimateWindowMs > 0 && this.prevUltimateWindowMs <= 0) {
       Haptics.ultimateReady();
@@ -163,6 +169,7 @@ struct GamePage {
     this.prevCorruptionCd = snap.corruptionCooldownMs;
     this.prevTargetPoiseBroken = snap.targetPoiseBroken;
     this.prevTargetHp = snap.targetHp;
+    this.prevEncounterState = snap.encounterState;
   }
 
   private isActiveModelLoad(generation: number): boolean {
