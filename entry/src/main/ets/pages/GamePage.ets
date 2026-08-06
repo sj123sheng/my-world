@@ -1,5 +1,5 @@
 import { nativeSetEnvironmentAssets, nativeSetModelAssets, nativeStartIfForeground,
-  nativeStop, pullSnapshot, setAudioEnabled, Snapshot } from '../napi/Bridge';
+  nativeStop, pullSnapshot, setAudioEnabled, saveProgress, loadProgress, Snapshot } from '../napi/Bridge';
 import { Hud } from '../ui/Hud';
 import { CombatControls } from '../ui/CombatControls';
 import { Joystick } from '../ui/Joystick';
@@ -11,6 +11,13 @@ import { Tutorial } from '../ui/Tutorial';
 import { GameStateOverlay } from '../ui/GameStateOverlay';
 import { PauseMenu } from '../ui/PauseMenu';
 import { TargetFrame } from '../ui/TargetFrame';
+import { ExplorationHud } from '../ui/ExplorationHud';
+import { DialogBox } from '../ui/DialogBox';
+import { GachaPanel } from '../ui/GachaPanel';
+import { MapPanel } from '../ui/MapPanel';
+import { QuestRewardToast } from '../ui/QuestRewardToast';
+import { InventoryPanel } from '../ui/InventoryPanel';
+import { ArtifactPanel } from '../ui/ArtifactPanel';
 
 @Entry
 @Component
@@ -37,7 +44,40 @@ struct GamePage {
     objectiveLabel: '', resonanceSlots: [0, 0, 0], showDebugHud: false,
     bossCinematicProgress: 0, bossShardCount: 0, bossSourceColor: 0,
     bossRingBroken: false,
-    inputEventCount: 0
+    inputEventCount: 0,
+    explorationStamina: 100, motionState: 0, playerHeight: 0,
+    activeChunkCount: 0, chunkLoadCount: 0,
+    interactionAnchorId: -1, interactionUnlocked: false, interactionLabel: '',
+    unlockedAnchorCount: 0, cameraExploration: false, teleportFlashMs: 0,
+    minimapAnchorX: [], minimapAnchorY: [], minimapAnchorUnlocked: [],
+    questId: -1, questStatus: 0, questTitle: '', questObjectiveLabel: '',
+    questObjectiveProgress: 0, questObjectiveRequired: 1,
+    completedQuestCount: 0,
+    dialogActive: false, dialogSpeaker: '', dialogText: '',
+    dialogLineIndex: 0, dialogLineCount: 0, interactionKind: 0,
+    fateCount: 0, goldCount: 0, expMaterialCount: 0,
+    ascensionMaterialCount: 0, gachaPity5: 0,
+    gachaResultIds: [], gachaResultRarities: [], gachaResultIsNew: [],
+    rosterIds: [], rosterLevels: [], rosterAscensions: [],
+    activeCharacterId: 1, dayNightHour: 8, qualityPreset: 0,
+    weatherId: 0, musicRegionId: 0,
+    completedSideQuestCount: 0, dungeonState: 0, dungeonProgress: 0,
+    dungeonRequired: 3,
+    minimapItemX: [], minimapItemY: [], minimapItemKind: [],
+    sideQuestProgress: [], sideQuestRequired: [],
+    rosterHp: [], rosterAtk: [],
+    rosterConstellations: [], weaponIds: [], weaponLevels: [],
+    weaponEquippedBy: [],
+    weaponAscensions: [], weaponRefines: [], weaponRefineStocks: [],
+    weaponExps: [],
+    artifactInstanceIds: [], artifactDefIds: [], artifactRarities: [],
+    artifactLevels: [], artifactEquippedBy: [], artifactSeeds: [],
+    adventureRank: 1, adventureExp: 0, adventureExpRequired: 375,
+    worldLevel: 0,
+    oreLowCount: 0, oreMidCount: 0, oreHighCount: 0,
+    expSmallCount: 0, expMediumCount: 0, expLargeCount: 0,
+    sprintActive: 0, dailyCompletedCount: 0, dailyQuestClaimed: 0,
+    gachaPoolKind: 0
   };
   @State tick: number = 0;
   @State hp: number = 100;
@@ -108,6 +148,101 @@ struct GamePage {
   @State bossSourceColor: number = 0;
   @State bossRingBroken: boolean = false;
   @State inputEventCount: number = 0;
+  // 开放世界探索状态（阶段一）。
+  @State explorationStamina: number = 100;
+  @State motionState: number = 0;
+  @State playerHeight: number = 0;
+  @State activeChunkCount: number = 0;
+  @State chunkLoadCount: number = 0;
+  @State interactionAnchorId: number = -1;
+  @State interactionUnlocked: boolean = false;
+  @State interactionLabel: string = '';
+  @State unlockedAnchorCount: number = 0;
+  @State cameraExploration: boolean = false;
+  @State teleportFlashMs: number = 0;
+  @State minimapAnchorX: number[] = [];
+  @State minimapAnchorY: number[] = [];
+  @State minimapAnchorUnlocked: number[] = [];
+  // 内容与任务状态（阶段二）。
+  @State questId: number = -1;
+  @State questStatus: number = 0;
+  @State questTitle: string = '';
+  @State questObjectiveLabel: string = '';
+  @State questObjectiveProgress: number = 0;
+  @State questObjectiveRequired: number = 1;
+  @State completedQuestCount: number = 0;
+  @State dialogActive: boolean = false;
+  @State dialogSpeaker: string = '';
+  @State dialogText: string = '';
+  @State dialogLineIndex: number = 0;
+  @State dialogLineCount: number = 0;
+  @State interactionKind: number = 0;
+  // 养成与抽卡状态（阶段三）。
+  @State fateCount: number = 0;
+  @State goldCount: number = 0;
+  @State expMaterialCount: number = 0;
+  @State ascensionMaterialCount: number = 0;
+  @State gachaPity5: number = 0;
+  @State gachaResultIds: number[] = [];
+  @State gachaResultRarities: number[] = [];
+  @State gachaResultIsNew: number[] = [];
+  @State rosterIds: number[] = [];
+  @State rosterLevels: number[] = [];
+  @State rosterAscensions: number[] = [];
+  @State activeCharacterId: number = 1;
+  @State dayNightHour: number = 8;
+  @State qualityPreset: number = 0;
+  @State weatherId: number = 0;
+  @State musicRegionId: number = 0;
+  @State completedSideQuestCount: number = 0;
+  @State dungeonState: number = 0;
+  @State dungeonProgress: number = 0;
+  @State dungeonRequired: number = 3;
+  @State minimapItemX: number[] = [];
+  @State minimapItemY: number[] = [];
+  @State minimapItemKind: number[] = [];
+  @State sideQuestProgress: number[] = [];
+  @State sideQuestRequired: number[] = [];
+  @State rosterHp: number[] = [];
+  @State rosterAtk: number[] = [];
+  @State rosterConstellations: number[] = [];
+  @State weaponIds: number[] = [];
+  @State weaponLevels: number[] = [];
+  @State weaponEquippedBy: number[] = [];
+  // 原神式养成：武器深化、圣遗物、冒险等级与新物品计数。
+  @State weaponAscensions: number[] = [];
+  @State weaponRefines: number[] = [];
+  @State weaponRefineStocks: number[] = [];
+  @State weaponExps: number[] = [];
+  @State artifactInstanceIds: number[] = [];
+  @State artifactDefIds: number[] = [];
+  @State artifactRarities: number[] = [];
+  @State artifactLevels: number[] = [];
+  @State artifactEquippedBy: number[] = [];
+  @State artifactSeeds: number[] = [];
+  @State adventureRank: number = 1;
+  @State adventureExp: number = 0;
+  @State adventureExpRequired: number = 375;
+  @State worldLevel: number = 0;
+  @State oreLowCount: number = 0;
+  @State oreMidCount: number = 0;
+  @State oreHighCount: number = 0;
+  @State expSmallCount: number = 0;
+  @State expMediumCount: number = 0;
+  @State expLargeCount: number = 0;
+  @State sprintActive: number = 0;
+  @State dailyCompletedCount: number = 0;
+  @State dailyQuestClaimed: number = 0;
+  @State gachaPoolKind: number = 0;
+  @State gachaOpen: boolean = false;
+  @State mapOpen: boolean = false;
+  @State inventoryOpen: boolean = false;
+  @State artifactOpen: boolean = false;
+  // 任务完成奖励浮层状态。
+  @State rewardToastVisible: boolean = false;
+  @State rewardToastTitle: string = '';
+  @State rewardToastLabel: string = '';
+  private rewardToastTimer: number = -1;
   private timer: number = -1;
   private pageActive: boolean = false;
   private modelLoadGeneration: number = 0;
@@ -123,6 +258,23 @@ struct GamePage {
   private prevTargetHp: number = 0;
   // 上一帧遭遇状态：胜利上升沿触发确认触感（2 = Victory）。
   private prevEncounterState: number = 0;
+  // 上一帧完成任务数：上升沿即时落盘，保证杀进程不丢进度。
+  private prevCompletedQuestCount: number = 0;
+
+  private progressSavePath(): string {
+    return `${getContext(this).filesDir}/ethelan_progress.dat`;
+  }
+
+  // 任务奖励文案：与 native 任务奖励表一一对应。
+  private rewardLabelFor(completedCount: number): string {
+    switch (completedCount) {
+      case 1: return '共鸣之契 ×5';
+      case 2: return '共鸣之契 ×5';
+      case 3: return '金币 ×50 · 经验 ×5 · 武器：雾猎之弓';
+      case 4: return '源晶碎片 ×3';
+      default: return '共鸣之契 ×10 · 武器：守望大剑';
+    }
+  }
 
   // 对比相邻两次快照的边沿变化，触发对应触感反馈。
   private detectCombatEvents(): void {
@@ -288,14 +440,132 @@ struct GamePage {
         inputEventCount: this.inputEventCount })
         .hitTestBehavior(HitTestMode.Transparent)
 
-      CombatControls({
-        radianceCooldownMs: this.radianceCooldownMs,
-        currentCooldownMs: this.currentCooldownMs,
-        corruptionCooldownMs: this.corruptionCooldownMs,
-        radianceCooldownTotalMs: this.radianceCooldownTotalMs,
-        currentCooldownTotalMs: this.currentCooldownTotalMs,
-        corruptionCooldownTotalMs: this.corruptionCooldownTotalMs,
-        ultimateWindowMs: this.ultimateWindowMs })
+      ExplorationHud({ explorationStamina: this.explorationStamina,
+        motionState: this.motionState,
+        interactionAnchorId: this.interactionAnchorId,
+        interactionUnlocked: this.interactionUnlocked,
+        interactionLabel: this.interactionLabel,
+        interactionKind: this.interactionKind,
+        unlockedAnchorCount: this.unlockedAnchorCount,
+        teleportFlashMs: this.teleportFlashMs,
+        playerX: this.posX, playerY: this.posY,
+        minimapAnchorX: this.minimapAnchorX,
+        minimapAnchorY: this.minimapAnchorY,
+        minimapAnchorUnlocked: this.minimapAnchorUnlocked,
+        minimapItemX: this.minimapItemX,
+        minimapItemY: this.minimapItemY,
+        minimapItemKind: this.minimapItemKind,
+        sideQuestProgress: this.sideQuestProgress,
+        sideQuestRequired: this.sideQuestRequired,
+        sprintActive: this.sprintActive,
+        dailyCompletedCount: this.dailyCompletedCount,
+        dailyQuestClaimed: this.dailyQuestClaimed,
+        activeCharacterId: this.activeCharacterId,
+        dayNightHour: this.dayNightHour,
+        weatherId: this.weatherId,
+        completedSideQuestCount: this.completedSideQuestCount,
+        dungeonState: this.dungeonState,
+        dungeonProgress: this.dungeonProgress,
+        dungeonRequired: this.dungeonRequired,
+        fateCount: this.fateCount,
+        adventureRank: this.adventureRank,
+        adventureExp: this.adventureExp,
+        adventureExpRequired: this.adventureExpRequired,
+        worldLevel: this.worldLevel,
+        onOpenGacha: () => { this.gachaOpen = true; },
+        onOpenMap: () => { this.mapOpen = true; },
+        onOpenInventory: () => { this.inventoryOpen = true; },
+        onOpenArtifact: () => { this.artifactOpen = true; } })
+
+      DialogBox({ dialogActive: this.dialogActive,
+        dialogSpeaker: this.dialogSpeaker,
+        dialogText: this.dialogText,
+        dialogLineIndex: this.dialogLineIndex,
+        dialogLineCount: this.dialogLineCount })
+
+      GachaPanel({ open: this.gachaOpen,
+        fateCount: this.fateCount,
+        goldCount: this.goldCount,
+        expMaterialCount: this.expMaterialCount,
+        ascensionMaterialCount: this.ascensionMaterialCount,
+        gachaPity5: this.gachaPity5,
+        gachaResultIds: this.gachaResultIds,
+        gachaResultRarities: this.gachaResultRarities,
+        gachaResultIsNew: this.gachaResultIsNew,
+        rosterIds: this.rosterIds,
+        rosterLevels: this.rosterLevels,
+        rosterAscensions: this.rosterAscensions,
+        rosterHp: this.rosterHp,
+        rosterAtk: this.rosterAtk,
+        rosterConstellations: this.rosterConstellations,
+        weaponIds: this.weaponIds,
+        weaponLevels: this.weaponLevels,
+        weaponEquippedBy: this.weaponEquippedBy,
+        weaponAscensions: this.weaponAscensions,
+        weaponRefines: this.weaponRefines,
+        weaponRefineStocks: this.weaponRefineStocks,
+        oreLowCount: this.oreLowCount,
+        oreMidCount: this.oreMidCount,
+        oreHighCount: this.oreHighCount,
+        activeCharacterId: this.activeCharacterId,
+        gachaPoolKind: this.gachaPoolKind,
+        onClose: () => { this.gachaOpen = false; } })
+
+      InventoryPanel({ open: this.inventoryOpen,
+        fateCount: this.fateCount,
+        goldCount: this.goldCount,
+        expMaterialCount: this.expMaterialCount,
+        ascensionMaterialCount: this.ascensionMaterialCount,
+        oreLowCount: this.oreLowCount,
+        oreMidCount: this.oreMidCount,
+        oreHighCount: this.oreHighCount,
+        expSmallCount: this.expSmallCount,
+        expMediumCount: this.expMediumCount,
+        expLargeCount: this.expLargeCount,
+        artifactInstanceIds: this.artifactInstanceIds,
+        artifactDefIds: this.artifactDefIds,
+        artifactRarities: this.artifactRarities,
+        artifactLevels: this.artifactLevels,
+        artifactEquippedBy: this.artifactEquippedBy,
+        adventureRank: this.adventureRank,
+        adventureExp: this.adventureExp,
+        adventureExpRequired: this.adventureExpRequired,
+        worldLevel: this.worldLevel,
+        activeCharacterId: this.activeCharacterId,
+        onClose: () => { this.inventoryOpen = false; } })
+
+      ArtifactPanel({ open: this.artifactOpen,
+        goldCount: this.goldCount,
+        artifactInstanceIds: this.artifactInstanceIds,
+        artifactDefIds: this.artifactDefIds,
+        artifactRarities: this.artifactRarities,
+        artifactLevels: this.artifactLevels,
+        artifactEquippedBy: this.artifactEquippedBy,
+        activeCharacterId: this.activeCharacterId,
+        onClose: () => { this.artifactOpen = false; } })
+
+      MapPanel({ open: this.mapOpen,
+        minimapAnchorX: this.minimapAnchorX,
+        minimapAnchorY: this.minimapAnchorY,
+        minimapAnchorUnlocked: this.minimapAnchorUnlocked,
+        onClose: () => { this.mapOpen = false; } })
+
+      QuestRewardToast({ visible: this.rewardToastVisible,
+        questTitle: this.rewardToastTitle,
+        rewardLabel: this.rewardToastLabel })
+
+      // 对话、召唤面板、地图、背包或圣遗物面板打开时隐藏技能按钮，避免遮挡弹窗按钮。
+      if (!this.dialogActive && !this.gachaOpen && !this.mapOpen &&
+          !this.inventoryOpen && !this.artifactOpen) {
+        CombatControls({
+          radianceCooldownMs: this.radianceCooldownMs,
+          currentCooldownMs: this.currentCooldownMs,
+          corruptionCooldownMs: this.corruptionCooldownMs,
+          radianceCooldownTotalMs: this.radianceCooldownTotalMs,
+          currentCooldownTotalMs: this.currentCooldownTotalMs,
+          corruptionCooldownTotalMs: this.corruptionCooldownTotalMs,
+          ultimateWindowMs: this.ultimateWindowMs })
+      }
 
       HitFeedback({ hp: this.hp })
         .hitTestBehavior(HitTestMode.Transparent)
@@ -322,10 +592,13 @@ struct GamePage {
         targetPoiseBroken: this.targetPoiseBroken })
         .hitTestBehavior(HitTestMode.Transparent)
 
-      PauseMenu({ encounterMode: this.encounterMode })
+      PauseMenu({ encounterMode: this.encounterMode,
+              qualityPreset: this.qualityPreset })
     }
     .width('100%')
     .height('100%')
+    // 沉浸式全屏下内容延伸到状态栏/导航栏安全区，避免上下出现黑/白条带。
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   aboutToAppear() {
@@ -337,6 +610,8 @@ struct GamePage {
     PersistentStorage.persistProp<boolean>('audioEnabled', true);
     setAudioEnabled(AppStorage.get<boolean>('audioEnabled') !== false);
     this.pageActive = true;
+    // 恢复探索与任务进度（首次启动无存档时静默降级）。
+    try { loadProgress(this.progressSavePath()); } catch (e) {}
     const generation = ++this.modelLoadGeneration;
     this.loadModelAssets(generation);
     this.timer = setInterval(() => {
@@ -411,6 +686,102 @@ struct GamePage {
         this.bossSourceColor = this.snapshot.bossSourceColor;
         this.bossRingBroken = this.snapshot.bossRingBroken;
         this.inputEventCount = this.snapshot.inputEventCount;
+        this.explorationStamina = this.snapshot.explorationStamina;
+        this.motionState = this.snapshot.motionState;
+        this.playerHeight = this.snapshot.playerHeight;
+        this.activeChunkCount = this.snapshot.activeChunkCount;
+        this.chunkLoadCount = this.snapshot.chunkLoadCount;
+        this.interactionAnchorId = this.snapshot.interactionAnchorId;
+        this.interactionUnlocked = this.snapshot.interactionUnlocked;
+        this.interactionLabel = this.snapshot.interactionLabel;
+        this.unlockedAnchorCount = this.snapshot.unlockedAnchorCount;
+        this.cameraExploration = this.snapshot.cameraExploration;
+        this.teleportFlashMs = this.snapshot.teleportFlashMs;
+        this.minimapAnchorX = this.snapshot.minimapAnchorX;
+        this.minimapAnchorY = this.snapshot.minimapAnchorY;
+        this.minimapAnchorUnlocked = this.snapshot.minimapAnchorUnlocked;
+        this.questId = this.snapshot.questId;
+        this.questStatus = this.snapshot.questStatus;
+        this.questTitle = this.snapshot.questTitle;
+        this.questObjectiveLabel = this.snapshot.questObjectiveLabel;
+        this.questObjectiveProgress = this.snapshot.questObjectiveProgress;
+        this.questObjectiveRequired = this.snapshot.questObjectiveRequired;
+        this.completedQuestCount = this.snapshot.completedQuestCount;
+        this.dialogActive = this.snapshot.dialogActive;
+        this.dialogSpeaker = this.snapshot.dialogSpeaker;
+        this.dialogText = this.snapshot.dialogText;
+        this.dialogLineIndex = this.snapshot.dialogLineIndex;
+        this.dialogLineCount = this.snapshot.dialogLineCount;
+        this.interactionKind = this.snapshot.interactionKind;
+        this.fateCount = this.snapshot.fateCount;
+        this.goldCount = this.snapshot.goldCount;
+        this.expMaterialCount = this.snapshot.expMaterialCount;
+        this.ascensionMaterialCount = this.snapshot.ascensionMaterialCount;
+        this.gachaPity5 = this.snapshot.gachaPity5;
+        this.gachaResultIds = this.snapshot.gachaResultIds;
+        this.gachaResultRarities = this.snapshot.gachaResultRarities;
+        this.gachaResultIsNew = this.snapshot.gachaResultIsNew;
+        this.rosterIds = this.snapshot.rosterIds;
+        this.rosterLevels = this.snapshot.rosterLevels;
+        this.rosterAscensions = this.snapshot.rosterAscensions;
+        this.activeCharacterId = this.snapshot.activeCharacterId;
+        this.dayNightHour = this.snapshot.dayNightHour;
+        this.qualityPreset = this.snapshot.qualityPreset;
+        this.weatherId = this.snapshot.weatherId;
+        this.musicRegionId = this.snapshot.musicRegionId;
+        this.completedSideQuestCount = this.snapshot.completedSideQuestCount;
+        this.dungeonState = this.snapshot.dungeonState;
+        this.dungeonProgress = this.snapshot.dungeonProgress;
+        this.dungeonRequired = this.snapshot.dungeonRequired;
+        this.minimapItemX = this.snapshot.minimapItemX;
+        this.minimapItemY = this.snapshot.minimapItemY;
+        this.minimapItemKind = this.snapshot.minimapItemKind;
+        this.sideQuestProgress = this.snapshot.sideQuestProgress;
+        this.sideQuestRequired = this.snapshot.sideQuestRequired;
+        this.rosterHp = this.snapshot.rosterHp;
+        this.rosterAtk = this.snapshot.rosterAtk;
+        this.rosterConstellations = this.snapshot.rosterConstellations;
+        this.weaponIds = this.snapshot.weaponIds;
+        this.weaponLevels = this.snapshot.weaponLevels;
+        this.weaponEquippedBy = this.snapshot.weaponEquippedBy;
+        this.weaponAscensions = this.snapshot.weaponAscensions;
+        this.weaponRefines = this.snapshot.weaponRefines;
+        this.weaponRefineStocks = this.snapshot.weaponRefineStocks;
+        this.weaponExps = this.snapshot.weaponExps;
+        this.artifactInstanceIds = this.snapshot.artifactInstanceIds;
+        this.artifactDefIds = this.snapshot.artifactDefIds;
+        this.artifactRarities = this.snapshot.artifactRarities;
+        this.artifactLevels = this.snapshot.artifactLevels;
+        this.artifactEquippedBy = this.snapshot.artifactEquippedBy;
+        this.artifactSeeds = this.snapshot.artifactSeeds;
+        this.adventureRank = this.snapshot.adventureRank;
+        this.adventureExp = this.snapshot.adventureExp;
+        this.adventureExpRequired = this.snapshot.adventureExpRequired;
+        this.worldLevel = this.snapshot.worldLevel;
+        this.oreLowCount = this.snapshot.oreLowCount;
+        this.oreMidCount = this.snapshot.oreMidCount;
+        this.oreHighCount = this.snapshot.oreHighCount;
+        this.expSmallCount = this.snapshot.expSmallCount;
+        this.expMediumCount = this.snapshot.expMediumCount;
+        this.expLargeCount = this.snapshot.expLargeCount;
+        this.sprintActive = this.snapshot.sprintActive;
+        this.dailyCompletedCount = this.snapshot.dailyCompletedCount;
+        this.dailyQuestClaimed = this.snapshot.dailyQuestClaimed;
+        this.gachaPoolKind = this.snapshot.gachaPoolKind;
+        // 任务完成上升沿即时落盘，保证杀进程重启进度不丢。
+        if (this.completedQuestCount > this.prevCompletedQuestCount) {
+          try { saveProgress(this.progressSavePath()); } catch (e) {}
+          // 奖励结算浮层（内容反馈闭环）：与 native 奖励表对应。
+          this.rewardToastTitle = this.questTitle;
+          this.rewardToastLabel = this.rewardLabelFor(this.completedQuestCount);
+          this.rewardToastVisible = true;
+          if (this.rewardToastTimer >= 0) { clearTimeout(this.rewardToastTimer); }
+          this.rewardToastTimer = setTimeout(() => {
+            this.rewardToastVisible = false;
+            this.rewardToastTimer = -1;
+          }, 3000);
+        }
+        this.prevCompletedQuestCount = this.completedQuestCount;
         this.detectCombatEvents();
       } catch (e) {
       }
@@ -424,6 +795,7 @@ struct GamePage {
       clearInterval(this.timer);
       this.timer = -1;
     }
+    try { saveProgress(this.progressSavePath()); } catch (e) {}
     nativeStop();
   }
 }

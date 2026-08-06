@@ -15,6 +15,10 @@ struct ThirdPersonCameraConfig {
   // yaw 平滑系数：越大转向越快。实际 yaw 以指数插值逼近目标 yaw，
   // 避免视角转动时产生突兀。
   float yawSharpness = 20.0f;
+  // 探索模式目标距离：无战斗目标时拉远视野，便于观察地形与锚点。
+  float explorationDistance = 0.58f;
+  // 模式切换时距离的平滑系数（指数插值）。
+  float distanceSharpness = 4.0f;
 };
 
 class ThirdPersonCamera {
@@ -23,6 +27,10 @@ class ThirdPersonCamera {
 
   void update(Vec2 desiredTarget, Vec2 lookDelta, float dtSeconds);
   void setDistance(float distance);
+  // 探索/战斗双模式：探索模式平滑拉远到 explorationDistance，
+  // 战斗模式回到 defaultDistance。
+  void setExploration(bool exploration) { exploration_ = exploration; }
+  bool exploration() const { return exploration_; }
   void reset();
 
   float yaw() const;
@@ -42,4 +50,5 @@ class ThirdPersonCamera {
   float pitch_ = 0.0f;
   float distance_ = 0.0f;
   Vec2 target_;
+  bool exploration_ = false;
 };

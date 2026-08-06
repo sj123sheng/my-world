@@ -1,5 +1,6 @@
 #include "surface.h"
 #include "native/engine/render/digit_atlas.h"
+#include "native/engine/render/terrain_mesh.h"
 #include "platform/harmony/fence_wait.h"
 #include <hilog/log.h>
 #include <unistd.h>
@@ -394,6 +395,13 @@ static float hitFlashRemaining(const Surface& s, uint32_t id) {
   return flash != s.enemyHitFlash.end() ? flash->second : 0.0f;
 }
 
+// 地形贴合：采样逻辑层同一高度场取地面高度，让角色/阴影/预警环等
+// 贴随地形起伏。未注入高度场时退化为平面世界（高度 0）。
+static float groundYAt(const Surface& s, float x, float y) {
+  if (s.terrain == nullptr) return 0.0f;
+  return s.terrain->heightAt(x, y);
+}
+
 // 攻击前摇预警 pass：在前摇敌人/吟唱首领脚下绘制呼吸闪烁的红色警示环，
 // 给玩家精确闪避/应对机制的时机窗口。深度只读 + 混合，先于角色绘制。
 static void drawWindupWarnings(Surface& s, const glm::mat4& vp) {
@@ -426,7 +434,8 @@ static void drawWindupWarnings(Surface& s, const glm::mat4& vp) {
     const float ringScale = profileScale * radiusFactor / 0.082f *
                             (1.0f + 0.08f * pulse);
     const glm::mat4 model =
-        glm::translate(glm::mat4(1.0f), glm::vec3(x, 0.006f, z)) *
+        glm::translate(glm::mat4(1.0f),
+                       glm::vec3(x, groundYAt(s, x, z) + 0.006f, z)) *
         glm::scale(glm::mat4(1.0f), glm::vec3(ringScale));
     s.shader3d.setMVP(vp * model);
     s.shader3d.setModel(model);
@@ -456,8 +465,11 @@ static void drawJudgmentBeam(Surface& s, const glm::mat4& vp) {
   if (s.boss3d.mechanic != 1) return;  // 1 = JudgmentBeam
   if (s.hpBarQuadMesh.vbo == 0u) return;
 
-  const glm::vec3 bossPos(s.boss3d.x, 0.005f, s.boss3d.y);
-  const glm::vec3 playerPos(s.player.x, 0.005f, s.player.y);
+  const glm::vec3 bossPos(s.boss3d.x, groundYAt(s, s.boss3d.x, s.boss3d.y) + 0.005f,
+                          s.boss3d.y);
+  const glm::vec3 playerPos(s.player.x,
+                            groundYAt(s, s.player.x, s.player.y) + 0.005f,
+                            s.player.y);
   const glm::vec3 dir = playerPos - bossPos;
   const float length = glm::length(dir);
   if (length < 0.001f) return;
@@ -652,7 +664,8 @@ static void drawContactShadow(Surface& s, const glm::mat4& vp, float x, float z,
   if (s.shadowMesh.vbo == 0u) return;
   // 略高于地面（y=0）避免 z-fighting，又低于角色基座（0.011+）。
   const glm::mat4 model =
-      glm::translate(glm::mat4(1.0f), glm::vec3(x, 0.004f, z)) *
+      glm::translate(glm::mat4(1.0f),
+                     glm::vec3(x, groundYAt(s, x, z) + 0.004f, z)) *
       glm::scale(glm::mat4(1.0f),
                  glm::vec3(radius * 2.0f, 1.0f, radius * 2.0f));
   s.shader3d.setMVP(vp * model);
@@ -736,6 +749,13 @@ static void tryInitializePendingEnvironmentAssets(Surface& s) {
   }
 }
 
+// 环境模型世界适配变换：layout.json 以米制描述布局（-34..+20），而世界为
+// [0,1] 归一化坐标；参数与碰撞层共用 environmentWorldFitForRegion，
+// 保证可见建筑与碰撞体严格对齐（见 environment.h）。
+static glm::mat4 environmentWorldFit(const Surface& s, size_t index) {
+  return environmentWorldFitMatrix(index, s.environmentComposition);
+}
+
 static void drawEnvironmentModel(Surface& s, size_t index,
                                  const glm::mat4& vp,
                                  const glm::vec3& tint, float tintStrength) {
@@ -743,8 +763,9 @@ static void drawEnvironmentModel(Surface& s, size_t index,
   if (s.environmentStatuses[index] != EnvironmentBatchStatus::Ready ||
       !model.ready()) return;
   model.setTextureTier(s.environmentPlan.textureTier);
-  s.shader3d.setMVP(vp);
-  s.shader3d.setModel(glm::mat4(1.0f));
+  const glm::mat4 fit = environmentWorldFit(s, index);
+  s.shader3d.setMVP(vp * fit);
+  s.shader3d.setModel(fit);
   s.shader3d.setSkinned(false);
   s.shader3d.setLight(glm::normalize(s.lightDir), {0.8f, 0.8f, 0.75f},
                       {0.18f, 0.20f, 0.24f});
@@ -772,8 +793,10 @@ static void drawEnvironmentFallback(Surface& s, const glm::mat4& vp) {
   constexpr int kPillars = 12;
   for (int index = 0; index < kPillars; ++index) {
     const float angle = static_cast<float>(index) * 6.2831853f / kPillars;
-    const glm::vec3 position{0.5f + std::cos(angle) * 0.42f, 0.06f,
-                             0.65f + std::sin(angle) * 0.42f};
+    const float pillarX = 0.5f + std::cos(angle) * 0.42f;
+    const float pillarZ = 0.65f + std::sin(angle) * 0.42f;
+    const glm::vec3 position{pillarX,
+                             groundYAt(s, pillarX, pillarZ) + 0.06f, pillarZ};
     const glm::mat4 pillar = glm::translate(glm::mat4(1.0f), position) *
         glm::scale(glm::mat4(1.0f), glm::vec3(0.55f, 1.0f, 0.55f));
     drawFallbackMesh(s, s.fallbackPillarMesh, vp, pillar,
@@ -782,8 +805,10 @@ static void drawEnvironmentFallback(Surface& s, const glm::mat4& vp) {
   constexpr int kWalls = 8;
   for (int index = 0; index < kWalls; ++index) {
     const float angle = static_cast<float>(index) * 6.2831853f / kWalls;
-    const glm::vec3 position{0.5f + std::cos(angle) * 0.46f, 0.035f,
-                             0.65f + std::sin(angle) * 0.46f};
+    const float wallX = 0.5f + std::cos(angle) * 0.46f;
+    const float wallZ = 0.65f + std::sin(angle) * 0.46f;
+    const glm::vec3 position{wallX, groundYAt(s, wallX, wallZ) + 0.035f,
+                             wallZ};
     const glm::mat4 wall = glm::translate(glm::mat4(1.0f), position) *
         glm::rotate(glm::mat4(1.0f), -angle, glm::vec3(0.0f, 1.0f, 0.0f)) *
         glm::scale(glm::mat4(1.0f), glm::vec3(0.20f, 0.07f, 0.025f));
@@ -795,8 +820,10 @@ static void drawCenterFallback(Surface& s, const glm::mat4& vp) {
   constexpr int kMarkers = 4;
   for (int index = 0; index < kMarkers; ++index) {
     const float angle = static_cast<float>(index) * 6.2831853f / kMarkers;
-    const glm::vec3 position{0.5f + std::cos(angle) * 0.16f, 0.018f,
-                             0.75f + std::sin(angle) * 0.09f};
+    const float markerX = 0.5f + std::cos(angle) * 0.16f;
+    const float markerZ = 0.75f + std::sin(angle) * 0.09f;
+    const glm::vec3 position{markerX,
+                             groundYAt(s, markerX, markerZ) + 0.018f, markerZ};
     const glm::mat4 marker =
         glm::translate(glm::mat4(1.0f), position) *
         glm::rotate(glm::mat4(1.0f), -angle,
@@ -832,7 +859,9 @@ static void drawTargetMarker(Surface& s, const glm::mat4& vp) {
   // 环体旋转对称，无需旋转；仅做呼吸缩放脉冲。
   const glm::mat4 model =
       glm::translate(glm::mat4(1.0f),
-                     glm::vec3(s.targetMarker3d.x, 0.016f,
+                     glm::vec3(s.targetMarker3d.x,
+                               groundYAt(s, s.targetMarker3d.x,
+                                         s.targetMarker3d.z) + 0.016f,
                                s.targetMarker3d.z)) *
       glm::scale(glm::mat4(1.0f), glm::vec3(scalePulse));
   // 青金色锁定环，背光面仍保持可见。
@@ -1084,6 +1113,87 @@ static void drawEnemyHpBars(Surface& s, const glm::mat4& vp) {
   glDepthMask(GL_TRUE);
 }
 
+// 天空穹顶：以相机为心的大球体内壁，天顶→地平线渐变，地平线色取雾色
+// 保证与深度雾无缝衔接。深度只读不写，不遮挡后续几何。
+static void drawSkyDome(Surface& s, const glm::mat4& vp) {
+  if (s.skyMesh.vbo == 0u) return;
+  glDepthMask(GL_FALSE);
+  glDisable(GL_CULL_FACE);
+  s.shader3d.setSurfaceMode(SurfaceMode::Sky);
+  s.shader3d.setSkyColors({0.16f, 0.30f, 0.54f}, s.environmentPalette.fogColor);
+  s.shader3d.setEnvironmentTint(glm::vec3(0.0f), 0.0f);
+  s.shader3d.setRim(glm::vec3(0.0f), 0.0f);
+  s.shader3d.setSpecular(0.0f, 1.0f);
+  const glm::mat4 model =
+      glm::translate(glm::mat4(1.0f), s.camera3d.position) *
+      glm::scale(glm::mat4(1.0f), glm::vec3(40.0f));
+  s.shader3d.setMVP(vp * model);
+  s.shader3d.setModel(model);
+  s.shader3d.setSkinned(false);
+  s.shader3d.setHasTexture(false);
+  s.skyMesh.draw();
+  s.shader3d.setSurfaceMode(SurfaceMode::Normal);
+  s.shader3d.setRim({0.62f, 0.72f, 0.85f}, 0.45f);
+  s.shader3d.setSpecular(0.28f, 24.0f);
+  glDepthMask(GL_TRUE);
+}
+
+// 地形网格：采样与逻辑层同一高度场，按高度/坡度混合沙地/草地/岩石色。
+// 高度场晚于 GL 初始化注入时在此惰性生成并上传。
+static void drawTerrain(Surface& s, const glm::mat4& vp) {
+#ifdef OHOS_PLATFORM
+  if (s.terrainMesh.vbo == 0u && s.terrain != nullptr &&
+      s.terrainMesh.vertices.empty()) {
+    s.terrainMesh = createTerrainMesh(*s.terrain, 96u);
+    s.terrainMesh.upload();
+  }
+#endif
+  if (s.terrainMesh.vbo == 0u) return;
+  s.shader3d.setSurfaceMode(SurfaceMode::Terrain);
+  s.shader3d.setTerrainColors({0.72f, 0.64f, 0.46f}, {0.30f, 0.48f, 0.27f},
+                              {0.44f, 0.44f, 0.48f});
+  s.shader3d.setTerrainWaterLevel(-0.012f);
+  const glm::mat4 model(1.0f);
+  s.shader3d.setMVP(vp * model);
+  s.shader3d.setModel(model);
+  s.shader3d.setSkinned(false);
+  s.shader3d.setHasTexture(false);
+  s.shader3d.setLight(glm::normalize(s.lightDir), {0.8f, 0.8f, 0.75f},
+                      s.environmentPalette.ambient * 0.8f +
+                          glm::vec3(0.08f));
+  s.shader3d.setEnvironmentTint(glm::vec3(0.0f), 0.0f);
+  s.terrainMesh.draw();
+  s.shader3d.setSurfaceMode(SurfaceMode::Normal);
+}
+
+// 水面：半透明平面抬升到水面高度，流动正弦涟漪；深度只读不写，
+// 在不透明地形/环境之后、角色之前绘制。
+static void drawWater(Surface& s, const glm::mat4& vp) {
+  if (s.waterMesh.vbo == 0u) return;
+  const float waterLevel =
+      s.terrain != nullptr ? s.terrain->config().waterLevel : -0.012f;
+  glDepthMask(GL_FALSE);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  s.shader3d.setSurfaceMode(SurfaceMode::Water);
+  s.shader3d.setWaterColor({0.16f, 0.38f, 0.47f}, 0.72f);
+  s.shader3d.setTime(s.renderSeconds);
+  s.shader3d.setEnvironmentTint(glm::vec3(0.0f), 0.0f);
+  // 略超出世界边界，避免边缘露缝；边缘山体遮挡外围。
+  const glm::mat4 model =
+      glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, waterLevel, 0.5f)) *
+      glm::scale(glm::mat4(1.0f), glm::vec3(1.3f, 1.0f, 1.3f));
+  s.shader3d.setMVP(vp * model);
+  s.shader3d.setModel(model);
+  s.shader3d.setSkinned(false);
+  s.shader3d.setHasTexture(false);
+  s.waterMesh.draw();
+  s.shader3d.setSurfaceMode(SurfaceMode::Normal);
+  s.shader3d.setTime(0.0f);
+  glDisable(GL_BLEND);
+  glDepthMask(GL_TRUE);
+}
+
 static void draw3DPhase(Surface& s) {
   // bridge 可能晚于 Surface 创建；surface_draw 已成功 makeCurrent，因此只在这里
   // 消费一次标脏字节，解析失败后保持静态 Mesh，不在每帧反复尝试。
@@ -1126,9 +1236,10 @@ static void draw3DPhase(Surface& s) {
                                                                     : "full");
   }
 
-  // 地面：大平面覆盖可玩区域，中心放在 (0.5, 0, 0.5)。
-  drawMeshAt(s, s.groundMesh, vp, glm::vec3(0.5f, 0.0f, 0.5f), 3.0f,
-             s.environmentPalette.ambient);
+  // 天空穹顶 → 地形网格 → 环境模型 → 水面：地形采样与逻辑层同一
+  // 高度场，起伏/水域与贴地判定严格一致。
+  drawSkyDome(s, vp);
+  drawTerrain(s, vp);
 
   if (s.environmentPlan.backdrop) {
     drawEnvironmentModel(s, 2, vp, glm::vec3(0.0f), 0.0f);
@@ -1144,12 +1255,17 @@ static void draw3DPhase(Surface& s) {
   if (s.environmentStatuses[1] != EnvironmentBatchStatus::Ready) {
     drawCenterFallback(s, vp);
   }
+  const float altarGround =
+      groundYAt(s, s.environmentComposition.altarAnchor.x,
+                s.environmentComposition.altarAnchor.z);
   const glm::mat4 rift =
-      glm::translate(glm::mat4(1.0f), s.environmentComposition.altarAnchor +
-                                               glm::vec3(0.0f, 0.004f, 0.0f)) *
+      glm::translate(glm::mat4(1.0f),
+                     s.environmentComposition.altarAnchor +
+                         glm::vec3(0.0f, altarGround + 0.004f, 0.0f)) *
       glm::scale(glm::mat4(1.0f), {0.22f, 1.0f, 0.08f});
   drawFallbackMesh(s, s.riftPlaneMesh, vp, rift,
                    s.environmentPalette.altarGlow);
+  drawWater(s, vp);
   const bool fallbackMeshesReady = s.fallbackPillarMesh.vbo != 0u &&
                                    s.fallbackWallMesh.vbo != 0u;
   const bool outerCovered =
@@ -1209,7 +1325,9 @@ static void draw3DPhase(Surface& s) {
   }
   drawActor(s, s.playerModel, s.playerMesh, s.playerAnimationState,
             s.player3dAnimation,
-            actorModelMatrix(glm::vec3(s.player.x, 0.012f, s.player.y),
+            actorModelMatrix(glm::vec3(s.player.x,
+                                       s.playerGroundHeight + 0.012f,
+                                       s.player.y),
                              s.playerAssetProfile.scale,
                              s.player.angle + s.playerAssetProfile.yawOffsetRadians),
             vp, hitFlashTint(s.playerAssetProfile.materialTint,
@@ -1225,7 +1343,10 @@ static void draw3DPhase(Surface& s) {
   drawActor(s, s.enemyModel, s.enemyMesh, s.trainingTargetAnimationState,
             s.trainingTarget3dAnimation,
             actorModelMatrix(
-                glm::vec3(s.trainingTarget.x, 0.011f, s.trainingTarget.y),
+                glm::vec3(s.trainingTarget.x,
+                          groundYAt(s, s.trainingTarget.x, s.trainingTarget.y) +
+                              0.011f,
+                          s.trainingTarget.y),
                 s.enemyAssetProfile.scale,
                 s.enemyAssetProfile.yawOffsetRadians),
             vp, hitFlashTint(s.enemyAssetProfile.materialTint,
@@ -1240,7 +1361,9 @@ static void draw3DPhase(Surface& s) {
     const glm::vec2 knock = hitKnockback(s, enemy.id, enemy.angle);
     drawActor(s, s.enemyModel, s.enemyMesh, animationState, enemy.animation,
               actorModelMatrix(
-                  glm::vec3(enemy.x + knock.x, 0.011f, enemy.y + knock.y),
+                  glm::vec3(enemy.x + knock.x,
+                            groundYAt(s, enemy.x, enemy.y) + 0.011f,
+                            enemy.y + knock.y),
                   s.enemyAssetProfile.scale,
                   enemy.angle + s.enemyAssetProfile.yawOffsetRadians),
               vp, hitFlashTint(enemyColorByArchetype(enemy.archetype),
@@ -1265,7 +1388,8 @@ static void draw3DPhase(Surface& s) {
     drawActor(s, s.bossModel, s.bossMesh, s.bossAnimationState,
               s.boss3d.animation,
               actorModelMatrix(
-                  glm::vec3(s.boss3d.x + bossKnock.x, 0.02f,
+                  glm::vec3(s.boss3d.x + bossKnock.x,
+                            groundYAt(s, s.boss3d.x, s.boss3d.y) + 0.02f,
                             s.boss3d.y + bossKnock.y),
                   s.bossAssetProfile.scale,
                   s.boss3d.angle + s.bossAssetProfile.yawOffsetRadians),
@@ -1668,6 +1792,14 @@ static void init3DResources(Surface& s) {
   s.bossMesh = createBeast();
   s.bossRingMesh = createRing(0.42f, 0.055f, 24);
   s.targetRingMesh = createRing(0.075f, 0.014f, 40);
+  // 地形/水面/天空：地形网格需要高度场，未注入时由 drawTerrain 惰性生成；
+  // 水面为单位平面（绘制时抬升到水面高度），天空为单位球体（绘制时
+  // 以相机为心放大成穹顶）。
+  s.waterMesh = createPlane(1.0f, 1.0f);
+  s.skyMesh = createSphere(1.0f, 24, 12);
+  if (s.terrain != nullptr && s.terrainMesh.vertices.empty()) {
+    s.terrainMesh = createTerrainMesh(*s.terrain, 96u);
+  }
   // 接地接触阴影单位圆盘（半径 0.5，法线 +Y）。
   s.shadowMesh = createDisk(0.5f, 24);
   // 血条单位四边形（XY 平面，法线 +Z，无纹理）。
@@ -1692,6 +1824,9 @@ static void init3DResources(Surface& s) {
   s.fallbackPillarMesh.upload();
   s.fallbackWallMesh.upload();
   s.riftPlaneMesh.upload();
+  s.terrainMesh.upload();
+  s.waterMesh.upload();
+  s.skyMesh.upload();
   s.shader3dReady = s.shader3d.init();
   if (!s.shader3dReady) {
     LOGE("3D shader init failed, 3D phase will be skipped");
@@ -1727,6 +1862,9 @@ static void destroy3DResource(Surface& s, SurfaceGlResource resource) {
       s.fallbackWallMesh.destroy();
       s.riftPlaneMesh.destroy();
       s.shadowMesh.destroy();
+      s.terrainMesh.destroy();
+      s.waterMesh.destroy();
+      s.skyMesh.destroy();
       break;
     case SurfaceGlResource::Shader3D:
       s.shader3d.destroy();
@@ -1770,6 +1908,9 @@ static void abandon3DResources(Surface& s) {
   s.targetRingMesh.abandonGpuResources();
   s.hpBarQuadMesh.abandonGpuResources();
   s.shadowMesh.abandonGpuResources();
+  s.terrainMesh.abandonGpuResources();
+  s.waterMesh.abandonGpuResources();
+  s.skyMesh.abandonGpuResources();
   for (Mesh& digitMesh : s.digitMeshes) digitMesh.abandonGpuResources();
   s.digitAtlasTexture = 0;
   s.digitAssetsReady = false;

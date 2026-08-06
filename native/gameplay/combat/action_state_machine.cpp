@@ -112,7 +112,9 @@ std::optional<HitRequest> ActionStateMachine::update(Tick now,
   lastUpdateTick_ = now;
   hasTimeline_ = true;
   resources_.advance(now);
-  if ((context.moving || context.damageTaken) &&
+  // 移动不再打断出招：主角可在跑动中持续释放普攻与技能，
+  // 仅受击（damageTaken）会重置连击段数。
+  if (context.damageTaken &&
       !(actionActive_ && activeAction_ == CombatAction::Dodge)) {
     resetCombo();
     return std::nullopt;

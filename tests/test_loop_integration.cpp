@@ -239,8 +239,9 @@ int main() {
   assert(targetingLoop.surface.props.size() == 1);
   // 训练假人不是敌人原型，焦点框隐藏（archetype = -1）。
   assert(targeted.targetArchetype == -1);
-  // 出生点 (0.5, 0.12) 到训练假人 (0.5, 0.8) 的距离。
-  assert(std::abs(targeted.targetDist - 0.68f) < 0.001f);
+  // 出生点 (0.5, 0.12) 到训练假人 (0.5, 0.8) 的距离；建筑碰撞会把
+  // 贴墙的出生点向外推出 0.002，实际距离为 0.678。
+  assert(std::abs(targeted.targetDist - 0.678f) < 0.001f);
 
   targetingLoop.resetInput();
   targetingLoop.tickOnce(0);
@@ -390,11 +391,13 @@ int main() {
   restartedLoop.start();
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
   restartedLoop.stop();
-  // start() 会 resetInput 清空排队输入，玩家应保持在环境出生点。
+  // start() 会 resetInput 清空排队输入，玩家应保持在环境出生点；
+  // 建筑碰撞可能把贴墙出生点向外推出 ≤ 0.002，不视为位移。
   const EnvironmentComposition restartedSpawn =
       EnvironmentController::defaultComposition();
   assert(restartedLoop.surface.player.x == restartedSpawn.spawn.x);
-  assert(restartedLoop.surface.player.y == restartedSpawn.spawn.z);
+  assert(std::abs(restartedLoop.surface.player.y - restartedSpawn.spawn.z) <=
+         0.0021f);
 
   // 暂停：冻结固定步与输入消费，恢复后继续推进。
   Loop pauseLoop;

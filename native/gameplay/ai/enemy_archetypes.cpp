@@ -24,8 +24,9 @@ EnemyAbility attackAbility(EnemyAbilityId id, const char* tag, FixedPoint range,
 
 EnemyAiConfig riftClawDefaults() {
   EnemyAiConfig config = EnemyAiConfig::defaults();
+  // 攻击节奏调优：约 1.4s 一次挥击，前摇 0.28s 给玩家闪避窗口。
   EnemyAbility slash = attackAbility(enemy_ability_ids::kRiftClawSlash,
-                                     "rift-claw-slash", fp(1.5), 700, 180, 80,
+                                     "rift-claw-slash", fp(1.5), 1400, 280, 80,
                                      320, fp(1.0));
   slash.cancelPolicy = EnemyAbilityCancelPolicy::WindupOnly;
   slash.interruptThreshold = fp(10);
@@ -40,7 +41,7 @@ EnemyAiConfig radiantPriestDefaults() {
   shield.id = enemy_ability_ids::kRadiantPriestShield;
   shield.tag = "radiant-priest-shield";
   shield.range = fp(4.0);
-  shield.cooldownMs = 3000;
+  shield.cooldownMs = 5200;
   shield.windupMs = 700;
   shield.activeMs = 100;
   shield.recoveryMs = 500;
@@ -53,8 +54,9 @@ EnemyAiConfig radiantPriestDefaults() {
   shield.cancelPolicy = EnemyAbilityCancelPolicy::WindupOnly;
   shield.interruptThreshold = fp(10);
 
+  // 远程法术节奏：约 2.4s 一枚法弹，与近战敌人形成交替施压。
   EnemyAbility bolt = attackAbility(enemy_ability_ids::kRadiantPriestBolt,
-                                    "radiant-priest-bolt", fp(4.0), 1500, 600,
+                                    "radiant-priest-bolt", fp(4.0), 2400, 600,
                                     80, 400, fp(1.0));
   bolt.telegraph = EnemyAbilityTelegraph::WarningYellow;
   bolt.cancelPolicy = EnemyAbilityCancelPolicy::WindupOnly;
@@ -65,8 +67,9 @@ EnemyAiConfig radiantPriestDefaults() {
 
 EnemyAiConfig corrosionGuardDefaults() {
   EnemyAiConfig config = EnemyAiConfig::defaults();
+  // 重击节奏：约 2.2s 一次重砸，前摇加长到 0.48s 凸显霸体威胁感。
   EnemyAbility bash = attackAbility(enemy_ability_ids::kCorrosionGuardBash,
-                                    "corrosion-guard-bash", fp(1.5), 1200, 350,
+                                    "corrosion-guard-bash", fp(1.5), 2200, 480,
                                     100, 600, fp(1.0));
   bash.cancelPolicy = EnemyAbilityCancelPolicy::Uninterruptible;
   bash.interruptThreshold = 0;

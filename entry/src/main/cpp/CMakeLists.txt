@@ -13,12 +13,16 @@ include_directories(
     ${NATIVE_ROOT}/engine/render
     ${NATIVE_ROOT}/engine/presentation
     ${NATIVE_ROOT}/engine/resource
+    ${NATIVE_ROOT}/engine/world
     ${NATIVE_ROOT}/gameplay/combat
     ${NATIVE_ROOT}/gameplay/ai
     ${NATIVE_ROOT}/gameplay/entities
     ${NATIVE_ROOT}/gameplay/growth
+    ${NATIVE_ROOT}/gameplay/inventory
     ${NATIVE_ROOT}/gameplay/player
+    ${NATIVE_ROOT}/gameplay/quest
     ${NATIVE_ROOT}/gameplay/targeting
+    ${NATIVE_ROOT}/gameplay/world
     ${NATIVE_ROOT}/platform/harmony
 )
 
@@ -46,6 +50,7 @@ add_library(native_game SHARED
    ${NATIVE_ROOT}/engine/render/surface.cpp
   ${NATIVE_ROOT}/engine/render/camera3d.cpp
    ${NATIVE_ROOT}/engine/render/mesh.cpp
+   ${NATIVE_ROOT}/engine/render/terrain_mesh.cpp
    ${NATIVE_ROOT}/engine/render/texture.cpp
     ${NATIVE_ROOT}/engine/render/shader_3d.cpp
     ${NATIVE_ROOT}/engine/render/skinned_model.cpp
@@ -68,6 +73,12 @@ add_library(native_game SHARED
     # engine resource
     ${NATIVE_ROOT}/engine/resource/loader.cpp
     ${NATIVE_ROOT}/engine/resource/save.cpp
+
+    # engine world (开放世界探索基础)
+    ${NATIVE_ROOT}/engine/world/world_grid.cpp
+    ${NATIVE_ROOT}/engine/world/terrain_heightfield.cpp
+    ${NATIVE_ROOT}/engine/world/environment_collision.cpp
+    ${NATIVE_ROOT}/engine/world/weather_system.cpp
 
     # gameplay combat
     ${NATIVE_ROOT}/gameplay/combat/source_aura.cpp
@@ -99,6 +110,7 @@ add_library(native_game SHARED
     ${NATIVE_ROOT}/gameplay/ai/enemy_archetypes.h
     ${NATIVE_ROOT}/gameplay/ai/encounter_controller.cpp
     ${NATIVE_ROOT}/gameplay/flow/demo_director.cpp
+    ${NATIVE_ROOT}/gameplay/flow/story_director.cpp
     ${NATIVE_ROOT}/gameplay/ai/encounter_controller.h
 
     # gameplay entities
@@ -108,12 +120,31 @@ add_library(native_game SHARED
     # gameplay player
     ${NATIVE_ROOT}/gameplay/player/character.cpp
     ${NATIVE_ROOT}/gameplay/player/player_controller.cpp
+    ${NATIVE_ROOT}/gameplay/player/exploration_motion.cpp
+
+    # gameplay world
+    ${NATIVE_ROOT}/gameplay/world/teleport_anchor.cpp
+    ${NATIVE_ROOT}/gameplay/world/interactable.cpp
+
+    # gameplay quest (内容与任务系统)
+    ${NATIVE_ROOT}/gameplay/quest/quest_system.cpp
+    ${NATIVE_ROOT}/gameplay/quest/side_quests.cpp
+    ${NATIVE_ROOT}/gameplay/quest/daily_quest.cpp
+    ${NATIVE_ROOT}/gameplay/quest/dialog.cpp
+    ${NATIVE_ROOT}/gameplay/growth/weapon_system.cpp
 
     # gameplay targeting
     ${NATIVE_ROOT}/gameplay/targeting/soft_targeting.cpp
 
     # gameplay growth
     ${NATIVE_ROOT}/gameplay/growth/relic.cpp
+    ${NATIVE_ROOT}/gameplay/growth/character_growth.cpp
+    ${NATIVE_ROOT}/gameplay/growth/gacha_system.cpp
+    ${NATIVE_ROOT}/gameplay/growth/adventure_rank.cpp
+    ${NATIVE_ROOT}/gameplay/growth/artifact_system.cpp
+
+    # gameplay inventory
+    ${NATIVE_ROOT}/gameplay/inventory/inventory.cpp
 
     # platform harmony
     ${NATIVE_ROOT}/platform/harmony/lifecycle.cpp

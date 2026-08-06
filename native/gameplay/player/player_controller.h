@@ -30,7 +30,7 @@ class PlayerController {
       : config_(config) {}
 
   void update(Player& player, Vec2 move, float cameraYaw,
-              float dtSeconds) const;
+              float dtSeconds, float speedScale = 1.0f) const;
 
  private:
   PlayerControllerConfig config_;

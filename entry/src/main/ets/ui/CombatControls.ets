@@ -19,6 +19,8 @@ export struct CombatControls {
   @State currentPressed: boolean = false;
   @State corruptionPressed: boolean = false;
   @State ultimatePressed: boolean = false;
+  @State jumpPressed: boolean = false;
+  @State glidePressed: boolean = false;
   @State radianceFlash: number = 0;
   @State currentFlash: number = 0;
   @State corruptionFlash: number = 0;
@@ -77,20 +79,30 @@ export struct CombatControls {
     this.prevCorruptionCd = this.corruptionCooldownMs;
   }
 
-  // 冷却环遮罩：剩余时间 > 0 时覆盖按钮，环形进度随快照平滑收缩。
+  // 冷却外圈“画圈”特效：环从 12 点方向起笔顺时针逐渐生长，
+  // 生长比例 = 已恢复比例；整圈画满即冷却结束、遮罩消失可释放。
+  // 淡色轨道环提示画圈终点，中心保留剩余秒数供精确读数。
   @Builder
-  cooldownRing(remainingMs: number, totalMs: number, color: string) {
+  cooldownDraw(remainingMs: number, totalMs: number, color: string) {
     if (remainingMs > 0) {
       Stack() {
-        Progress({ value: remainingMs / Math.max(totalMs, 1) * 100, total: 100, type: ProgressType.Ring })
+        Circle()
+          .width('100%')
+          .height('100%')
+          .fill('rgba(6, 8, 14, 0.62)')
+        Progress({
+          value: (1 - Math.min(remainingMs / Math.max(totalMs, 1), 1)) * 100,
+          total: 100,
+          type: ProgressType.Ring
+        })
           .width('100%')
           .height('100%')
           .color(color)
-          .backgroundColor('rgba(6, 8, 14, 0.7)')
-          .style({ strokeWidth: 5 })
-          .animation({ duration: 80, curve: Curve.Linear })
+          .backgroundColor('rgba(255, 255, 255, 0.1)')
+          .style({ strokeWidth: 4.5 })
+          .animation({ duration: 120, curve: Curve.Linear })
         Text(`${Math.ceil(remainingMs / 1000)}`)
-          .fontSize(13)
+          .fontSize(14)
           .fontWeight(FontWeight.Bold)
           .fontColor('#E5ECEA')
           .textShadow({ radius: 4, color: '#80000000', offsetX: 0, offsetY: 1 })
@@ -102,44 +114,65 @@ export struct CombatControls {
     }
   }
 
-  // 冷却线性进度条：填充宽度 = 已恢复比例，随冷却恢复从左向右增长，
-  // 搭配右侧剩余秒数，让冷却进度在按钮环之外也有清晰读数。
-  @Builder
-  cooldownBar(label: string, remainingMs: number, totalMs: number, color: string) {
-    if (remainingMs > 0) {
-      Row({ space: 5 }) {
-        Text(label)
-          .fontSize(10)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(color)
-          .width(12)
-          .textAlign(TextAlign.Center)
-        Stack({ alignContent: Alignment.Start }) {
-          Stack()
-            .width(118)
-            .height(5)
-            .borderRadius(3)
-            .backgroundColor('rgba(6, 8, 14, 0.6)')
-          Stack()
-            .width(Math.max(5, (1 - remainingMs / Math.max(totalMs, 1)) * 118))
-            .height(5)
-            .borderRadius(3)
-            .backgroundColor(color)
-            .animation({ duration: 120, curve: Curve.Linear })
-        }
-        Text(`${(remainingMs / 1000).toFixed(1)}`)
-          .fontSize(9)
-          .fontColor('#C7D0CE')
-          .width(24)
-      }
-      .hitTestBehavior(HitTestMode.Transparent)
-    }
-  }
-
   build() {
     Stack() {
       // 技能按钮簇：右下角弧形布局（普攻主钮贴角，技能向左上扇形展开）。
       Stack() {
+        // 滑翔：按住触发滑翔（GlidePress），松开结束（GlideRelease）。
+        Stack() {
+          Button('滑翔')
+            .width(48)
+            .height(48)
+            .type(ButtonType.Circle)
+            .backgroundColor(this.glidePressed ? '#1F5A50' : '#23303E')
+            .border({ width: 1.5, color: this.glidePressed ? '#5EAB9E' : '#4A5A68' })
+            .fontColor('#B8E8F2')
+            .fontSize(12)
+            .fontWeight(FontWeight.Medium)
+            .shadow({ radius: 8, color: '#40000000', offsetX: 0, offsetY: 2 })
+            .scale({ x: this.glidePressed ? 0.9 : 1.0, y: this.glidePressed ? 0.9 : 1.0 })
+            .animation({ duration: 120, curve: Curve.EaseOut })
+            .hitTestBehavior(HitTestMode.Block)
+            .onTouch((e: TouchEvent) => {
+              if (e.type === TouchType.Down) {
+                this.glidePressed = true;
+                pushAction(8);
+              }
+              if (e.type === TouchType.Up || e.type === TouchType.Cancel) {
+                this.glidePressed = false;
+                pushAction(9);
+              }
+            })
+        }
+        .width(48)
+        .height(48)
+        .position({ x: 206, y: 4 })
+
+        // 跳跃：探索垂直机动入口。
+        Stack() {
+          Button('跳跃')
+            .width(52)
+            .height(52)
+            .type(ButtonType.Circle)
+            .backgroundColor('#2A3A2E')
+            .border({ width: 1.5, color: '#4A6B52' })
+            .fontColor('#C8E8D0')
+            .fontSize(13)
+            .fontWeight(FontWeight.Medium)
+            .shadow({ radius: 8, color: '#40000000', offsetX: 0, offsetY: 2 })
+            .scale({ x: this.jumpPressed ? 0.9 : 1.0, y: this.jumpPressed ? 0.9 : 1.0 })
+            .animation({ duration: 120, curve: Curve.EaseOut })
+            .hitTestBehavior(HitTestMode.Block)
+            .onTouch((e: TouchEvent) => {
+              if (e.type === TouchType.Down) this.jumpPressed = true;
+              if (e.type === TouchType.Up || e.type === TouchType.Cancel) this.jumpPressed = false;
+            })
+            .onClick(() => { pushAction(6); })
+        }
+        .width(52)
+        .height(52)
+        .position({ x: 148, y: 12 })
+
         // 终结技：普攻上方，共鸣窗口开启时金色高亮呼吸。
         Stack() {
           Button('终结')
@@ -202,7 +235,7 @@ export struct CombatControls {
               if (e.type === TouchType.Up || e.type === TouchType.Cancel) this.corruptionPressed = false;
             })
             .onClick(() => { pushAction(4); })
-          this.cooldownRing(this.corruptionCooldownMs, this.corruptionCooldownTotalMs, '#AB4F92')
+          this.cooldownDraw(this.corruptionCooldownMs, this.corruptionCooldownTotalMs, '#AB4F92')
           Circle()
             .width(48).height(48)
             .fill('rgba(240, 200, 230, 0.6)')
@@ -239,7 +272,7 @@ export struct CombatControls {
               if (e.type === TouchType.Up || e.type === TouchType.Cancel) this.currentPressed = false;
             })
             .onClick(() => { pushAction(3); })
-          this.cooldownRing(this.currentCooldownMs, this.currentCooldownTotalMs, '#43CDB5')
+          this.cooldownDraw(this.currentCooldownMs, this.currentCooldownTotalMs, '#43CDB5')
           Circle()
             .width(48).height(48)
             .fill('rgba(200, 255, 240, 0.6)')
@@ -276,7 +309,7 @@ export struct CombatControls {
               if (e.type === TouchType.Up || e.type === TouchType.Cancel) this.radiancePressed = false;
             })
             .onClick(() => { pushAction(2); })
-          this.cooldownRing(this.radianceCooldownMs, this.radianceCooldownTotalMs, '#D9A145')
+          this.cooldownDraw(this.radianceCooldownMs, this.radianceCooldownTotalMs, '#D9A145')
           // 技能释放闪光叠加。
           Circle()
             .width(48).height(48)
@@ -345,28 +378,6 @@ export struct CombatControls {
       .position({ x: '100%', y: '100%' })
       .markAnchor({ x: 278, y: 244 })
       .hitTestBehavior(HitTestMode.Transparent)
-
-      // 三源冷却进度条面板：任一技能冷却中时显示在按钮簇上方，
-      // 填充随恢复增长，走完即消失，与按钮上的冷却环互补。
-      if (this.radianceCooldownMs > 0 || this.currentCooldownMs > 0 ||
-        this.corruptionCooldownMs > 0) {
-        Column({ space: 4 }) {
-          this.cooldownBar('辉', this.radianceCooldownMs, this.radianceCooldownTotalMs, '#D9A145')
-          this.cooldownBar('流', this.currentCooldownMs, this.currentCooldownTotalMs, '#43CDB5')
-          this.cooldownBar('蚀', this.corruptionCooldownMs, this.corruptionCooldownTotalMs, '#AB4F92')
-        }
-        .alignItems(HorizontalAlign.End)
-        .justifyContent(FlexAlign.End)
-        .width(172)
-        .height(58)
-        .padding({ left: 8, right: 8, top: 6, bottom: 6 })
-        .backgroundColor('rgba(17, 24, 29, 0.45)')
-        .borderRadius(10)
-        .border({ width: 1, color: 'rgba(199, 208, 206, 0.15)' })
-        .hitTestBehavior(HitTestMode.Transparent)
-        .position({ x: '100%', y: '100%' })
-        .markAnchor({ x: 278, y: 308 })
-      }
 
       // 调试入口：右上小型圆钮，展开/收起调试面板。
       Button('☰')

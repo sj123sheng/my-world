@@ -1,6 +1,7 @@
 #include "boss.h"
 
 #include <algorithm>
+#include <cmath>
 
 BossConfig BossConfig::karounDefaults() { return {}; }
 
@@ -8,7 +9,11 @@ bool BossConfig::valid() const {
   return maxHp > 0 && maxPoise > 0 && phaseTwoHp > phaseThreeHp &&
          phaseTwoHp < maxHp && phaseThreeHp > 0 && finalForgeCastMs > 0 &&
          judgmentBeamCastMs > 0 && judgmentBeamCooldownMs > 0 &&
-         currentNodeCount > 0 && currentNodeCount <= 2;
+         currentNodeCount > 0 && currentNodeCount <= 2 &&
+         moveSpeedPerSecond > 0.0f && preferredRange > 0.0f &&
+         arenaRadius > 0.0f && basicAttackCooldownMs > 0 &&
+         basicAttackWindupMs > 0 && basicAttackRange > 0.0f &&
+         basicAttackDamage > 0;
 }
 
 bool BossController::start(const BossConfig& config) {
@@ -31,6 +36,7 @@ void BossController::resetRuntime(Tick retryTick) {
   currentNodesBroken_ = {{false, false}};
   // 首次施法延迟，避免开战即吟唱。
   castCooldownMs_ = config_.judgmentBeamFirstDelayMs;
+  orbitDirection_ = 1.0f;
   snapshot_ = {};
   snapshot_.phase = BossPhase::RadianceLockdown;
   snapshot_.mechanic = BossMechanic::None;
@@ -38,6 +44,13 @@ void BossController::resetRuntime(Tick retryTick) {
   snapshot_.poise = config_.maxPoise;
   snapshot_.vulnerable = true;
   snapshot_.retryTick = retryTick;
+  // 移动与普攻初始状态：从出生点起步，首次普攻延迟入场。
+  snapshot_.position = config_.spawnPosition;
+  snapshot_.facing = {0.0f, -1.0f};
+  snapshot_.moving = false;
+  snapshot_.basicAttackCastRemainingMs = 0;
+  snapshot_.basicAttackCooldownRemainingMs = config_.basicAttackFirstDelayMs;
+  snapshot_.basicAttackVariant = 0;
 }
 
 void BossController::applyDamage(FixedPoint hpDamage, FixedPoint poiseDamage,
@@ -104,6 +117,109 @@ void BossController::update(const BossFrameInput& input) {
       snapshot_.castRemainingMs -= elapsed;
     }
   }
+
+  // 普攻计时独立于机制吟唱推进：机制期间只暂停走位与起手，
+  // 节奏不被审判光束等固定机制冻结。
+  updateBasicAttackTimers(elapsed);
+
+  // 机制吟唱期间站桩施压；无机制时进入自由移动 + 普攻循环。
+  if (snapshot_.mechanic == BossMechanic::None) {
+    updateMotionAndBasicAttack(input, elapsed);
+  } else {
+    snapshot_.moving = false;
+  }
+  // 宿主层碰撞解算：把首领从建筑等障碍内推出，位置修正回写权威
+  // 逻辑位置，后续朝向/射程判定与渲染严格一致。
+  if (input.positionResolver) {
+    input.positionResolver(snapshot_.position, kBossCollisionRadius);
+  }
+}
+
+void BossController::updateBasicAttackTimers(Tick elapsed) {
+  // 普攻前摇推进：归零瞬间即命中帧，由遭遇层检测下降沿结算伤害。
+  if (snapshot_.basicAttackCastRemainingMs > 0) {
+    if (elapsed >= snapshot_.basicAttackCastRemainingMs) {
+      snapshot_.basicAttackCastRemainingMs = 0;
+      snapshot_.basicAttackCooldownRemainingMs =
+          config_.basicAttackCooldownMs;
+    } else {
+      snapshot_.basicAttackCastRemainingMs -= elapsed;
+    }
+    return;
+  }
+  if (snapshot_.basicAttackCooldownRemainingMs > 0) {
+    snapshot_.basicAttackCooldownRemainingMs =
+        elapsed >= snapshot_.basicAttackCooldownRemainingMs
+            ? 0
+            : snapshot_.basicAttackCooldownRemainingMs - elapsed;
+  }
+}
+
+void BossController::updateMotionAndBasicAttack(const BossFrameInput& input,
+                                                Tick elapsed) {
+  snapshot_.moving = false;
+  // 朝向始终跟随玩家：保持面对面对峙姿态。
+  const Vec2 delta = input.playerPosition - snapshot_.position;
+  const float distance = delta.length();
+  if (delta.finite() && std::isfinite(distance) && distance > 1e-4f) {
+    snapshot_.facing = delta * (1.0f / distance);
+  }
+
+  // 前摇期间站桩蓄力，不移动也不起新招。
+  if (snapshot_.basicAttackCastRemainingMs > 0) return;
+
+  if (!input.playerAlive || !input.playerPosition.finite() ||
+      !std::isfinite(distance)) {
+    return;
+  }
+
+  // 普攻起手：冷却归零且玩家进入射程；起手瞬间翻转环绕方向，
+  // 让走位轨迹不可预测。
+  if (snapshot_.basicAttackCooldownRemainingMs <= 0 &&
+      distance <= config_.basicAttackRange) {
+    snapshot_.basicAttackCastRemainingMs = config_.basicAttackWindupMs;
+    snapshot_.basicAttackVariant =
+        static_cast<uint8_t>((snapshot_.basicAttackVariant + 1) % 3);
+    orbitDirection_ = -orbitDirection_;
+    return;
+  }
+
+  // 自由移动：远距离直线追击，到达期望距离后绕玩家环绕走位，
+  // 与主角一样持续位移，不再固定站桩。
+  if (distance <= 0.0f) return;
+  const float dtSeconds = static_cast<float>(elapsed) / 1000.0f;
+  Vec2 step{};
+  if (distance > config_.preferredRange) {
+    const float advance = std::min(
+        config_.moveSpeedPerSecond * dtSeconds,
+        distance - config_.preferredRange * 0.5f);
+    step = snapshot_.facing * advance;
+  } else {
+    const Vec2 tangent{-snapshot_.facing.y * orbitDirection_,
+                       snapshot_.facing.x * orbitDirection_};
+    const float arc = config_.orbitSpeedRadiansPerSecond * dtSeconds *
+                      config_.preferredRange;
+    step = tangent * arc;
+    // 贴得过近时向外侧微推，维持交战间距。
+    if (distance < config_.preferredRange * 0.6f) {
+      step = step - snapshot_.facing *
+                        (config_.preferredRange * 0.6f - distance);
+    }
+  }
+  if (step.finite() && step.length() > 0.0f) {
+    snapshot_.position = clampInsideArena(snapshot_.position + step);
+    snapshot_.moving = true;
+  }
+}
+
+Vec2 BossController::clampInsideArena(Vec2 position) const {
+  if (!position.finite()) return config_.spawnPosition;
+  const Vec2 delta = position - config_.arenaCenter;
+  const float distance = delta.length();
+  if (!std::isfinite(distance) || distance <= config_.arenaRadius) {
+    return position;
+  }
+  return config_.arenaCenter + delta * (config_.arenaRadius / distance);
 }
 
 bool BossController::breakCurrentNode(uint8_t nodeIndex, Tick tick) {

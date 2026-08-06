@@ -48,7 +48,8 @@ void testEnemyHitDamagesPlayer() {
   EncounterController encounter(combat);
   assert(encounter.start(EncounterMode::Beast));
   update(encounter, 0, 0);
-  update(encounter, 180, 180);
+  // RiftClaw 前摇调至 0.28s：推进到 300ms 确保挥击落地。
+  update(encounter, 300, 300);
 
   assert(combat.snapshot().playerHp == fp(92));  // RiftClaw 轻击 8 伤害
   assert(std::any_of(
@@ -112,7 +113,7 @@ void testArchetypeDamageIsDifferentiated() {
   EncounterController encounter(combat);
   assert(encounter.start(EncounterMode::Guard));
   update(encounter, 0, 0);
-  update(encounter, 350, 350);  // Guard 重击前摇 350ms 后命中
+  update(encounter, 500, 500);  // Guard 重击前摇 480ms 后命中
   const FixedPoint guardDamage = fp(100) - combat.snapshot().playerHp;
   assert(guardDamage == fp(18));  // 显著高于 RiftClaw 的 8
 }

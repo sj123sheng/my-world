@@ -102,14 +102,16 @@ export struct Hud {
   }
 
   build() {
-    Column() {
-      Text(this.objectiveLabel)
-        .fontColor('#E5ECEA')
-        .fontSize(16)
-        .fontWeight(FontWeight.Medium)
-        .letterSpacing(1.5)
-        .textShadow({ radius: 8, color: '#B0000000', offsetX: 0, offsetY: 2 })
-        .margin({ top: 18 })
+    Stack({ alignContent: Alignment.Top }) {
+      // 顶部居中：任务目标与首领血条。
+      Column() {
+        Text(this.objectiveLabel)
+          .fontColor('#E5ECEA')
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
+          .letterSpacing(1.5)
+          .textShadow({ radius: 8, color: '#B0000000', offsetX: 0, offsetY: 2 })
+          .margin({ top: 18 })
 
       if (this.encounterMode == 5) {
         Column() {
@@ -131,9 +133,12 @@ export struct Hud {
         .borderRadius(12)
         .border({ width: 1, color: 'rgba(170, 79, 134, 0.3)' })
       }
+      }
+      .alignItems(HorizontalAlign.Center)
+      .width('100%')
+      .hitTestBehavior(HitTestMode.Transparent)
 
-      Blank().layoutWeight(1)
-
+      // 左上角：主角状态面板（HP/韧性/体力/三源共鸣），横屏下与左下角摇杆对角分布。
       Column({ space: 5 }) {
         // HP 条：♥ 图标 + 进度条 + 受击闪烁叠加层。
         Row({ space: 6 }) {
@@ -280,12 +285,13 @@ export struct Hud {
         }
         .margin({ top: 2 })
       }
-      .alignItems(HorizontalAlign.Center)
+      .alignItems(HorizontalAlign.Start)
       .padding({ left: 16, right: 16, top: 8, bottom: 8 })
       .backgroundColor('#8A11181D')
-        .borderRadius(18)
-        .border({ width: 1, color: 'rgba(199, 208, 206, 0.15)' })
-        .margin({ bottom: 22 })
+      .borderRadius(18)
+      .border({ width: 1, color: 'rgba(199, 208, 206, 0.15)' })
+      .position({ x: 18, y: 18 })
+      .hitTestBehavior(HitTestMode.Transparent)
 
       if (this.showDebugHud) {
         if (this.debugHud) {
@@ -319,12 +325,10 @@ export struct Hud {
             .fontColor(Color.Yellow).fontSize(10)
           }
           .alignItems(HorizontalAlign.Start)
-          .position({ x: 12, y: 70 })
+          .position({ x: 12, y: 180 })
         }
       }
     }
-    .alignItems(HorizontalAlign.Center)
-    .position({ x: 0, y: 0 })
     .width('100%')
     .height('100%')
     .hitTestBehavior(HitTestMode.Transparent)

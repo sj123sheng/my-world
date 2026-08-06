@@ -51,6 +51,8 @@ namespace {
 // varying -> in，gl_FragColor -> 自定义 out，texture2D -> texture。
 // 在方向光漫反射基础上叠加 Blinn-Phong 高光与菲涅尔轮廓光，两者强度
 // uniform 默认 0，未配置时与升级前输出完全一致。
+// uSurfaceMode 切换表面模式：0 普通 / 1 地形混色 / 2 水面 / 3 天空渐变，
+// 默认 0 与升级前行为一致。
 [[maybe_unused]] const char* kFragmentShaderSrc =
     "#version 300 es\n"
     "precision mediump float;\n"
@@ -69,17 +71,61 @@ namespace {
     "uniform float uShininess;\n"
     "uniform vec3 uFogColor;\n"
     "uniform float uFogDensity;\n"
+    "uniform int uSurfaceMode;\n"
+    "uniform vec3 uColorSand;\n"
+    "uniform vec3 uColorGrass;\n"
+    "uniform vec3 uColorRock;\n"
+    "uniform float uTerrainWaterLevel;\n"
+    "uniform vec3 uWaterColor;\n"
+    "uniform float uWaterAlpha;\n"
+    "uniform float uTime;\n"
+    "uniform vec3 uSkyTop;\n"
+    "uniform vec3 uSkyHorizon;\n"
     "in vec3 vNormal;\n"
     "in vec2 vUV;\n"
     "in vec3 vWorldPos;\n"
     "out vec4 fragColor;\n"
+    "float hash21(vec2 p) {\n"
+    "  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);\n"
+    "}\n"
     "void main() {\n"
     "  vec3 N = normalize(vNormal);\n"
+    "  vec3 V = normalize(uCameraPos - vWorldPos);\n"
+    "  if (uSurfaceMode == 3) {\n"
+    // 天空穹顶：视线仰角驱动天顶→地平线渐变，地平线色与雾色一致，
+    "  // 远山融入天际时无接缝；不受光照与额外雾混合影响。\n"
+    "  float h = clamp(V.y, 0.0, 1.0);\n"
+    "  vec3 sky = mix(uSkyHorizon, uSkyTop, pow(h, 0.6));\n"
+    "  fragColor = vec4(sky, uAlpha);\n"
+    "  return;\n"
+    "}\n"
+    "  vec4 baseColor;\n"
+    "  if (uSurfaceMode == 1) {\n"
+    // 地形：按高度与坡度混合沙地/草地/岩石色，轻量 hash 噪声打碎色块。\n"
+    "  float noise = hash21(vUV * 140.0) * 0.09 - 0.045;\n"
+    "  float slope = 1.0 - clamp(N.y, 0.0, 1.0);\n"
+    "  float shore = clamp((vWorldPos.y - uTerrainWaterLevel) / 0.022 +\n"
+    "                      noise * 1.6, 0.0, 1.0);\n"
+    "  float rockMix = clamp((slope - 0.28) / 0.22 +\n"
+    "                         (vWorldPos.y - 0.055) / 0.05, 0.0, 1.0);\n"
+    "  vec3 terrainColor = mix(mix(uColorSand, uColorGrass, shore),\n"
+    "                          uColorRock, clamp(rockMix, 0.0, 1.0));\n"
+    "  baseColor = vec4(terrainColor + noise, 1.0);\n"
+    "  baseColor.rgb = max(baseColor.rgb, vec3(0.0));\n"
+    "  baseColor.rgb = min(baseColor.rgb, vec3(1.0));\n"
+    "} else if (uSurfaceMode == 2) {\n"
+    // 水面：流动正弦涟漪扰动颜色与法线，给出轻量动态感。\n"
+    "  float ripple = sin(vWorldPos.x * 120.0 + uTime * 1.6) *\n"
+    "                 sin(vWorldPos.z * 105.0 - uTime * 1.2) * 0.5 + 0.5;\n"
+    "  baseColor = vec4(uWaterColor + ripple * 0.07, uWaterAlpha);\n"
+    "  N = normalize(N + vec3(sin(vWorldPos.z * 90.0 + uTime) * 0.06, 0.0,\n"
+    "                           cos(vWorldPos.x * 80.0 - uTime * 0.8) * 0.06));\n"
+    "} else {\n"
+    "  baseColor = uHasTexture ? texture(uTexture, vUV) : vec4(1.0);\n"
+    "}\n"
     "  vec3 L = normalize(uLightDir);\n"
     "  float diff = max(dot(N, L), 0.0);\n"
-    "  vec4 baseColor = uHasTexture ? texture(uTexture, vUV) : vec4(1.0);\n"
     "  vec3 lit = baseColor.rgb * (uAmbient + uLightColor * diff);\n"
-    "  vec3 V = normalize(uCameraPos - vWorldPos);\n"
     "  vec3 H = normalize(L + V);\n"
     "  float spec = pow(max(dot(N, H), 0.0), max(uShininess, 1.0)) *\n"
     "               uSpecularStrength;\n"
@@ -182,6 +228,16 @@ bool Shader3D::init() {
   locShininess_ = glGetUniformLocation(program_, "uShininess");
   locFogColor_ = glGetUniformLocation(program_, "uFogColor");
   locFogDensity_ = glGetUniformLocation(program_, "uFogDensity");
+  locSurfaceMode_ = glGetUniformLocation(program_, "uSurfaceMode");
+  locColorSand_ = glGetUniformLocation(program_, "uColorSand");
+  locColorGrass_ = glGetUniformLocation(program_, "uColorGrass");
+  locColorRock_ = glGetUniformLocation(program_, "uColorRock");
+  locTerrainWaterLevel_ = glGetUniformLocation(program_, "uTerrainWaterLevel");
+  locWaterColor_ = glGetUniformLocation(program_, "uWaterColor");
+  locWaterAlpha_ = glGetUniformLocation(program_, "uWaterAlpha");
+  locTime_ = glGetUniformLocation(program_, "uTime");
+  locSkyTop_ = glGetUniformLocation(program_, "uSkyTop");
+  locSkyHorizon_ = glGetUniformLocation(program_, "uSkyHorizon");
   // uniform 默认值为 0：显式把 uAlpha 初置为 1，避免未调用 setAlpha
   // 的既有绘制路径被透明化；轮廓光/高光/雾强度置 0，保持未配置时与升级前等价。
   glUseProgram(program_);
@@ -190,6 +246,18 @@ bool Shader3D::init() {
   glUniform1f(locSpecularStrength_, 0.0f);
   glUniform1f(locShininess_, 32.0f);
   glUniform1f(locFogDensity_, 0.0f);
+  // 表面模式默认普通；地形/水面/天空配色预置默认值，未显式配置时
+  // 也有合理观感。
+  glUniform1i(locSurfaceMode_, 0);
+  glUniform3f(locColorSand_, 0.76f, 0.68f, 0.50f);
+  glUniform3f(locColorGrass_, 0.32f, 0.52f, 0.30f);
+  glUniform3f(locColorRock_, 0.42f, 0.42f, 0.46f);
+  glUniform1f(locTerrainWaterLevel_, -0.012f);
+  glUniform3f(locWaterColor_, 0.16f, 0.38f, 0.47f);
+  glUniform1f(locWaterAlpha_, 0.72f);
+  glUniform1f(locTime_, 0.0f);
+  glUniform3f(locSkyTop_, 0.20f, 0.32f, 0.52f);
+  glUniform3f(locSkyHorizon_, 0.55f, 0.58f, 0.65f);
   glUseProgram(0);
   LOGI_3D("3D program linked: mvp=%{public}d model=%{public}d lightDir=%{public}d "
           "lightColor=%{public}d ambient=%{public}d hasTexture=%{public}d texture=%{public}d",
@@ -225,6 +293,16 @@ void Shader3D::destroy() {
     locShininess_ = -1;
     locFogColor_ = -1;
     locFogDensity_ = -1;
+    locSurfaceMode_ = -1;
+    locColorSand_ = -1;
+    locColorGrass_ = -1;
+    locColorRock_ = -1;
+    locTerrainWaterLevel_ = -1;
+    locWaterColor_ = -1;
+    locWaterAlpha_ = -1;
+    locTime_ = -1;
+    locSkyTop_ = -1;
+    locSkyHorizon_ = -1;
   }
 #endif
   skinPaletteValid_ = false;
@@ -255,6 +333,16 @@ void Shader3D::abandonGpuResources() {
   locShininess_ = -1;
   locFogColor_ = -1;
   locFogDensity_ = -1;
+  locSurfaceMode_ = -1;
+  locColorSand_ = -1;
+  locColorGrass_ = -1;
+  locColorRock_ = -1;
+  locTerrainWaterLevel_ = -1;
+  locWaterColor_ = -1;
+  locWaterAlpha_ = -1;
+  locTime_ = -1;
+  locSkyTop_ = -1;
+  locSkyHorizon_ = -1;
 #endif
 }
 
@@ -389,6 +477,84 @@ void Shader3D::setFog(const glm::vec3& color, float density) const {
 #else
   (void)color;
   (void)density;
+#endif
+}
+
+void Shader3D::setSurfaceMode(SurfaceMode mode) const {
+#ifdef OHOS_PLATFORM
+  if (locSurfaceMode_ != -1) {
+    glUniform1i(locSurfaceMode_, static_cast<int>(mode));
+  }
+#else
+  (void)mode;
+#endif
+}
+
+void Shader3D::setTerrainColors(const glm::vec3& sand, const glm::vec3& grass,
+                                const glm::vec3& rock) const {
+#ifdef OHOS_PLATFORM
+  if (locColorSand_ != -1) {
+    glUniform3fv(locColorSand_, 1, &sand[0]);
+  }
+  if (locColorGrass_ != -1) {
+    glUniform3fv(locColorGrass_, 1, &grass[0]);
+  }
+  if (locColorRock_ != -1) {
+    glUniform3fv(locColorRock_, 1, &rock[0]);
+  }
+#else
+  (void)sand;
+  (void)grass;
+  (void)rock;
+#endif
+}
+
+void Shader3D::setTerrainWaterLevel(float level) const {
+#ifdef OHOS_PLATFORM
+  if (locTerrainWaterLevel_ != -1) {
+    glUniform1f(locTerrainWaterLevel_, level);
+  }
+#else
+  (void)level;
+#endif
+}
+
+void Shader3D::setWaterColor(const glm::vec3& color, float alpha) const {
+#ifdef OHOS_PLATFORM
+  if (locWaterColor_ != -1) {
+    glUniform3fv(locWaterColor_, 1, &color[0]);
+  }
+  if (locWaterAlpha_ != -1) {
+    glUniform1f(locWaterAlpha_, alpha);
+  }
+#else
+  (void)color;
+  (void)alpha;
+#endif
+}
+
+void Shader3D::setTime(float seconds) const {
+#ifdef OHOS_PLATFORM
+  if (locTime_ != -1) {
+    glUniform1f(locTime_, seconds);
+  }
+#else
+  (void)seconds;
+#endif
+}
+
+void Shader3D::setSkyColors(const glm::vec3& top,
+                            const glm::vec3& horizon) const {
+#ifdef OHOS_PLATFORM
+  if (locSkyTop_ != -1) {
+    glUniform3fv(locSkyTop_, 1, &top[0]);
+  }
+  if (locSkyHorizon_ != -1) {
+    glUniform3fv(locSkyHorizon_, 1, &horizon[0]);
+  }
+#else
+  (void)top;
+  (void)horizon;
 #endif
 }
 

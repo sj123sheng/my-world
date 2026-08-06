@@ -23,7 +23,7 @@ float shortestAngleDelta(float from, float to) {
 }  // namespace
 
 void PlayerController::update(Player& player, Vec2 move, float cameraYaw,
-                              float dtSeconds) const {
+                              float dtSeconds, float speedScale) const {
   if (!std::isfinite(cameraYaw) || !std::isfinite(dtSeconds) ||
       dtSeconds <= 0.0f) {
     player.moving = false;
@@ -37,9 +37,12 @@ void PlayerController::update(Player& player, Vec2 move, float cameraYaw,
     move = ClampLength(move, 1.0f);
     const CameraGroundBasis cameraBasis =
         CameraGroundBasisForYaw(cameraYaw);
+    // speedScale：疾跑等状态的速度倍率（非法值钳为 0）。
+    const float effectiveSpeed =
+        config_.speed * std::max(0.0f, std::isfinite(speedScale) ? speedScale : 1.0f);
     targetVelocity =
         (cameraBasis.right * move.x + cameraBasis.forward * move.y) *
-        config_.speed;
+        effectiveSpeed;
   }
 
   // 指数平滑速度大小，但有输入时立即采用当前目标方向。

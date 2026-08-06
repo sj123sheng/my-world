@@ -38,6 +38,7 @@ inline constexpr EGLContext EGL_NO_CONTEXT = nullptr;
 #include "native/engine/render/skinned_model.h"
 #include "native/engine/render/static_model.h"
 #include "native/engine/render/environment.h"
+#include "native/engine/world/terrain_heightfield.h"
 #include <glm/vec3.hpp>
 
 struct Particle {
@@ -95,6 +96,8 @@ struct Enemy3DRenderState {
   bool alive = false;
   // 处于攻击前摇：渲染层据此绘制脚下预警环。
   bool windingUp = false;
+  // 攻击已挥出：逻辑层据此做释放动效的上升沿检测。
+  bool attacking = false;
   ActorRenderState animation;
   float angle = 0.0f;  // 朝向角，弧度
   // 死亡后的累计秒数：驱动尸体淡出曲线（DeathFadeAlpha）。
@@ -127,6 +130,12 @@ struct Boss3DRenderState {
   bool targeted = false;
   // 首领激活后的累计秒数：驱动出场轮廓光渐入（BossEntranceReveal）。
   float entranceSeconds = 0.0f;
+  // 首领自由移动中：驱动跑动动画与步频。
+  bool moving = false;
+  // 首领普攻前摇中：驱动攻击动画与预警环。
+  bool basicAttacking = false;
+  // 普攻变体（0/1/2）：选择差异化的释放特效配色与齐射规模。
+  uint8_t basicAttackVariant = 0;
 };
 
 // 敌人头顶血条渲染状态：逻辑侧每帧生成，渲染层绘制为面向相机的
@@ -195,6 +204,20 @@ struct Surface {
   Mesh enemyMesh;
   Mesh bossMesh;
   Mesh bossRingMesh;
+  // ---- 地形/水面/天空（地图渲染重设计）----
+  // terrainMesh 采样与逻辑层同一 TerrainHeightfield，保证视觉与
+  // 贴地/坡度/水域判定严格一致；skyMesh 为单位球体，绘制时以相机为
+  // 心放大成穹顶；waterMesh 为单位平面，绘制时抬升到水面高度。
+  Mesh terrainMesh;
+  Mesh waterMesh;
+  Mesh skyMesh;
+  // 逻辑层高度场只读指针：由 Loop 注入，渲染层据此贴地采样。
+  const TerrainHeightfield* terrain = nullptr;
+  // 主角脚底 3D 高度：逻辑层每帧写入（motionState.height），
+  // 渲染层直接消费，保证跳跃/滑翔/游泳时模型与相机同步。
+  float playerGroundHeight = 0.0f;
+  // 渲染时钟（秒）：驱动水面流动涟漪。
+  float renderSeconds = 0.0f;
   Shader3D shader3d;
   glm::vec3 lightDir{0.35f, 0.85f, 0.25f};
   glm::vec3 lightColor{0.8f, 0.8f, 0.75f};
@@ -262,6 +285,13 @@ struct Surface {
   std::unordered_map<uint32_t, float> enemyDeathSeconds;
   // 受击计数器：实体 id → 累计受击次数，驱动受击/死亡动画变体轮换。
   std::unordered_map<uint32_t, uint32_t> enemyHitCounts;
+  // 敌方释放动效边沿状态：前摇开始触发蓄力火花，挥击瞬间
+  // 触发朝主角的投射物；与主角侧释放特效对称。
+  std::unordered_map<uint32_t, bool> enemyPrevWindingUp;
+  std::unordered_map<uint32_t, bool> enemyPrevAttacking;
+  bool bossPrevWindingUp = false;
+  // 首领普攻边沿状态：前摇上升沿触发蓄力爆发，挥击下降沿触发齐射。
+  bool bossPrevBasicAttacking = false;
   bool shader3dReady = false;
   AssetProfile playerAssetProfile = AssetProfile::forModel(ModelKind::Player);
   AssetProfile enemyAssetProfile = AssetProfile::forModel(ModelKind::Enemy);

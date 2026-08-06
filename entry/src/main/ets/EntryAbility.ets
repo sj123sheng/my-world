@@ -13,6 +13,17 @@ export default class EntryAbility extends UIAbility {
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
     console.info('[Ethelan] EntryAbility onWindowStageCreate');
+    // 游戏画面固定横屏，兼容左摇杆右技能的双手操控布局。
+    try {
+      const mainWindow = windowStage.getMainWindowSync();
+      mainWindow.setPreferredOrientation(window.Orientation.LANDSCAPE);
+      // 沉浸式全屏：隐藏状态栏与导航栏，消除上下黑/白条带，
+      // 游戏内容延伸至整块屏幕。
+      mainWindow.setWindowLayoutFullScreen(true);
+      mainWindow.setWindowSystemBarEnable([]);
+    } catch (error) {
+      console.error('[Ethelan] Failed to set landscape orientation: ' + JSON.stringify(error));
+    }
     windowStage.loadContent('pages/GamePage', (err, data) => {
       if (err.code) {
         console.error('[Ethelan] Failed to load GamePage: ' + JSON.stringify(err));

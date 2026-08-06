@@ -2,6 +2,8 @@
 //
 // Shader3D 编译顶点/片段着色器源码（设计规格 §3.5），链接为独立 Program，
 // 与 2D 单色着色器不共享。提供 MVP、方向光照和纹理开关 uniform 设置接口。
+// 另提供地表/水面/天空三种表面模式（uSurfaceMode）：地形按高度/坡度
+// 混色，水面半透明带流动涟漪，天空输出天顶→地平线渐变。
 // 所有 GL 调用在 #ifdef OHOS_PLATFORM 内，非平台侧为空操作，便于 macOS 语法检查。
 
 #pragma once
@@ -14,6 +16,14 @@
 #ifdef OHOS_PLATFORM
 #include <GLES3/gl3.h>
 #endif
+
+// 片段着色器表面模式：与着色器内 uSurfaceMode 取值一一对应。
+enum class SurfaceMode : int {
+  Normal = 0,   // 普通光照（纹理/单色），与升级前行为一致。
+  Terrain = 1,  // 地形：按高度/坡度混合沙地/草地/岩石色。
+  Water = 2,    // 水面：半透明 + 流动涟漪。
+  Sky = 3,      // 天空穹顶：天顶→地平线渐变，不受光照影响。
+};
 
 class Shader3D {
  public:
@@ -65,6 +75,26 @@ class Shader3D {
 
   void setEnvironmentTint(const glm::vec3& tint, float strength) const;
 
+  // 设置表面模式（普通/地形/水面/天空），默认 Normal 与升级前等价。
+  // 模式互斥：切换绘制对象前由调用方显式设置并负责恢复 Normal。
+  void setSurfaceMode(SurfaceMode mode) const;
+
+  // 地形模式配色：沙地（低洼/水岸）、草地（平原）、岩石（陡坡/高山）。
+  void setTerrainColors(const glm::vec3& sand, const glm::vec3& grass,
+                        const glm::vec3& rock) const;
+
+  // 地形模式的水岸过渡高度：低于该值的区域向沙地色过渡。
+  void setTerrainWaterLevel(float level) const;
+
+  // 水面模式基础色与透明度（默认 0.72）。
+  void setWaterColor(const glm::vec3& color, float alpha) const;
+
+  // 动画时钟（秒）：驱动水面流动涟漪。
+  void setTime(float seconds) const;
+
+  // 天空模式配色：天顶色与地平线色（后者建议取雾色保证无缝衔接）。
+  void setSkyColors(const glm::vec3& top, const glm::vec3& horizon) const;
+
   // 上传骨骼调色板。空调色板或超过 64 个矩阵时拒绝启用蒙皮绘制。
   void setSkinPalette(const SkinPalette& palette);
 
@@ -105,5 +135,15 @@ class Shader3D {
   GLint locShininess_ = -1;
   GLint locFogColor_ = -1;
   GLint locFogDensity_ = -1;
+  GLint locSurfaceMode_ = -1;
+  GLint locColorSand_ = -1;
+  GLint locColorGrass_ = -1;
+  GLint locColorRock_ = -1;
+  GLint locTerrainWaterLevel_ = -1;
+  GLint locWaterColor_ = -1;
+  GLint locWaterAlpha_ = -1;
+  GLint locTime_ = -1;
+  GLint locSkyTop_ = -1;
+  GLint locSkyHorizon_ = -1;
 #endif
 };

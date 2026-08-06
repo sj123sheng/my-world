@@ -30,7 +30,7 @@ void testDefaultConfigHasTypedYellowInterruptibleCasts() {
   assert(shield.effect == EnemyAbilityEffect::Shield);
   assert(shield.effectAmount == fp(40));
   assert(shield.range == fp(4.0));
-  assert(shield.cooldownMs == 3000);
+  assert(shield.cooldownMs == 5200);
   assert(shield.windupMs == 700);
   assert(shield.activeMs == 100);
   assert(shield.recoveryMs == 500);
@@ -41,7 +41,7 @@ void testDefaultConfigHasTypedYellowInterruptibleCasts() {
   assert(bolt.effect == EnemyAbilityEffect::Damage);
   assert(bolt.effectAmount == 0);
   assert(bolt.range == fp(4.0));
-  assert(bolt.cooldownMs == 1500);
+  assert(bolt.cooldownMs == 2400);
   assert(bolt.windupMs == 600);
   assert(bolt.activeMs == 80);
   assert(bolt.recoveryMs == 400);

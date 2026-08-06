@@ -30,14 +30,23 @@ assert.doesNotMatch(page,
   /CombatControls\(\{[\s\S]*?ultimateWindowMs:\s*this\.ultimateWindowMs\s*\}\)\s*\.hitTestBehavior\(HitTestMode\.Transparent\)/,
   'GamePage must not override button-level blocking with an outer transparent hit-test mode');
 
-const buttonActions = [['普攻', 0], ['闪避', 1], ['辉印', 2], ['脉流', 3], ['蚀质', 4], ['终结', 5]];
+const buttonActions = [['普攻', 0], ['闪避', 1], ['辉印', 2], ['脉流', 3], ['蚀质', 4], ['终结', 5], ['跳跃', 6]];
 for (const [label, type] of buttonActions) {
   assert.match(controls,
     new RegExp(`Button\\(['"]${label}['"]\\)(?:(?!Button\\().)*pushAction\\(${type}\\)`, 's'),
     `CombatControls must pair ${label} with pushAction(${type})`);
 }
+// 探索动作 7（交互）由 ExplorationHud 发出，8/9（滑翔按下/松开）由 CombatControls 发出。
+const explorationHud = fs.existsSync('entry/src/main/ets/ui/ExplorationHud.ets')
+  ? fs.readFileSync('entry/src/main/ets/ui/ExplorationHud.ets', 'utf8') : '';
+assert.match(explorationHud, /pushAction\(7\);/,
+  'ExplorationHud must issue the interact action');
+assert.match(controls, /pushAction\(8\);/,
+  'CombatControls must issue GlidePress on touch down');
+assert.match(controls, /pushAction\(9\);/,
+  'CombatControls must issue GlideRelease on touch up');
 const blockingButtons = [
-  '普攻', '闪避', '辉印', '脉流', '蚀质', '终结', '☰',
+  '普攻', '闪避', '辉印', '脉流', '蚀质', '终结', '跳跃', '☰',
   '训练', '兽群', '混战', '守卫', '流程', '首领', '推进', '补给', '重试', '调试'
 ];
 for (const label of blockingButtons) {
@@ -104,11 +113,11 @@ assert.match(pushActionBody, /!std::isfinite\(typeNumber\)/,
   'NativePushAction must reject non-finite numbers');
 assert.match(pushActionBody, /!TryConvertInt32\(typeNumber, type\)/,
   'NativePushAction must reject fractional numbers');
-assert.match(pushActionBody, /type < 0 \|\| type > 5/,
-  'NativePushAction must reject action types outside 0..5');
+assert.match(pushActionBody, /type < 0 \|\| type > 10/,
+  'NativePushAction must reject action types outside 0..10');
 assert.match(pushActionBody,
-  /kActions\[\]\s*=\s*\{\s*InputAction::Attack,\s*InputAction::Dodge,\s*InputAction::Radiance,\s*InputAction::Current,\s*InputAction::Corruption,\s*InputAction::Ultimate\s*\}/,
-  'NativePushAction mapping order must be 0 Attack, 1 Dodge, 2 Radiance, 3 Current, 4 Corruption, 5 Ultimate');
+  /kActions\[\]\s*=\s*\{\s*InputAction::Attack,\s*InputAction::Dodge,\s*InputAction::Radiance,\s*InputAction::Current,\s*InputAction::Corruption,\s*InputAction::Ultimate,\s*InputAction::Jump,\s*InputAction::Interact,\s*InputAction::GlidePress,\s*InputAction::GlideRelease,\s*InputAction::SwitchCharacter\s*\}/,
+  'NativePushAction mapping order must be 0..5 combat then 6 Jump, 7 Interact, 8 GlidePress, 9 GlideRelease, 10 SwitchCharacter');
 assert.match(pushActionBody, /g_loop\.enqueueInput\(action, -1, 0\.0f, 0\.0f\)/,
   'NativePushAction must enqueue through Loop');
 
@@ -473,7 +482,7 @@ for (const total of ['radianceCooldownTotalMs', 'currentCooldownTotalMs', 'corru
 }
 assert.match(controls, /@Prop radianceCooldownTotalMs: number = 3000;/,
   'CombatControls must accept cooldown total props');
-assert.match(controls, /this\.cooldownRing\(this\.radianceCooldownMs, this\.radianceCooldownTotalMs/,
+assert.match(controls, /this\.cooldownDraw\(this\.radianceCooldownMs, this\.radianceCooldownTotalMs/,
   'CombatControls must use snapshot cooldown totals, not hardcoded constants');
 assert.doesNotMatch(controls, /RADIANCE_COOLDOWN_TOTAL_MS/,
   'CombatControls must not keep hardcoded cooldown constants');
@@ -642,8 +651,8 @@ assert.match(page, /import \{ GameStateOverlay \} from ['"]\.\.\/ui\/GameStateOv
   'GamePage must import GameStateOverlay');
 assert.match(page, /GameStateOverlay\(\{ encounterState: this\.encounterState/,
   'GamePage must mount GameStateOverlay');
-assert.match(page, /PauseMenu\(\{ encounterMode: this\.encounterMode \}\)/,
-  'GamePage must mount PauseMenu');
+assert.match(page, /PauseMenu\(\{ encounterMode: this\.encounterMode,\s*\n?\s*qualityPreset: this\.qualityPreset \}\)/,
+  'GamePage must mount PauseMenu with the quality preset');
 
 // ---- Stage 13: enemy overhead health bars ----
 assert.match(surfaceHeader, /struct EnemyHpBarRenderState/,
@@ -689,3 +698,527 @@ assert.match(page, /TargetFrame\(\{ targetId: this\.targetId/,
 // ---- Stage 15: low stamina warning on HUD ----
 assert.match(hud, /this\.stamina < 30 \? '#E06A5E' : '#4FD4BB'/,
   'HUD stamina bar must turn red below dodge cost');
+
+// ---- Stage 16: open-world exploration fields across the snapshot chain ----
+for (const field of ['explorationStamina', 'motionState', 'playerHeight',
+  'activeChunkCount', 'chunkLoadCount', 'interactionAnchorId',
+  'interactionUnlocked', 'interactionLabel', 'unlockedAnchorCount',
+  'cameraExploration', 'teleportFlashMs', 'minimapAnchorX',
+  'minimapAnchorY', 'minimapAnchorUnlocked']) {
+  assert.match(gameSnapshot, new RegExp(`\\b${field}\\b`),
+    `GameSnapshot must expose ${field}`);
+  assert.match(nativeBridge, new RegExp(`"${field}"`),
+    `native bridge must marshal ${field}`);
+  assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
+    `GamePage polling must assign ${field}`);
+}
+assert.match(page, /ExplorationHud\(\{/,
+  'GamePage must mount ExplorationHud');
+assert.match(gameSnapshot, /int32_t interactionAnchorId = -1;/,
+  'GameSnapshot must default to no interaction target');
+assert.match(loop, /worldGrid\.updateStreaming/,
+  'loop must stream world chunks around the player');
+assert.match(loop, /explorationMotion\.update/,
+  'loop must advance the exploration motion state machine');
+assert.match(loop, /anchors\.nearestInteraction/,
+  'loop must resolve the nearest teleport anchor interaction');
+assert.match(loop, /camera\.setExploration\(!currentTarget\.has_value\(\)\);/,
+  'camera must switch exploration mode without a locked target');
+
+// ---- Stage 17: content systems (quests, dialog, interactables, save) ----
+for (const field of ['questId', 'questStatus', 'questTitle',
+  'questObjectiveLabel', 'questObjectiveProgress', 'questObjectiveRequired',
+  'completedQuestCount', 'dialogActive', 'dialogSpeaker', 'dialogText',
+  'dialogLineIndex', 'dialogLineCount', 'interactionKind']) {
+  assert.match(gameSnapshot, new RegExp(`\\b${field}\\b`),
+    `GameSnapshot must expose ${field}`);
+  assert.match(nativeBridge, new RegExp(`"${field}"`),
+    `native bridge must marshal ${field}`);
+  assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
+    `GamePage polling must assign ${field}`);
+}
+assert.match(bridge, /export const advanceDialog/,
+  'Bridge must export advanceDialog');
+assert.match(bridge, /export const saveProgress/,
+  'Bridge must export saveProgress');
+assert.match(bridge, /export const loadProgress/,
+  'Bridge must export loadProgress');
+assert.match(declarations, /advanceDialog: \(\) => void;/,
+  'Index.d.ts must declare advanceDialog');
+assert.match(declarations, /saveProgress: \(path: string\) => boolean;/,
+  'Index.d.ts must declare saveProgress(path)');
+assert.match(declarations, /loadProgress: \(path: string\) => boolean;/,
+  'Index.d.ts must declare loadProgress(path)');
+assert.match(nativeBridge, /"advanceDialog", nullptr, NativeAdvanceDialog/,
+  'native bridge must export advanceDialog');
+assert.match(nativeBridge, /"saveProgress", nullptr, NativeSaveProgress/,
+  'native bridge must export saveProgress');
+assert.match(nativeBridge, /"loadProgress", nullptr, NativeLoadProgress/,
+  'native bridge must export loadProgress');
+assert.match(loop, /quests\.notifyEnemiesKilled/,
+  'loop must feed enemy deaths into the quest system');
+assert.match(loop, /quests\.notifyAnchorReached/,
+  'loop must feed anchor unlocks into the quest system');
+assert.match(loop, /dialogSession\.start/,
+  'loop must start dialog sessions from NPC interaction');
+assert.match(loop, /void Loop::advanceDialog\(\)/,
+  'Loop must implement advanceDialog');
+assert.match(loop, /bool Loop::saveProgress\(const std::string& path\)/,
+  'Loop must implement saveProgress');
+assert.match(loop, /bool Loop::loadProgress\(const std::string& path\)/,
+  'Loop must implement loadProgress');
+const dialogBox = fs.existsSync('entry/src/main/ets/ui/DialogBox.ets')
+  ? fs.readFileSync('entry/src/main/ets/ui/DialogBox.ets', 'utf8') : '';
+assert.match(dialogBox, /advanceDialog\(\);/,
+  'DialogBox must advance the dialog session');
+assert.match(dialogBox, /@Prop dialogActive: boolean = false;/,
+  'DialogBox must gate on dialogActive');
+assert.match(page, /DialogBox\(\{ dialogActive: this\.dialogActive/,
+  'GamePage must mount DialogBox');
+assert.match(page, /loadProgress\(this\.progressSavePath\(\)\);/,
+  'GamePage must restore progress on appear');
+assert.match(page, /saveProgress\(this\.progressSavePath\(\)\);/,
+  'GamePage must persist progress');
+assert.match(explorationHud, /@Prop interactionKind: number = 0;/,
+  'ExplorationHud must accept interactionKind');
+assert.match(page, /interactionKind: this\.interactionKind,/,
+  'GamePage must feed interactionKind into ExplorationHud');
+
+// ---- Stage 18: growth and gacha chain ----
+for (const field of ['fateCount', 'goldCount', 'expMaterialCount',
+  'ascensionMaterialCount', 'gachaPity5', 'gachaResultIds',
+  'gachaResultRarities', 'gachaResultIsNew', 'rosterIds', 'rosterLevels',
+  'rosterAscensions']) {
+  assert.match(gameSnapshot, new RegExp(`\\b${field}\\b`),
+    `GameSnapshot must expose ${field}`);
+  assert.match(nativeBridge, new RegExp(`"${field}"`),
+    `native bridge must marshal ${field}`);
+  assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
+    `GamePage polling must assign ${field}`);
+}
+assert.match(bridge, /export const performGacha/,
+  'Bridge must export performGacha');
+assert.match(bridge, /export const useExpMaterial/,
+  'Bridge must export useExpMaterial');
+assert.match(bridge, /export const ascendCharacter/,
+  'Bridge must export ascendCharacter');
+assert.match(declarations, /performGacha: \(count: number\) => boolean;/,
+  'Index.d.ts must declare performGacha(count)');
+assert.match(nativeBridge, /"performGacha", nullptr, NativePerformGacha/,
+  'native bridge must export performGacha');
+assert.match(nativeBridge, /"useExpMaterial", nullptr, NativeUseExpMaterial/,
+  'native bridge must export useExpMaterial');
+assert.match(nativeBridge, /"ascendCharacter", nullptr, NativeAscendCharacter/,
+  'native bridge must export ascendCharacter');
+assert.match(loop, /bool Loop::performGacha\(int32_t count\)/,
+  'Loop must implement performGacha');
+assert.match(loop, /gacha\.draw\(gachaState, count\)/,
+  'performGacha must draw through the deterministic gacha system');
+assert.match(loop, /inventory\.removeItem\(fateId, count\)/,
+  'performGacha must consume fate before drawing');
+const gachaPanel = fs.existsSync('entry/src/main/ets/ui/GachaPanel.ets')
+  ? fs.readFileSync('entry/src/main/ets/ui/GachaPanel.ets', 'utf8') : '';
+assert.match(gachaPanel, /performGacha\(1\);/,
+  'GachaPanel must offer a single pull');
+assert.match(gachaPanel, /performGacha\(10\);/,
+  'GachaPanel must offer a ten pull');
+assert.match(gachaPanel, /useExpMaterial\(id, 5\);/,
+  'GachaPanel must spend exp materials to level up');
+assert.match(gachaPanel, /ascendCharacter\(id\);/,
+  'GachaPanel must trigger ascension');
+assert.match(page, /GachaPanel\(\{ open: this\.gachaOpen/,
+  'GamePage must mount GachaPanel');
+assert.match(explorationHud, /onOpenGacha: \(\) => void/,
+  'ExplorationHud must accept the open-gacha callback');
+
+// ---- Stage 19: polish — character switch, day/night, quality preset ----
+const inputEvent = fs.readFileSync('native/engine/input/input_event.h', 'utf8');
+assert.match(inputEvent, /SwitchCharacter/,
+  'InputAction must include SwitchCharacter');
+assert.match(loop, /Loop::switchCharacter\(/,
+  'Loop must implement switchCharacter');
+const loopHeader = fs.readFileSync('native/engine/core/loop.h', 'utf8');
+assert.match(loopHeader, /void setQualityPreset\(int32_t preset\)/,
+  'Loop must implement setQualityPreset');
+assert.match(loop, /timeOfDaySeconds/,
+  'Loop must track the day/night cycle clock');
+for (const field of ['activeCharacterId', 'dayNightHour', 'qualityPreset']) {
+  assert.match(gameSnapshot, new RegExp(`\\b${field}\\b`),
+    `GameSnapshot must expose ${field}`);
+  assert.match(nativeBridge, new RegExp(`"${field}"`),
+    `native bridge must marshal ${field}`);
+  assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
+    `GamePage polling must assign ${field}`);
+}
+assert.match(bridge, /export const setQualityPreset/,
+  'Bridge must export setQualityPreset');
+assert.match(declarations, /setQualityPreset: \(preset: number\) => void;/,
+  'Index.d.ts must declare setQualityPreset(preset)');
+assert.match(nativeBridge, /"setQualityPreset", nullptr, NativeSetQualityPreset/,
+  'native bridge must export setQualityPreset');
+assert.match(explorationHud, /pushAction\(10\);/,
+  'ExplorationHud character card must switch character via pushAction(10)');
+assert.match(explorationHud, /dayNightHour/,
+  'ExplorationHud must show the day/night indicator');
+assert.match(pauseMenu, /setQualityPreset\(isOn \? 1 : 0\);/,
+  'PauseMenu must expose a quality preset toggle');
+assert.match(page, /qualityPreset: this\.qualityPreset/,
+  'GamePage must feed qualityPreset into PauseMenu');
+assert.match(page, /activeCharacterId: this\.activeCharacterId/,
+  'GamePage must feed activeCharacterId into ExplorationHud');
+
+// ---- Stage 20: weather and music region chain ----
+const weatherSystem = fs.readFileSync('native/engine/world/weather_system.h', 'utf8');
+const weatherSystemImpl = fs.readFileSync('native/engine/world/weather_system.cpp', 'utf8');
+assert.match(weatherSystem, /static WeatherState weatherAt\(float gameSeconds\);/,
+  'WeatherSystem must expose a deterministic weatherAt');
+assert.match(weatherSystemImpl, /kSlots\[slot\]/,
+  'WeatherSystem must derive weather from the fixed slot sequence');
+const audioBridgeHeader = fs.readFileSync('native/platform/harmony/audio_bridge.h', 'utf8');
+assert.match(audioBridgeHeader, /void setAmbientRegion\(int32_t region\);/,
+  'AudioBridge must expose setAmbientRegion');
+assert.match(loop, /audioBridge\.setAmbientRegion\(region\)/,
+  'Loop must notify the audio bridge on music region change');
+assert.match(loop, /WeatherSystem::weatherAt\(timeOfDaySeconds\)\.lightScale/,
+  'Loop must modulate daylight by weather');
+const cmake = fs.readFileSync('entry/src/main/cpp/CMakeLists.txt', 'utf8');
+assert.match(cmake, /weather_system\.cpp/,
+  'CMake must compile weather_system.cpp');
+for (const field of ['weatherId', 'musicRegionId']) {
+  assert.match(gameSnapshot, new RegExp(`\\b${field}\\b`),
+    `GameSnapshot must expose ${field}`);
+  assert.match(nativeBridge, new RegExp(`"${field}"`),
+    `native bridge must marshal ${field}`);
+  assert.match(declarations, new RegExp(`${field}: number`),
+    `Index.d.ts must declare ${field}`);
+  assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
+    `GamePage polling must assign ${field}`);
+}
+assert.match(explorationHud, /@Prop weatherId: number = 0;/,
+  'ExplorationHud must accept weatherId');
+assert.match(explorationHud, /weatherLabel\(\)/,
+  'ExplorationHud must render a weather label');
+assert.match(page, /weatherId: this\.weatherId/,
+  'GamePage must feed weatherId into ExplorationHud');
+
+// ---- Stage 21: side quests, dungeon instance, story director ----
+const sideQuests = fs.readFileSync('native/gameplay/quest/side_quests.cpp', 'utf8');
+assert.match(sideQuests, /SideQuestSystem::defaults\(\)/,
+  'SideQuestSystem must ship a default layout');
+assert.match(sideQuests, /雾谷肃清/,
+  'default side quests must include the kill quest');
+assert.ok((sideQuests.match(/\{\d+, "/g) || []).length >= 3,
+  'default layout must contain at least 3 side quests');
+const dungeon = fs.readFileSync('native/gameplay/flow/dungeon.h', 'utf8');
+assert.match(dungeon, /bool enter\(\)/,
+  'DungeonSession must support entering the instance');
+assert.match(dungeon, /bool leave\(\)/,
+  'DungeonSession must support leaving the instance');
+assert.match(dungeon, /rewardGold/,
+  'DungeonSession must settle rewards');
+const storyDirector = fs.readFileSync('native/gameplay/flow/story_director.cpp', 'utf8');
+assert.match(storyDirector, /StoryDirector::opening\(\)/,
+  'StoryDirector must provide the opening cinematic');
+assert.match(loop, /storyDirector\.tick\(loopTimeMs\)/,
+  'Loop must advance the story director each fixed step');
+assert.match(loop, /storyDirector\.advance\(loopTimeMs\)/,
+  'advanceDialog must manually advance opening subtitles so the continue button responds');
+assert.match(loop, /loop\.storyDirector\.current\(\)/,
+  'story cues must publish through the subtitle channel');
+assert.match(loop, /dungeon\.enter\(\)/,
+  'Loop must enter the dungeon from the entrance interactable');
+assert.match(loop, /sideQuests\.notifyEvent\(SideQuestEvent::Kill, killsThisStep\)/,
+  'kills must feed side quests');
+assert.match(loop, /sideQuests\.completedMask\(\)/,
+  'saveProgress must persist the side quest mask');
+assert.match(loop, /sideQuests\.restoreMask\(state\.sideQuestMask\)/,
+  'loadProgress must restore the side quest mask');
+const saveImpl = fs.readFileSync('native/engine/resource/save.cpp', 'utf8');
+assert.match(saveImpl, /"V7 "/,
+  'save format must be V7 with weapon seven-tuples and artifacts');
+assert.match(saveImpl, /if \(first == "V6"\)/,
+  'V6 saves must remain readable');
+assert.match(saveImpl, /if \(first == "V5"\)/,
+  'V5 saves must remain readable');
+const interactableHeader = fs.readFileSync('native/gameplay/world/interactable.h', 'utf8');
+assert.match(interactableHeader, /Dungeon = 3/,
+  'InteractableKind must include Dungeon entrances');
+for (const field of ['completedSideQuestCount', 'dungeonState',
+  'dungeonProgress', 'dungeonRequired']) {
+  assert.match(gameSnapshot, new RegExp(`\\b${field}\\b`),
+    `GameSnapshot must expose ${field}`);
+  assert.match(nativeBridge, new RegExp(`"${field}"`),
+    `native bridge must marshal ${field}`);
+  assert.match(declarations, new RegExp(`${field}: number`),
+    `Index.d.ts must declare ${field}`);
+  assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
+    `GamePage polling must assign ${field}`);
+}
+assert.match(explorationHud, /case 5: return '进入';/,
+  'ExplorationHud must offer the enter verb for dungeon entrances');
+assert.match(explorationHud, /@Prop dungeonState: number = 0;/,
+  'ExplorationHud must track dungeon state');
+assert.match(cmake, /side_quests\.cpp/,
+  'CMake must compile side_quests.cpp');
+assert.match(page, /if \(!this\.dialogActive && !this\.gachaOpen && !this\.mapOpen &&\s*!this\.inventoryOpen && !this\.artifactOpen\) \{[\s\S]*?CombatControls\(\{/,
+  'CombatControls must be hidden while a dialog, the gacha panel, the map, the inventory or the artifact panel is open so popup buttons stay clickable');
+assert.match(cmake, /story_director\.cpp/,
+  'CMake must compile story_director.cpp');
+
+// ---- Stage 22: optimization batch (map teleport, minimap items, respawn, side tracker, stats) ----
+assert.match(loop, /bool Loop::teleportToAnchor\(int32_t anchorId\)/,
+  'Loop must implement teleportToAnchor for map fast travel');
+assert.match(loop, /if \(!anchors\.isUnlocked\(anchorId\)\) return false;/,
+  'teleportToAnchor must require the anchor to be unlocked');
+assert.match(bridge, /export const teleportToAnchor/,
+  'Bridge must export teleportToAnchor');
+assert.match(declarations, /teleportToAnchor: \(anchorId: number\) => boolean;/,
+  'Index.d.ts must declare teleportToAnchor(anchorId)');
+assert.match(nativeBridge, /"teleportToAnchor", nullptr, NativeTeleportToAnchor/,
+  'native bridge must export teleportToAnchor');
+assert.match(loop, /interactables\.reviveConsumed\(InteractableKind::Collectible\)/,
+  'collectibles must respawn after the countdown elapses');
+assert.match(loop, /collectRespawnRemainingMs = kCollectRespawnMs;/,
+  'collecting must arm the respawn countdown');
+const interactableImpl = fs.readFileSync('native/gameplay/world/interactable.cpp', 'utf8');
+assert.match(interactableImpl, /void InteractableRegistry::reviveConsumed/,
+  'InteractableRegistry must support reviving consumed items');
+for (const field of ['minimapItemX', 'minimapItemY', 'minimapItemKind',
+  'sideQuestProgress', 'sideQuestRequired', 'rosterHp', 'rosterAtk']) {
+  assert.match(gameSnapshot, new RegExp(`\\b${field}\\b`),
+    `GameSnapshot must expose ${field}`);
+  assert.match(nativeBridge, new RegExp(`"${field}"`),
+    `native bridge must marshal ${field}`);
+  assert.match(declarations, new RegExp(`${field}: number\\[\\]`),
+    `Index.d.ts must declare ${field} array`);
+  assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
+    `GamePage polling must assign ${field}`);
+}
+const mapPanel = fs.readFileSync('entry/src/main/ets/ui/MapPanel.ets', 'utf8');
+assert.match(mapPanel, /teleportToAnchor\(index \+ 1\)/,
+  'MapPanel must fast-travel via teleportToAnchor');
+assert.match(page, /MapPanel\(\{ open: this\.mapOpen/,
+  'GamePage must mount MapPanel');
+assert.match(explorationHud, /onOpenMap: \(\) => void/,
+  'ExplorationHud must accept the open-map callback');
+assert.match(explorationHud, /minimapItemKind\[index\] === 3 \? '#E5B84A'/,
+  'ExplorationHud minimap must mark interactable items');
+assert.match(explorationHud, /sideQuestName\(index\)/,
+  'ExplorationHud must render the side quest tracker');
+assert.match(gachaPanel, /this\.rosterHp\[index\]/,
+  'GachaPanel must display derived HP');
+assert.match(gachaPanel, /this\.rosterAtk\[index\]/,
+  'GachaPanel must display derived ATK');
+assert.match(loop, /ItemId::Fate\),\s*\n\s*pull\.rarity == 5 \? 4 : 2/,
+  'duplicate gacha pulls must refund fate contracts');
+
+// ---- Stage 23: weapons, constellations, quest reward toast ----
+const weaponSystem = fs.readFileSync('native/gameplay/growth/weapon_system.cpp', 'utf8');
+assert.match(weaponSystem, /WeaponSystem::catalog\(\)/,
+  'WeaponSystem must ship a catalog');
+assert.match(weaponSystem, /bool WeaponSystem::equip/,
+  'WeaponSystem must support equipping');
+assert.match(loop, /bool Loop::upgradeWeapon\(int32_t weaponId\)/,
+  'Loop must implement upgradeWeapon');
+assert.match(loop, /bool Loop::equipWeapon\(int32_t weaponId, int32_t characterId\)/,
+  'Loop must implement equipWeapon');
+assert.match(loop, /weapons\.addWeapon\(4\)/,
+  'quest rewards must grant weapons');
+assert.match(loop, /characters\.boostConstellation\(pull\.characterId\)/,
+  'duplicate gacha pulls must boost constellations');
+assert.match(loop, /loop\.weapons\.equippedBonusFor\(character\.characterId\)/,
+  'derived ATK must include the equipped weapon bonus');
+assert.match(bridge, /export const upgradeWeapon/,
+  'Bridge must export upgradeWeapon');
+assert.match(bridge, /export const equipWeapon/,
+  'Bridge must export equipWeapon');
+assert.match(declarations, /equipWeapon: \(weaponId: number, characterId: number\) => boolean;/,
+  'Index.d.ts must declare equipWeapon(weaponId, characterId)');
+assert.match(nativeBridge, /"upgradeWeapon", nullptr, NativeUpgradeWeapon/,
+  'native bridge must export upgradeWeapon');
+assert.match(nativeBridge, /"equipWeapon", nullptr, NativeEquipWeapon/,
+  'native bridge must export equipWeapon');
+assert.match(loop, /state\.weaponTriples\.push_back\(weapon\.weaponId\)/,
+  'saveProgress must persist weapon triples');
+assert.match(loop, /weapons\.restoreWeapon\(state\.weaponTriples\[i\]/,
+  'loadProgress must restore weapons');
+for (const field of ['rosterConstellations', 'weaponIds', 'weaponLevels',
+  'weaponEquippedBy']) {
+  assert.match(gameSnapshot, new RegExp(`\\b${field}\\b`),
+    `GameSnapshot must expose ${field}`);
+  assert.match(nativeBridge, new RegExp(`"${field}"`),
+    `native bridge must marshal ${field}`);
+  assert.match(declarations, new RegExp(`${field}: number\\[\\]`),
+    `Index.d.ts must declare ${field} array`);
+  assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
+    `GamePage polling must assign ${field}`);
+}
+const rewardToast = fs.readFileSync('entry/src/main/ets/ui/QuestRewardToast.ets', 'utf8');
+assert.match(rewardToast, /任务完成/,
+  'QuestRewardToast must announce quest completion');
+assert.match(page, /QuestRewardToast\(\{ visible: this\.rewardToastVisible/,
+  'GamePage must mount QuestRewardToast');
+assert.match(page, /this\.rewardLabelFor\(this\.completedQuestCount\)/,
+  'GamePage must trigger the reward toast on quest completion');
+assert.match(gachaPanel, /upgradeWeaponWithOre\(id, this\.bestOreId\(\), 1\);/,
+  'GachaPanel must offer ore-based weapon upgrade');
+assert.match(gachaPanel, /equipWeapon\(id, this\.activeCharacterId\);/,
+  'GachaPanel must offer weapon equip');
+assert.match(gachaPanel, /rosterConstellations\[index\]/,
+  'GachaPanel must display constellations');
+assert.match(cmake, /weapon_system\.cpp/,
+  'CMake must compile weapon_system.cpp');
+
+// ---- Stage 24: sprint, daily quests, weapon gacha pool, weather tint ----
+const dailyQuest = fs.readFileSync('native/gameplay/quest/daily_quest.cpp', 'utf8');
+assert.match(dailyQuest, /DailyQuestSystem::questsForDay/,
+  'DailyQuestSystem must derive quests deterministically per day');
+assert.match(loop, /dailyQuests\.notifyEvent\(DailyQuestKind::Kill, killsThisStep\)/,
+  'kills must feed daily quests');
+assert.match(loop, /dailyQuests = DailyQuestSystem\(gameDayCount\)/,
+  'daily quests must reset each in-game day');
+assert.match(loop, /dailyQuests\.allCompleted\(\)/,
+  'daily reward must require all quests complete');
+const motionHeader = fs.readFileSync('native/gameplay/player/exploration_motion.h', 'utf8');
+assert.match(motionHeader, /bool sprinting = false;/,
+  'ExplorationMotionState must track sprinting');
+assert.match(motionHeader, /float sprintSpeedMultiplier/,
+  'sprint speed multiplier must be configurable');
+const controllerHeader = fs.readFileSync('native/gameplay/player/player_controller.h', 'utf8');
+assert.match(controllerHeader, /float speedScale = 1\.0f/,
+  'PlayerController must accept a speedScale for sprinting');
+assert.match(loop, /explorationMotion\.config\(\)\.sprintSpeedMultiplier/,
+  'Loop must apply sprint speed multiplier to movement');
+const gachaHeader = fs.readFileSync('native/gameplay/growth/gacha_system.h', 'utf8');
+assert.match(gachaHeader, /drawWeapon\(GachaState& state, int32_t count\)/,
+  'GachaSystem must expose a weapon pool');
+assert.match(loop, /bool Loop::performWeaponGacha\(int32_t count\)/,
+  'Loop must implement performWeaponGacha');
+assert.match(loop, /gacha\.drawWeapon\(gachaState, count\)/,
+  'performWeaponGacha must draw through the weapon pool');
+assert.match(bridge, /export const performWeaponGacha/,
+  'Bridge must export performWeaponGacha');
+assert.match(declarations, /performWeaponGacha: \(count: number\) => boolean;/,
+  'Index.d.ts must declare performWeaponGacha(count)');
+assert.match(nativeBridge, /"performWeaponGacha", nullptr, NativePerformWeaponGacha/,
+  'native bridge must export performWeaponGacha');
+for (const field of ['sprintActive', 'dailyCompletedCount', 'dailyQuestClaimed',
+  'gachaPoolKind']) {
+  assert.match(gameSnapshot, new RegExp(`\\b${field}\\b`),
+    `GameSnapshot must expose ${field}`);
+  assert.match(nativeBridge, new RegExp(`"${field}"`),
+    `native bridge must marshal ${field}`);
+  assert.match(declarations, new RegExp(`${field}: number`),
+    `Index.d.ts must declare ${field}`);
+  assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
+    `GamePage polling must assign ${field}`);
+}
+assert.match(explorationHud, /if \(this\.sprintActive === 1\) return '疾跑';/,
+  'ExplorationHud must label sprinting');
+assert.match(explorationHud, /每日委托/,
+  'ExplorationHud must show daily quest progress');
+assert.match(explorationHud, /weatherTint\(\)/,
+  'ExplorationHud must render a weather tint overlay');
+assert.match(gachaPanel, /performWeaponGacha\(1\);/,
+  'GachaPanel must offer a weapon single pull');
+assert.match(gachaPanel, /performWeaponGacha\(10\);/,
+  'GachaPanel must offer a weapon ten pull');
+assert.match(gachaPanel, /resultName\(id\)/,
+  'GachaPanel must label results by pool');
+assert.match(cmake, /daily_quest\.cpp/,
+  'CMake must compile daily_quest.cpp');
+
+// ---- Stage 25: 原神式养成体系（冒险等级/打怪掉落/武器深化/圣遗物/背包）----
+const adventureRankSource = fs.readFileSync('native/gameplay/growth/adventure_rank.cpp', 'utf8');
+const artifactSystemSource = fs.readFileSync('native/gameplay/growth/artifact_system.cpp', 'utf8');
+assert.match(adventureRankSource, /AdventureRank::worldLevelFor/,
+  'AdventureRank must map adventure rank to world level');
+assert.match(adventureRankSource, /AdventureRank::dropMultiplierPct/,
+  'AdventureRank must expose world level drop multiplier');
+assert.match(adventureRankSource, /AdventureRank::rankRewards/,
+  'AdventureRank must ship rank reward table');
+assert.match(artifactSystemSource, /ArtifactSystem::catalog/,
+  'ArtifactSystem must ship a catalog');
+assert.match(artifactSystemSource, /bool ArtifactSystem::equip/,
+  'ArtifactSystem must support equipping');
+assert.match(weaponSystem, /bool WeaponSystem::ascend/,
+  'WeaponSystem must support ascension');
+assert.match(weaponSystem, /bool WeaponSystem::refine/,
+  'WeaponSystem must support refinement');
+assert.match(weaponSystem, /int32_t WeaponSystem::addWeaponExp/,
+  'WeaponSystem must support ore-based exp enhancement');
+assert.match(loop, /bool Loop::upgradeWeaponWithOre\(int32_t weaponId, int32_t oreItemId/,
+  'Loop must implement upgradeWeaponWithOre');
+assert.match(loop, /bool Loop::ascendWeapon\(int32_t weaponId\)/,
+  'Loop must implement ascendWeapon');
+assert.match(loop, /bool Loop::refineWeapon\(int32_t weaponId\)/,
+  'Loop must implement refineWeapon');
+assert.match(loop, /bool Loop::useExpItem\(int32_t characterId, int32_t itemId, int32_t count\)/,
+  'Loop must implement useExpItem');
+assert.match(loop, /bool Loop::equipArtifact\(int32_t instanceId, int32_t characterId\)/,
+  'Loop must implement equipArtifact');
+assert.match(loop, /bool Loop::claimRankReward\(int32_t rank\)/,
+  'Loop must implement claimRankReward');
+assert.match(loop, /AdventureRank::dropMultiplierPct\(adventureRank\.worldLevel\(\)\)/,
+  'kill drops must scale with world level');
+assert.match(loop, /artifacts\.addArtifact\(ArtifactSystem::dropDefId\(dropSeed\), 5/,
+  'boss kills must drop a five-star artifact');
+assert.match(loop, /weapons\.addRefineStock\(pull\.characterId\)/,
+  'duplicate weapon pulls must accumulate refinement stock');
+assert.match(loop, /adventureRank\.addExp\(120\)/,
+  'dungeon clears must grant adventure exp');
+assert.match(loop, /state\.weaponRecords\.push_back\(weapon\.weaponId\)/,
+  'saveProgress must persist weapon seven-tuples');
+assert.match(loop, /weapons\.restoreWeapon\(state\.weaponRecords\[i\]/,
+  'loadProgress must restore weapon seven-tuples');
+assert.match(loop, /artifacts\.restoreArtifact/,
+  'loadProgress must restore artifacts');
+for (const fn of ['upgradeWeaponWithOre', 'ascendWeapon', 'refineWeapon',
+  'useExpItem', 'upgradeArtifact', 'equipArtifact', 'claimRankReward']) {
+  const pascal = fn.charAt(0).toUpperCase() + fn.slice(1);
+  assert.match(bridge, new RegExp(`export const ${fn}`),
+    `Bridge must export ${fn}`);
+  assert.match(nativeBridge, new RegExp(`"${fn}", nullptr, Native${pascal}`),
+    `native bridge must export ${fn}`);
+}
+assert.match(declarations, /upgradeArtifact: \(targetInstanceId: number, feedInstanceIds: number\[\]\) => boolean;/,
+  'Index.d.ts must declare upgradeArtifact(targetInstanceId, feedInstanceIds)');
+for (const field of ['weaponAscensions', 'weaponRefines', 'weaponRefineStocks',
+  'weaponExps', 'artifactInstanceIds', 'artifactDefIds', 'artifactRarities',
+  'artifactLevels', 'artifactEquippedBy']) {
+  assert.match(gameSnapshot, new RegExp(`\\b${field}\\b`),
+    `GameSnapshot must expose ${field}`);
+  assert.match(nativeBridge, new RegExp(`"${field}"`),
+    `native bridge must marshal ${field}`);
+  assert.match(declarations, new RegExp(`${field}: number\\[\\]`),
+    `Index.d.ts must declare ${field} array`);
+  assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
+    `GamePage polling must assign ${field}`);
+}
+for (const field of ['adventureRank', 'worldLevel', 'oreLowCount',
+  'oreHighCount', 'expSmallCount']) {
+  assert.match(gameSnapshot, new RegExp(`\\b${field}\\b`),
+    `GameSnapshot must expose ${field}`);
+  assert.match(nativeBridge, new RegExp(`"${field}"`),
+    `native bridge must marshal ${field}`);
+  assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
+    `GamePage polling must assign ${field}`);
+}
+const inventoryPanel = fs.readFileSync('entry/src/main/ets/ui/InventoryPanel.ets', 'utf8');
+assert.match(inventoryPanel, /货币/,
+  'InventoryPanel must offer a currency tab');
+assert.match(inventoryPanel, /圣遗物/,
+  'InventoryPanel must offer an artifact tab');
+const artifactPanel = fs.readFileSync('entry/src/main/ets/ui/ArtifactPanel.ets', 'utf8');
+assert.match(artifactPanel, /equipArtifact/,
+  'ArtifactPanel must offer equip actions');
+assert.match(artifactPanel, /upgradeArtifact/,
+  'ArtifactPanel must offer feed enhancement');
+assert.match(gachaPanel, /ascendWeapon/,
+  'GachaPanel must offer weapon ascension');
+assert.match(gachaPanel, /refineWeapon/,
+  'GachaPanel must offer weapon refinement');
+assert.match(cmake, /adventure_rank\.cpp/,
+  'CMake must compile adventure_rank.cpp');
+assert.match(cmake, /artifact_system\.cpp/,
+  'CMake must compile artifact_system.cpp');

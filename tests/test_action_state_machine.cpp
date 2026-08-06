@@ -47,17 +47,25 @@ void testFourAttackChainAndSingleHitPerSegment() {
   assert(fourth.ability == 4 && fourth.baseDamage == fp(18));
 }
 
-void testComboResetsOnMove() {
+void testAttacksContinueWhileMoving() {
   ActionStateMachine machine(CombatConfig::defaults());
   Tick now = 0;
   assert(machine.request({CombatAction::Attack, 1}, targetContext()).accepted);
-  (void)advanceUntilHit(machine, now);
 
+  // 移动中蓄招：普攻不再被移动打断，命中照常结算。
   auto moving = targetContext();
   moving.moving = true;
-  assert(!machine.update(++now, 1, moving).has_value());
-  assert(machine.request({CombatAction::Attack, 2}, targetContext()).accepted);
-  assert(advanceUntilHit(machine, now).ability == 1);
+  assert(!machine.update(now += 159, 159, moving).has_value());
+  const auto first = machine.update(now += 1, 1, moving);
+  assert(first.has_value());
+  assert(first->ability == 1);
+
+  // 移动中衔接下一段连击。
+  assert(machine.request({CombatAction::Attack, 2}, moving).accepted);
+  assert(!machine.update(now += 159, 159, moving).has_value());
+  const auto second = machine.update(now += 1, 1, moving);
+  assert(second.has_value());
+  assert(second->ability == 2);
 }
 
 void testComboResetsOnDamageTaken() {
@@ -263,7 +271,7 @@ void testAcceptedActionPublishesExactCombatAction() {
 
 int main() {
   testFourAttackChainAndSingleHitPerSegment();
-  testComboResetsOnMove();
+  testAttacksContinueWhileMoving();
   testComboResetsOnDamageTaken();
   testComboResetsAfterWindowExpires();
   testInvalidTargetDoesNotChangeState();

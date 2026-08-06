@@ -1,5 +1,6 @@
 #include "loop.h"
 #include "native/engine/render/combat_animation.h"
+#include "native/engine/resource/save.h"
 #ifdef OHOS_PLATFORM
 #include <hilog/log.h>
 #endif
@@ -66,8 +67,8 @@ Tick AdvanceCombatTime(Tick now, int64_t dtMs) {
 }
 
 // 把当前 EncounterSnapshot 的敌人与首领 2D 位置写入 Surface 的 3D 渲染字段。
-// 渲染层只读消费这些状态，不反向修改游戏逻辑。BossSnapshot 无独立位置字段，
-// 因此首领位置取固定 (0.5, 0.75)，与 refreshSnapshot 中首领 candidate 位置一致。
+// 渲染层只读消费这些状态，不反向修改游戏逻辑。敌人与首领位置已在
+// 逻辑层（EncounterController/BossController）经建筑碰撞解算，此处直接同步。
 void publish3DEncounterState(Surface& surface,
                              const EncounterSnapshot& snapshot,
                              float dtSeconds) {
@@ -86,6 +87,7 @@ void publish3DEncounterState(Surface& surface,
     state.animation.hit = enemy.hit;
     state.animation.moving = enemy.moving;
     state.windingUp = enemy.windingUp;
+    state.attacking = enemy.attacking;
     // 模型局部 +Z 为前方，逻辑 (x, y) 映射到 3D (x, z)。
     state.angle = std::atan2(enemy.facing.x, enemy.facing.y);
     // 尸体淡出计时：死亡期间持续累加，复活则归零；
@@ -135,11 +137,14 @@ void publish3DEncounterState(Surface& surface,
     }
   }
 
-  // BossSnapshot 不含位置，按 refreshSnapshot 的首领 candidate 坐标固定。
-  surface.boss3d.x = 0.5f;
-  surface.boss3d.y = 0.75f;
+  // 首领位置/朝向来自逻辑层快照：Boss 可自由移动，渲染层只读跟随。
+  surface.boss3d.x = snapshot.boss.position.x;
+  surface.boss3d.y = snapshot.boss.position.y;
   surface.boss3d.phase = static_cast<int>(snapshot.boss.phase);
   surface.boss3d.defeated = snapshot.boss.defeated;
+  surface.boss3d.moving = snapshot.boss.moving;
+  surface.boss3d.basicAttacking = snapshot.boss.basicAttackCastRemainingMs > 0;
+  surface.boss3d.basicAttackVariant = snapshot.boss.basicAttackVariant;
   surface.boss3d.active =
       snapshot.mode == EncounterMode::Boss &&
       snapshot.state != EncounterState::Stopped;
@@ -150,10 +155,11 @@ void publish3DEncounterState(Surface& surface,
   } else {
     surface.boss3d.entranceSeconds = 0.0f;
   }
-  // 首领吟唱机制期间是玩家的应对窗口：有机制且吟唱未完时显示预警环。
+  // 首领吟唱机制或普攻前摇期间是玩家的应对窗口：前摇未完时显示预警环。
   surface.boss3d.windingUp =
-      snapshot.boss.mechanic != BossMechanic::None &&
-      snapshot.boss.castRemainingMs > 0;
+      (snapshot.boss.mechanic != BossMechanic::None &&
+       snapshot.boss.castRemainingMs > 0) ||
+      surface.boss3d.basicAttacking;
   surface.boss3d.mechanic = static_cast<int>(snapshot.boss.mechanic);
   surface.boss3d.animation.alive = !snapshot.boss.defeated;
   surface.boss3d.hitAnimationSeconds = std::max(
@@ -167,20 +173,26 @@ void publish3DEncounterState(Surface& surface,
       bossAnimation == RenderAnimation::Hit ? RenderAnimation::Idle
                                             : bossAnimation;
   surface.boss3d.animation.hit = surface.boss3d.hitAnimationSeconds > 0.0f;
+  // 首领移动/普攻状态驱动跑动与攻击动画（ChooseAnimation 按优先级选择）。
+  surface.boss3d.animation.moving = snapshot.boss.moving;
   surface.boss3d.previousHp = snapshot.boss.hp;
-  // BossSnapshot 无独立 facing 字段，从首领位置到玩家位置计算朝向角。
-  const float bossDx = surface.player.x - surface.boss3d.x;
-  const float bossDy = surface.player.y - surface.boss3d.y;
-  if (bossDx != 0.0f || bossDy != 0.0f) {
-    surface.boss3d.angle = std::atan2(bossDx, bossDy);
+  // 朝向角直接取逻辑层发布的面向向量，与追击/环绕走位严格同步。
+  if (snapshot.boss.facing.finite() &&
+      (snapshot.boss.facing.x != 0.0f || snapshot.boss.facing.y != 0.0f)) {
+    surface.boss3d.angle =
+        std::atan2(snapshot.boss.facing.x, snapshot.boss.facing.y);
   }
 }
 
 // 在 surface_draw 前更新 3D 透视相机。yaw/pitch/distance 来自现有 2D
-// ThirdPersonCamera，玩家 3D 目标位置取 (player.x, 0.05, player.y)，
-// 0.05 为玩家立方体半高，使相机平视角色而非俯视地面。
-void update3DCamera(Surface& surface, const ThirdPersonCamera& camera) {
-  const glm::vec3 target{surface.player.x + surface.vfxCameraShakeX, 0.05f,
+// ThirdPersonCamera，玩家 3D 目标位置取 (player.x, height+0.05, player.y)，
+// 0.05 为玩家立方体半高，使相机平视角色而非俯视地面；
+// height 来自探索运动状态（地形贴合/跳跃/水面）。
+void update3DCamera(Surface& surface, const ThirdPersonCamera& camera,
+                    float playerHeight) {
+  const float eyeHeight =
+      (std::isfinite(playerHeight) ? playerHeight : 0.0f) + 0.05f;
+  const glm::vec3 target{surface.player.x + surface.vfxCameraShakeX, eyeHeight,
                          surface.player.y + surface.vfxCameraShakeY};
   surface.camera3d.follow(target, camera.yaw(), camera.pitch(),
                           camera.distance());
@@ -270,6 +282,316 @@ void spawnAttackProjectiles(Surface& surface, Vec2 from, Vec2 to, int kind,
         {origin.x, 0.035f, origin.y, velocity.x, 0.012f, velocity.y,
          travelSeconds, travelSeconds, kind, sizeScale * 2.0f});
   }
+}
+
+// 敌方释放动效：与主角侧对称——敌人前摇开始时在自身位置爆出
+// 蓄力火花（施法前兆），挥击瞬间朝主角发射红色投射物；首领吟唱
+// 开始时爆出更大规模的暗紫火花环并向主角齐射束流。
+void spawnEnemyReleaseVfx(Surface& surface) {
+  const Vec2 playerPos{surface.player.x, surface.player.y};
+  for (const Enemy3DRenderState& enemy : surface.enemies3d) {
+    const auto prevWindup = surface.enemyPrevWindingUp.find(enemy.id);
+    const auto prevAttack = surface.enemyPrevAttacking.find(enemy.id);
+    const bool wasWinding =
+        prevWindup != surface.enemyPrevWindingUp.end() && prevWindup->second;
+    const bool wasAttacking =
+        prevAttack != surface.enemyPrevAttacking.end() && prevAttack->second;
+    if (enemy.alive) {
+      const float ratio =
+          actorVfxRatio(surface, static_cast<EntityId>(enemy.id));
+      const Vec2 enemyPos{enemy.x, enemy.y};
+      if (enemy.windingUp && !wasWinding) {
+        spawnHitSparks(surface, enemyPos, 1, 6, 1.0f, 1.0f, ratio);
+      }
+      if (enemy.attacking && !wasAttacking) {
+        spawnAttackProjectiles(surface, enemyPos, playerPos, 1, ratio, 2);
+      }
+    }
+    surface.enemyPrevWindingUp[enemy.id] = enemy.windingUp;
+    surface.enemyPrevAttacking[enemy.id] = enemy.attacking;
+  }
+  // 清理已离开快照的敌人的边沿状态，避免长期泄漏。
+  for (auto state = surface.enemyPrevWindingUp.begin();
+       state != surface.enemyPrevWindingUp.end();) {
+    const bool present = std::any_of(
+        surface.enemies3d.begin(), surface.enemies3d.end(),
+        [id = state->first](const Enemy3DRenderState& enemy) {
+          return enemy.id == id;
+        });
+    if (present) {
+      ++state;
+    } else {
+      state = surface.enemyPrevWindingUp.erase(state);
+    }
+  }
+  for (auto state = surface.enemyPrevAttacking.begin();
+       state != surface.enemyPrevAttacking.end();) {
+    const bool present = std::any_of(
+        surface.enemies3d.begin(), surface.enemies3d.end(),
+        [id = state->first](const Enemy3DRenderState& enemy) {
+          return enemy.id == id;
+        });
+    if (present) {
+      ++state;
+    } else {
+      state = surface.enemyPrevAttacking.erase(state);
+    }
+  }
+  // 首领：机制吟唱与普攻分别做边沿检测，释放差异化动效。
+  if (surface.boss3d.active && !surface.boss3d.defeated) {
+    const float bossRatio =
+        actorVfxRatio(surface, EncounterController::kBossId);
+    const Vec2 bossPos{surface.boss3d.x, surface.boss3d.y};
+    // 机制吟唱（审判光束等）：暗紫大火花环 + 朝主角齐射束流。
+    const bool mechanicWinding =
+        surface.boss3d.windingUp && !surface.boss3d.basicAttacking;
+    if (mechanicWinding && !surface.bossPrevWindingUp) {
+      spawnHitSparks(surface, bossPos, 6, 24, 1.8f, 1.4f, bossRatio * 1.2f);
+      spawnAttackProjectiles(surface, bossPos, playerPos, 6, bossRatio, 7);
+    }
+    surface.bossPrevWindingUp = mechanicWinding;
+
+    // 普攻上升沿（蓄力起手）：按变体爆出对应色蓄力火花，
+    // 0=金橙挥击、1=暗紫束流、2=青蓝冲击，配合预警环提示闪避窗口。
+    if (surface.boss3d.basicAttacking && !surface.bossPrevBasicAttacking) {
+      constexpr int kChargeKinds[3] = {0, 6, 5};
+      const int kind = kChargeKinds[surface.boss3d.basicAttackVariant % 3];
+      spawnHitSparks(surface, bossPos, kind, 14, 1.5f, 1.2f,
+                     bossRatio * 1.1f);
+    }
+    // 普攻下降沿（挥击落地）：周身爆发 + 按变体规模朝主角齐射，
+    // 形成“蓄力→挥击→弹幕飞行→命中火花”的完整释放链。
+    if (!surface.boss3d.basicAttacking && surface.bossPrevBasicAttacking) {
+      constexpr int kVolleyKinds[3] = {0, 6, 5};
+      constexpr int kVolleyCounts[3] = {3, 5, 7};
+      const int variant = surface.boss3d.basicAttackVariant % 3;
+      spawnHitSparks(surface, bossPos, kVolleyKinds[variant], 10, 1.4f, 1.0f,
+                     bossRatio);
+      spawnAttackProjectiles(surface, bossPos, playerPos,
+                             kVolleyKinds[variant], bossRatio,
+                             kVolleyCounts[variant]);
+    }
+    surface.bossPrevBasicAttacking = surface.boss3d.basicAttacking;
+  } else {
+    surface.bossPrevWindingUp = false;
+    surface.bossPrevBasicAttacking = false;
+  }
+}
+
+// 开放世界探索字段发布：体力、运动状态、分块统计、锚点交互与小地图。
+void ApplyExplorationSnapshot(GameSnapshot& output, const Loop& loop) {
+  output.explorationStamina = loop.motionState.stamina;
+  output.motionState = static_cast<int32_t>(loop.motionState.state);
+  output.playerHeight = loop.motionState.height;
+  output.activeChunkCount =
+      static_cast<int32_t>(loop.worldGrid.activeChunks().size());
+  output.chunkLoadCount = loop.chunkLoadCount;
+  output.interactionAnchorId = loop.currentAnchorInteraction.anchorId;
+  output.interactionUnlocked = loop.currentAnchorInteraction.unlocked;
+  output.interactionLabel = loop.currentAnchorInteraction.anchorId >= 0
+                                ? loop.currentAnchorInteraction.label
+                                : std::string{};
+  output.unlockedAnchorCount = loop.anchors.unlockedCount();
+  output.sprintActive = loop.motionState.sprinting ? 1 : 0;
+  output.cameraExploration = loop.camera.exploration();
+  output.teleportFlashMs = loop.teleportFlashMs;
+  output.minimapAnchorX.clear();
+  output.minimapAnchorY.clear();
+  output.minimapAnchorUnlocked.clear();
+  for (const TeleportAnchor& anchor : loop.anchors.anchors()) {
+    output.minimapAnchorX.push_back(anchor.x);
+    output.minimapAnchorY.push_back(anchor.y);
+    output.minimapAnchorUnlocked.push_back(
+        loop.anchors.isUnlocked(anchor.id) ? 1 : 0);
+  }
+  // 小地图可交互物标记（优化）：未消耗的宝箱/采集物/秘境入口。
+  output.minimapItemX.clear();
+  output.minimapItemY.clear();
+  output.minimapItemKind.clear();
+  for (const Interactable& item : loop.interactables.items()) {
+    if (item.kind == InteractableKind::Npc) continue;
+    if (loop.interactables.isConsumed(item.id)) continue;
+    output.minimapItemX.push_back(item.x);
+    output.minimapItemY.push_back(item.y);
+    output.minimapItemKind.push_back(item.kind == InteractableKind::Chest
+                                         ? 3
+                                         : item.kind == InteractableKind::Collectible
+                                               ? 4
+                                               : 5);
+  }
+}
+
+// 内容与任务字段发布：任务进度、对话会话与交互提示种类。
+void ApplyContentSnapshot(GameSnapshot& output, const Loop& loop) {
+  const QuestProgressSnapshot quest = loop.quests.snapshot();
+  output.questId = quest.questId;
+  output.questStatus = static_cast<int32_t>(quest.status);
+  output.questTitle = quest.title;
+  output.questObjectiveLabel = quest.objectiveLabel;
+  output.questObjectiveProgress = quest.objectiveProgress;
+  output.questObjectiveRequired = quest.objectiveRequired;
+  output.completedQuestCount = loop.quests.completedCount();
+  output.completedSideQuestCount = loop.sideQuests.completedCount();
+  output.dailyCompletedCount = loop.dailyQuests.completedCount();
+  output.dailyQuestClaimed = loop.dailyRewarded ? 1 : 0;
+  output.sideQuestProgress.clear();
+  output.sideQuestRequired.clear();
+  for (const SideQuestDef& quest : loop.sideQuests.quests()) {
+    output.sideQuestProgress.push_back(loop.sideQuests.progressOf(quest.id));
+    output.sideQuestRequired.push_back(quest.required);
+  }
+  output.dungeonState = static_cast<int32_t>(loop.dungeon.state());
+  output.dungeonProgress = loop.dungeon.kills();
+  output.dungeonRequired = loop.dungeon.def().killsRequired;
+  output.dialogActive = loop.dialogSession.active();
+  output.dialogSpeaker.clear();
+  output.dialogText.clear();
+  output.dialogLineIndex = 0;
+  output.dialogLineCount = 0;
+  if (output.dialogActive) {
+    const DialogLine* line = loop.dialogSession.current();
+    if (line != nullptr) {
+      output.dialogSpeaker = line->speaker;
+      output.dialogText = line->text;
+    }
+    output.dialogLineIndex = loop.dialogSession.index();
+    output.dialogLineCount = loop.dialogSession.lineCount();
+  } else {
+    // 开场剧情字幕（演出导演）：无激活对话时占用字幕通道，自动推进。
+    const StoryCue* cue = loop.storyDirector.current();
+    if (cue != nullptr) {
+      output.dialogActive = true;
+      output.dialogSpeaker = cue->speaker;
+      output.dialogText = cue->text;
+    }
+  }
+  // 交互提示种类：按距离就近在锚点与可交互物间选择。
+  output.interactionKind = 0;
+  const bool hasAnchor = loop.currentAnchorInteraction.anchorId >= 0;
+  const bool hasItem = loop.currentInteractable.id >= 0;
+  if (hasAnchor &&
+      (!hasItem || loop.currentAnchorInteraction.distance <=
+                       loop.currentInteractable.distance)) {
+    output.interactionKind = 1;
+  } else if (hasItem) {
+    switch (loop.currentInteractable.kind) {
+      case InteractableKind::Npc:
+        output.interactionKind = 2;
+        break;
+      case InteractableKind::Chest:
+        output.interactionKind = 3;
+        break;
+      case InteractableKind::Collectible:
+        output.interactionKind = 4;
+        break;
+      case InteractableKind::Dungeon:
+        output.interactionKind = 5;
+        break;
+    }
+    output.interactionLabel = loop.currentInteractable.label;
+  }
+}
+
+// 养成与抽卡字段发布：背包货币、保底计数、抽卡结果与角色图鉴。
+void ApplyGrowthSnapshot(GameSnapshot& output, const Loop& loop) {
+  output.fateCount = loop.inventory.countOf(static_cast<int32_t>(ItemId::Fate));
+  output.goldCount = loop.inventory.countOf(static_cast<int32_t>(ItemId::Gold));
+  output.expMaterialCount =
+      loop.inventory.countOf(static_cast<int32_t>(ItemId::ExpMaterial));
+  output.ascensionMaterialCount =
+      loop.inventory.countOf(static_cast<int32_t>(ItemId::AscensionMaterial));
+  // 原神式养成新增物品计数。
+  output.oreLowCount =
+      loop.inventory.countOf(static_cast<int32_t>(ItemId::OreLow));
+  output.oreMidCount =
+      loop.inventory.countOf(static_cast<int32_t>(ItemId::OreMid));
+  output.oreHighCount =
+      loop.inventory.countOf(static_cast<int32_t>(ItemId::OreHigh));
+  output.expSmallCount =
+      loop.inventory.countOf(static_cast<int32_t>(ItemId::ExpSmall));
+  output.expMediumCount =
+      loop.inventory.countOf(static_cast<int32_t>(ItemId::ExpMedium));
+  output.expLargeCount =
+      loop.inventory.countOf(static_cast<int32_t>(ItemId::ExpLarge));
+  // 冒险等级与世界等级。
+  output.adventureRank = loop.adventureRank.rank();
+  output.adventureExp = loop.adventureRank.exp();
+  output.adventureExpRequired =
+      AdventureRank::expRequired(loop.adventureRank.rank());
+  output.worldLevel = loop.adventureRank.worldLevel();
+  output.gachaPity5 = loop.gachaState.since5;
+  output.gachaResultIds.clear();
+  output.gachaResultRarities.clear();
+  output.gachaResultIsNew.clear();
+  for (size_t i = 0; i < loop.lastGachaResults.size(); ++i) {
+    output.gachaResultIds.push_back(loop.lastGachaResults[i].characterId);
+    output.gachaResultRarities.push_back(loop.lastGachaResults[i].rarity);
+    output.gachaResultIsNew.push_back(
+        i < loop.lastGachaIsNew.size() && loop.lastGachaIsNew[i] ? 1 : 0);
+  }
+  output.rosterIds.clear();
+  output.rosterLevels.clear();
+  output.rosterAscensions.clear();
+  for (const OwnedCharacter& character : loop.characters.owned()) {
+    output.rosterIds.push_back(character.characterId);
+    output.rosterLevels.push_back(character.level);
+    output.rosterAscensions.push_back(character.ascension);
+    // 派生属性（优化）：命之座加成 + 武器白值叠加到攻击，
+  // 圣遗物固定/百分比加成与套装效果叠加（原神式）。
+    output.rosterHp.push_back(CharacterGrowth::hpFor(
+        character.characterId, character.level, character.ascension,
+        character.constellation) +
+        loop.artifacts.flatHpFor(character.characterId));
+    const int32_t baseAtk =
+        CharacterGrowth::atkFor(character.characterId, character.level,
+                                character.ascension,
+                                character.constellation) +
+        loop.weapons.equippedBonusFor(character.characterId);
+    const int32_t percentAtk =
+        loop.artifacts.percentAtkFor(character.characterId);
+    output.rosterAtk.push_back(baseAtk * (100 + percentAtk) / 100 +
+                               loop.artifacts.flatAtkFor(character.characterId));
+    output.rosterConstellations.push_back(character.constellation);
+  }
+  // 武器清单（养成深化）：id/等级/装备者 + 突破/精炼/精炼素材/经验。
+  output.weaponIds.clear();
+  output.weaponLevels.clear();
+  output.weaponEquippedBy.clear();
+  output.weaponAscensions.clear();
+  output.weaponRefines.clear();
+  output.weaponRefineStocks.clear();
+  output.weaponExps.clear();
+  for (const OwnedWeapon& weapon : loop.weapons.owned()) {
+    output.weaponIds.push_back(weapon.weaponId);
+    output.weaponLevels.push_back(weapon.level);
+    output.weaponEquippedBy.push_back(weapon.equippedBy);
+    output.weaponAscensions.push_back(weapon.ascension);
+    output.weaponRefines.push_back(weapon.refine);
+    output.weaponRefineStocks.push_back(weapon.refineStock);
+    output.weaponExps.push_back(weapon.exp);
+  }
+  // 圣遗物清单（平行数组，按实例 id 升序）。
+  output.artifactInstanceIds.clear();
+  output.artifactDefIds.clear();
+  output.artifactRarities.clear();
+  output.artifactLevels.clear();
+  output.artifactEquippedBy.clear();
+  output.artifactSeeds.clear();
+  for (const OwnedArtifact& artifact : loop.artifacts.owned()) {
+    output.artifactInstanceIds.push_back(artifact.instanceId);
+    output.artifactDefIds.push_back(artifact.defId);
+    output.artifactRarities.push_back(artifact.rarity);
+    output.artifactLevels.push_back(artifact.level);
+    output.artifactEquippedBy.push_back(artifact.equippedBy);
+    output.artifactSeeds.push_back(static_cast<int32_t>(artifact.substatSeed));
+  }
+  // 阶段四：出战角色、昼夜小时、画质预设、天气与 BGM 区域。
+  output.activeCharacterId = loop.activeCharacterId;
+  output.dayNightHour = loop.timeOfDaySeconds / 10.0f;
+  output.qualityPreset = loop.qualityPreset;
+  output.gachaPoolKind = loop.gachaPoolKind;
+  output.weatherId = WeatherSystem::weatherAt(loop.timeOfDaySeconds).id;
+  output.musicRegionId = loop.musicRegionId;
 }
 }  // namespace
 
@@ -395,12 +717,563 @@ bool Loop::retryBoss() {
 void Loop::toggleDebugHud() {
   debugHud_ = !debugHud_;
 }
+
+void Loop::advanceDialog() {
+  withLifecycle([this]() {
+    if (dialogSession.active()) {
+      (void)dialogSession.advance();
+    } else if (storyDirector.active()) {
+      // 开场剧情字幕（无会话）：“继续”按钮手动推进演出。
+      storyDirector.advance(loopTimeMs);
+    }
+  });
+}
+
+bool Loop::saveProgress(const std::string& path) {
+  return withLifecycle([this, &path]() {
+    SaveState state;
+    state.completedQuestCount = quests.completedCount();
+    state.activeQuestId = quests.activeQuestId();
+    int32_t anchorMask = 0;
+    for (const TeleportAnchor& anchor : anchors.anchors()) {
+      if (anchor.id >= 1 && anchor.id <= 31 && anchors.isUnlocked(anchor.id)) {
+        anchorMask |= (1 << (anchor.id - 1));
+      }
+    }
+    state.unlockedAnchorMask = anchorMask;
+    int32_t consumedMask = 0;
+    for (const Interactable& item : interactables.items()) {
+      if (item.kind == InteractableKind::Npc) continue;
+      if (item.id >= 1 && item.id <= 31 && interactables.isConsumed(item.id)) {
+        consumedMask |= (1 << (item.id - 1));
+      }
+    }
+    state.consumedInteractableMask = consumedMask;
+    // 养成字段。
+    state.fateCount =
+        inventory.countOf(static_cast<int32_t>(ItemId::Fate));
+    state.goldCount =
+        inventory.countOf(static_cast<int32_t>(ItemId::Gold));
+    state.expCount =
+        inventory.countOf(static_cast<int32_t>(ItemId::ExpMaterial));
+    state.ascensionCount =
+        inventory.countOf(static_cast<int32_t>(ItemId::AscensionMaterial));
+    state.gachaPity5 = gachaState.since5;
+    state.gachaPity4 = gachaState.since4;
+    state.gachaSeed = gachaState.seed;
+    state.sideQuestMask = sideQuests.completedMask();
+    state.collectRespawnMs = collectRespawnRemainingMs;
+    for (const OwnedCharacter& character : characters.owned()) {
+      state.rosterTriples.push_back(character.characterId);
+      state.rosterTriples.push_back(character.level);
+      state.rosterTriples.push_back(character.ascension);
+    }
+    for (const OwnedWeapon& weapon : weapons.owned()) {
+      state.weaponTriples.push_back(weapon.weaponId);
+      state.weaponTriples.push_back(weapon.level);
+      state.weaponTriples.push_back(weapon.equippedBy);
+    }
+    // V7 原神式养成字段。
+    state.adventureRank = adventureRank.rank();
+    state.adventureExp = adventureRank.exp();
+    state.dropSeed = dropSeed;
+    state.oreLowCount =
+        inventory.countOf(static_cast<int32_t>(ItemId::OreLow));
+    state.oreMidCount =
+        inventory.countOf(static_cast<int32_t>(ItemId::OreMid));
+    state.oreHighCount =
+        inventory.countOf(static_cast<int32_t>(ItemId::OreHigh));
+    state.expSmallCount =
+        inventory.countOf(static_cast<int32_t>(ItemId::ExpSmall));
+    state.expMediumCount =
+        inventory.countOf(static_cast<int32_t>(ItemId::ExpMedium));
+    state.expLargeCount =
+        inventory.countOf(static_cast<int32_t>(ItemId::ExpLarge));
+    for (const OwnedWeapon& weapon : weapons.owned()) {
+      state.weaponRecords.push_back(weapon.weaponId);
+      state.weaponRecords.push_back(weapon.level);
+      state.weaponRecords.push_back(weapon.ascension);
+      state.weaponRecords.push_back(weapon.refine);
+      state.weaponRecords.push_back(weapon.refineStock);
+      state.weaponRecords.push_back(weapon.exp);
+      state.weaponRecords.push_back(weapon.equippedBy);
+    }
+    for (const OwnedArtifact& artifact : artifacts.owned()) {
+      state.artifactRecords.push_back(artifact.instanceId);
+      state.artifactRecords.push_back(artifact.defId);
+      state.artifactRecords.push_back(artifact.rarity);
+      state.artifactRecords.push_back(artifact.level);
+      state.artifactRecords.push_back(artifact.equippedBy);
+      state.artifactRecords.push_back(
+          static_cast<int32_t>(artifact.substatSeed));
+    }
+    state.claimedRanks = claimedRankRewards;
+    Save save;
+    return save.write(state, path.c_str());
+  });
+}
+
+bool Loop::performGacha(int32_t count) {
+  return withLifecycle([this, count]() {
+    if (count != 1 && count != 10) return false;
+    const int32_t fateId = static_cast<int32_t>(ItemId::Fate);
+    if (!inventory.removeItem(fateId, count)) return false;
+    lastGachaResults = gacha.draw(gachaState, count);
+    gachaPoolKind = 0;
+    lastGachaIsNew.clear();
+    for (const GachaPull& pull : lastGachaResults) {
+      const bool isNew = !characters.owns(pull.characterId);
+      lastGachaIsNew.push_back(isNew);
+      if (!characters.addCharacter(pull.characterId)) {
+        // 重复角色转化：提升命之座（原神式命座）+ 返还契约与金币。
+        characters.boostConstellation(pull.characterId);
+        inventory.addItem(static_cast<int32_t>(ItemId::Fate),
+                          pull.rarity == 5 ? 4 : 2);
+        inventory.addItem(static_cast<int32_t>(ItemId::Gold),
+                          pull.rarity == 5 ? 200 : 50);
+      }
+    }
+    audioBridge.playUiSound(SoundEffect::Resonance);
+    return true;
+  });
+}
+
+bool Loop::performWeaponGacha(int32_t count) {
+  return withLifecycle([this, count]() {
+    if (count != 1 && count != 10) return false;
+    const int32_t fateId = static_cast<int32_t>(ItemId::Fate);
+    if (!inventory.removeItem(fateId, count)) return false;
+    lastGachaResults = gacha.drawWeapon(gachaState, count);
+    gachaPoolKind = 1;
+    lastGachaIsNew.clear();
+    for (const GachaPull& pull : lastGachaResults) {
+      const bool isNew = !weapons.owns(pull.characterId);
+      lastGachaIsNew.push_back(isNew);
+      if (!weapons.addWeapon(pull.characterId)) {
+        // 重复武器：累计精炼素材 + 折算金币。
+        weapons.addRefineStock(pull.characterId);
+        inventory.addItem(static_cast<int32_t>(ItemId::Gold),
+                          pull.rarity == 5 ? 300 : 100);
+      }
+    }
+    audioBridge.playUiSound(SoundEffect::Resonance);
+    return true;
+  });
+}
+
+bool Loop::useExpMaterial(int32_t characterId, int32_t materialCount) {
+  return withLifecycle([this, characterId, materialCount]() {
+    if (materialCount <= 0 || !characters.owns(characterId)) return false;
+    const int32_t expId = static_cast<int32_t>(ItemId::ExpMaterial);
+    if (!inventory.removeItem(expId, materialCount)) return false;
+    // 每份经验材料折算 10 点经验。
+    const int32_t levels = characters.addExp(characterId, materialCount * 10);
+    if (levels > 0) {
+      audioBridge.playUiSound(SoundEffect::AuraApplied);
+    }
+    return true;
+  });
+}
+
+bool Loop::ascendCharacter(int32_t characterId) {
+  return withLifecycle([this, characterId]() {
+    const OwnedCharacter* character = characters.find(characterId);
+    if (character == nullptr ||
+        character->level <
+            CharacterGrowth::levelCap(character->ascension) ||
+        character->ascension >= CharacterGrowth::kMaxAscension) {
+      return false;
+    }
+    // 突破成本：2 份源晶碎片 + 100 金币。
+    if (!inventory.removeItem(
+            static_cast<int32_t>(ItemId::AscensionMaterial), 2) ||
+        !inventory.removeItem(static_cast<int32_t>(ItemId::Gold), 100)) {
+      return false;
+    }
+    const bool ascended = characters.ascend(characterId);
+    if (ascended) {
+      audioBridge.playUiSound(SoundEffect::Resonance);
+    }
+    return ascended;
+  });
+}
+
+bool Loop::upgradeWeapon(int32_t weaponId) {
+  return withLifecycle([this, weaponId]() {
+    const OwnedWeapon* weapon = weapons.find(weaponId);
+    if (weapon == nullptr || weapon->level >= WeaponSystem::kMaxLevel) {
+      return false;
+    }
+    // 强化成本：随等级递增的金币。
+    const int32_t cost = WeaponSystem::upgradeCost(weapon->level);
+    if (!inventory.removeItem(static_cast<int32_t>(ItemId::Gold), cost)) {
+      return false;
+    }
+    const bool upgraded = weapons.upgrade(weaponId);
+    if (upgraded) {
+      audioBridge.playUiSound(SoundEffect::AuraApplied);
+    }
+    return upgraded;
+  });
+}
+
+bool Loop::equipWeapon(int32_t weaponId, int32_t characterId) {
+  return withLifecycle([this, weaponId, characterId]() {
+    if (!characters.owns(characterId)) return false;
+    const bool equipped = weapons.equip(weaponId, characterId);
+    if (equipped) {
+      audioBridge.playUiSound(SoundEffect::AuraApplied);
+    }
+    return equipped;
+  });
+}
+
+bool Loop::upgradeWeaponWithOre(int32_t weaponId, int32_t oreItemId,
+                                int32_t oreCount) {
+  return withLifecycle([this, weaponId, oreItemId, oreCount]() {
+    if (oreCount <= 0) return false;
+    const OwnedWeapon* weapon = weapons.find(weaponId);
+    if (weapon == nullptr ||
+        weapon->level >= WeaponSystem::levelCap(weapon->ascension)) {
+      return false;
+    }
+    const int32_t expPerOre = Inventory::weaponExpValue(oreItemId);
+    if (expPerOre <= 0 ||
+        !inventory.removeItem(oreItemId, oreCount)) {
+      return false;
+    }
+    // 强化金币费用：经验价值的十分之一（原神式摩拉折算）。
+    const int32_t goldCost =
+        WeaponSystem::expRequired(weapon->level) > 0
+            ? (expPerOre * oreCount) / 10
+            : 0;
+    if (goldCost > 0 &&
+        !inventory.removeItem(static_cast<int32_t>(ItemId::Gold), goldCost)) {
+      return false;
+    }
+    const int32_t levels = weapons.addWeaponExp(weaponId, expPerOre * oreCount);
+    if (levels > 0) {
+      audioBridge.playUiSound(SoundEffect::AuraApplied);
+    }
+    return true;
+  });
+}
+
+bool Loop::ascendWeapon(int32_t weaponId) {
+  return withLifecycle([this, weaponId]() {
+    const OwnedWeapon* weapon = weapons.find(weaponId);
+    if (weapon == nullptr ||
+        weapon->level < WeaponSystem::levelCap(weapon->ascension) ||
+        weapon->ascension >= WeaponSystem::kMaxAscension) {
+      return false;
+    }
+    // 突破成本：随阶段递增的源晶碎片与金币。
+    const int32_t materials =
+        WeaponSystem::ascensionMaterialCost(weapon->ascension);
+    const int32_t gold = WeaponSystem::ascensionGoldCost(weapon->ascension);
+    if (!inventory.removeItem(static_cast<int32_t>(ItemId::AscensionMaterial),
+                              materials) ||
+        !inventory.removeItem(static_cast<int32_t>(ItemId::Gold), gold)) {
+      return false;
+    }
+    const bool ascended = weapons.ascend(weaponId);
+    if (ascended) {
+      audioBridge.playUiSound(SoundEffect::Resonance);
+    }
+    return ascended;
+  });
+}
+
+bool Loop::refineWeapon(int32_t weaponId) {
+  return withLifecycle([this, weaponId]() {
+    const bool refined = weapons.refine(weaponId);
+    if (refined) {
+      audioBridge.playUiSound(SoundEffect::Resonance);
+    }
+    return refined;
+  });
+}
+
+bool Loop::useExpItem(int32_t characterId, int32_t itemId, int32_t count) {
+  return withLifecycle([this, characterId, itemId, count]() {
+    if (count <= 0 || !characters.owns(characterId)) return false;
+    const int32_t expPerItem = Inventory::characterExpValue(itemId);
+    if (expPerItem <= 0 || !inventory.removeItem(itemId, count)) {
+      return false;
+    }
+    const int32_t levels = characters.addExp(characterId, expPerItem * count);
+    if (levels > 0) {
+      audioBridge.playUiSound(SoundEffect::AuraApplied);
+    }
+    return true;
+  });
+}
+
+bool Loop::upgradeArtifact(int32_t targetInstanceId,
+                           const std::vector<int32_t>& feedInstanceIds) {
+  return withLifecycle([this, targetInstanceId, &feedInstanceIds]() {
+    if (artifacts.find(targetInstanceId) == nullptr ||
+        feedInstanceIds.empty()) {
+      return false;
+    }
+    // 预计算经验与金币费用：跳过非法素材。
+    int32_t expGain = 0;
+    for (const int32_t feedId : feedInstanceIds) {
+      if (feedId == targetInstanceId) continue;
+      const OwnedArtifact* feed = artifacts.find(feedId);
+      if (feed == nullptr || feed->equippedBy != 0) continue;
+      expGain += ArtifactSystem::feedExpValue(feed->rarity, feed->level);
+    }
+    if (expGain <= 0) return false;
+    const int32_t goldCost = ArtifactSystem::upgradeGoldCost(expGain);
+    if (goldCost > 0 &&
+        !inventory.removeItem(static_cast<int32_t>(ItemId::Gold), goldCost)) {
+      return false;
+    }
+    const int32_t gained = artifacts.feedUpgrade(targetInstanceId,
+                                                 feedInstanceIds);
+    if (gained > 0) {
+      audioBridge.playUiSound(SoundEffect::AuraApplied);
+    }
+    return gained > 0;
+  });
+}
+
+bool Loop::equipArtifact(int32_t instanceId, int32_t characterId) {
+  return withLifecycle([this, instanceId, characterId]() {
+    if (!characters.owns(characterId)) return false;
+    const bool equipped = artifacts.equip(instanceId, characterId);
+    if (equipped) {
+      audioBridge.playUiSound(SoundEffect::AuraApplied);
+    }
+    return equipped;
+  });
+}
+
+bool Loop::claimRankReward(int32_t rank) {
+  return withLifecycle([this, rank]() {
+    const RankReward* reward = AdventureRank::rankReward(rank);
+    if (reward == nullptr || adventureRank.rank() < rank) return false;
+    for (const int32_t claimed : claimedRankRewards) {
+      if (claimed == rank) return false;
+    }
+    if (reward->gold > 0) {
+      inventory.addItem(static_cast<int32_t>(ItemId::Gold), reward->gold);
+    }
+    if (reward->fate > 0) {
+      inventory.addItem(static_cast<int32_t>(ItemId::Fate), reward->fate);
+    }
+    if (reward->expMaterial > 0) {
+      inventory.addItem(static_cast<int32_t>(ItemId::ExpSmall),
+                        reward->expMaterial);
+    }
+    if (reward->ascensionMaterial > 0) {
+      inventory.addItem(static_cast<int32_t>(ItemId::AscensionMaterial),
+                        reward->ascensionMaterial);
+    }
+    claimedRankRewards.push_back(rank);
+    audioBridge.playUiSound(SoundEffect::Resonance);
+    return true;
+  });
+}
+
+bool Loop::switchCharacter() {
+  return withLifecycle([this]() {
+    const std::vector<OwnedCharacter>& owned = characters.owned();
+    if (owned.size() < 2) return false;
+    // 找到当前出战角色的下一位，循环切换。
+    size_t currentIndex = owned.size();
+    for (size_t i = 0; i < owned.size(); ++i) {
+      if (owned[i].characterId == activeCharacterId) {
+        currentIndex = i;
+        break;
+      }
+    }
+    const size_t nextIndex =
+        currentIndex >= owned.size() ? 0 : (currentIndex + 1) % owned.size();
+    activeCharacterId = owned[nextIndex].characterId;
+    // 出场动效：按角色所属源质释放对应色火花（1辉印 2脉流 3蚀质，
+    // 其余角色用通用金橙）。
+    int kind = 0;
+    switch (activeCharacterId) {
+      case 1:
+        kind = 4;
+        break;
+      case 2:
+        kind = 5;
+        break;
+      case 3:
+        kind = 6;
+        break;
+      default:
+        kind = 0;
+        break;
+    }
+    spawnHitSparks(surface, {surface.player.x, surface.player.y}, kind, 12,
+                   1.3f, 1.2f,
+                   VfxSizeRatio(surface.playerAssetProfile, ModelKind::Player));
+    audioBridge.playUiSound(SoundEffect::AuraApplied);
+    return true;
+  });
+}
+
+bool Loop::teleportToAnchor(int32_t anchorId) {
+  return withLifecycle([this, anchorId]() {
+    if (!anchors.isUnlocked(anchorId)) return false;
+    for (const TeleportAnchor& anchor : anchors.anchors()) {
+      if (anchor.id != anchorId) continue;
+      surface.player.x = anchor.x;
+      surface.player.y = anchor.y;
+      motionState = explorationMotion.reset(
+          terrain.heightAt(anchor.x, anchor.y));
+      teleportFlashMs = 1200;
+      audioBridge.playUiSound(SoundEffect::Resonance);
+      return true;
+    }
+    return false;
+  });
+}
+
+bool Loop::loadProgress(const std::string& path) {
+  return withLifecycle([this, &path]() {
+    SaveState state;
+    Save save;
+    if (!save.read(state, path.c_str())) {
+      return false;
+    }
+    quests.restoreLinear(state.completedQuestCount, state.activeQuestId);
+    sideQuests.restoreMask(state.sideQuestMask);
+    lastRewardedSideCount = sideQuests.completedCount();
+    collectRespawnRemainingMs = state.collectRespawnMs;
+    anchors.restoreUnlocked(state.unlockedAnchorMask);
+    interactables.restoreConsumed(state.consumedInteractableMask);
+    lastRewardedQuestCount = quests.completedCount();
+    // v3 养成字段：背包、抽卡状态与角色图鉴。
+    inventory = Inventory();
+    if (state.fateCount > 0) {
+      inventory.addItem(static_cast<int32_t>(ItemId::Fate), state.fateCount);
+    }
+    if (state.goldCount > 0) {
+      inventory.addItem(static_cast<int32_t>(ItemId::Gold), state.goldCount);
+    }
+    if (state.expCount > 0) {
+      inventory.addItem(static_cast<int32_t>(ItemId::ExpMaterial),
+                        state.expCount);
+    }
+    if (state.ascensionCount > 0) {
+      inventory.addItem(static_cast<int32_t>(ItemId::AscensionMaterial),
+                        state.ascensionCount);
+    }
+    // V7 新增物品计数。
+    if (state.oreLowCount > 0) {
+      inventory.addItem(static_cast<int32_t>(ItemId::OreLow),
+                        state.oreLowCount);
+    }
+    if (state.oreMidCount > 0) {
+      inventory.addItem(static_cast<int32_t>(ItemId::OreMid),
+                        state.oreMidCount);
+    }
+    if (state.oreHighCount > 0) {
+      inventory.addItem(static_cast<int32_t>(ItemId::OreHigh),
+                        state.oreHighCount);
+    }
+    if (state.expSmallCount > 0) {
+      inventory.addItem(static_cast<int32_t>(ItemId::ExpSmall),
+                        state.expSmallCount);
+    }
+    if (state.expMediumCount > 0) {
+      inventory.addItem(static_cast<int32_t>(ItemId::ExpMedium),
+                        state.expMediumCount);
+    }
+    if (state.expLargeCount > 0) {
+      inventory.addItem(static_cast<int32_t>(ItemId::ExpLarge),
+                        state.expLargeCount);
+    }
+    // V7 冒险等级与掉落种子。
+    adventureRank.restore(state.adventureRank, state.adventureExp);
+    if (state.dropSeed != 0) {
+      dropSeed = state.dropSeed;
+    }
+    claimedRankRewards = state.claimedRanks;
+    if (state.gachaSeed != 0 || state.gachaPity5 != 0 ||
+        state.gachaPity4 != 0) {
+      gachaState.seed = state.gachaSeed;
+      gachaState.since5 = state.gachaPity5;
+      gachaState.since4 = state.gachaPity4;
+    }
+    if (!state.rosterTriples.empty() && state.rosterTriples.size() % 3 == 0) {
+      characters = CharacterGrowth();
+      for (size_t i = 0; i + 2 < state.rosterTriples.size(); i += 3) {
+        characters.restoreCharacter(state.rosterTriples[i],
+                                    state.rosterTriples[i + 1],
+                                    state.rosterTriples[i + 2]);
+      }
+    }
+    // v6 武器字段：武器三元组（id/等级/装备者）；
+    // V7 七元组优先（含突破/精炼/经验）。
+    if (!state.weaponRecords.empty() &&
+        state.weaponRecords.size() % 7 == 0) {
+      weapons = WeaponSystem();
+      for (size_t i = 0; i + 6 < state.weaponRecords.size(); i += 7) {
+        weapons.restoreWeapon(state.weaponRecords[i],
+                              state.weaponRecords[i + 1],
+                              state.weaponRecords[i + 2],
+                              state.weaponRecords[i + 3],
+                              state.weaponRecords[i + 4],
+                              state.weaponRecords[i + 5],
+                              state.weaponRecords[i + 6]);
+      }
+    } else if (!state.weaponTriples.empty() &&
+               state.weaponTriples.size() % 3 == 0) {
+      weapons = WeaponSystem();
+      for (size_t i = 0; i + 2 < state.weaponTriples.size(); i += 3) {
+        weapons.restoreWeapon(state.weaponTriples[i],
+                              state.weaponTriples[i + 1],
+                              state.weaponTriples[i + 2]);
+      }
+    }
+    // V7 圣遗物六元组 [instanceId, defId, rarity, level, equippedBy, seed]。
+    artifacts = ArtifactSystem();
+    if (!state.artifactRecords.empty() &&
+        state.artifactRecords.size() % 6 == 0) {
+      for (size_t i = 0; i + 5 < state.artifactRecords.size(); i += 6) {
+        artifacts.restoreArtifact(
+            state.artifactRecords[i], state.artifactRecords[i + 1],
+            state.artifactRecords[i + 2], state.artifactRecords[i + 3],
+            state.artifactRecords[i + 4],
+            static_cast<uint32_t>(state.artifactRecords[i + 5]));
+      }
+    }
+    return true;
+  });
+}
 void Loop::processInput() {
   InputEvent e;
   while (input.pop(e)) {
     CombatAction combatAction;
     if (TryMapCombatAction(e.action, combatAction)) {
       intent.actions.push_back({combatAction, e.sequence});
+      continue;
+    }
+    // 探索动作：不进入战斗管线，直接驱动探索状态。
+    if (e.action == InputAction::Jump) {
+      jumpQueued = true;
+      continue;
+    }
+    if (e.action == InputAction::Interact) {
+      interactQueued = true;
+      continue;
+    }
+    if (e.action == InputAction::GlidePress) {
+      glideHeld = true;
+      continue;
+    }
+    if (e.action == InputAction::GlideRelease) {
+      glideHeld = false;
+      continue;
+    }
+    if (e.action == InputAction::SwitchCharacter) {
+      switchCharacter();
       continue;
     }
     const TouchRole releaseRole = touchRouter.role(e.pointerId);
@@ -456,9 +1329,16 @@ void Loop::resetInput() {
   intent.move = {};
   intent.lookDelta = {};
   intent.actions.clear();
+  jumpQueued = false;
+  interactQueued = false;
+  glideHeld = false;
   surface.player.moving = false;
   surface.playerHitAnimationSeconds = 0.0f;
   surface.enemyHitFlash.clear();
+  surface.enemyPrevWindingUp.clear();
+  surface.enemyPrevAttacking.clear();
+  surface.bossPrevWindingUp = false;
+  surface.bossPrevBasicAttacking = false;
   surface.hitSparks3d.clear();
   hitStopRemainingMs = 0;
   surface.player3dAnimation.action = RenderAnimation::Idle;
@@ -508,7 +1388,12 @@ void Loop::tickOnce(int64_t elapsedMs) {
     });
   }
 #ifdef OHOS_PLATFORM
-  update3DCamera(surface, camera);
+  update3DCamera(surface, camera, motionState.height);
+  // 主角脚底高度与渲染时钟：模型随地形/跳跃同步，水面涟漪随时间流动。
+  surface.playerGroundHeight = motionState.height;
+  surface.renderSeconds +=
+      static_cast<float>(elapsedMs > 0 ? elapsedMs : 0) / 1000.0f;
+  if (surface.renderSeconds > 3600.0f) surface.renderSeconds -= 3600.0f;
   surface.environmentPerfLevel = performanceGuard.level();
   surface_draw(surface);
   surface_swap(surface);
@@ -635,6 +1520,15 @@ void Loop::tickOnce(int64_t elapsedMs) {
       static_cast<uint8_t>(snapshot.corruptionAttached)};
   snapshot.showDebugHud = debugHud_;
   snapshot.inputEventCount = inputEventCount_;
+  ApplyExplorationSnapshot(snapshot, *this);
+  ApplyContentSnapshot(snapshot, *this);
+  ApplyGrowthSnapshot(snapshot, *this);
+  // 任务目标优先于演示目标文案。
+  if (snapshot.questStatus ==
+          static_cast<int32_t>(QuestStatus::Active) &&
+      !snapshot.questObjectiveLabel.empty()) {
+    snapshot.objectiveLabel = snapshot.questObjectiveLabel;
+  }
   snapshots.publish(snapshot);
 
   if (tickCount <= 5 || tickCount % 60 == 0) {
@@ -652,7 +1546,190 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   surface.cameraRenderState = camera.renderState();
 
   playerController.update(surface.player, intent.move, camera.yaw(),
-                          dtSeconds);
+                          dtSeconds,
+                          motionState.sprinting
+                              ? explorationMotion.config().sprintSpeedMultiplier
+                              : 1.0f);
+
+  // 建筑碰撞：把主角从城墙/塔楼盒内推出并沿墙滑动，不再穿模；
+  // 接触信息驱动墙面攀爬判定（高度越过盒顶时不再阻挡，可翻上墙头）。
+  const BuildingContact wallContact = buildingCollision.resolve(
+      surface.player.x, surface.player.y, playerCollisionRadius,
+      motionState.height);
+
+  // ---- 开放世界探索（阶段一）----
+  // 性能降级联动视距：Heavy/Critical 或低画质预设缩小流式半径。
+  worldGrid.setStreamingRadius(
+      qualityPreset == 1 || performanceGuard.level() >= 3 ? 1 : 2);
+  // 分块流式：按玩家位置维护激活分块集合，累计加载次数供验收。
+  if (worldGrid.updateStreaming({surface.player.x, surface.player.y})) {
+    chunkLoadCount += static_cast<int32_t>(worldGrid.pendingLoads().size());
+  }
+  // 垂直运动：跳跃/滑翔/攀爬/游泳与探索体力。
+  {
+    MotionInput motionInput;
+    motionInput.jumpPressed = jumpQueued;
+    motionInput.glideHeld = glideHeld;
+    motionInput.moving = surface.player.moving;
+    // 墙面攀爬：贴墙朝墙推进且尚未登顶时，与地形陡坡同等进入攀爬，
+    // 消耗体力并按固定速度上升；登顶后由地面覆盖接管站上墙头。
+    motionInput.wallClimbing =
+        wallContact.touching && surface.player.moving &&
+        (motionState.state == MotionState::Grounded ||
+         motionState.state == MotionState::Climbing) &&
+        motionState.height < wallContact.highestTop - 0.002f &&
+        motionState.stamina > 0.0f;
+    // 合成支撑高度：已翻上建筑盒顶时，地面取盒顶而非地形采样，
+    // 保证墙头站立/落地贴合；贴墙站立时不会误判（standingTopAt
+    // 仅在盒顶不高于当前高度时计入）。
+    const float terrainGround =
+        terrain.heightAt(surface.player.x, surface.player.y);
+    const float standingTop = buildingCollision.standingTopAt(
+        surface.player.x, surface.player.y, playerCollisionRadius * 0.5f,
+        motionState.height, 0.006f);
+    MotionGroundOverride groundOverride;
+    if (std::isfinite(standingTop) && standingTop > terrainGround) {
+      groundOverride.active = true;
+      groundOverride.groundHeight = standingTop;
+    }
+    motionState = explorationMotion.update(
+        motionState, motionInput, terrain, surface.player.x,
+        surface.player.y, dtSeconds,
+        groundOverride.active ? &groundOverride : nullptr);
+    jumpQueued = false;
+  }
+  // 开场剧情演出（阶段二验收补齐）：首次固定步懒启动，按时钟自动推进。
+  loopTimeMs += dtMs;
+  if (!storyDirector.started()) {
+    storyDirector.start(loopTimeMs);
+  }
+  storyDirector.tick(loopTimeMs);
+
+  // 锚点与可交互物检测：交互键按距离就近选择目标。
+  currentAnchorInteraction = anchors.nearestInteraction(
+      {surface.player.x, surface.player.y}, 0.06f);
+  currentInteractable = interactables.nearest(
+      {surface.player.x, surface.player.y}, 0.06f);
+  if (interactQueued) {
+    interactQueued = false;
+    if (dialogSession.active()) {
+      // 对话进行中：交互键推进台词。
+      (void)dialogSession.advance();
+    } else if (storyDirector.active()) {
+      // 开场字幕进行中：交互键推进演出，不触发世界交互。
+      storyDirector.advance(loopTimeMs);
+    } else {
+      const bool anchorCloser =
+          currentAnchorInteraction.anchorId >= 0 &&
+          (currentInteractable.id < 0 ||
+           currentAnchorInteraction.distance <= currentInteractable.distance);
+      if (anchorCloser) {
+        const TeleportResult result = anchors.interact(
+            currentAnchorInteraction.anchorId,
+            {surface.player.x, surface.player.y});
+        if (result.success) {
+          surface.player.x = result.position.x;
+          surface.player.y = result.position.y;
+          motionState = explorationMotion.reset(
+              terrain.heightAt(surface.player.x, surface.player.y));
+          teleportFlashMs = 1200;
+          audioBridge.playUiSound(SoundEffect::Resonance);
+        } else if (result.anchorId >= 0) {
+          // 首次交互解锁锚点，并推进到达类任务目标与支线。
+          quests.notifyAnchorReached(result.anchorId);
+          sideQuests.notifyEvent(SideQuestEvent::ReachAnchor);
+          dailyQuests.notifyEvent(DailyQuestKind::Anchor);
+          teleportFlashMs = 600;
+          audioBridge.playUiSound(SoundEffect::AuraApplied);
+        }
+      } else if (currentInteractable.id >= 0) {
+        const InteractableKind kind = currentInteractable.kind;
+        if (interactables.interact(currentInteractable.id)) {
+          if (kind == InteractableKind::Npc) {
+            // NPC：开启对话并推进对话类任务目标。
+            dialogSession.start(DialogLibrary::defaults().find(
+                interactables.dialogIdFor(currentInteractable.id)));
+            quests.notifyNpcTalked(currentInteractable.id);
+            audioBridge.playUiSound(SoundEffect::AuraApplied);
+          } else if (kind == InteractableKind::Chest) {
+            quests.notifyChestOpened(currentInteractable.id);
+            dailyQuests.notifyEvent(DailyQuestKind::Chest);
+            teleportFlashMs = 600;
+            audioBridge.playUiSound(SoundEffect::Resonance);
+          } else if (kind == InteractableKind::Dungeon) {
+            // 秘境入口：未进入则进入副本；进行中交互提示击杀目标。
+            if (dungeon.enter()) {
+              teleportFlashMs = 800;
+              audioBridge.playUiSound(SoundEffect::Resonance);
+            }
+          } else {
+            quests.notifyCollect(currentInteractable.id);
+            sideQuests.notifyEvent(SideQuestEvent::Collect);
+            dailyQuests.notifyEvent(DailyQuestKind::Collect);
+            // 首次采集启动重生倒计时（采集物重置）。
+            if (collectRespawnRemainingMs <= 0) {
+              collectRespawnRemainingMs = kCollectRespawnMs;
+            }
+            teleportFlashMs = 400;
+            audioBridge.playUiSound(SoundEffect::AuraApplied);
+          }
+        }
+      }
+      currentAnchorInteraction = anchors.nearestInteraction(
+          {surface.player.x, surface.player.y}, 0.06f);
+      currentInteractable = interactables.nearest(
+          {surface.player.x, surface.player.y}, 0.06f);
+    }
+  }
+  if (teleportFlashMs > 0) {
+    teleportFlashMs = dtMs >= teleportFlashMs ? 0 : teleportFlashMs - dtMs;
+  }
+  // 采集物重生（优化）：倒计时归零后恢复全部已消耗采集物可交互。
+  if (collectRespawnRemainingMs > 0) {
+    collectRespawnRemainingMs -= dtMs;
+    if (collectRespawnRemainingMs <= 0) {
+      collectRespawnRemainingMs = 0;
+      interactables.reviveConsumed(InteractableKind::Collectible);
+    }
+  }
+
+  // ---- 昼夜循环（阶段四）：240 秒一个游戏日，光照随时钟插值 ----
+  constexpr float kSecondsPerGameDay = 240.0f;
+  timeOfDaySeconds += dtSeconds;
+  while (timeOfDaySeconds >= kSecondsPerGameDay) {
+    timeOfDaySeconds -= kSecondsPerGameDay;
+    // 新游戏日（每日委托优化）：重置委托组合与奖励。
+    gameDayCount += 1;
+    dailyQuests = DailyQuestSystem(gameDayCount);
+    dailyRewarded = false;
+  }
+  {
+    const float hour = timeOfDaySeconds / (kSecondsPerGameDay / 24.0f);
+    // 亮度曲线：正午最高、午夜最低，用余弦平滑过渡。
+    constexpr float kPi = 3.14159265358979323846f;
+    const float brightness =
+        0.5f + 0.5f * std::cos((hour - 12.0f) / 24.0f * 2.0f * kPi);
+    const float dayBoost = 0.35f + 0.65f * brightness;
+    const float nightBoost = 0.55f + 0.45f * brightness;
+    // 天气（阶段四）：由时钟确定性推导，叠乘光照衰减。
+    const float weatherScale =
+        WeatherSystem::weatherAt(timeOfDaySeconds).lightScale;
+    surface.lightColor = glm::vec3(0.8f * dayBoost * weatherScale,
+                                   0.8f * dayBoost * weatherScale,
+                                   0.75f * dayBoost * weatherScale);
+    surface.ambient = glm::vec3(0.25f * nightBoost, 0.25f * nightBoost,
+                                0.3f * nightBoost);
+  }
+
+  // ---- BGM 区域切换（阶段四）：按纬度三分世界，跨界重启环境垫底 ----
+  {
+    const float y = surface.player.y;
+    const int32_t region = y < 1.0f / 3.0f ? 0 : (y < 2.0f / 3.0f ? 1 : 2);
+    if (region != musicRegionId) {
+      musicRegionId = region;
+      audioBridge.setAmbientRegion(region);
+    }
+  }
 
   // 朝向锁定：仅在主角停步时平滑转向软锁定目标，保持面对面对峙姿态；
   // 跑动中不覆盖朝向，脸部始终跟随移动方向（由 PlayerController 驱动）。
@@ -777,6 +1854,9 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       {surface.player.x, surface.player.y}, camera.yaw(), candidates,
       currentTarget ? std::optional<int32_t>{currentTarget->id} : std::nullopt);
 
+  // 相机双模式：无锁定目标时切探索视角（拉远），有目标时收回战斗视角。
+  camera.setExploration(!currentTarget.has_value());
+
   // 锁定目标指示器：发布目标位置与脉冲相位，目标脚下绘制脉冲环。
   surface.targetMarker3d.active = currentTarget.has_value();
   surface.targetMarker3d.targetId =
@@ -807,7 +1887,15 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   encounter.update({combatTime, dtMs,
                     {surface.player.x, surface.player.y},
                     surface.player.moving,
-                    currentTarget ? static_cast<EntityId>(currentTarget->id) : 0});
+                    currentTarget ? static_cast<EntityId>(currentTarget->id) : 0,
+                    // 敌人碰撞：移动积分后从建筑盒内推出并沿墙滑动，
+                    // 高度取地形采样，与主角共用同一碰撞集。
+                    [this](Vec2& position, float radius) {
+                      const float ground =
+                          terrain.heightAt(position.x, position.y);
+                      buildingCollision.resolve(position.x, position.y,
+                                                radius, ground);
+                    }});
   const EncounterSnapshot& encounterState = encounter.snapshot();
   DemoSignals demoSignals;
   demoSignals.introComplete = combatTime >= 1000;
@@ -867,12 +1955,50 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
 
   // 伤害飘字：仅从本步新增的 Damage 事件生成（避免同帧多步重复），
   // 按目标实体定位；玩家受击红色、大额伤害金色、其余近白。
+  int32_t killsThisStep = 0;
   for (std::size_t eventIndex = gameplayEventStart;
        eventIndex < frameCombatEvents_.gameplay.size(); ++eventIndex) {
     const GameplayEvent& event = frameCombatEvents_.gameplay[eventIndex];
     // 击杀爆裂：非玩家死亡时爆发更大规模的亮金火花，强化击杀确认感。
     if (event.type == GameplayEventType::Death &&
         event.target != CombatController::kPlayerId) {
+      killsThisStep += 1;
+      // 打怪升级闭环（原神式）：击杀掉落经验/金币/材料，
+      // 受世界等级倍率放大；Boss 额外必掉五星圣遗物。
+      dropSeed = dropSeed * 1664525u + 1013904223u;
+      const int32_t multPct =
+          AdventureRank::dropMultiplierPct(adventureRank.worldLevel());
+      const bool isBoss = event.target == EncounterController::kBossId;
+      const int32_t charExp = (isBoss ? 300 : 20) * multPct / 100;
+      const int32_t gold = (isBoss ? 500 : 30) * multPct / 100;
+      characters.addExp(activeCharacterId, std::max(charExp, 1));
+      adventureRank.addExp(std::max(charExp / 10, 1));
+      inventory.addItem(static_cast<int32_t>(ItemId::Gold), std::max(gold, 1));
+      if (isBoss) {
+        // Boss 掉落：经验书 x5 + 突破材料 x3 + 必掉五星圣遗物。
+        inventory.addItem(static_cast<int32_t>(ItemId::ExpSmall),
+                          5 * multPct / 100);
+        inventory.addItem(static_cast<int32_t>(ItemId::AscensionMaterial),
+                          3 * multPct / 100);
+        inventory.addItem(static_cast<int32_t>(ItemId::OreHigh),
+                          2 * multPct / 100);
+        dropSeed = dropSeed * 1664525u + 1013904223u;
+        artifacts.addArtifact(ArtifactSystem::dropDefId(dropSeed), 5,
+                              dropSeed);
+      } else {
+        // 普通敌人：20% 概率经验书、10% 概率突破材料、30% 概率矿石。
+        const int32_t roll = static_cast<int32_t>(dropSeed % 100u);
+        if (roll < 20) {
+          inventory.addItem(static_cast<int32_t>(ItemId::ExpSmall),
+                            std::max(1 * multPct / 100, 1));
+        } else if (roll < 30) {
+          inventory.addItem(static_cast<int32_t>(ItemId::AscensionMaterial),
+                            std::max(1 * multPct / 100, 1));
+        } else if (roll < 60) {
+          inventory.addItem(static_cast<int32_t>(ItemId::OreLow),
+                            std::max(1 * multPct / 100, 1));
+        }
+      }
       const std::optional<Vec2> deathPos = resolveEntityPosition(
           surface, encounter.snapshot(), event.target);
       if (deathPos.has_value()) {
@@ -912,6 +2038,71 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                    1.0f, 1.0f, actorVfxRatio(surface, event.target));
   }
   damageNumbers.update(dtMs);
+  // 击杀事件推进任务与秘境：仅统计敌人/首领死亡，排除玩家自身。
+  if (killsThisStep > 0) {
+    quests.notifyEnemiesKilled(killsThisStep);
+    sideQuests.notifyEvent(SideQuestEvent::Kill, killsThisStep);
+    dailyQuests.notifyEvent(DailyQuestKind::Kill, killsThisStep);
+    if (dungeon.state() == DungeonState::Active) {
+      dungeon.notifyEnemiesKilled(killsThisStep);
+      if (dungeon.state() == DungeonState::Cleared) {
+        // 秘境结算：达标即发放奖励并退出副本（进入养成经济回路）。
+        const DungeonDef& def = dungeon.def();
+        inventory.addItem(static_cast<int32_t>(ItemId::Gold), def.rewardGold);
+        inventory.addItem(static_cast<int32_t>(ItemId::ExpMaterial), def.rewardExp);
+        inventory.addItem(static_cast<int32_t>(ItemId::AscensionMaterial),
+                          def.rewardAscension);
+        // 冒险经验（原神式）：秘境通关同步发放。
+        adventureRank.addExp(120);
+        (void)dungeon.leave();
+        teleportFlashMs = 900;
+        audioBridge.playUiSound(SoundEffect::Resonance);
+      }
+    }
+  }
+  // 支线完成奖励：按完成数补发（确定性配置）。
+  while (lastRewardedSideCount < sideQuests.completedCount()) {
+    lastRewardedSideCount += 1;
+    inventory.addItem(static_cast<int32_t>(ItemId::Gold), 100);
+    inventory.addItem(static_cast<int32_t>(ItemId::Fate), 2);
+  }
+  // 每日委托奖励（内容优化）：全部完成一次性发放。
+  if (!dailyRewarded && dailyQuests.allCompleted()) {
+    dailyRewarded = true;
+    inventory.addItem(static_cast<int32_t>(ItemId::Fate), 3);
+    inventory.addItem(static_cast<int32_t>(ItemId::Gold), 150);
+    teleportFlashMs = 600;
+    audioBridge.playUiSound(SoundEffect::Resonance);
+  }
+  // 任务完成奖励：按完成任务数补发未领取的奖励（确定性配置表）。
+  while (lastRewardedQuestCount < quests.completedCount()) {
+    lastRewardedQuestCount += 1;
+    switch (lastRewardedQuestCount) {
+      case 1:
+        inventory.addItem(static_cast<int32_t>(ItemId::Fate), 5);
+        break;
+      case 2:
+        inventory.addItem(static_cast<int32_t>(ItemId::Fate), 5);
+        break;
+      case 3:
+        inventory.addItem(static_cast<int32_t>(ItemId::Gold), 50);
+        inventory.addItem(static_cast<int32_t>(ItemId::ExpMaterial), 5);
+        // 武器奖励（养成深化）：重复获取折算金币。
+        if (!weapons.addWeapon(4)) {
+          inventory.addItem(static_cast<int32_t>(ItemId::Gold), 200);
+        }
+        break;
+      case 4:
+        inventory.addItem(static_cast<int32_t>(ItemId::AscensionMaterial), 3);
+        break;
+      default:
+        inventory.addItem(static_cast<int32_t>(ItemId::Fate), 10);
+        if (!weapons.addWeapon(5)) {
+          inventory.addItem(static_cast<int32_t>(ItemId::Gold), 200);
+        }
+        break;
+    }
+  }
   surface.damageNumbers3d.clear();
   for (const DamageNumber& number : damageNumbers.active()) {
     DamageNumberRenderState state;
@@ -1023,6 +2214,8 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       std::clamp(intent.move.length(), 0.0f, 1.0f);
   surface.trainingTarget3dAnimation.alive = surface.trainingTarget.alive;
   publish3DEncounterState(surface, encounter.snapshot(), dtSeconds);
+  // 敌方释放动效：依赖 publish 后的 enemies3d/boss3d 状态做边沿检测。
+  spawnEnemyReleaseVfx(surface);
 
   GameSnapshot updated = snapshots.read();
   ApplyCombatSnapshot(updated, combat.snapshot());

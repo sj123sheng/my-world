@@ -227,11 +227,13 @@ void testBossJudgmentBeamPeriodicallyDamagesPlayer() {
   EncounterController encounter(combat);
   assert(encounter.start(EncounterMode::Boss));
   // 首次光束：2.5s 延迟 + 1.5s 吟唱 ≈ 4s 落地；模拟至多 6s。
+  // 玩家站在竞技场角落：首领被钳制在场边无法进入普攻射程，
+  // 确保血量变化只来自审判光束。
   const FixedPoint hpBefore = combat.snapshot().playerHp;
   bool beamLanded = false;
   bool castObserved = false;
   for (Tick tick = 1; tick <= 375 && !beamLanded; ++tick) {
-    encounter.update({tick, 16, {0.5f, 0.5f}, false, 0});
+    encounter.update({tick, 16, {0.05f, 0.05f}, false, 0});
     if (encounter.snapshot().boss.mechanic == BossMechanic::JudgmentBeam &&
         encounter.snapshot().boss.castRemainingMs > 0) {
       castObserved = true;
@@ -254,12 +256,13 @@ void testCurrentStormNodesBrokenByPlayerHits() {
   auto attack = [&]() {
     combat.enqueue({CombatAction::Attack, sequence++});
   };
-  // 持续攻击直至进入电流风暴（HP < 700）。
+  // 持续攻击直至进入电流风暴（HP < 700）；玩家保持场角站位，
+  // 避免首领普攻干扰玩家血量（本测试只验证节点与免疫逻辑）。
   bool phaseTwo = false;
   for (int frame = 0; frame < 6000 && !phaseTwo; ++frame) {
     tick += 16;
     if (frame % 30 == 0) attack();
-    encounter.update({tick, 16, {0.5f, 0.5f}, false,
+    encounter.update({tick, 16, {0.05f, 0.05f}, false,
                       EncounterController::kBossId});
     phaseTwo =
         encounter.snapshot().boss.phase == BossPhase::CurrentStorm;
@@ -273,7 +276,7 @@ void testCurrentStormNodesBrokenByPlayerHits() {
        frame < 2400 && encounter.snapshot().boss.nodesBroken < 2; ++frame) {
     tick += 16;
     if (frame % 30 == 0) attack();
-    encounter.update({tick, 16, {0.5f, 0.5f}, false,
+    encounter.update({tick, 16, {0.05f, 0.05f}, false,
                       EncounterController::kBossId});
     for (const GameplayEvent& event :
          encounter.events().combat.gameplay) {

@@ -46,8 +46,9 @@ int main() {
   rejectThenAccept.reset();
   assert(rejectThenAccept.snapshot().lastRejectReason == ActionRejectReason::None);
 
+  // 移动不再打断连击：跑动中段数保持，支持边跑边打。
   ordered.update({16, 16, true, CombatController::kTrainingTargetId, true});
-  assert(ordered.snapshot().comboSegment == 0);
+  assert(ordered.snapshot().comboSegment == 1);
 
   CombatController timeoutCombo(CombatConfig::defaults());
   timeoutCombo.enqueue({CombatAction::Attack, 1});

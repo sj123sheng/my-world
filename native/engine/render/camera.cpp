@@ -52,6 +52,17 @@ ThirdPersonCameraConfig sanitizeConfig(ThirdPersonCameraConfig config) {
     config.yawSharpness = defaults.yawSharpness;
   }
 
+  if (!std::isfinite(config.explorationDistance)) {
+    config.explorationDistance = defaults.explorationDistance;
+  }
+  config.explorationDistance = std::clamp(config.explorationDistance,
+                                          config.minDistance,
+                                          config.maxDistance);
+  if (!std::isfinite(config.distanceSharpness) ||
+      config.distanceSharpness <= 0.0f) {
+    config.distanceSharpness = defaults.distanceSharpness;
+  }
+
   return config;
 }
 
@@ -80,6 +91,13 @@ void ThirdPersonCamera::update(Vec2 desiredTarget, Vec2 lookDelta,
   yaw_ += (targetYaw_ - yaw_) * yawFollow;
   const float follow = 1.0f - std::exp(-config_.followSharpness * dtSeconds);
   target_ = target_ + (desiredTarget - target_) * follow;
+
+  // 模式距离平滑：探索模式拉远、战斗模式收回，指数插值避免突跳。
+  const float modeDistance =
+      exploration_ ? config_.explorationDistance : config_.defaultDistance;
+  const float distanceFollow =
+      1.0f - std::exp(-config_.distanceSharpness * dtSeconds);
+  distance_ += (modeDistance - distance_) * distanceFollow;
 
   if (!finite()) {
     reset();

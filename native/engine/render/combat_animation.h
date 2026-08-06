@@ -41,6 +41,8 @@ inline RenderAnimation BossRenderAnimation(const BossSnapshot& boss,
                                            FixedPoint previousHp) {
   if (boss.defeated) return RenderAnimation::Death;
   if (boss.castRemainingMs > 0) return RenderAnimation::Ultimate;
+  // 普攻前摇：播放攻击挥砍动画，与预警环同步给玩家闪避提示。
+  if (boss.basicAttackCastRemainingMs > 0) return RenderAnimation::Attack;
   if (previousHp > 0 && boss.hp < previousHp) return RenderAnimation::Hit;
   return RenderAnimation::Idle;
 }

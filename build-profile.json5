@@ -1,7 +1,19 @@
 {
   "app": {
     "signingConfigs": [
-
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "/Users/xiling/.ohos/config/default_my-world_P_midqbQjItozgxfom7JGtRZkWlFiicNbvvOPYUz6XY=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001A5C8B45E6B0E20DF6DDC0F73D36BD53F43AEB3641988F218CA64CEE86EA28BF676A105E5D1BFE",
+          "profile": "/Users/xiling/.ohos/config/default_my-world_P_midqbQjItozgxfom7JGtRZkWlFiicNbvvOPYUz6XY=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "/Users/xiling/.ohos/config/default_my-world_P_midqbQjItozgxfom7JGtRZkWlFiicNbvvOPYUz6XY=.p12",
+          "storePassword": "0000001A95825ECDFC50AA63325094549AE9D085C48D66EB0F78617B5DC5E82DA37390480C0FED740B50"
+        }
+      }
     ],
     "products": [
       {

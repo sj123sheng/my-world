@@ -77,6 +77,93 @@ export interface Snapshot {
   bossSourceColor: number;
   bossRingBroken: boolean;
   inputEventCount: number;
+  // 开放世界探索字段（阶段一）。
+  explorationStamina: number;
+  motionState: number;
+  playerHeight: number;
+  activeChunkCount: number;
+  chunkLoadCount: number;
+  interactionAnchorId: number;
+  interactionUnlocked: boolean;
+  interactionLabel: string;
+  unlockedAnchorCount: number;
+  cameraExploration: boolean;
+  teleportFlashMs: number;
+  minimapAnchorX: number[];
+  minimapAnchorY: number[];
+  minimapAnchorUnlocked: number[];
+  // 内容与任务字段（阶段二）。
+  questId: number;
+  questStatus: number;
+  questTitle: string;
+  questObjectiveLabel: string;
+  questObjectiveProgress: number;
+  questObjectiveRequired: number;
+  completedQuestCount: number;
+  dialogActive: boolean;
+  dialogSpeaker: string;
+  dialogText: string;
+  dialogLineIndex: number;
+  dialogLineCount: number;
+  interactionKind: number;
+  // 养成与抽卡字段（阶段三）。
+  fateCount: number;
+  goldCount: number;
+  expMaterialCount: number;
+  ascensionMaterialCount: number;
+  gachaPity5: number;
+  gachaResultIds: number[];
+  gachaResultRarities: number[];
+  gachaResultIsNew: number[];
+  rosterIds: number[];
+  rosterLevels: number[];
+  rosterAscensions: number[];
+  // 阶段四打磨字段。
+  activeCharacterId: number;
+  dayNightHour: number;
+  qualityPreset: number;
+  weatherId: number;
+  musicRegionId: number;
+  completedSideQuestCount: number;
+  dungeonState: number;
+  dungeonProgress: number;
+  dungeonRequired: number;
+  minimapItemX: number[];
+  minimapItemY: number[];
+  minimapItemKind: number[];
+  sideQuestProgress: number[];
+  sideQuestRequired: number[];
+  rosterHp: number[];
+  rosterAtk: number[];
+  rosterConstellations: number[];
+  weaponIds: number[];
+  weaponLevels: number[];
+  weaponEquippedBy: number[];
+  // 原神式养成：武器深化、圣遗物、冒险等级与新物品计数。
+  weaponAscensions: number[];
+  weaponRefines: number[];
+  weaponRefineStocks: number[];
+  weaponExps: number[];
+  artifactInstanceIds: number[];
+  artifactDefIds: number[];
+  artifactRarities: number[];
+  artifactLevels: number[];
+  artifactEquippedBy: number[];
+  artifactSeeds: number[];
+  adventureRank: number;
+  adventureExp: number;
+  adventureExpRequired: number;
+  worldLevel: number;
+  oreLowCount: number;
+  oreMidCount: number;
+  oreHighCount: number;
+  expSmallCount: number;
+  expMediumCount: number;
+  expLargeCount: number;
+  sprintActive: number;
+  dailyCompletedCount: number;
+  dailyQuestClaimed: number;
+  gachaPoolKind: number;
 }
 
 export const nativeStart = (): void => native.nativeStart();
@@ -94,6 +181,31 @@ export const advanceLevel = (): boolean => native.advanceLevel();
 export const useSupply = (): boolean => native.useSupply();
 export const retryBoss = (): boolean => native.retryBoss();
 export const toggleDebugHud = (): void => native.toggleDebugHud();
+export const advanceDialog = (): void => native.advanceDialog();
+export const saveProgress = (path: string): boolean => native.saveProgress(path);
+export const loadProgress = (path: string): boolean => native.loadProgress(path);
+export const performGacha = (count: number): boolean => native.performGacha(count);
+export const performWeaponGacha = (count: number): boolean => native.performWeaponGacha(count);
+export const useExpMaterial = (characterId: number, materialCount: number): boolean =>
+  native.useExpMaterial(characterId, materialCount);
+export const ascendCharacter = (characterId: number): boolean =>
+  native.ascendCharacter(characterId);
+export const upgradeWeapon = (weaponId: number): boolean => native.upgradeWeapon(weaponId);
+export const equipWeapon = (weaponId: number, characterId: number): boolean =>
+  native.equipWeapon(weaponId, characterId);
+export const upgradeWeaponWithOre = (weaponId: number, oreItemId: number, count: number): boolean =>
+  native.upgradeWeaponWithOre(weaponId, oreItemId, count);
+export const ascendWeapon = (weaponId: number): boolean => native.ascendWeapon(weaponId);
+export const refineWeapon = (weaponId: number): boolean => native.refineWeapon(weaponId);
+export const useExpItem = (characterId: number, itemId: number, count: number): boolean =>
+  native.useExpItem(characterId, itemId, count);
+export const upgradeArtifact = (targetInstanceId: number, feedInstanceIds: number[]): boolean =>
+  native.upgradeArtifact(targetInstanceId, feedInstanceIds);
+export const equipArtifact = (instanceId: number, characterId: number): boolean =>
+  native.equipArtifact(instanceId, characterId);
+export const claimRankReward = (rank: number): boolean => native.claimRankReward(rank);
+export const setQualityPreset = (preset: number): void => native.setQualityPreset(preset);
+export const teleportToAnchor = (anchorId: number): boolean => native.teleportToAnchor(anchorId);
 export const setAudioEnabled = (enabled: boolean): void => native.setAudioEnabled(enabled);
 export const setPaused = (paused: boolean): void => native.setPaused(paused);
 export const skipDemoPhase = (phase: number): void => native.skipDemoPhase(phase);

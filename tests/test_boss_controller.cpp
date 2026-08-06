@@ -2,8 +2,13 @@
 #include "native/gameplay/ai/encounter_controller.h"
 
 #include <cassert>
+#include <cmath>
 
 namespace {
+
+float distanceBetween(Vec2 left, Vec2 right) {
+  return (left - right).length();
+}
 
 void testPhaseThresholdsTriggerOnce() {
   BossController boss;
@@ -138,6 +143,130 @@ void testBossEncounterVictoryAndRetry() {
   assert(encounter.snapshot().candidates.empty());
 }
 
+void testBossChasesPlayerAndOrbitsAtPreferredRange() {
+  BossController boss;
+  assert(boss.start(BossConfig::karounDefaults()));
+  const BossConfig config = boss.config();
+
+  // 玩家远在期望距离之外：首领直线追击，距离持续缩短且朝向指向玩家。
+  BossFrameInput input;
+  input.tick = 16;
+  input.dtMs = 16;
+  input.playerPosition = {0.5f, 0.25f};
+  input.playerAlive = true;
+  const Vec2 start = boss.snapshot().position;
+  const float before = distanceBetween(start, input.playerPosition);
+  boss.update(input);
+  const BossSnapshot chasing = boss.snapshot();
+  assert(chasing.moving);
+  assert(distanceBetween(chasing.position, input.playerPosition) < before);
+  assert(chasing.facing.finite());
+  assert(chasing.facing.y < 0.0f);  // 朝下方玩家
+  // 活动范围钳制：任意追击路径不越出竞技场。
+  assert(distanceBetween(chasing.position, config.arenaCenter) <=
+         config.arenaRadius + 1e-3f);
+
+  // 贴近后环绕走位：位置持续变化但维持交战间距。
+  input.playerPosition = chasing.position + Vec2{config.preferredRange, 0.0f};
+  bool orbited = false;
+  Vec2 previous = chasing.position;
+  for (int i = 0; i < 120; ++i) {
+    input.tick += 16;
+    boss.update(input);
+    if (distanceBetween(boss.snapshot().position, previous) > 1e-5f) {
+      orbited = true;
+    }
+    previous = boss.snapshot().position;
+  }
+  assert(orbited);
+}
+
+void testBossBasicAttackCycleAndVariantRotation() {
+  BossController boss;
+  assert(boss.start(BossConfig::karounDefaults()));
+  const BossConfig config = boss.config();
+
+  // 玩家贴身站位：首次延迟结束后冷却归零即起手普攻。
+  BossFrameInput input;
+  input.dtMs = 100;
+  input.playerPosition = config.spawnPosition;
+  input.playerAlive = true;
+  input.tick = 0;
+  while (boss.snapshot().basicAttackCastRemainingMs == 0) {
+    input.tick += 100;
+    boss.update(input);
+    assert(input.tick <= config.basicAttackFirstDelayMs + 200);
+  }
+  assert(boss.snapshot().basicAttackVariant == 1);
+  assert(!boss.snapshot().moving);  // 前摇期间站桩蓄力
+
+  // 前摇推进到归零：命中帧后进入冷却，变体轮换到下一段。
+  const Tick windupDeadline = input.tick + config.basicAttackWindupMs + 100;
+  while (boss.snapshot().basicAttackCastRemainingMs > 0) {
+    input.tick += 100;
+    boss.update(input);
+    assert(input.tick <= windupDeadline);
+  }
+  assert(boss.snapshot().basicAttackCooldownRemainingMs > 0);
+
+  // 冷却结束后再次起手，变体继续轮换（2 → 0 回绕）。
+  for (Tick elapsed = 0;
+       elapsed <= config.basicAttackCooldownMs + 100 &&
+       boss.snapshot().basicAttackCastRemainingMs == 0;
+       elapsed += 100) {
+    input.tick += 100;
+    boss.update(input);
+  }
+  assert(boss.snapshot().basicAttackCastRemainingMs > 0);
+  assert(boss.snapshot().basicAttackVariant == 2);
+  while (boss.snapshot().basicAttackCastRemainingMs > 0) {
+    input.tick += 100;
+    boss.update(input);
+  }
+  for (Tick elapsed = 0;
+       elapsed <= config.basicAttackCooldownMs + 100 &&
+       boss.snapshot().basicAttackCastRemainingMs == 0;
+       elapsed += 100) {
+    input.tick += 100;
+    boss.update(input);
+  }
+  assert(boss.snapshot().basicAttackVariant == 0);
+
+  // 玩家阵亡时不再起手普攻：等前摇落地并走完冷却后保持静止。
+  while (boss.snapshot().basicAttackCastRemainingMs > 0) {
+    input.tick += 100;
+    boss.update(input);
+  }
+  input.playerAlive = false;
+  for (Tick elapsed = 0; elapsed <= config.basicAttackCooldownMs * 3;
+       elapsed += 100) {
+    input.tick += 100;
+    boss.update(input);
+    assert(boss.snapshot().basicAttackCastRemainingMs == 0);
+  }
+}
+
+void testBossEncounterAppliesBasicAttackDamage() {
+  CombatController combat(CombatConfig::defaults());
+  EncounterController encounter(combat);
+  assert(encounter.start(EncounterMode::Boss));
+  const FixedPoint hpBefore = combat.snapshot().playerHp;
+
+  // 玩家站在首领出生点旁：首次普攻延迟后挥击应命中扣血。
+  const Vec2 nearBoss{0.5f, 0.74f};
+  Tick tick = 0;
+  while (combat.snapshot().playerHp == hpBefore && tick < 8000) {
+    tick += 100;
+    encounter.update({tick, 100, nearBoss, false,
+                      EncounterController::kBossId});
+  }
+  assert(combat.snapshot().playerHp < hpBefore);
+  // candidate 跟随首领实时位置。
+  assert(encounter.snapshot().candidates.size() == 1);
+  assert(encounter.snapshot().candidates.front().position ==
+         encounter.snapshot().boss.position);
+}
+
 }  // namespace
 
 int main() {
@@ -146,4 +275,7 @@ int main() {
   testFinalForgeFailsWithoutResonanceAndSucceedsWithUltimate();
   testRetryRestoresInitialState();
   testBossEncounterVictoryAndRetry();
+  testBossChasesPlayerAndOrbitsAtPreferredRange();
+  testBossBasicAttackCycleAndVariantRotation();
+  testBossEncounterAppliesBasicAttackDamage();
 }

@@ -389,8 +389,27 @@ void EncounterController::update(const EncounterFrameInput& input) {
     lastObservedBossAbility_ = ability;
     const BossMechanic mechanicBefore = boss_.snapshot().mechanic;
     const Tick castBefore = boss_.snapshot().castRemainingMs;
+    // 普攻下降沿检测用前帧状态：前摇归零瞬间结算挥击命中。
+    const Tick basicCastBefore = boss_.snapshot().basicAttackCastRemainingMs;
     boss_.update({tick, dtMs, combat_.snapshot().resonance > 0,
-                  ultimateUsed, nextSequence_});
+                  ultimateUsed, nextSequence_, input.playerPosition,
+                  combat_.snapshot().playerHp > 0,
+                  input.positionResolver});
+    // 首领普攻挥击落地：冷却/前摇驱动的周期性近战结算，
+    // 闪避无敌帧同样可规避（applyEnemyHit 内部判定）。
+    if (basicCastBefore > 0 &&
+        boss_.snapshot().basicAttackCastRemainingMs == 0 &&
+        combat_.snapshot().playerHp > 0) {
+      HitRequest swing{};
+      swing.attacker = kBossId;
+      swing.target = CombatController::kPlayerId;
+      swing.ability = 9;
+      swing.baseDamage = boss_.config().basicAttackDamage;
+      swing.poiseDamage = boss_.config().basicAttackPoiseDamage;
+      swing.tick = tick;
+      swing.sequence = nextStableSequence(nextSequence_);
+      combat_.applyEnemyHit(swing);
+    }
     // 审判光束吟唱完成落地：对玩家结算伤害；闪避无敌帧可规避
     // （applyEnemyHit 内部判定 wasInvulnerableAt 并转为闪避事件）。
     if (mechanicBefore == BossMechanic::JudgmentBeam && castBefore > 0 &&
@@ -559,6 +578,11 @@ void EncounterController::update(const EncounterFrameInput& input) {
     const Vec2 previous = slot->enemy.position;
     slot->enemy.position =
         advancePosition(previous, result.movement, dtMs, region);
+    // 宿主层碰撞解算：把敌人从建筑等障碍内推出并沿墙滑动，
+    // 位置修正回写权威逻辑位置，战斗距离判定与渲染严格一致。
+    if (input.positionResolver) {
+      input.positionResolver(slot->enemy.position, kEnemyCollisionRadius);
+    }
     const Vec2 facing = input.playerPosition - slot->enemy.position;
     const float length = facing.length();
     if (facing.finite() && std::isfinite(length) && length > 0.0f) {
@@ -609,8 +633,9 @@ void EncounterController::refreshSnapshot(bool includeCandidates) {
     snapshot_.boss = boss_.snapshot();
     if (includeCandidates && snapshot_.state == EncounterState::Running &&
         !snapshot_.boss.defeated) {
+      // 首领 candidate 跟随实时位置，软锁定与指示环不再钉死原地。
       snapshot_.candidates.push_back(
-          {static_cast<int32_t>(kBossId), {0.5f, 0.75f}});
+          {static_cast<int32_t>(kBossId), snapshot_.boss.position});
     }
     return;
   }

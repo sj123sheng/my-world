@@ -118,6 +118,17 @@ void AudioBridge::setEnabled(bool enabled) {
   }
 }
 
+void AudioBridge::setAmbientRegion(int32_t region) {
+  if (region < 0) region = 0;
+  if (region == ambientRegion_) return;  // 幂等：同区域不重启。
+  ambientRegion_ = region;
+  // 区域变化：重启垫底声部作为 BGM 过渡提示（未启用/未初始化时仅记状态）。
+  if (enabled_ && initialized_) {
+    stopAmbient();
+    startAmbient();
+  }
+}
+
 void AudioBridge::startAmbient() {
   play(SoundEffect::Ambient, true);
 }

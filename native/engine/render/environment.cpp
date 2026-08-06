@@ -1,6 +1,7 @@
 #include "environment.h"
 
 #include <glm/geometric.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 EnvironmentComposition EnvironmentController::defaultComposition() {
   return {{0.50f, 0.0f, 0.12f},
@@ -27,4 +28,19 @@ EnvironmentRenderPlan EnvironmentController::evaluate(
     plan.textureTier = StaticTextureTier::Half;
   }
   return plan;
+}
+
+EnvironmentWorldFit environmentWorldFitParams(
+    size_t index, const EnvironmentComposition& composition) {
+  const EnvironmentFitAnchors anchors{composition.altarAnchor.x,
+                                      composition.altarAnchor.z};
+  return environmentWorldFitForRegion(static_cast<int>(index), anchors);
+}
+
+glm::mat4 environmentWorldFitMatrix(
+    size_t index, const EnvironmentComposition& composition) {
+  const EnvironmentWorldFit fit = environmentWorldFitParams(index, composition);
+  return glm::translate(glm::mat4(1.0f),
+                        glm::vec3(fit.centerX, fit.yBias, fit.centerZ)) *
+         glm::scale(glm::mat4(1.0f), glm::vec3(fit.scale));
 }

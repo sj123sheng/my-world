@@ -45,6 +45,11 @@ class AudioBridge {
   void setEnabled(bool enabled);
   bool enabled() const { return enabled_; }
 
+  // BGM 区域切换（阶段四）：玩家跨入新区域时重启环境垫底作为过渡提示。
+  // 同一区域重复调用幂等。region: 0=森林 1=平原 2=高地。
+  void setAmbientRegion(int32_t region);
+  int32_t ambientRegion() const { return ambientRegion_; }
+
   // UI/流程音效入口：不经战斗事件映射直接播放（如胜利/失败结算）。
   void playUiSound(SoundEffect effect) {
     if (enabled_) play(effect);
@@ -83,6 +88,7 @@ class AudioBridge {
   int nextStealVoice_ = 0;
   // 环境音垫占用的声部索引；-1 表示未播放。
   int ambientVoice_ = -1;
+  int32_t ambientRegion_ = 0;
 
 #ifdef OHOS_PLATFORM
   OH_AudioRenderer* renderer_ = nullptr;
