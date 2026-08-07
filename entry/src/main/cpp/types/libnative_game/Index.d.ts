@@ -199,4 +199,9 @@ export const pullSnapshot: () => {
   explorationBlockedGateId: number,
   explorationBlockedGateLabel: string,
   explorationBlockedByPuzzleLabel: string,
+  explorationFeedbackType: number,
+  explorationFeedbackId: number,
+  explorationFeedbackTitle: string,
+  explorationFeedbackSubtitle: string,
+  explorationFeedbackRemainingMs: number,
 };

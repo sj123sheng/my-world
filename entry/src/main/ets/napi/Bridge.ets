@@ -178,6 +178,11 @@ export interface Snapshot {
   explorationBlockedGateId: number;
   explorationBlockedGateLabel: string;
   explorationBlockedByPuzzleLabel: string;
+  explorationFeedbackType: number;
+  explorationFeedbackId: number;
+  explorationFeedbackTitle: string;
+  explorationFeedbackSubtitle: string;
+  explorationFeedbackRemainingMs: number;
 }
 
 export const nativeStart = (): void => native.nativeStart();

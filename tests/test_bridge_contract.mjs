@@ -749,6 +749,30 @@ assert.match(explorationHud, /explorationBlockedGateLabel/,
 assert.match(explorationHud, /路径受阻/,
   'ExplorationHud must identify a blocked traversal gate');
 
+// ---- Stage 16c: unified exploration feedback ----
+const explorationToast = fs.existsSync('entry/src/main/ets/ui/ExplorationToast.ets')
+  ? fs.readFileSync('entry/src/main/ets/ui/ExplorationToast.ets', 'utf8') : '';
+for (const field of ['explorationFeedbackType', 'explorationFeedbackId',
+  'explorationFeedbackTitle', 'explorationFeedbackSubtitle',
+  'explorationFeedbackRemainingMs']) {
+  assert.match(gameSnapshot, new RegExp(`\\b${field}\\b`),
+    `GameSnapshot must expose ${field}`);
+  assert.match(nativeBridge, new RegExp(`"${field}"`),
+    `native bridge must marshal ${field}`);
+  assert.match(bridge, new RegExp(`${field}: (?:number|string);`),
+    `Bridge Snapshot must declare ${field}`);
+  assert.match(declarations, new RegExp(`${field}: (?:number|string),`),
+    `Index.d.ts must declare ${field}`);
+  assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
+    `GamePage polling must assign ${field}`);
+}
+assert.match(page, /prevExplorationFeedbackId/, 'GamePage must edge-detect feedback');
+assert.match(page, /Haptics\.(?:light|heavy)\(\)/,
+  'GamePage must vibrate for exploration feedback');
+assert.match(page, /ExplorationToast\(\{/, 'GamePage must mount ExplorationToast');
+assert.match(explorationToast, /地标|机关|路径|奖励/,
+  'ExplorationToast must map the four exploration feedback types');
+
 // ---- Stage 17: content systems (quests, dialog, interactables, save) ----
 for (const field of ['questId', 'questStatus', 'questTitle',
   'questObjectiveLabel', 'questObjectiveProgress', 'questObjectiveRequired',
