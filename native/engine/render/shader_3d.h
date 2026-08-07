@@ -69,6 +69,25 @@ class Shader3D {
   // 非平台侧为空操作。
   void setSpecular(float strength, float shininess) const;
 
+  // 卡通着色（原神式 cel shading）：enabled=true 时漫反射按
+  // uToonEdge±uToonSoftness 的 smoothstep 分为亮/暗两段，暗段用
+  // shadowColor（乘色）染色而不是简单压暗。enabled=false 时恢复
+  // 原有连续 Lambert，与升级前等价。非平台侧为空操作。
+  void setToonShading(bool enabled, const glm::vec3& shadowColor,
+                      float edge, float softness);
+
+  // 反向壳描边 pass：width>0 时顶点着色器沿法线外扩局部几何
+  // （width 为模型局部空间宽度），片段输出纯色 uOutlineColor；
+  // width=0 关闭。调用方需自行切换 glCullFace(GL_FRONT) 并在
+  // 绘制后恢复。非平台侧为空操作。
+  void setOutlinePass(float width, const glm::vec3& color);
+
+  // 返回最近一次 setToonShading 的启用状态，供宿主机状态测试使用。
+  bool toonShadingEnabled() const { return toonEnabled_; }
+
+  // 返回最近一次 setOutlinePass 的宽度（0 = 关闭），供宿主机状态测试使用。
+  float outlineWidth() const { return outlineWidth_; }
+
   // 设置指数深度雾：uFogColor/uFogDensity，随片段到相机距离混合雾色。
   // density=0 时与升级前等价。非平台侧为空操作。
   void setFog(const glm::vec3& color, float density) const;
@@ -114,6 +133,8 @@ class Shader3D {
   unsigned int program_ = 0;
   bool skinPaletteValid_ = false;
   bool skinningEnabled_ = false;
+  bool toonEnabled_ = false;
+  float outlineWidth_ = 0.0f;
 
 #ifdef OHOS_PLATFORM
   GLint locMVP_ = -1;
@@ -133,6 +154,13 @@ class Shader3D {
   GLint locRimStrength_ = -1;
   GLint locSpecularStrength_ = -1;
   GLint locShininess_ = -1;
+  GLint locToon_ = -1;
+  GLint locShadowColor_ = -1;
+  GLint locToonEdge_ = -1;
+  GLint locToonSoftness_ = -1;
+  GLint locOutlineWidth_ = -1;
+  GLint locOutlinePass_ = -1;
+  GLint locOutlineColor_ = -1;
   GLint locFogColor_ = -1;
   GLint locFogDensity_ = -1;
   GLint locSurfaceMode_ = -1;

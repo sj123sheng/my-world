@@ -83,6 +83,12 @@ Mesh createCone(float radius, float height, uint32_t segments);
 // 生成朝上的圆形盘（XZ 平面，y=0），用于角色接地接触阴影。
 Mesh createDisk(float radius, uint32_t segments);
 
+// 生成新月形刀光弧线（XZ 平面，y=0，法线 +Y）：弧线以模型局部 +Z 前方
+// 为中心、跨 arcRadians 弧度；外半径在两端尖端收敛到内半径，形成
+// 两头尖中间宽的新月截面。用于普攻挥砍的扫掠刀光，绘制时双面可见。
+Mesh createSlashArc(float innerRadius, float outerRadius, float arcRadians,
+                    uint32_t segments);
+
 // 生成胶囊网格：沿 Y 轴，圆柱段高 height，两端为半径 radius 的半球。
 Mesh createCapsule(float radius, float height, uint32_t segments,
                    uint32_t rings);

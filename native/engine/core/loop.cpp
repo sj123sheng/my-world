@@ -1,5 +1,6 @@
 #include "loop.h"
 #include "native/engine/render/combat_animation.h"
+#include "native/engine/render/combat_vfx.h"
 #include "native/engine/resource/save.h"
 #ifdef OHOS_PLATFORM
 #include <hilog/log.h>
@@ -401,9 +402,25 @@ void spawnAttackProjectiles(Surface& surface, Vec2 from, Vec2 to, int kind,
   }
 }
 
+// 释放冲击波：施法者脚下生成扩散光环（上限防溢出），颜色随源质。
+void spawnShockwave(Surface& surface, Vec2 position, glm::vec3 color,
+                    float maxRadius) {
+  if (surface.shockwaveRings.size() > 24) return;
+  surface.shockwaveRings.push_back(
+      {position.x, position.y, 0.0f, maxRadius, color});
+}
+
+// 敌方普攻刀光：挥击上升沿生成红色新月弧线，尺寸随原型缩放。
+void spawnEnemySlashArc(Surface& surface, uint32_t id, Vec2 position,
+                        float yaw, int archetype) {
+  if (surface.enemySlashArcs.size() > 16) return;
+  surface.enemySlashArcs.push_back(
+      {id, position.x, position.y, yaw, 0.0f, EnemyArchetypeScale(archetype)});
+}
+
 // 敌方释放动效：与主角侧对称——敌人前摇开始时在自身位置爆出
-// 蓄力火花（施法前兆），挥击瞬间朝主角发射红色投射物；首领吟唱
-// 开始时爆出更大规模的暗紫火花环并向主角齐射束流。
+// 蓄力火花（施法前兆），挥击瞬间朝主角发射红色投射物并挥出
+// 红色刀光；首领吟唱开始时爆出更大规模的暗紫火花环并向主角齐射束流。
 void spawnEnemyReleaseVfx(Surface& surface) {
   const Vec2 playerPos{surface.player.x, surface.player.y};
   // 遭遇敌人与野外敌人字段布局一致，共用同一边沿检测模板。
@@ -423,6 +440,8 @@ void spawnEnemyReleaseVfx(Surface& surface) {
       }
       if (enemy.attacking && !wasAttacking) {
         spawnAttackProjectiles(surface, enemyPos, playerPos, 1, ratio, 2);
+        spawnEnemySlashArc(surface, enemy.id, enemyPos, enemy.angle,
+                           enemy.archetype);
       }
     }
     surface.enemyPrevWindingUp[enemy.id] = enemy.windingUp;
@@ -467,12 +486,19 @@ void spawnEnemyReleaseVfx(Surface& surface) {
     const float bossRatio =
         actorVfxRatio(surface, EncounterController::kBossId);
     const Vec2 bossPos{surface.boss3d.x, surface.boss3d.y};
+    // 火花 kind → 冲击波环配色（与 drawHitSparks 同源）。
+    const auto kindColor = [](int kind) {
+      if (kind == 6) return glm::vec3{0.72f, 0.45f, 0.95f};
+      if (kind == 5) return glm::vec3{0.45f, 0.85f, 1.0f};
+      return glm::vec3{1.0f, 0.78f, 0.32f};
+    };
     // 机制吟唱（审判光束等）：暗紫大火花环 + 朝主角齐射束流。
     const bool mechanicWinding =
         surface.boss3d.windingUp && !surface.boss3d.basicAttacking;
     if (mechanicWinding && !surface.bossPrevWindingUp) {
       spawnHitSparks(surface, bossPos, 6, 24, 1.8f, 1.4f, bossRatio * 1.2f);
       spawnAttackProjectiles(surface, bossPos, playerPos, 6, bossRatio, 7);
+      spawnShockwave(surface, bossPos, kindColor(6), 0.16f * bossRatio);
     }
     surface.bossPrevWindingUp = mechanicWinding;
 
@@ -495,6 +521,9 @@ void spawnEnemyReleaseVfx(Surface& surface) {
       spawnAttackProjectiles(surface, bossPos, playerPos,
                              kVolleyKinds[variant], bossRatio,
                              kVolleyCounts[variant]);
+      // 挥击落地冲击波：按变体配色，体量随首领缩放。
+      spawnShockwave(surface, bossPos, kindColor(kVolleyKinds[variant]),
+                     0.14f * bossRatio);
     }
     surface.bossPrevBasicAttacking = surface.boss3d.basicAttacking;
   } else {
@@ -1563,6 +1592,11 @@ void Loop::resetInput() {
   surface.bossPrevWindingUp = false;
   surface.bossPrevBasicAttacking = false;
   surface.hitSparks3d.clear();
+  surface.playerSlashSeconds = -1.0f;
+  surface.playerSlashCombo = 0;
+  surface.playerSlashYaw = 0.0f;
+  surface.enemySlashArcs.clear();
+  surface.shockwaveRings.clear();
   hitStopRemainingMs = 0;
   surface.player3dAnimation.action = RenderAnimation::Idle;
   surface.player3dAnimation.hit = false;
@@ -2138,6 +2172,8 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
         spawnAttackProjectiles(surface, playerPos, *releaseTarget, 4,
                                playerRatio, 5);
       }
+      spawnShockwave(surface, playerPos, glm::vec3{1.0f, 0.96f, 0.72f},
+                     0.07f * playerRatio);
     }
     if (skillSnapshot.currentCooldownMs > 0 && prevCurrentCdMs <= 0) {
       spawnHitSparks(surface, playerPos, 5, 12, 1.3f, 1.3f, playerRatio);
@@ -2145,6 +2181,8 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
         spawnAttackProjectiles(surface, playerPos, *releaseTarget, 5,
                                playerRatio, 5);
       }
+      spawnShockwave(surface, playerPos, glm::vec3{0.45f, 0.85f, 1.0f},
+                     0.07f * playerRatio);
     }
     if (skillSnapshot.corruptionCooldownMs > 0 && prevCorruptionCdMs <= 0) {
       spawnHitSparks(surface, playerPos, 6, 12, 1.3f, 1.3f, playerRatio);
@@ -2152,6 +2190,8 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
         spawnAttackProjectiles(surface, playerPos, *releaseTarget, 6,
                                playerRatio, 5);
       }
+      spawnShockwave(surface, playerPos, glm::vec3{0.72f, 0.45f, 0.95f},
+                     0.07f * playerRatio);
     }
     // 终结技释放动效：进入吟唱状态瞬间在主角周身爆发大规模金白火花，
     // 并向目标齐射更粗更亮的密集束流，强化“终结一击”的仪式感。
@@ -2165,6 +2205,9 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
         spawnAttackProjectiles(surface, playerPos, *releaseTarget, 4,
                                playerRatio * 1.5f, 7);
       }
+      // 终结技冲击波：半径更大，强化“终结一击”的地面震荡感。
+      spawnShockwave(surface, playerPos, glm::vec3{1.0f, 0.90f, 0.50f},
+                     0.11f * playerRatio);
     }
     prevActionForVfx = actionNow;
     // 普攻释放动效：连击段数变化（每次挥击升阶/回绕）时，主角周身
@@ -2176,6 +2219,11 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
         spawnAttackProjectiles(surface, playerPos, *releaseTarget, 0,
                                playerRatio, 2);
       }
+      // 普攻刀光：记录挥击瞬间朝向并启动弧线计时；第 4 段为终结段，
+      // SlashArcPoseAt 会放大弧线并提亮。
+      surface.playerSlashSeconds = 0.0f;
+      surface.playerSlashCombo = comboSegmentNow;
+      surface.playerSlashYaw = surface.player.angle;
     }
     prevComboSegmentForVfx = comboSegmentNow;
     prevRadianceCdMs = skillSnapshot.radianceCooldownMs;
@@ -2556,6 +2604,33 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                        return spark.life <= 0.0f || spark.y < 0.0f;
                      }),
       surface.hitSparks3d.end());
+  // 普攻刀光/技能冲击波计时推进与过期清理（时长由纯函数统一决定）。
+  if (surface.playerSlashSeconds >= 0.0f) {
+    surface.playerSlashSeconds += dtSeconds;
+    if (surface.playerSlashSeconds >= SlashArcDuration()) {
+      surface.playerSlashSeconds = -1.0f;
+    }
+  }
+  for (Surface::EnemySlashArc& arc : surface.enemySlashArcs) {
+    arc.seconds += dtSeconds;
+  }
+  surface.enemySlashArcs.erase(
+      std::remove_if(surface.enemySlashArcs.begin(),
+                     surface.enemySlashArcs.end(),
+                     [](const Surface::EnemySlashArc& arc) {
+                       return arc.seconds >= SlashArcDuration();
+                     }),
+      surface.enemySlashArcs.end());
+  for (Surface::ShockwaveRing& ring : surface.shockwaveRings) {
+    ring.seconds += dtSeconds;
+  }
+  surface.shockwaveRings.erase(
+      std::remove_if(surface.shockwaveRings.begin(),
+                     surface.shockwaveRings.end(),
+                     [](const Surface::ShockwaveRing& ring) {
+                       return ring.seconds >= ShockwaveDuration();
+                     }),
+      surface.shockwaveRings.end());
   const CombatSnapshot& combatSnapshot = combat.snapshot();
   surface.player3dAnimation.alive = combatSnapshot.playerHp > 0;
   // 玩家血量比例：供低血量边缘脉冲警示推导强度。

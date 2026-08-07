@@ -126,6 +126,79 @@ void testBossEntranceRevealCurveReachesFull() {
   assert(nearlyEqual(BossEntranceReveal(-1.0f), 0.0f));
 }
 
+void testProfilesCarryDistinctToonShading() {
+  const AssetProfile player = AssetProfile::forModel(ModelKind::Player);
+  const AssetProfile enemy = AssetProfile::forModel(ModelKind::Enemy);
+  const AssetProfile boss = AssetProfile::forModel(ModelKind::Boss);
+  const AssetProfile npc = AssetProfile::forModel(ModelKind::Npc);
+  // 所有角色都启用卡通着色，且阴影色互不相同（角色识别度）。
+  assert(player.toonShading && enemy.toonShading && boss.toonShading &&
+         npc.toonShading);
+  assert(player.shadowColor != enemy.shadowColor);
+  assert(enemy.shadowColor != boss.shadowColor);
+  assert(player.shadowColor != boss.shadowColor);
+  // 阴影色是乘性暗部系数：各通道必须落在 (0,1)，否则暗部过曝或死黑。
+  const AssetProfile all[] = {player, enemy, boss, npc};
+  for (const AssetProfile& profile : all) {
+    assert(profile.shadowColor.r > 0.0f && profile.shadowColor.r < 1.0f);
+    assert(profile.shadowColor.g > 0.0f && profile.shadowColor.g < 1.0f);
+    assert(profile.shadowColor.b > 0.0f && profile.shadowColor.b < 1.0f);
+    assert(profile.toonSoftness > 0.0f);
+  }
+  // 敌人阴影阈值最低（暗部占比最大），主角最高（面部受光最多）。
+  assert(enemy.toonShadowEdge < boss.toonShadowEdge);
+  assert(boss.toonShadowEdge < player.toonShadowEdge);
+}
+
+void testOutlineWidthFollowsRoleHierarchyAndFlash() {
+  const AssetProfile player = AssetProfile::forModel(ModelKind::Player);
+  const AssetProfile enemy = AssetProfile::forModel(ModelKind::Enemy);
+  const AssetProfile boss = AssetProfile::forModel(ModelKind::Boss);
+  // 体量层级：Boss 描边最粗 > 主角 > 敌人。
+  assert(boss.outlineWidth > player.outlineWidth);
+  assert(player.outlineWidth > enemy.outlineWidth);
+  assert(enemy.outlineWidth > 0.0f);
+  // 受击闪白窗口内描边加宽，强化打击感；窗口外回落。
+  const float calm = ActorOutlineWidthFor(player, 0.0f);
+  const float flashing = ActorOutlineWidthFor(player, 0.15f);
+  assert(flashing > calm);
+  assert(nearlyEqual(ActorOutlineWidthFor(player, 1.0f), flashing));
+  // 锁定目标描边略增；出场进度线性缩放（0 时不出现描边）。
+  assert(ActorOutlineWidthFor(enemy, 0.0f, true) >
+         ActorOutlineWidthFor(enemy, 0.0f, false));
+  assert(nearlyEqual(ActorOutlineWidthFor(boss, 0.0f, false, 0.0f), 0.0f));
+  assert(nearlyEqual(ActorOutlineWidthFor(boss, 0.0f, false, 0.5f),
+                     ActorOutlineWidthFor(boss, 0.0f) * 0.5f));
+}
+
+void testOutlineColorDerivesFromRimAndWhitensOnFlash() {
+  const AssetProfile enemy = AssetProfile::forModel(ModelKind::Enemy);
+  const glm::vec3 calm = ActorOutlineColorFor(enemy, 0.0f);
+  const glm::vec3 flashing = ActorOutlineColorFor(enemy, 0.15f);
+  // 线色保持色相但整体压暗（低于轮廓光原色亮度）。
+  assert(calm.r < enemy.outlineColor.r);
+  assert(calm.g < enemy.outlineColor.g);
+  assert(calm.b < enemy.outlineColor.b);
+  // 受击闪白时线色向白靠拢（各通道抬升）。
+  assert(flashing.r > calm.r);
+  assert(flashing.g > calm.g);
+  assert(flashing.b > calm.b);
+  // 三角色线色互不相同，与轮廓光同源的视觉语言保持一致。
+  const AssetProfile player = AssetProfile::forModel(ModelKind::Player);
+  const AssetProfile boss = AssetProfile::forModel(ModelKind::Boss);
+  assert(ActorOutlineColorFor(player, 0.0f) != calm);
+  assert(ActorOutlineColorFor(boss, 0.0f) != calm);
+}
+
+void testEnemyArchetypeScaleMatchesVisualRoles() {
+  assert(nearlyEqual(EnemyArchetypeScale(0), 1.0f));
+  assert(nearlyEqual(EnemyArchetypeScale(3), 1.3f));
+  assert(nearlyEqual(EnemyArchetypeScale(5), 1.3f));
+  assert(nearlyEqual(EnemyArchetypeScale(4), 0.95f));
+  // 未知原型回退默认体型，不产生 0/负缩放。
+  assert(nearlyEqual(EnemyArchetypeScale(99), 1.0f));
+}
+
 }  // namespace
 
 int main() {
@@ -138,5 +211,9 @@ int main() {
   testLockedTargetRimStaysBoostedAndTinted();
   testBossEntranceRampsRimStrength();
   testBossEntranceRevealCurveReachesFull();
+  testProfilesCarryDistinctToonShading();
+  testOutlineWidthFollowsRoleHierarchyAndFlash();
+  testOutlineColorDerivesFromRimAndWhitensOnFlash();
+  testEnemyArchetypeScaleMatchesVisualRoles();
   return 0;
 }

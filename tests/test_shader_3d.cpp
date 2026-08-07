@@ -47,11 +47,36 @@ void testPresentationLightingSettersAreSafeWithoutGlContext() {
   shader.setAlpha(1.0f);
 }
 
+void testToonAndOutlineStateTrackWithoutGlContext() {
+  Shader3D shader;
+  // 默认关闭：未配置时与升级前行为等价。
+  assert(!shader.toonShadingEnabled());
+  assert(shader.outlineWidth() == 0.0f);
+
+  shader.setToonShading(true, {0.74f, 0.70f, 0.86f}, 0.16f, 0.09f);
+  assert(shader.toonShadingEnabled());
+  shader.setToonShading(false, {0.7f, 0.7f, 0.78f}, 0.1f, 0.08f);
+  assert(!shader.toonShadingEnabled());
+
+  shader.setOutlinePass(0.02f, {0.1f, 0.2f, 0.3f});
+  assert(shader.outlineWidth() > 0.0f);
+  // 负宽度被夹取为 0：等价关闭描边 pass。
+  shader.setOutlinePass(-1.0f, {0.0f, 0.0f, 0.0f});
+  assert(shader.outlineWidth() == 0.0f);
+  // destroy/abandon 后状态复位，宿主机侧不残留开启标记。
+  shader.setToonShading(true, {0.7f, 0.7f, 0.78f}, 0.1f, 0.08f);
+  shader.setOutlinePass(0.01f, {0.1f, 0.1f, 0.1f});
+  shader.abandonGpuResources();
+  assert(!shader.toonShadingEnabled());
+  assert(shader.outlineWidth() == 0.0f);
+}
+
 }  // namespace
 
 int main() {
   testSkinPaletteBoundariesAndInvalidation();
   testEnvironmentTintSetterIsSafeWithoutGlContext();
   testPresentationLightingSettersAreSafeWithoutGlContext();
+  testToonAndOutlineStateTrackWithoutGlContext();
   return 0;
 }

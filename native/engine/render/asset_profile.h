@@ -18,6 +18,14 @@ struct AssetProfile {
   // Boss 居中；默认值与升级前的全局高光一致。
   float specularStrength = 0.28f;
   float specularShininess = 24.0f;
+  // 卡通（cel）着色分档：阴影带颜色为 baseColor 的乘色，
+  // edge 是 NdotL 阴影阈值，softness 是带边过渡宽度。
+  bool toonShading = false;
+  glm::vec3 shadowColor{0.7f, 0.7f, 0.78f};
+  float toonShadowEdge = 0.1f;
+  float toonSoftness = 0.08f;
+  // 反向壳描边宽度（世界单位）：0 关闭描边。
+  float outlineWidth = 0.0f;
 
   static AssetProfile forModel(ModelKind kind);
 };
@@ -64,4 +72,54 @@ inline ActorRimLight ActorRimLightFor(const AssetProfile& profile,
   }
   rim.strength *= std::clamp(appearance, 0.0f, 1.0f);
   return rim;
+}
+
+// 卡通着色参数决策：直接透传档案分档；toonShading=false 时调用方
+// 不得启用着色器卡通路径（地形/水面/天空保持原光照）。
+struct ActorToonShading {
+  glm::vec3 shadowColor{0.7f, 0.7f, 0.78f};
+  float edge = 0.1f;
+  float softness = 0.08f;
+};
+
+inline ActorToonShading ActorToonShadingFor(const AssetProfile& profile) {
+  return {profile.shadowColor, profile.toonShadowEdge, profile.toonSoftness};
+}
+
+// 反向壳描边宽度决策（世界单位）：受击闪白窗口内最多加宽 75%
+// 强化打击感；被锁定时 +12% 与轮廓光常亮同步；出场进度线性缩放，
+// 避免 Boss 模型未显形就先出现描边。
+inline float ActorOutlineWidthFor(const AssetProfile& profile,
+                                  float hitFlashSeconds, bool targeted = false,
+                                  float appearance = 1.0f) {
+  if (profile.outlineWidth <= 0.0f) return 0.0f;
+  const float flash = std::min(std::max(hitFlashSeconds, 0.0f) / 0.15f, 1.0f);
+  float width = profile.outlineWidth * (1.0f + 0.75f * flash);
+  if (targeted) width *= 1.12f;
+  return width * std::clamp(appearance, 0.0f, 1.0f);
+}
+
+// 描边线色决策：与轮廓光同一决策派生后整体压暗，保留色相，
+// 天然继承受击闪白变白与锁定青金混色，视觉语言与轮廓光统一。
+inline glm::vec3 ActorOutlineColorFor(const AssetProfile& profile,
+                                      float hitFlashSeconds,
+                                      bool targeted = false,
+                                      float appearance = 1.0f) {
+  const ActorRimLight rim =
+      ActorRimLightFor(profile, hitFlashSeconds, targeted, appearance);
+  return rim.color * 0.40f + glm::vec3(0.02f);
+}
+
+// 野外敌人按原型缩放（第一版共用单 enemy.glb，体型差异靠缩放区分；
+// 色调由 surface 的 enemyColorByArchetype 覆盖 0-5，留待美术出独立模型）。
+inline float EnemyArchetypeScale(int archetype) {
+  switch (archetype) {
+    case 3:  // Bruiser
+    case 5:  // Elite
+      return 1.3f;
+    case 4:  // Caster
+      return 0.95f;
+    default:
+      return 1.0f;
+  }
 }

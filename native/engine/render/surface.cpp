@@ -1,4 +1,5 @@
 #include "surface.h"
+#include "native/engine/render/combat_vfx.h"
 #include "native/engine/render/digit_atlas.h"
 #include "native/engine/render/terrain_mesh.h"
 #include "native/engine/world/stream_scheduler.h"
@@ -361,15 +362,7 @@ static glm::vec3 enemyColorByArchetype(int archetype) {
 // 野外敌人按原型缩放（第一版共用单 enemy.glb，体型差异靠缩放区分；
 // 色调已由 enemyColorByArchetype 覆盖 0-5，留待美术出独立模型）。
 static float enemyScaleByArchetype(int archetype) {
-  switch (archetype) {
-    case 3:  // Bruiser
-    case 5:  // Elite
-      return 1.3f;
-    case 4:  // Caster
-      return 0.95f;
-    default:
-      return 1.0f;
-  }
+  return EnemyArchetypeScale(archetype);
 }
 
 static glm::vec3 bossColorByPhase(int phase) {
@@ -640,6 +633,10 @@ static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
   // 逐角色高光分档：主角盔甲强锐、敌人哑光、Boss 宽厚，
   // 绘制结束后与轮廓光一并恢复中性值。
   s.shader3d.setSpecular(profile.specularStrength, profile.specularShininess);
+  // 卡通着色（原神式赛璐璐）：漫反射量化为明暗两段，暗部乘以角色
+  // 专属阴影色；绘制结束后恢复关闭，不泄漏到地形/水面/天空。
+  s.shader3d.setToonShading(profile.toonShading, profile.shadowColor,
+                            profile.toonShadowEdge, profile.toonSoftness);
   s.shader3d.setMVP(vp * matrix);
   s.shader3d.setModel(matrix);
   applyEntityTint(s, base);
@@ -661,6 +658,38 @@ static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
 #endif
   };
 
+  // 反向壳描边 pass：剔除正面、把背面沿法线外推后绘制纯色轮廓线。
+  // 线宽/颜色与轮廓光同源决策（受击闪白增宽变白、锁定染色、出场渐入），
+  // 世界宽度需换算到模型局部空间（顶点着色器在模型矩阵前完成外推）。
+  const auto drawOutline = [&] {
+    const float width =
+        ActorOutlineWidthFor(profile, hitFlashSeconds, targeted, appearance);
+    if (width <= 0.0f) return;
+    s.shader3d.setOutlinePass(
+        width / std::max(profile.scale, 1e-6f),
+        ActorOutlineColorFor(profile, hitFlashSeconds, targeted, appearance));
+#ifdef OHOS_PLATFORM
+    glCullFace(GL_FRONT);
+#endif
+    if (s.shader3d.skinningEnabled()) {
+      model.draw(s.shader3d);
+    } else if (actor.alive) {
+      fallback.draw();
+    }
+#ifdef OHOS_PLATFORM
+    glCullFace(GL_BACK);
+#endif
+    s.shader3d.setOutlinePass(0.0f, glm::vec3(0.0f));
+  };
+
+  const auto restoreActorState = [&] {
+    restoreFade();
+    s.shader3d.setToonShading(false, glm::vec3(0.7f), 0.1f, 0.08f);
+    s.shader3d.setRim(kNeutralRimColor, kNeutralRimStrength);
+    s.shader3d.setSpecular(kNeutralSpecularStrength,
+                           kNeutralSpecularShininess);
+  };
+
   if (model.ready()) {
     s.shader3d.setSkinPalette(model.update(animationState, actor, 1.0f / 60.0f));
 #ifdef OHOS_PLATFORM
@@ -675,10 +704,8 @@ static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
     s.shader3d.setSkinned(true);
     if (s.shader3d.skinningEnabled()) {
       model.draw(s.shader3d);
-      restoreFade();
-      s.shader3d.setRim(kNeutralRimColor, kNeutralRimStrength);
-      s.shader3d.setSpecular(kNeutralSpecularStrength,
-                             kNeutralSpecularShininess);
+      drawOutline();
+      restoreActorState();
       return;
     }
   }
@@ -687,9 +714,8 @@ static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
   s.shader3d.setHasTexture(fallback.texture != 0u);
   // 静态 Mesh 没有死亡姿态；死亡实体保持隐藏，而可用的骨骼模型可播放 death。
   if (actor.alive) fallback.draw();
-  restoreFade();
-  s.shader3d.setRim(kNeutralRimColor, kNeutralRimStrength);
-  s.shader3d.setSpecular(kNeutralSpecularStrength, kNeutralSpecularShininess);
+  drawOutline();
+  restoreActorState();
 }
 
 // 接地接触阴影：角色脚下平铺半透明黑色圆盘，提供接地感，
@@ -1077,6 +1103,129 @@ static void ensureDigitAssets(Surface& s) {
     quad.upload();
     s.digitMeshes[digit] = quad;
   }
+}
+
+// 技能释放冲击波：施法者脚下加法混合的扩散光环，双面无剔除，
+// 深度只读不写；结束后恢复混合/深度/剔除与中性光照状态。
+static void drawShockwaveRings(Surface& s, const glm::mat4& vp) {
+  if (s.shockwaveRings.empty() || s.targetRingMesh.vbo == 0u) return;
+  glDepthMask(GL_FALSE);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+  glDisable(GL_CULL_FACE);
+  s.shader3d.setSkinned(false);
+  s.shader3d.setHasTexture(false);
+  s.shader3d.setToonShading(false, glm::vec3(0.7f), 0.1f, 0.08f);
+  s.shader3d.setOutlinePass(0.0f, glm::vec3(0.0f));
+  s.shader3d.setRim(glm::vec3(0.0f), 0.0f);
+  s.shader3d.setSpecular(0.0f, 1.0f);
+  s.shader3d.setEnvironmentTint(glm::vec3(0.0f), 0.0f);
+  // 与 init3DResources 的 createRing(0.075, 0.014, 40) 基准半径一致。
+  constexpr float kRingBaseRadius = 0.075f;
+  for (const Surface::ShockwaveRing& ring : s.shockwaveRings) {
+    const ShockwavePose pose = ShockwavePoseAt(ring.seconds);
+    if (!pose.visible) continue;
+    const float radius = ring.maxRadius * (0.25f + 0.75f * pose.radiusScale);
+    const glm::mat4 model =
+        glm::translate(glm::mat4(1.0f),
+                       glm::vec3(ring.x,
+                                 groundYAt(s, ring.x, ring.z) + 0.012f,
+                                 ring.z)) *
+        glm::scale(glm::mat4(1.0f),
+                   glm::vec3(radius / kRingBaseRadius));
+    s.shader3d.setLight(glm::vec3(0.0f, 1.0f, 0.0f), ring.color * 0.8f,
+                        ring.color * 0.6f);
+    s.shader3d.setAlpha(pose.alpha * 0.8f);
+    s.shader3d.setMVP(vp * model);
+    s.shader3d.setModel(model);
+    s.targetRingMesh.draw();
+  }
+  s.shader3d.setAlpha(1.0f);
+  glDisable(GL_BLEND);
+  glDepthMask(GL_TRUE);
+  glEnable(GL_CULL_FACE);
+  glCullFace(GL_BACK);
+  s.shader3d.setRim(kNeutralRimColor, kNeutralRimStrength);
+  s.shader3d.setSpecular(kNeutralSpecularStrength, kNeutralSpecularShininess);
+}
+
+// 普攻刀光：加法混合的新月弧线，双层叠加（外层柔晕 + 内层亮芯）
+// 模拟渐变刀光；双面可见，深度只读不写。主角为金白刀光、终结段
+// 更亮更大；敌人为红色刀光，尺寸随原型缩放。结束后恢复状态。
+static void drawSlashArcs(Surface& s, const glm::mat4& vp) {
+  const bool playerActive = s.playerSlashSeconds >= 0.0f;
+  if (!playerActive && s.enemySlashArcs.empty()) return;
+  if (s.slashArcMesh.vbo == 0u) return;
+  glDepthMask(GL_FALSE);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+  glDisable(GL_CULL_FACE);
+  s.shader3d.setSkinned(false);
+  s.shader3d.setHasTexture(false);
+  s.shader3d.setToonShading(false, glm::vec3(0.7f), 0.1f, 0.08f);
+  s.shader3d.setOutlinePass(0.0f, glm::vec3(0.0f));
+  s.shader3d.setRim(glm::vec3(0.0f), 0.0f);
+  s.shader3d.setSpecular(0.0f, 1.0f);
+  s.shader3d.setEnvironmentTint(glm::vec3(0.0f), 0.0f);
+  const glm::vec3 up{0.0f, 1.0f, 0.0f};
+
+  const auto drawArc = [&](const glm::vec3& center, float yaw, float sweep,
+                           float radius, const glm::vec3& color, float alpha) {
+    if (alpha <= 0.0f || radius <= 0.0f) return;
+    for (int layer = 0; layer < 2; ++layer) {
+      const float layerRadius = layer == 0 ? radius * 1.18f : radius * 0.8f;
+      const float layerAlpha = layer == 0 ? alpha * 0.4f : alpha;
+      const glm::mat4 model =
+          glm::translate(glm::mat4(1.0f), center) *
+          glm::rotate(glm::mat4(1.0f), yaw + sweep,
+                      glm::vec3(0.0f, 1.0f, 0.0f)) *
+          glm::scale(glm::mat4(1.0f),
+                     glm::vec3(layerRadius, 1.0f, layerRadius));
+      s.shader3d.setLight(up, color * 0.8f, color * 0.6f);
+      s.shader3d.setAlpha(layerAlpha);
+      s.shader3d.setMVP(vp * model);
+      s.shader3d.setModel(model);
+      s.slashArcMesh.draw();
+    }
+  };
+
+  if (playerActive) {
+    const SlashArcPose pose =
+        SlashArcPoseAt(s.playerSlashSeconds, s.playerSlashCombo);
+    if (pose.visible) {
+      const glm::vec3 color = s.playerSlashCombo >= 4
+                                  ? glm::vec3{1.0f, 0.78f, 0.38f}
+                                  : glm::vec3{1.0f, 0.88f, 0.55f};
+      const float radius = s.playerAssetProfile.scale * 2.4f * pose.scale;
+      const glm::vec3 center{s.player.x,
+                             groundYAt(s, s.player.x, s.player.y) +
+                                 s.playerAssetProfile.scale * 1.15f,
+                             s.player.y};
+      drawArc(center, s.playerSlashYaw, pose.sweepRadians, radius, color,
+              pose.alpha * 0.85f);
+    }
+  }
+  for (const Surface::EnemySlashArc& arc : s.enemySlashArcs) {
+    const SlashArcPose pose = SlashArcPoseAt(arc.seconds, 0);
+    if (!pose.visible) continue;
+    const glm::vec3 color{1.0f, 0.42f, 0.36f};
+    const float radius =
+        s.enemyAssetProfile.scale * arc.scale * 2.2f * pose.scale;
+    const glm::vec3 center{arc.x,
+                           groundYAt(s, arc.x, arc.y) +
+                               s.enemyAssetProfile.scale * arc.scale * 1.1f,
+                           arc.y};
+    drawArc(center, arc.yaw, pose.sweepRadians, radius, color,
+            pose.alpha * 0.7f);
+  }
+
+  s.shader3d.setAlpha(1.0f);
+  glDisable(GL_BLEND);
+  glDepthMask(GL_TRUE);
+  glEnable(GL_CULL_FACE);
+  glCullFace(GL_BACK);
+  s.shader3d.setRim(kNeutralRimColor, kNeutralRimStrength);
+  s.shader3d.setSpecular(kNeutralSpecularStrength, kNeutralSpecularShininess);
 }
 
 // 命中火花：加法混合的广告牌四边形，尺寸与透明度随寿命衰减。
@@ -1615,6 +1764,10 @@ static void draw3DPhase(Surface& s) {
   drawJudgmentBeam(s, vp);
   s.shader3d.setRim({0.62f, 0.72f, 0.85f}, 0.45f);
   s.shader3d.setSpecular(0.28f, 24.0f);
+  // 技能释放冲击波：地面层光环，先于角色绘制，结束后恢复状态。
+  drawShockwaveRings(s, vp);
+  s.shader3d.setRim({0.62f, 0.72f, 0.85f}, 0.45f);
+  s.shader3d.setSpecular(0.28f, 24.0f);
 
   // 玩家：模型可用时走蒙皮，否则保留 M3-1 立方体。
   // 闪避无敌帧：半透明化给出清晰的免伤窗口反馈。
@@ -1761,6 +1914,9 @@ static void draw3DPhase(Surface& s) {
     }
     drawBossCinematicGeometry(s, vp);
   }
+
+  // 普攻刀光：角色层之上、锁定环之下，结束后恢复状态。
+  drawSlashArcs(s, vp);
 
   // 锁定目标指示器：绘制在飘字之下、实体之上。
   drawTargetMarker(s, vp);
@@ -2153,6 +2309,8 @@ static void init3DResources(Surface& s) {
   s.bossMesh = createBeast();
   s.bossRingMesh = createRing(0.42f, 0.055f, 24);
   s.targetRingMesh = createRing(0.075f, 0.014f, 40);
+  // 普攻刀光新月弧线：单位外径（1.0），绘制时按角色缩放放大。
+  s.slashArcMesh = createSlashArc(0.55f, 1.0f, 2.4f, 20);
   // 地形/水面/天空：地形网格需要高度场，未注入时由 drawTerrain 惰性生成；
   // 水面为单位平面（绘制时抬升到水面高度），天空为单位球体（绘制时
   // 以相机为心放大成穹顶）。
@@ -2180,6 +2338,7 @@ static void init3DResources(Surface& s) {
   s.bossMesh.upload();
   s.bossRingMesh.upload();
   s.targetRingMesh.upload();
+  s.slashArcMesh.upload();
   s.hpBarQuadMesh.upload();
   s.shadowMesh.upload();
   s.fallbackPillarMesh.upload();
@@ -2229,6 +2388,7 @@ static void destroy3DResource(Surface& s, SurfaceGlResource resource) {
       s.terrainMesh.destroy();
       s.waterMesh.destroy();
       s.skyMesh.destroy();
+      s.slashArcMesh.destroy();
       for (auto& entry : s.terrainChunkMeshes) entry.second.destroy();
       s.terrainChunkMeshes.clear();
       break;
@@ -2282,6 +2442,7 @@ static void abandon3DResources(Surface& s) {
   s.targetRingMesh.abandonGpuResources();
   s.hpBarQuadMesh.abandonGpuResources();
   s.shadowMesh.abandonGpuResources();
+  s.slashArcMesh.abandonGpuResources();
   s.terrainMesh.abandonGpuResources();
   s.waterMesh.abandonGpuResources();
   s.skyMesh.abandonGpuResources();

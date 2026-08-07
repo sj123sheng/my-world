@@ -1,0 +1,74 @@
+#pragma once
+
+// combat_vfx.h: 战斗释放动效的纯函数决策（普攻刀光弧线、技能冲击波环）。
+//
+// 与 render_animation.h 同样的约定：所有曲线/时长都是纯函数，
+// Loop 只负责计时与边沿触发，Surface 只负责按 pose 绘制，
+// 行为由 tests/test_combat_vfx.cpp 断言锁定。
+
+#include <algorithm>
+#include <cmath>
+
+// 普攻刀光弧线：挥击瞬间在角色身前扫过的新月形刀光。
+// 时长 0.26s，略长于命中时刻（kAttackHitMs=160ms），保证刀光
+// 覆盖"起手→命中→收招"全过程；扫掠角度以模型局部 +Z 前方为 0。
+inline float SlashArcDuration() { return 0.26f; }
+
+struct SlashArcPose {
+  float alpha = 0.0f;        // 整体透明度（0..1）
+  float sweepRadians = 0.0f; // 相对角色朝向的扫掠角（左后→右前）
+  float scale = 1.0f;        // 弧线缩放（随时间略增，终结技额外放大）
+  bool visible = false;
+};
+
+// 缓出三次方：挥击起始快、收尾慢，符合真实挥砍的速度感。
+inline float SlashArcEaseOutCubic(float t) {
+  const float clamped = std::clamp(t, 0.0f, 1.0f);
+  const float inverse = 1.0f - clamped;
+  return 1.0f - inverse * inverse * inverse;
+}
+
+// 刀光时间轴：
+// - 扫掠：-1.15rad（左后）经缓出曲线到 +1.15rad（右前），完成一次挥砍；
+// - 透明度：前 0.05s 快速淡入，随后线性衰减到 0，避免刀光硬消失；
+// - 连段第 4 击（终结技）弧线放大 30%、亮度提升，强化收尾仪式感；
+// - 窗口外（seconds<0 或 >=时长）返回不可见 pose。
+inline SlashArcPose SlashArcPoseAt(float seconds, int comboSegment) {
+  SlashArcPose pose;
+  const float duration = SlashArcDuration();
+  if (seconds < 0.0f || seconds >= duration) return pose;
+  const float t = seconds / duration;
+  pose.visible = true;
+  pose.sweepRadians = -1.15f + 2.3f * SlashArcEaseOutCubic(t);
+  const float fadeIn = std::clamp(seconds / 0.05f, 0.0f, 1.0f);
+  const float fadeOut =
+      1.0f - std::clamp((seconds - 0.05f) / (duration - 0.05f), 0.0f, 1.0f);
+  pose.alpha = fadeIn * fadeOut;
+  pose.scale = 1.0f + 0.12f * t;
+  if (comboSegment >= 4) {
+    pose.scale *= 1.3f;
+    pose.alpha = std::min(pose.alpha * 1.25f, 1.0f);
+  }
+  return pose;
+}
+
+// 技能释放冲击波环：施法瞬间在施法者脚下扩散的地面光环。
+// 0.45s 内从 25% 半径缓出扩张到最大半径并线性淡出。
+inline float ShockwaveDuration() { return 0.45f; }
+
+struct ShockwavePose {
+  float radiusScale = 0.0f;  // 相对最大半径的扩张进度（0..1）
+  float alpha = 0.0f;        // 整体透明度（0..1）
+  bool visible = false;
+};
+
+inline ShockwavePose ShockwavePoseAt(float seconds) {
+  ShockwavePose pose;
+  const float duration = ShockwaveDuration();
+  if (seconds < 0.0f || seconds >= duration) return pose;
+  const float t = seconds / duration;
+  pose.visible = true;
+  pose.radiusScale = SlashArcEaseOutCubic(t);
+  pose.alpha = 1.0f - t;
+  return pose;
+}

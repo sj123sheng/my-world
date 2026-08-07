@@ -313,6 +313,46 @@ Mesh createDisk(float radius, uint32_t segments) {
   return mesh;
 }
 
+namespace {
+
+float smoothStep01(float edge, float x) {
+  const float t = std::clamp(x / edge, 0.0f, 1.0f);
+  return t * t * (3.0f - 2.0f * t);
+}
+
+}  // namespace
+
+Mesh createSlashArc(float innerRadius, float outerRadius, float arcRadians,
+                    uint32_t segments) {
+  Mesh mesh;
+  if (innerRadius <= 0.0f || outerRadius <= innerRadius ||
+      arcRadians <= 0.0f || segments < 2u) {
+    return mesh;
+  }
+  const glm::vec3 up{0.0f, 1.0f, 0.0f};
+  const float width = outerRadius - innerRadius;
+  mesh.vertices.reserve((segments + 1u) * 2u);
+  mesh.indices.reserve(segments * 6u);
+  for (uint32_t i = 0; i <= segments; ++i) {
+    const float t = static_cast<float>(i) / static_cast<float>(segments);
+    const float angle = (t - 0.5f) * arcRadians;
+    // 两端 22% 弧段内外径收拢到同一半径，形成新月形刀尖/刀尾。
+    const float tip = smoothStep01(0.22f, t) * smoothStep01(0.22f, 1.0f - t);
+    const float outer = innerRadius + width * tip;
+    const glm::vec3 direction{std::sin(angle), 0.0f, std::cos(angle)};
+    mesh.vertices.push_back(
+        {direction * innerRadius, up, {t, 0.0f}});
+    mesh.vertices.push_back({direction * outer, up, {t, 1.0f}});
+    if (i > 0u) {
+      const uint32_t base = static_cast<uint32_t>(mesh.vertices.size()) - 4u;
+      mesh.indices.insert(mesh.indices.end(),
+                          {base, base + 1u, base + 3u,
+                           base, base + 3u, base + 2u});
+    }
+  }
+  return mesh;
+}
+
 Mesh createCapsule(float radius, float height, uint32_t segments,
                    uint32_t rings) {
   Mesh mesh;

@@ -234,6 +234,48 @@ void testCharacterMeshesHaveValidStructureAndFootBaseline() {
   }
 }
 
+void testSlashArcHasExpectedStructure() {
+  const uint32_t segments = 20;
+  Mesh arc = createSlashArc(0.55f, 1.0f, 2.4f, segments);
+  assert(arc.vertices.size() == (segments + 1) * 2);
+  assert(arc.indices.size() == segments * 6);
+  assert(indicesInBounds(arc));
+  assert(normalsUnitLength(arc));
+  // 弧线位于 XZ 平面，法线朝上。
+  for (const Vertex& vertex : arc.vertices) {
+    assert(close(vertex.position.y, 0.0f));
+    assert(close(vertex.normal.y, 1.0f));
+  }
+}
+
+void testSlashArcTapersTipsAndCentersOnForward() {
+  const uint32_t segments = 20;
+  Mesh arc = createSlashArc(0.55f, 1.0f, 2.4f, segments);
+  // 首尾顶点内外径收拢到同一半径（新月尖端）。
+  const auto radiusAt = [&arc](std::size_t index) {
+    const glm::vec3& p = arc.vertices[index].position;
+    return std::sqrt(p.x * p.x + p.z * p.z);
+  };
+  assert(close(radiusAt(0), radiusAt(1), 0.0001f));  // 首端收拢
+  const std::size_t tail = arc.vertices.size() - 2;
+  assert(close(radiusAt(tail), radiusAt(tail + 1), 0.0001f));  // 尾端收拢
+  // 中段外径接近最大值，明显大于内径。
+  const std::size_t mid = arc.vertices.size() / 2;
+  assert(radiusAt(mid) > 0.9f);
+  assert(radiusAt(mid) - radiusAt(mid - 1) > 0.2f);
+  // 弧段中点指向模型局部 +Z 前方。
+  const glm::vec3 midDirection = glm::normalize(arc.vertices[mid].position);
+  assert(midDirection.z > 0.99f);
+  assert(std::fabs(midDirection.x) < 0.05f);
+}
+
+void testSlashArcRejectsDegenerateInputs() {
+  assert(createSlashArc(0.0f, 1.0f, 2.4f, 20).vertices.empty());
+  assert(createSlashArc(1.0f, 0.5f, 2.4f, 20).vertices.empty());
+  assert(createSlashArc(0.55f, 1.0f, 0.0f, 20).vertices.empty());
+  assert(createSlashArc(0.55f, 1.0f, 2.4f, 1).vertices.empty());
+}
+
 }  // namespace
 
 int main() {
@@ -253,5 +295,8 @@ int main() {
   testCapsuleEnvelopeAndWinding();
   testMergeMeshTransformsPositionsAndNormals();
   testCharacterMeshesHaveValidStructureAndFootBaseline();
+  testSlashArcHasExpectedStructure();
+  testSlashArcTapersTipsAndCentersOnForward();
+  testSlashArcRejectsDegenerateInputs();
   return 0;
 }

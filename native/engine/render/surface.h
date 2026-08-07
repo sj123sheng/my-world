@@ -365,6 +365,34 @@ struct Surface {
   // 火花发射伪随机种子（LCG），保证同输入下方向可重现。
   uint32_t hitSparkSeed = 0;
 
+  // ---- 普攻刀光与技能冲击波字段 ----
+  // 新月形刀光单位网格（XZ 平面，外径 1.0），绘制时按角色缩放定位。
+  Mesh slashArcMesh;
+  // 主角刀光状态：seconds<0 表示无激活刀光；挥击边沿由 Loop 写入
+  // 起点秒数 0 与当时朝向，渲染层按 SlashArcPoseAt 扫掠绘制。
+  float playerSlashSeconds = -1.0f;
+  int playerSlashCombo = 0;
+  float playerSlashYaw = 0.0f;
+  // 敌方普攻刀光：遭遇敌人挥击边沿触发，按实体存活与时长裁剪。
+  struct EnemySlashArc {
+    uint32_t id = 0;
+    float x = 0.0f;
+    float y = 0.0f;
+    float yaw = 0.0f;
+    float seconds = 0.0f;
+    float scale = 1.0f;
+  };
+  std::vector<EnemySlashArc> enemySlashArcs;
+  // 技能释放冲击波环：施法边沿在施法者脚下生成，扩张并淡出。
+  struct ShockwaveRing {
+    float x = 0.0f;
+    float z = 0.0f;
+    float seconds = 0.0f;
+    float maxRadius = 0.0f;
+    glm::vec3 color{1.0f};
+  };
+  std::vector<ShockwaveRing> shockwaveRings;
+
   // 玩家当前血量比例（0..1）：低于阈值时渲染层绘制边缘脉冲警示。
   float playerHpRatio = 1.0f;
   // 玩家处于无敌帧（闪避中）：渲染层半透明化给出清晰的免伤反馈。

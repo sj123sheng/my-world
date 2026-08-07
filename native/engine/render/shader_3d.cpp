@@ -7,6 +7,8 @@
 
 #include "native/engine/render/shader_3d.h"
 
+#include <algorithm>
+
 #ifdef OHOS_PLATFORM
 #include <GLES3/gl3.h>
 #include <hilog/log.h>
@@ -31,6 +33,7 @@ namespace {
     "layout(location = 2) in vec2 aUV;\n"
     "layout(location = 3) in uvec4 aJoints;\n"
     "layout(location = 4) in vec4 aWeights;\n"
+    "uniform float uOutlineWidth;\n"
     "out vec3 vNormal;\n"
     "out vec2 vUV;\n"
     "out vec3 vWorldPos;\n"
@@ -41,6 +44,11 @@ namespace {
     "              uJoints[aJoints.w] * aWeights.w;\n"
     "  vec4 localPosition = uSkinned ? skin * vec4(aPosition, 1.0) : vec4(aPosition, 1.0);\n"
     "  vec3 localNormal = uSkinned ? mat3(skin) * aNormal : aNormal;\n"
+    // 反向壳描边：沿（蒙皮后）法线外推背面顶点，宽度为模型局部空间，
+    // 调用方按 世界宽度 / 模型缩放 换算；uOutlineWidth=0 时与升级前等价。
+    "  if (uOutlineWidth > 0.0) {\n"
+    "    localPosition.xyz += normalize(localNormal) * uOutlineWidth;\n"
+    "  }\n"
     "  gl_Position = uMVP * localPosition;\n"
     "  vNormal = mat3(uModel) * localNormal;\n"
     "  vWorldPos = (uModel * localPosition).xyz;\n"
@@ -71,6 +79,12 @@ namespace {
     "uniform float uShininess;\n"
     "uniform vec3 uFogColor;\n"
     "uniform float uFogDensity;\n"
+    "uniform int uOutlinePass;\n"
+    "uniform vec3 uOutlineColor;\n"
+    "uniform int uToon;\n"
+    "uniform vec3 uShadowColor;\n"
+    "uniform float uToonEdge;\n"
+    "uniform float uToonSoftness;\n"
     "uniform int uSurfaceMode;\n"
     "uniform vec3 uColorSand;\n"
     "uniform vec3 uColorGrass;\n"
@@ -89,6 +103,11 @@ namespace {
     "  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);\n"
     "}\n"
     "void main() {\n"
+    // 描边 pass：输出纯色轮廓线，不参与光照/雾计算。
+    "  if (uOutlinePass == 1) {\n"
+    "    fragColor = vec4(uOutlineColor, uAlpha);\n"
+    "    return;\n"
+    "  }\n"
     "  vec3 N = normalize(vNormal);\n"
     "  vec3 V = normalize(uCameraPos - vWorldPos);\n"
     "  if (uSurfaceMode == 3) {\n"
@@ -125,7 +144,18 @@ namespace {
     "}\n"
     "  vec3 L = normalize(uLightDir);\n"
     "  float diff = max(dot(N, L), 0.0);\n"
-    "  vec3 lit = baseColor.rgb * (uAmbient + uLightColor * diff);\n"
+    "  vec3 lit;\n"
+    "  if (uToon == 1) {\n"
+    // 卡通着色：漫反射量化为明暗两段，暗部乘以角色专属阴影色，
+    // 过渡宽度 uToonSoftness 控制阴影边缘软硬；亮部保持固有色全光照。
+    "    float band = smoothstep(uToonEdge - uToonSoftness,\n"
+    "                            uToonEdge + uToonSoftness, dot(N, L));\n"
+    "    vec3 bright = baseColor.rgb * (uAmbient + uLightColor);\n"
+    "    vec3 shadowed = baseColor.rgb * uShadowColor;\n"
+    "    lit = mix(shadowed, bright, band);\n"
+    "  } else {\n"
+    "    lit = baseColor.rgb * (uAmbient + uLightColor * diff);\n"
+    "  }\n"
     "  vec3 H = normalize(L + V);\n"
     "  float spec = pow(max(dot(N, H), 0.0), max(uShininess, 1.0)) *\n"
     "               uSpecularStrength;\n"
@@ -228,6 +258,13 @@ bool Shader3D::init() {
   locShininess_ = glGetUniformLocation(program_, "uShininess");
   locFogColor_ = glGetUniformLocation(program_, "uFogColor");
   locFogDensity_ = glGetUniformLocation(program_, "uFogDensity");
+  locOutlinePass_ = glGetUniformLocation(program_, "uOutlinePass");
+  locOutlineColor_ = glGetUniformLocation(program_, "uOutlineColor");
+  locOutlineWidth_ = glGetUniformLocation(program_, "uOutlineWidth");
+  locToon_ = glGetUniformLocation(program_, "uToon");
+  locShadowColor_ = glGetUniformLocation(program_, "uShadowColor");
+  locToonEdge_ = glGetUniformLocation(program_, "uToonEdge");
+  locToonSoftness_ = glGetUniformLocation(program_, "uToonSoftness");
   locSurfaceMode_ = glGetUniformLocation(program_, "uSurfaceMode");
   locColorSand_ = glGetUniformLocation(program_, "uColorSand");
   locColorGrass_ = glGetUniformLocation(program_, "uColorGrass");
@@ -246,6 +283,14 @@ bool Shader3D::init() {
   glUniform1f(locSpecularStrength_, 0.0f);
   glUniform1f(locShininess_, 32.0f);
   glUniform1f(locFogDensity_, 0.0f);
+  // 卡通着色与描边默认关闭，未显式配置时与升级前输出完全一致。
+  glUniform1i(locOutlinePass_, 0);
+  glUniform3f(locOutlineColor_, 0.0f, 0.0f, 0.0f);
+  glUniform1f(locOutlineWidth_, 0.0f);
+  glUniform1i(locToon_, 0);
+  glUniform3f(locShadowColor_, 0.7f, 0.7f, 0.78f);
+  glUniform1f(locToonEdge_, 0.1f);
+  glUniform1f(locToonSoftness_, 0.08f);
   // 表面模式默认普通；地形/水面/天空配色预置默认值，未显式配置时
   // 也有合理观感。
   glUniform1i(locSurfaceMode_, 0);
@@ -293,6 +338,13 @@ void Shader3D::destroy() {
     locShininess_ = -1;
     locFogColor_ = -1;
     locFogDensity_ = -1;
+    locOutlinePass_ = -1;
+    locOutlineColor_ = -1;
+    locOutlineWidth_ = -1;
+    locToon_ = -1;
+    locShadowColor_ = -1;
+    locToonEdge_ = -1;
+    locToonSoftness_ = -1;
     locSurfaceMode_ = -1;
     locColorSand_ = -1;
     locColorGrass_ = -1;
@@ -307,12 +359,16 @@ void Shader3D::destroy() {
 #endif
   skinPaletteValid_ = false;
   skinningEnabled_ = false;
+  toonEnabled_ = false;
+  outlineWidth_ = 0.0f;
 }
 
 void Shader3D::abandonGpuResources() {
   program_ = 0;
   skinPaletteValid_ = false;
   skinningEnabled_ = false;
+  toonEnabled_ = false;
+  outlineWidth_ = 0.0f;
 #ifdef OHOS_PLATFORM
   locMVP_ = -1;
   locModel_ = -1;
@@ -333,6 +389,13 @@ void Shader3D::abandonGpuResources() {
   locShininess_ = -1;
   locFogColor_ = -1;
   locFogDensity_ = -1;
+  locOutlinePass_ = -1;
+  locOutlineColor_ = -1;
+  locOutlineWidth_ = -1;
+  locToon_ = -1;
+  locShadowColor_ = -1;
+  locToonEdge_ = -1;
+  locToonSoftness_ = -1;
   locSurfaceMode_ = -1;
   locColorSand_ = -1;
   locColorGrass_ = -1;
@@ -463,6 +526,48 @@ void Shader3D::setSpecular(float strength, float shininess) const {
 #else
   (void)strength;
   (void)shininess;
+#endif
+}
+
+void Shader3D::setToonShading(bool enabled, const glm::vec3& shadowColor,
+                              float edge, float softness) {
+  toonEnabled_ = enabled;
+#ifdef OHOS_PLATFORM
+  if (locToon_ != -1) {
+    glUniform1i(locToon_, enabled ? 1 : 0);
+  }
+  if (enabled) {
+    if (locShadowColor_ != -1) {
+      glUniform3fv(locShadowColor_, 1, &shadowColor[0]);
+    }
+    if (locToonEdge_ != -1) {
+      glUniform1f(locToonEdge_, edge);
+    }
+    if (locToonSoftness_ != -1) {
+      glUniform1f(locToonSoftness_, std::max(softness, 0.001f));
+    }
+  }
+#else
+  (void)shadowColor;
+  (void)edge;
+  (void)softness;
+#endif
+}
+
+void Shader3D::setOutlinePass(float width, const glm::vec3& color) {
+  outlineWidth_ = std::max(width, 0.0f);
+#ifdef OHOS_PLATFORM
+  if (locOutlineWidth_ != -1) {
+    glUniform1f(locOutlineWidth_, outlineWidth_);
+  }
+  if (locOutlinePass_ != -1) {
+    glUniform1i(locOutlinePass_, outlineWidth_ > 0.0f ? 1 : 0);
+  }
+  if (outlineWidth_ > 0.0f && locOutlineColor_ != -1) {
+    glUniform3fv(locOutlineColor_, 1, &color[0]);
+  }
+#else
+  (void)color;
 #endif
 }
 
