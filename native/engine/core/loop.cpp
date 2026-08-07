@@ -410,6 +410,28 @@ void spawnHitSparks(Surface& surface, Vec2 position, int kind, int count = 6,
 // 受击方向性粒子：沿攻击方向（击退方向）喷射的短命火花，
 // LCG 决定横向偏转与速度抖动（同输入可重现）；kind<=2 自动受
 // 火花重力影响形成抛物线拖尾，强化打击方向感。
+// 前摇聚能粒子：从实体周身环带向中心汇聚（寿命结束恰好抵达
+// 中心，ConvergingSparkMotion 同源），原神式蓄力前兆。
+void spawnConvergingSparks(Surface& surface, Vec2 center, int kind, int count,
+                           float radius, float sizeScale) {
+  if (surface.hitSparks3d.size() > 120) return;
+  constexpr float kLife = 0.24f;
+  constexpr float kTau = 6.2831853f;
+  for (int i = 0; i < count; ++i) {
+    surface.hitSparkSeed = surface.hitSparkSeed * 1664525u + 1013904223u;
+    const float r0 =
+        static_cast<float>((surface.hitSparkSeed >> 8) & 0xFFFFu) / 65535.0f;
+    surface.hitSparkSeed = surface.hitSparkSeed * 1664525u + 1013904223u;
+    const float r1 =
+        static_cast<float>((surface.hitSparkSeed >> 8) & 0xFFFFu) / 65535.0f;
+    float ox = 0.0f, oz = 0.0f, vx = 0.0f, vz = 0.0f;
+    ConvergingSparkMotion(r0 * kTau, radius * (0.75f + 0.5f * r1), kLife, ox,
+                          oz, vx, vz);
+    surface.hitSparks3d.push_back({center.x + ox, 0.03f, center.y + oz, vx,
+                                   0.008f, vz, kLife, kLife, kind, sizeScale});
+  }
+}
+
 void spawnDirectionalSparks(Surface& surface, Vec2 position, Vec2 direction,
                             int kind, int count, float speedScale,
                             float sizeScale) {
@@ -3065,6 +3087,37 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     if (surface.trainingTarget.alive) {
       emitAuraParticles({surface.trainingTarget.x, surface.trainingTarget.y},
                         surface.trainingTargetAuraMask);
+    }
+  }
+  // 前摇聚能粒子：敌人/首领吟唱期间持续向自身汇聚粒子（原神蓄力
+  // 语言），给玩家连续的"正在蓄力"前兆，与预警环/蓄力火花同色；
+  // 首领按阶段火花 kind，敌人按原型元素 kind。
+  surface.windupConvergeSeconds += dtSeconds;
+  if (surface.windupConvergeSeconds >= WindupConvergeInterval()) {
+    surface.windupConvergeSeconds -= WindupConvergeInterval();
+    const float convergeRatio =
+        VfxSizeRatio(surface.enemyAssetProfile, ModelKind::Enemy);
+    for (const EncounterEnemySnapshot& enemy : encounter.snapshot().enemies) {
+      if (!enemy.alive || !enemy.windingUp) continue;
+      spawnConvergingSparks(surface, enemy.position,
+                            EnemySkillSparkKindFor(
+                                static_cast<int>(enemy.archetype)),
+                            2, 0.10f * convergeRatio, convergeRatio);
+    }
+    for (const WildEnemySnapshot& enemy : wildSpawn.snapshot()) {
+      if (!enemy.alive || !enemy.windingUp) continue;
+      spawnConvergingSparks(surface, enemy.position,
+                            EnemySkillSparkKindFor(enemy.archetype), 2,
+                            0.10f * convergeRatio, convergeRatio);
+    }
+    if (surface.boss3d.active && !surface.boss3d.defeated &&
+        surface.boss3d.windingUp) {
+      const float bossRatio =
+          VfxSizeRatio(surface.bossAssetProfile, ModelKind::Boss);
+      spawnConvergingSparks(surface,
+                            {surface.boss3d.x, surface.boss3d.y},
+                            BossPhaseVfxFor(surface.boss3d.phase).sparkKind, 3,
+                            0.16f * bossRatio, bossRatio);
     }
   }
   // 命中火花：速度积分 + 重力回落，寿命到期或落地后清理；

@@ -540,3 +540,22 @@ struct PerfectDodgeVfx {
 inline PerfectDodgeVfx PerfectDodgeVfxFor() {
   return {DodgeDustColor(), 3};
 }
+
+// 前摇聚能粒子发射间隔（秒）：敌人/首领吟唱期间按此节奏持续
+// 向自身汇聚粒子，形成连续的蓄力前兆。
+inline float WindupConvergeInterval() { return 0.06f; }
+
+// 聚能粒子运动（原神蓄力语言）：从半径圆环上的点出发向圆心
+// 汇聚，寿命结束恰好抵达圆心，形成"能量向体内聚集"的前兆。
+// 输出相对圆心的出生偏移与速度。
+inline void ConvergingSparkMotion(float angleRadians, float radius, float life,
+                                  float& offsetX, float& offsetZ, float& vx,
+                                  float& vz) {
+  const float dx = std::cos(angleRadians);
+  const float dz = std::sin(angleRadians);
+  offsetX = dx * radius;
+  offsetZ = dz * radius;
+  const float speed = life > 0.0f ? radius / life : 0.0f;
+  vx = -dx * speed;
+  vz = -dz * speed;
+}

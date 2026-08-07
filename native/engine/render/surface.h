@@ -398,6 +398,9 @@ struct Surface {
   // 附着粒子发射累加器（秒）：超过 AuraParticleInterval() 时为
   // 每个附着源质发射一颗上升粒子并回绕。
   float auraEmitSeconds = 0.0f;
+  // 前摇聚能粒子发射累加器（秒）：超过 WindupConvergeInterval() 时
+  // 为每个吟唱中的敌人/首领发射一轮向内汇聚粒子并回绕。
+  float windupConvergeSeconds = 0.0f;
   // 共鸣 FOV 冲击计时（秒）：Resonance 事件置 0，渲染层按
   // FovPunchOffsetAt 收窄相机视场角；<0 表示无激活。
   float resonanceFovSeconds = -1.0f;

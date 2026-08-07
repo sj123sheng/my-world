@@ -580,6 +580,26 @@ void testPerfectDodgeVfxSharesDodgeLanguage() {
   assert(dodge.color != AuraColorFor(2));
 }
 
+void testConvergingSparkMotionArrivesAtCenter() {
+  // 出生点在半径圆环上，速度指向圆心，寿命结束恰好抵达圆心。
+  constexpr float kRadius = 0.1f;
+  constexpr float kLife = 0.24f;
+  for (int i = 0; i < 8; ++i) {
+    const float angle = static_cast<float>(i) * 0.785398f;
+    float ox = 0.0f, oz = 0.0f, vx = 0.0f, vz = 0.0f;
+    ConvergingSparkMotion(angle, kRadius, kLife, ox, oz, vx, vz);
+    assert(std::fabs(std::sqrt(ox * ox + oz * oz) - kRadius) < 1e-4f);
+    // 速度方向与出生偏移相反（指向圆心）。
+    assert(ox * vx + oz * vz < 0.0f);
+    // 寿命结束抵达圆心：offset + v * life ≈ 0。
+    assert(std::fabs(ox + vx * kLife) < 1e-4f);
+    assert(std::fabs(oz + vz * kLife) < 1e-4f);
+  }
+  // 发射间隔为正且与附着粒子间隔同量级（连续前兆不刷屏）。
+  assert(WindupConvergeInterval() > 0.02f);
+  assert(WindupConvergeInterval() < 0.2f);
+}
+
 }  // namespace
 
 int main() {
@@ -614,5 +634,6 @@ int main() {
   testFovPunchTierAmplitudes();
   testSkillCastAccentPerSource();
   testPerfectDodgeVfxSharesDodgeLanguage();
+  testConvergingSparkMotionArrivesAtCenter();
   return 0;
 }
