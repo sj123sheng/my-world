@@ -385,6 +385,9 @@ struct Surface {
   // 附着粒子发射累加器（秒）：超过 AuraParticleInterval() 时为
   // 每个附着源质发射一颗上升粒子并回绕。
   float auraEmitSeconds = 0.0f;
+  // 共鸣 FOV 冲击计时（秒）：Resonance 事件置 0，渲染层按
+  // FovPunchOffsetAt 收窄相机视场角；<0 表示无激活。
+  float resonanceFovSeconds = -1.0f;
   // 训练假人的元素附着掩码（bit0=辉印 bit1=脉流 bit2=蚀质）：
   // 训练模式下取自战斗快照附着位，其余模式恒 0。
   int trainingTargetAuraMask = 0;

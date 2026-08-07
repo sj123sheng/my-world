@@ -320,6 +320,30 @@ void testWeaponTrailVelocityTangential() {
   }
 }
 
+void testFovPunchDivesThenRecovers() {
+  // 窗口外偏移为 0。
+  assert(FovPunchOffsetAt(-0.01f, -7.0f) == 0.0f);
+  assert(FovPunchOffsetAt(FovPunchDuration(), -7.0f) == 0.0f);
+  assert(FovPunchOffsetAt(FovPunchDuration() + 0.1f, -7.0f) == 0.0f);
+  // 起点为 0，前 20% 下潜到全量。
+  assert(nearlyEqual(FovPunchOffsetAt(0.0f, -7.0f), 0.0f));
+  const float full = FovPunchOffsetAt(FovPunchDuration() * 0.2f, -7.0f);
+  assert(nearlyEqual(full, -7.0f));
+  // 恢复段单调回升（绝对值单调减小），终点趋零。
+  float previous = std::abs(full);
+  for (int i = 1; i <= 8; ++i) {
+    const float seconds = FovPunchDuration() *
+                          (0.2f + 0.8f * static_cast<float>(i) / 9.0f);
+    const float magnitude = std::abs(FovPunchOffsetAt(seconds, -7.0f));
+    assert(magnitude < previous);
+    previous = magnitude;
+  }
+  assert(std::abs(FovPunchOffsetAt(FovPunchDuration() - 0.001f, -7.0f)) <
+         0.15f);
+  // 符号跟随传入的最大偏移（收窄为负）。
+  assert(FovPunchOffsetAt(FovPunchDuration() * 0.2f, -7.0f) < 0.0f);
+}
+
 }  // namespace
 
 int main() {
@@ -341,5 +365,6 @@ int main() {
   testLightPillarRisesHoldsThenFades();
   testWeaponTrailFollowsSlashArcWindow();
   testWeaponTrailVelocityTangential();
+  testFovPunchDivesThenRecovers();
   return 0;
 }

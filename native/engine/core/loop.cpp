@@ -313,6 +313,13 @@ void update3DCamera(Surface& surface, const ThirdPersonCamera& camera,
                          surface.player.y + surface.vfxCameraShakeY};
   surface.camera3d.follow(target, camera.yaw(), camera.pitch(),
                           camera.distance());
+  // 共鸣 FOV 冲击：反应触发瞬间收窄视场角（zoom-in punch）再缓出
+  // 恢复；无激活时恢复默认 45°。
+  const float fovPunch =
+      surface.resonanceFovSeconds >= 0.0f
+          ? FovPunchOffsetAt(surface.resonanceFovSeconds, -7.0f)
+          : 0.0f;
+  surface.camera3d.fov = 45.0f + fovPunch;
 }
 
 // 按实体 ID 解析世界坐标，供伤害飘字定位。wild 为野外敌人兜底。
@@ -1647,6 +1654,8 @@ void Loop::resetInput() {
   surface.enemySlashArcs.clear();
   surface.shockwaveRings.clear();
   surface.impactDecals.clear();
+  surface.lightPillars.clear();
+  surface.resonanceFovSeconds = -1.0f;
   hitStopRemainingMs = 0;
   surface.player3dAnimation.action = RenderAnimation::Idle;
   surface.player3dAnimation.hit = false;
@@ -2476,6 +2485,10 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     // 冲击波环 + 贴花，颜色/火花 kind 按反应类型区分（原神式
     // 元素反应反馈）；反应类型取自战斗快照（同帧单次反应准确）。
     if (event.type == GameplayEventType::Resonance) {
+      // 元素反应镜头/卡肉：FOV 收窄冲击 + 60ms 顿帧，把反应
+      // 从普通命中里拎出来（原神元素爆发仪式感）。
+      surface.resonanceFovSeconds = 0.0f;
+      hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + 60, 96);
       const std::optional<Vec2> reactionPos = resolveEntityPosition(
           surface, encounter.snapshot(), event.target, &wildSpawn);
       if (reactionPos.has_value()) {
@@ -2832,6 +2845,13 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                        return pillar.seconds >= LightPillarDuration();
                      }),
       surface.lightPillars.end());
+  // 共鸣 FOV 冲击计时推进：到期归位（渲染层据此恢复默认视场角）。
+  if (surface.resonanceFovSeconds >= 0.0f) {
+    surface.resonanceFovSeconds += dtSeconds;
+    if (surface.resonanceFovSeconds >= FovPunchDuration()) {
+      surface.resonanceFovSeconds = -1.0f;
+    }
+  }
   const CombatSnapshot& combatSnapshot = combat.snapshot();
   surface.player3dAnimation.alive = combatSnapshot.playerHp > 0;
   // 玩家血量比例：供低血量边缘脉冲警示推导强度。

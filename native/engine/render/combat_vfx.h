@@ -282,6 +282,22 @@ inline LightPillarPose LightPillarPoseAt(float seconds) {
   return pose;
 }
 
+// 共鸣 FOV 冲击：元素反应触发瞬间相机短暂收窄视场角（zoom-in
+// punch）再缓出恢复，强化爆发仪式感（原神元素爆发镜头语言）。
+inline float FovPunchDuration() { return 0.45f; }
+
+// 按秒数返回 FOV 偏移（度）：maxOffsetDegrees 传负值表示收窄。
+// 前 20% 快速下潜到全量，后 80% 缓出二次方恢复；窗口外返回 0。
+inline float FovPunchOffsetAt(float seconds, float maxOffsetDegrees) {
+  const float duration = FovPunchDuration();
+  if (seconds < 0.0f || seconds >= duration) return 0.0f;
+  const float t = seconds / duration;
+  const float dive = std::min(t / 0.2f, 1.0f);
+  const float recover = t <= 0.2f ? 0.0f : (t - 0.2f) / 0.8f;
+  const float ease = 1.0f - (1.0f - recover) * (1.0f - recover);
+  return maxOffsetDegrees * dive * (1.0f - ease);
+}
+
 // 武器挥舞粒子拖尾：普攻窗口内发射点沿刀光扫掠角移动（与
 // SlashArcPoseAt 同源），形成原神式武器拖尾。发射位置 =
 // 角色位置 + 极坐标（朝向+angleRadians, radiusFactor×模型缩放）。
