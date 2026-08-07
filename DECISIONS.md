@@ -1,5 +1,16 @@
 # 技术决策
 
+## 2026-08-08：武器附魔发光（刃面源质染色）
+
+- 原神元素附魔语言补全最后一环：此前附魔只染刀光与拖尾，武器
+  本体保持冷银。现附魔期间佩剑刃面基色向源质色混合（45% 刃色 +
+  55% 元素色）并整体提亮 15%，武器本身泛元素光；无附魔原样刃色，
+  受击闪白仍优先染白。
+- 染色为纯函数 WeaponInfusionTintFor（lastSource<0 回退原刃色），
+  与 SlashArcColorFor/WeaponTrailKindFor 同一 playerSlashSource
+  状态驱动，test 锁定；drawActor 增加 infusionSource 参数，
+  主角绘制传入 surface.playerSlashSource。
+
 ## 2026-08-08：NPC 市民装备变体（建模剪影差异化）
 
 - NPC 模型槽位注入的是 player.glb 字节（GamePage 已实现 npc.glb

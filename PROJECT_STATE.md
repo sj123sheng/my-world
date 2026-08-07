@@ -88,6 +88,9 @@
 - NPC 市民装备变体（建模剪影差异化）：NPC 复用玩家 KayKit 模型，
   披风基础着装 + 按 id 分配披风市民/头盔民兵/披风+盾卫兵三种变体，
   NpcAttachmentVariantFor 纯函数锁定，与全副武装主角区分。
+- 武器附魔发光（原神元素附魔语言补全）：附魔期间佩剑刃面向源质色
+  混合并提亮（辉印金白/脉流青蓝/蚀质暗紫），WeaponInfusionTintFor
+  纯函数锁定，与刀光/拖尾染色同 playerSlashSource 状态驱动。
 
 ## 验证状态
 

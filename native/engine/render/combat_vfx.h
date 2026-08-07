@@ -381,6 +381,17 @@ inline int WeaponTrailKindFor(int lastSource) {
   }
 }
 
+// 武器附魔刃色（原神元素附魔语言）：附魔期间刃面基色向源质色
+// 混合并整体提亮，武器本身泛元素光；无附魔（lastSource<0）原样
+// 返回刃色。与刀光染色 SlashArcColorFor 同一附魔状态驱动。
+inline glm::vec3 WeaponInfusionTintFor(int lastSource,
+                                       const glm::vec3& bladeTint) {
+  if (lastSource < 0) return bladeTint;
+  const glm::vec3 element = AuraColorFor(lastSource);
+  // 45% 刃色 + 55% 元素色，再整体提亮 15% 形成"发光"观感。
+  return (bladeTint * 0.45f + element * 0.55f) * 1.15f;
+}
+
 // 敌方技能元素（原神式敌方元素可读性）：每类敌人原型的攻击携带
 // 专属元素色，玩家凭颜色即可读出敌人系别与威胁类型。
 // 原型数值：0=RiftClaw 1=Priest 2=Guard 3=Bruiser 4=Caster 5=Elite。

@@ -699,7 +699,8 @@ static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
                       bool targeted, float fadeAlpha, float appearance,
                       const char* actorName, const Mesh* weapon = nullptr,
                       int weaponJoint = -1,
-                      const std::vector<bool>* attachmentOverride = nullptr) {
+                      const std::vector<bool>* attachmentOverride = nullptr,
+                      int infusionSource = -1) {
   if (fadeAlpha <= 0.0f) return;  // 尸体淡出完毕：整体跳过绘制。
   // 逐角色轮廓光：玩家青绿/敌人紫/Boss 品红，受击窗口内增强，
   // 被软锁定时常亮抬升，出场进度驱动渐入；绘制结束后恢复中性轮廓光，
@@ -795,7 +796,12 @@ static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
         s.shader3d.setModel(weaponMatrix);
         s.shader3d.setSkinned(false);
         s.shader3d.setHasTexture(false);
-        applyEntityTint(s, hitFlashTint(kBladeTint, hitFlashSeconds));
+        // 元素附魔刃色：附魔期间武器本身泛源质光（原神元素附魔
+        // 语言），受击闪白仍优先染白。
+        applyEntityTint(
+            s, hitFlashTint(
+                   WeaponInfusionTintFor(infusionSource, kBladeTint),
+                   hitFlashSeconds));
         weapon->draw();
       }
       drawOutline();
@@ -2424,7 +2430,7 @@ static void draw3DPhase(Surface& s) {
                                s.playerHitAnimationSeconds),
               s.playerAssetProfile, s.playerHitAnimationSeconds,
               false, 1.0f, 1.0f, "player", &s.swordMesh,
-              s.playerWeaponJoint);
+              s.playerWeaponJoint, nullptr, s.playerSlashSource);
     if (s.playerInvulnerable) {
       s.shader3d.setAlpha(1.0f);
       glDisable(GL_BLEND);

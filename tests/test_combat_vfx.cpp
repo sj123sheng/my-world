@@ -463,6 +463,27 @@ void testEnemySkillElementPerArchetype() {
   assert(EnemySkillSparkKindFor(99) == 1);
 }
 
+void testWeaponInfusionTintFollowsSource() {
+  const glm::vec3 blade{0.72f, 0.78f, 0.88f};
+  // 无附魔：原样返回刃色。
+  assert(WeaponInfusionTintFor(-1, blade) == blade);
+  // 附魔：向元素色混合并提亮，三系结果互不相同。
+  const glm::vec3 radiance = WeaponInfusionTintFor(0, blade);
+  const glm::vec3 current = WeaponInfusionTintFor(1, blade);
+  const glm::vec3 corruption = WeaponInfusionTintFor(2, blade);
+  assert(radiance != blade);
+  assert(radiance != current);
+  assert(current != corruption);
+  assert(radiance != corruption);
+  // 元素语义：辉印偏金（红绿高）、脉流偏蓝（蓝主导）、蚀质偏紫（红主导）。
+  assert(radiance.r > radiance.b);
+  assert(current.b > current.r);
+  assert(corruption.r > corruption.g);
+  // 提亮：附魔后各通道不低于原刃色对应通道的主导分量（整体更亮）。
+  const float bladeMax = std::max(blade.r, std::max(blade.g, blade.b));
+  assert(std::max(current.r, std::max(current.g, current.b)) > bladeMax);
+}
+
 }  // namespace
 
 int main() {
@@ -490,5 +511,6 @@ int main() {
   testWeaponTrailKindFollowsInfusion();
   testBossPhaseVfxDistinctAndEscalating();
   testEnemySkillElementPerArchetype();
+  testWeaponInfusionTintFollowsSource();
   return 0;
 }
