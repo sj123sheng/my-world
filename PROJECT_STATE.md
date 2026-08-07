@@ -239,6 +239,12 @@
   （StaggerVariantFor 锁定：硬直窗口 variant 强制奇数），后仰切到
   更深档（峰值约 8°、0.6s 窗口，HitRecoilTiltFor 同源曲线）；
   enemyStaggerSeconds 逐帧衰减、遭遇重置清空。
+- 首领终段狂暴视觉：阶段 3 首领体表暗紫呼吸轮廓光
+  （BossBerserkRimFor 纯函数锁定，强度 0.45~1.05 与预警环同 0.8s
+  节奏，drawActor rimOverride 叠层保留受击/锁定/出场分档），脚下
+  常驻光环透明度提升一档（BossBerserkAuraBoostFor），周身蚀质粒子
+  持续上涌（BossBerserkEmitInterval 0.12s，AuraParticleVelocity
+  同源）；其余阶段表现与升级前完全一致，遭遇重置清空发射时钟。
 
 ## 验证状态
 

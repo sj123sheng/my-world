@@ -734,6 +734,37 @@ void testGlideWindVelocityOpposesMovement() {
   assert(GlideWindInterval() > 0.0f);
 }
 
+void testBossBerserkRimOnlyInFinalPhase() {
+  // 非终段（1/2/未知）不产生狂暴轮廓光。
+  assert(BossBerserkRimFor(1, 0.5f).strength == 0.0f);
+  assert(BossBerserkRimFor(2, 0.9f).strength == 0.0f);
+  assert(BossBerserkRimFor(0, 0.5f).strength == 0.0f);
+  // 终段颜色与 BossPhaseVfxFor(3) 蚀质色同源。
+  const BossBerserkRim rim = BossBerserkRimFor(3, 0.5f);
+  assert(rim.color == BossPhaseVfxFor(3).color);
+  // 强度随脉冲在 [0.45, 1.05] 呼吸且单调。
+  const float low = BossBerserkRimFor(3, 0.0f).strength;
+  const float mid = BossBerserkRimFor(3, 0.5f).strength;
+  const float high = BossBerserkRimFor(3, 1.0f).strength;
+  assert(nearlyEqual(low, 0.45f));
+  assert(nearlyEqual(high, 1.05f));
+  assert(low < mid && mid < high);
+  // 越界脉冲自动钳制。
+  assert(nearlyEqual(BossBerserkRimFor(3, -2.0f).strength, 0.45f));
+  assert(nearlyEqual(BossBerserkRimFor(3, 5.0f).strength, 1.05f));
+}
+
+void testBossBerserkAuraBoostFinalPhaseOnly() {
+  assert(nearlyEqual(BossBerserkAuraBoostFor(1), 1.0f));
+  assert(nearlyEqual(BossBerserkAuraBoostFor(2), 1.0f));
+  assert(nearlyEqual(BossBerserkAuraBoostFor(0), 1.0f));
+  assert(BossBerserkAuraBoostFor(3) > 1.0f);
+}
+
+void testBossBerserkEmitIntervalPositive() {
+  assert(BossBerserkEmitInterval() > 0.0f);
+}
+
 }  // namespace
 
 int main() {
@@ -779,5 +810,8 @@ int main() {
   testDodgeGhostAlphaFadesWithAge();
   testInfusedHitSparkFollowsInfusion();
   testGlideWindVelocityOpposesMovement();
+  testBossBerserkRimOnlyInFinalPhase();
+  testBossBerserkAuraBoostFinalPhaseOnly();
+  testBossBerserkEmitIntervalPositive();
   return 0;
 }

@@ -1791,6 +1791,7 @@ void Loop::resetInput() {
   prevFinalForgeCasting = false;
   surface.ultimateDimSeconds = 0.0f;
   surface.infusionEmitSeconds = 0.0f;
+  surface.bossBerserkEmitSeconds = 0.0f;
   surface.playerGhostHistory.clear();
   surface.playerGhostFadeSeconds = 0.0f;
   surface.hitSparks3d.clear();
@@ -3237,6 +3238,37 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
            surface.player.y + std::sin(infusionAngle) * infusionSpawnRadius,
            ivx, ivy, ivz, infusionLife, infusionLife,
            AuraSparkKindFor(surface.playerSlashSource), infusionRatio});
+    }
+  }
+  // 首领终段狂暴粒子：阶段 3 期间周身持续蚀质粒子上涌（原神首领
+  // 终段语言），与附着/附魔上升粒子同源（AuraParticleVelocity），
+  // 狂暴态从轮廓光/光环延伸到周身空气。
+  surface.bossBerserkEmitSeconds += dtSeconds;
+  if (surface.bossBerserkEmitSeconds >= BossBerserkEmitInterval()) {
+    surface.bossBerserkEmitSeconds -= BossBerserkEmitInterval();
+    if (surface.boss3d.active && !surface.boss3d.defeated &&
+        surface.boss3d.phase == 3 && surface.hitSparks3d.size() <= 128) {
+      const float berserkRatio =
+          VfxSizeRatio(surface.bossAssetProfile, ModelKind::Boss);
+      for (int i = 0; i < 2; ++i) {
+        surface.hitSparkSeed = surface.hitSparkSeed * 1664525u + 1013904223u;
+        const float r0 =
+            static_cast<float>((surface.hitSparkSeed >> 8) & 0xFFFFu) /
+            65535.0f;
+        const float berserkAngle = r0 * 6.2831853f;
+        float bvx = 0.0f, bvy = 0.0f, bvz = 0.0f;
+        AuraParticleVelocity(berserkAngle, 0.003f * berserkRatio,
+                             (0.03f + 0.014f * r0) * berserkRatio, bvx, bvy,
+                             bvz);
+        const float berserkLife = 0.55f + 0.25f * r0;
+        const float berserkRadius = 0.028f * berserkRatio;
+        surface.hitSparks3d.push_back(
+            {surface.boss3d.x + std::cos(berserkAngle) * berserkRadius,
+             0.004f,
+             surface.boss3d.y + std::sin(berserkAngle) * berserkRadius, bvx,
+             bvy, bvz, berserkLife, berserkLife,
+             BossPhaseVfxFor(3).sparkKind, berserkRatio});
+      }
     }
   }
   // 前摇聚能粒子：敌人/首领吟唱期间持续向自身汇聚粒子（原神蓄力

@@ -628,7 +628,9 @@ static void drawAuraRings(Surface& s, const glm::mat4& vp) {
     s.shader3d.setLight(glm::vec3(0.0f, 1.0f, 0.0f),
                         bossPhaseVfx.color * 0.8f,
                         bossPhaseVfx.color * 0.6f);
-    s.shader3d.setAlpha(bossPose.alpha * 0.7f);
+    // 终段狂暴增强：阶段 3 光环透明度提升一档（BossBerserkAuraBoostFor）。
+    s.shader3d.setAlpha(bossPose.alpha * 0.7f *
+                        BossBerserkAuraBoostFor(s.boss3d.phase));
     s.shader3d.setMVP(vp * bossModel);
     s.shader3d.setModel(bossModel);
     s.targetRingMesh.draw();
@@ -798,13 +800,20 @@ static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
                       const char* actorName, const Mesh* weapon = nullptr,
                       int weaponJoint = -1,
                       const std::vector<bool>* attachmentOverride = nullptr,
-                      int infusionSource = -1) {
+                      int infusionSource = -1,
+                      const ActorRimLight* rimOverride = nullptr) {
   if (fadeAlpha <= 0.0f) return;  // 尸体淡出完毕：整体跳过绘制。
   // 逐角色轮廓光：玩家青绿/敌人紫/Boss 品红，受击窗口内增强，
   // 被软锁定时常亮抬升，出场进度驱动渐入；绘制结束后恢复中性轮廓光，
   // 避免泄漏到后续非角色绘制。
-  const ActorRimLight rim =
+  ActorRimLight rim =
       ActorRimLightFor(profile, hitFlashSeconds, targeted, appearance);
+  // 狂暴轮廓光叠层（首领终段）：保留受击/锁定/出场分档的同时混入
+  // 狂暴色并叠加呼吸强度，把体表轮廓光拉进阶段语言。
+  if (rimOverride != nullptr && rimOverride->strength > 0.0f) {
+    rim.color = rim.color * 0.45f + rimOverride->color * 0.55f;
+    rim.strength += rimOverride->strength;
+  }
   s.shader3d.setRim(rim.color, rim.strength);
   // 逐角色高光分档：主角盔甲强锐、敌人哑光、Boss 宽厚，
   // 绘制结束后与轮廓光一并恢复中性值。
@@ -2729,6 +2738,12 @@ static void draw3DPhase(Surface& s) {
                              s.boss3d.y + bossKnock.y};
     // 视锥剔除（Phase 5）：仅剔除首领本体绘制；出场演出几何
     // （cinematic 期间）保持无条件绘制，避免关键演出被误剔除。
+    // 终段狂暴轮廓光：阶段 3 体表暗紫呼吸轮廓光；击败后狂暴态
+    // 终结，回退无叠层。
+    const BossBerserkRim bossBerserk = BossBerserkRimFor(
+        s.boss3d.defeated ? 0 : s.boss3d.phase, windupPulse01(s));
+    const ActorRimLight bossBerserkRim{bossBerserk.color,
+                                       bossBerserk.strength};
     if (actorInFrustum(frustum, bossFeet, s.bossAssetProfile.scale)) {
       drawActor(s, s.bossModel, s.bossMesh, s.bossAnimationState,
                 s.boss3d.animation,
@@ -2749,7 +2764,8 @@ static void draw3DPhase(Surface& s) {
                s.bossAssetProfile, s.boss3d.hitAnimationSeconds,
                s.boss3d.targeted, 1.0f,
                BossEntranceReveal(s.boss3d.entranceSeconds), "boss",
-               &s.clubMesh, s.bossWeaponJoint);
+               &s.clubMesh, s.bossWeaponJoint, nullptr, -1,
+               &bossBerserkRim);
     }
     drawBossCinematicGeometry(s, vp);
   }

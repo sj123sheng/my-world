@@ -411,6 +411,9 @@ struct Surface {
   // 武器附魔粒子发射累加器（秒）：附魔期间按 AuraParticleInterval()
   // 节奏在主角周身发射元素上升粒子并回绕。
   float infusionEmitSeconds = 0.0f;
+  // 首领终段狂暴粒子发射累加器（秒）：阶段 3 按
+  // BossBerserkEmitInterval() 节奏在首领周身发射蚀质上升粒子并回绕。
+  float bossBerserkEmitSeconds = 0.0f;
   // 前摇聚能粒子发射累加器（秒）：超过 WindupConvergeInterval() 时
   // 为每个吟唱中的敌人/首领发射一轮向内汇聚粒子并回绕。
   float windupConvergeSeconds = 0.0f;

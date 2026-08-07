@@ -463,6 +463,30 @@ inline glm::vec3 BossWindupWarningColorFor(int phase) {
   return BossPhaseVfxFor(phase).color * 0.6f + kDanger * 0.4f;
 }
 
+// 首领终段狂暴轮廓光（原神首领终段体态语言）：仅阶段 3 生效，
+// 体表叠加暗紫轮廓光（与 BossPhaseVfxFor(3) 蚀质色同源），强度随
+// pulse01 在 0.45~1.05 呼吸（与预警环同 0.8s 节奏）；其余阶段返回
+// 强度 0（调用侧不叠加）。pulse01 越界自动钳制。
+struct BossBerserkRim {
+  glm::vec3 color{0.0f};
+  float strength = 0.0f;
+};
+
+inline BossBerserkRim BossBerserkRimFor(int phase, float pulse01) {
+  if (phase != 3) return {{0.0f, 0.0f, 0.0f}, 0.0f};
+  const float pulse = std::clamp(pulse01, 0.0f, 1.0f);
+  return {BossPhaseVfxFor(3).color, 0.45f + 0.6f * pulse};
+}
+
+// 首领终段狂暴光环增强：阶段 3 脚下常驻阶段光环的透明度倍率
+// 提升（蚀质翻涌更凶），其余阶段 1.0 不改变既有表现。
+inline float BossBerserkAuraBoostFor(int phase) {
+  return phase == 3 ? 1.4f : 1.0f;
+}
+
+// 首领终段狂暴粒子发射间隔（秒）。
+inline float BossBerserkEmitInterval() { return 0.12f; }
+
 // 锁定标记配色（元素提示）：默认青蓝（"已锁定"语义）；锁定元素
 // 目标时混入 45% 元素色，锁定同时提示目标系别，与全链路元素语言
 // 一致；element<0（物理/首领/假人）保持青蓝。
