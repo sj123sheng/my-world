@@ -547,6 +547,18 @@ void testCharacterSwitchVfxFollowsElement() {
   assert(CharacterSwitchVfxFor(99).sparkKind == 0);
 }
 
+void testFovPunchTierAmplitudes() {
+  // 轻重分层：元素技能轻档 < 切人中档 < 反应/终结/首领重档。
+  const float skill = FovPunchMaxOffsetFor(0);
+  const float switchChar = FovPunchMaxOffsetFor(1);
+  const float heavy = FovPunchMaxOffsetFor(2);
+  assert(skill < 0.0f && switchChar < 0.0f && heavy < 0.0f);
+  assert(skill > switchChar);
+  assert(switchChar > heavy);
+  // 未知档位回退重档，避免切人后残留轻振幅削弱反应冲击。
+  assert(FovPunchMaxOffsetFor(99) == heavy);
+}
+
 }  // namespace
 
 int main() {
@@ -578,5 +590,6 @@ int main() {
   testWindupWarningColorKeepsDangerAndElement();
   testTargetMarkerColorBlendsElement();
   testCharacterSwitchVfxFollowsElement();
+  testFovPunchTierAmplitudes();
   return 0;
 }

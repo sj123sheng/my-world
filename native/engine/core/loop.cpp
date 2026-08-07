@@ -314,10 +314,11 @@ void update3DCamera(Surface& surface, const ThirdPersonCamera& camera,
   surface.camera3d.follow(target, camera.yaw(), camera.pitch(),
                           camera.distance());
   // 共鸣 FOV 冲击：反应触发瞬间收窄视场角（zoom-in punch）再缓出
-  // 恢复；无激活时恢复默认 45°。
+  // 恢复；无激活时恢复默认 45°。振幅按触发档位写入（轻重分层）。
   const float fovPunch =
       surface.resonanceFovSeconds >= 0.0f
-          ? FovPunchOffsetAt(surface.resonanceFovSeconds, -7.0f)
+          ? FovPunchOffsetAt(surface.resonanceFovSeconds,
+                             surface.fovPunchMaxOffset)
           : 0.0f;
   surface.camera3d.fov = 45.0f + fovPunch;
 }
@@ -1475,6 +1476,7 @@ bool Loop::switchCharacter() {
     spawnShockwave(surface, playerPos, switchVfx.color, 0.10f * playerRatio);
     spawnLightPillar(surface, playerPos, switchVfx.color, 0.10f * playerRatio);
     spawnSkillRune(surface, playerPos, switchVfx.color, 0.07f * playerRatio);
+    surface.fovPunchMaxOffset = FovPunchMaxOffsetFor(1);
     surface.resonanceFovSeconds = 0.0f;
     hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + 48, 96);
     audioBridge.playUiSound(SoundEffect::AuraApplied);
@@ -1733,6 +1735,7 @@ void Loop::resetInput() {
   surface.impactDecals.clear();
   surface.lightPillars.clear();
   surface.resonanceFovSeconds = -1.0f;
+  surface.fovPunchMaxOffset = -7.0f;
   surface.skillRunes.clear();
   hitStopRemainingMs = 0;
   surface.player3dAnimation.action = RenderAnimation::Idle;
@@ -2317,6 +2320,11 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                      0.07f * playerRatio);
       spawnSkillRune(surface, playerPos, glm::vec3{1.0f, 0.96f, 0.72f},
                      0.05f * playerRatio);
+      // 元素技能镜头语言：轻档 FOV 冲击 + 40ms 卡肉（重于普攻、
+      // 轻于终结技/反应），把技能释放从普攻节奏里分层拎出。
+      surface.fovPunchMaxOffset = FovPunchMaxOffsetFor(0);
+      surface.resonanceFovSeconds = 0.0f;
+      hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + 40, 96);
       // 元素附魔：武器附着辉印，普攻刀光/拖尾随之染金白。
       surface.playerSlashSource = 0;
     }
@@ -2330,6 +2338,9 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                      0.07f * playerRatio);
       spawnSkillRune(surface, playerPos, glm::vec3{0.45f, 0.85f, 1.0f},
                      0.05f * playerRatio);
+      surface.fovPunchMaxOffset = FovPunchMaxOffsetFor(0);
+      surface.resonanceFovSeconds = 0.0f;
+      hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + 40, 96);
       // 元素附魔：武器附着脉流，普攻刀光/拖尾随之染青蓝。
       surface.playerSlashSource = 1;
     }
@@ -2343,6 +2354,9 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                      0.07f * playerRatio);
       spawnSkillRune(surface, playerPos, glm::vec3{0.72f, 0.45f, 0.95f},
                      0.05f * playerRatio);
+      surface.fovPunchMaxOffset = FovPunchMaxOffsetFor(0);
+      surface.resonanceFovSeconds = 0.0f;
+      hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + 40, 96);
       // 元素附魔：武器附着蚀质，普攻刀光/拖尾随之染暗紫。
       surface.playerSlashSource = 2;
     }
@@ -2370,6 +2384,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                        0.15f * playerRatio);
       // 终结技镜头语言：FOV 收窄冲击 + 64ms 卡肉（重于普攻命中、
       // 略轻于转阶段），把终结一击从普通技能里拎出来。
+      surface.fovPunchMaxOffset = FovPunchMaxOffsetFor(2);
       surface.resonanceFovSeconds = 0.0f;
       hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + 64, 96);
     }
@@ -2706,6 +2721,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
         spawnShockwave(surface, *poisePos, glm::vec3{1.0f, 0.92f, 0.62f},
                        0.12f * poiseRatio);
         hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + 72, 96);
+        surface.fovPunchMaxOffset = FovPunchMaxOffsetFor(2);
         surface.resonanceFovSeconds = 0.0f;
       }
       continue;
@@ -2716,6 +2732,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     if (event.type == GameplayEventType::Resonance) {
       // 元素反应镜头/卡肉：FOV 收窄冲击 + 60ms 顿帧，把反应
       // 从普通命中里拎出来（原神元素爆发仪式感）。
+      surface.fovPunchMaxOffset = FovPunchMaxOffsetFor(2);
       surface.resonanceFovSeconds = 0.0f;
       hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + 60, 96);
       const std::optional<Vec2> reactionPos = resolveEntityPosition(
@@ -3132,6 +3149,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   // 首领出场/转阶段镜头语言：更重的卡肉 + FOV 冲击（与元素反应同源）。
   if (spawnEnemyReleaseVfx(surface)) {
     hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + 80, 96);
+    surface.fovPunchMaxOffset = FovPunchMaxOffsetFor(2);
     surface.resonanceFovSeconds = 0.0f;
   }
 

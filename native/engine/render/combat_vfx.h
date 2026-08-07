@@ -492,3 +492,18 @@ inline CharacterSwitchVfx CharacterSwitchVfxFor(int characterId) {
       return {{1.0f, 0.78f, 0.32f}, 0};
   }
 }
+
+// FOV 冲击幅度分档（镜头重量层级，原神技能分量语言）：
+// 0=元素技能释放轻档（-4°）、1=角色切换出场中档（-5°）、
+// 2=反应/终结技/首领/破韧重档（-7°）；未知档位回退重档。
+// 层级把"高频小动作"与"低频大爆发"的镜头冲击区分开。
+inline float FovPunchMaxOffsetFor(int triggerTier) {
+  switch (triggerTier) {
+    case 0:
+      return -4.0f;
+    case 1:
+      return -5.0f;
+    default:
+      return -7.0f;
+  }
+}
