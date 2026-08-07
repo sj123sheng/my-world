@@ -2401,6 +2401,14 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       surface.playerSlashSeconds = 0.0f;
       surface.playerSlashCombo = comboSegmentNow;
       surface.playerSlashYaw = surface.player.angle;
+      // 终结段（第 4 击）地面反馈：挥击瞬间主角脚下爆出金橙冲击波 +
+      // 贴地贴花，与放大的终结刀光呼应，强化连段收尾仪式感。
+      if (comboSegmentNow >= 4) {
+        spawnShockwave(surface, playerPos, glm::vec3{1.0f, 0.78f, 0.38f},
+                       0.08f * playerRatio);
+        spawnImpactDecal(surface, playerPos, glm::vec3{1.0f, 0.78f, 0.38f},
+                         0.045f * playerRatio);
+      }
     }
     prevComboSegmentForVfx = comboSegmentNow;
     prevRadianceCdMs = skillSnapshot.radianceCooldownMs;
