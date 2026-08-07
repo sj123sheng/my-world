@@ -18,3 +18,5 @@ layout.json
 /.clang-tidy
 /.clangd
 /.qoder/
+/_audit_build/
+/audit_tmp/
