@@ -1384,6 +1384,45 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
                           &npcOfferQuestTitleVal);
   napi_set_named_property(env, result, "npcOfferQuestTitle",
                           npcOfferQuestTitleVal);
+  napi_value explorationPoiCountVal, explorationPuzzleCountVal,
+      explorationRewardCountVal, explorationGateCountVal,
+      explorationTraversalMaskVal, explorationCurrentPoiIdVal;
+  napi_create_int32(env, snapshot.explorationPoiCount, &explorationPoiCountVal);
+  napi_create_int32(env, snapshot.explorationPuzzleCount,
+                    &explorationPuzzleCountVal);
+  napi_create_int32(env, snapshot.explorationRewardCount,
+                    &explorationRewardCountVal);
+  napi_create_int32(env, snapshot.explorationGateCount,
+                    &explorationGateCountVal);
+  napi_create_int32(env, snapshot.explorationTraversalMask,
+                    &explorationTraversalMaskVal);
+  napi_create_int32(env, snapshot.explorationCurrentPoiId,
+                    &explorationCurrentPoiIdVal);
+  napi_set_named_property(env, result, "explorationPoiCount",
+                          explorationPoiCountVal);
+  napi_set_named_property(env, result, "explorationPuzzleCount",
+                          explorationPuzzleCountVal);
+  napi_set_named_property(env, result, "explorationRewardCount",
+                          explorationRewardCountVal);
+  napi_set_named_property(env, result, "explorationGateCount",
+                          explorationGateCountVal);
+  napi_set_named_property(env, result, "explorationTraversalMask",
+                          explorationTraversalMaskVal);
+  napi_set_named_property(env, result, "explorationCurrentPoiId",
+                          explorationCurrentPoiIdVal);
+  napi_value explorationCurrentTargetLabelVal,
+      explorationCurrentTargetDistrictVal;
+  napi_create_string_utf8(env, snapshot.explorationCurrentTargetLabel.c_str(),
+                          snapshot.explorationCurrentTargetLabel.size(),
+                          &explorationCurrentTargetLabelVal);
+  napi_create_string_utf8(env,
+                          snapshot.explorationCurrentTargetDistrict.c_str(),
+                          snapshot.explorationCurrentTargetDistrict.size(),
+                          &explorationCurrentTargetDistrictVal);
+  napi_set_named_property(env, result, "explorationCurrentTargetLabel",
+                          explorationCurrentTargetLabelVal);
+  napi_set_named_property(env, result, "explorationCurrentTargetDistrict",
+                          explorationCurrentTargetDistrictVal);
   return result;
 }
 

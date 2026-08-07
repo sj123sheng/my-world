@@ -1,4 +1,4 @@
-// 存档 V8 单测（Phase 5）：V8 往返 + V7 旧存档兼容默认值 +
+// 存档 V9 单测（垂直切片）：V9 往返 + V7 旧存档兼容默认值 +
 // QuestSystem::restoreByMask 恢复语义。
 #include "../native/engine/resource/save.h"
 #include "../native/gameplay/quest/quest_system.h"
@@ -27,6 +27,11 @@ int main() {
   in.artifactRecords = {7, 3, 4, 2, 1, 99};        // 6 的倍数
   in.openWorldQuestMask = 0b010;  // 支线 202 完成
   in.openWorldQuestActiveId = 203;
+  in.explorationPoiMask = 0b00101;
+  in.explorationPuzzleMask = 0b0110;
+  in.explorationRewardMask = 0b0100;
+  in.explorationGateMask = 0b0110;
+  in.explorationTraversalMask = 0b11111;
   assert(save.write(in, "/tmp/save_v8.dat"));
   SaveState out;
   assert(save.read(out, "/tmp/save_v8.dat"));
@@ -40,6 +45,11 @@ int main() {
   assert(out.artifactRecords.size() == 6 && out.artifactRecords[5] == 99);
   assert(out.openWorldQuestMask == 0b010);
   assert(out.openWorldQuestActiveId == 203);
+  assert(out.explorationPoiMask == 0b00101);
+  assert(out.explorationPuzzleMask == 0b0110);
+  assert(out.explorationRewardMask == 0b0100);
+  assert(out.explorationGateMask == 0b0110);
+  assert(out.explorationTraversalMask == 0b11111);
 
   // ---- V7 旧存档兼容：V8 新字段走默认值 ----
   {
@@ -60,10 +70,20 @@ int main() {
        << "\n";
   }
   SaveState legacy;
+  legacy.explorationPoiMask = 0x7;
+  legacy.explorationPuzzleMask = 0x7;
+  legacy.explorationRewardMask = 0x7;
+  legacy.explorationGateMask = 0x7;
+  legacy.explorationTraversalMask = 0x1F;
   assert(save.read(legacy, "/tmp/save_v7.dat"));
   assert(legacy.adventureRank == 5 && legacy.adventureExp == 800);
   assert(legacy.openWorldQuestMask == 0);
   assert(legacy.openWorldQuestActiveId == -1);
+  assert(legacy.explorationPoiMask == 0);
+  assert(legacy.explorationPuzzleMask == 0);
+  assert(legacy.explorationRewardMask == 0);
+  assert(legacy.explorationGateMask == 0);
+  assert(legacy.explorationTraversalMask == 0);
 
   // ---- restoreByMask：并行支线恢复语义 ----
   QuestSystem quests = QuestSystem::openWorldQuests();

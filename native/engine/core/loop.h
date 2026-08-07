@@ -28,6 +28,7 @@
 #include "../../gameplay/flow/demo_director.h"
 #include "../../gameplay/world/teleport_anchor.h"
 #include "../../gameplay/world/interactable.h"
+#include "../../gameplay/world/exploration_content.h"
 #include "../../gameplay/world/npc_agent.h"
 #include "../../gameplay/quest/quest_system.h"
 #include "../../gameplay/quest/side_quests.h"
@@ -89,7 +90,7 @@ struct Loop {
   TeleportAnchorSystem anchors = TeleportAnchorSystem::openWorldLayout();
   AnchorInteraction currentAnchorInteraction;
   // 内容系统（阶段二）：任务、可交互物与对话。
-  QuestSystem quests = QuestSystem::mainline();
+  QuestSystem quests = QuestSystem::verticalSliceMainline();
   // 开放世界支线（Phase 4）：独立于主线，支持对话发布与并行接取。
   QuestSystem openWorldQuests = QuestSystem::openWorldQuests();
   SideQuestSystem sideQuests = SideQuestSystem::defaults();
@@ -102,6 +103,7 @@ struct Loop {
   DungeonSession dungeon;
   StoryDirector storyDirector = StoryDirector::opening();
   InteractableRegistry interactables = InteractableRegistry::openWorldLayout();
+  ExplorationContent explorationContent = ExplorationContent::verticalSlice();
   InteractableTarget currentInteractable;
   DialogSession dialogSession;
   // NPC 轻量状态机（Phase 4）：巡逻/驻守/对话朝向，只输出位置与朝向。

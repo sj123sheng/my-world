@@ -78,7 +78,11 @@ struct GamePage {
     expSmallCount: 0, expMediumCount: 0, expLargeCount: 0,
     sprintActive: 0, dailyCompletedCount: 0, dailyQuestClaimed: 0,
     gachaPoolKind: 0,
-    npcOfferQuestId: -1, npcOfferQuestTitle: ''
+    npcOfferQuestId: -1, npcOfferQuestTitle: '',
+    explorationPoiCount: 0, explorationPuzzleCount: 0,
+    explorationRewardCount: 0, explorationGateCount: 0,
+    explorationTraversalMask: 0, explorationCurrentPoiId: -1,
+    explorationCurrentTargetLabel: '', explorationCurrentTargetDistrict: ''
   };
   @State tick: number = 0;
   @State hp: number = 100;
@@ -178,6 +182,14 @@ struct GamePage {
   @State dialogLineIndex: number = 0;
   @State dialogLineCount: number = 0;
   @State interactionKind: number = 0;
+  @State explorationPoiCount: number = 0;
+  @State explorationPuzzleCount: number = 0;
+  @State explorationRewardCount: number = 0;
+  @State explorationGateCount: number = 0;
+  @State explorationTraversalMask: number = 0;
+  @State explorationCurrentPoiId: number = -1;
+  @State explorationCurrentTargetLabel: string = '';
+  @State explorationCurrentTargetDistrict: string = '';
   // 养成与抽卡状态（阶段三）。
   @State fateCount: number = 0;
   @State goldCount: number = 0;
@@ -550,6 +562,12 @@ struct GamePage {
         adventureExp: this.adventureExp,
         adventureExpRequired: this.adventureExpRequired,
         worldLevel: this.worldLevel,
+        explorationPoiCount: this.explorationPoiCount,
+        explorationPuzzleCount: this.explorationPuzzleCount,
+        explorationRewardCount: this.explorationRewardCount,
+        explorationTraversalMask: this.explorationTraversalMask,
+        explorationCurrentTargetLabel: this.explorationCurrentTargetLabel,
+        explorationCurrentTargetDistrict: this.explorationCurrentTargetDistrict,
         onOpenGacha: () => { this.gachaOpen = true; },
         onOpenMap: () => { this.mapOpen = true; },
         onOpenInventory: () => { this.inventoryOpen = true; },
@@ -794,6 +812,16 @@ struct GamePage {
         this.dialogLineIndex = this.snapshot.dialogLineIndex;
         this.dialogLineCount = this.snapshot.dialogLineCount;
         this.interactionKind = this.snapshot.interactionKind;
+        this.explorationPoiCount = this.snapshot.explorationPoiCount;
+        this.explorationPuzzleCount = this.snapshot.explorationPuzzleCount;
+        this.explorationRewardCount = this.snapshot.explorationRewardCount;
+        this.explorationGateCount = this.snapshot.explorationGateCount;
+        this.explorationTraversalMask = this.snapshot.explorationTraversalMask;
+        this.explorationCurrentPoiId = this.snapshot.explorationCurrentPoiId;
+        this.explorationCurrentTargetLabel =
+          this.snapshot.explorationCurrentTargetLabel;
+        this.explorationCurrentTargetDistrict =
+          this.snapshot.explorationCurrentTargetDistrict;
         this.fateCount = this.snapshot.fateCount;
         this.goldCount = this.snapshot.goldCount;
         this.expMaterialCount = this.snapshot.expMaterialCount;

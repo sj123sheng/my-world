@@ -197,4 +197,14 @@ struct GameSnapshot {
   // 快照尾部纯追加，UI 侧边沿检测触发接取提示。
   int32_t npcOfferQuestId = -1;
   std::string npcOfferQuestTitle;
+
+  // 垂直切片探索进度与当前导航目标。
+  int32_t explorationPoiCount = 0;
+  int32_t explorationPuzzleCount = 0;
+  int32_t explorationRewardCount = 0;
+  int32_t explorationGateCount = 0;
+  int32_t explorationTraversalMask = 0;
+  int32_t explorationCurrentPoiId = -1;
+  std::string explorationCurrentTargetLabel;
+  std::string explorationCurrentTargetDistrict;
 };

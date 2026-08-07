@@ -167,6 +167,14 @@ export interface Snapshot {
   // NPC 任务发布（Phase 4）：对话结束时接取的支线；-1 表示无。
   npcOfferQuestId: number;
   npcOfferQuestTitle: string;
+  explorationPoiCount: number;
+  explorationPuzzleCount: number;
+  explorationRewardCount: number;
+  explorationGateCount: number;
+  explorationTraversalMask: number;
+  explorationCurrentPoiId: number;
+  explorationCurrentTargetLabel: string;
+  explorationCurrentTargetDistrict: string;
 }
 
 export const nativeStart = (): void => native.nativeStart();

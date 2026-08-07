@@ -187,5 +187,13 @@ export const pullSnapshot: () => {
   dailyQuestClaimed: number,
   gachaPoolKind: number,
   npcOfferQuestId: number,
-  npcOfferQuestTitle: string
+  npcOfferQuestTitle: string,
+  explorationPoiCount: number,
+  explorationPuzzleCount: number,
+  explorationRewardCount: number,
+  explorationGateCount: number,
+  explorationTraversalMask: number,
+  explorationCurrentPoiId: number,
+  explorationCurrentTargetLabel: string,
+  explorationCurrentTargetDistrict: string
 };

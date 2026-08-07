@@ -1,6 +1,6 @@
 { "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "required": ["schemaVersion", "grid", "districts", "anchors", "npcs", "spawnZones", "chests", "collectibles"],
+  "required": ["schemaVersion", "grid", "districts", "anchors", "npcs", "spawnZones", "chests", "collectibles", "pointsOfInterest", "puzzles", "traversalGates", "explorationRewards"],
   "properties": {
     "schemaVersion": { "type": "integer", "minimum": 1 },
     "grid": { "type": "object", "required": ["countX", "countY"], "properties": {
@@ -64,4 +64,37 @@
         "y": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
         "kind": { "type": "string", "minLength": 1 },
         "districtId": { "type": "string" },
-        "label": { "type": "string", "minLength": 1 } } } } } }
+        "label": { "type": "string", "minLength": 1 } } } },
+    "pointsOfInterest": { "type": "array", "minItems": 4, "maxItems": 6, "items": { "type": "object",
+      "required": ["id", "x", "y", "label", "districtId", "mainRoute"], "properties": {
+        "id": { "type": "integer", "minimum": 60 },
+        "x": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
+        "y": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
+        "label": { "type": "string", "minLength": 1 },
+        "districtId": { "type": "string" },
+        "mainRoute": { "type": "boolean" } } } },
+    "puzzles": { "type": "array", "minItems": 3, "maxItems": 5, "items": { "type": "object",
+      "required": ["id", "x", "y", "label", "requiredMotion", "opensGateId", "rewardId"], "properties": {
+        "id": { "type": "integer", "minimum": 70 },
+        "x": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
+        "y": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
+        "label": { "type": "string", "minLength": 1 },
+        "requiredMotion": { "type": "string", "enum": ["Grounded", "Airborne", "Gliding", "Climbing", "Swimming"] },
+        "opensGateId": { "type": "integer", "minimum": 80 },
+        "rewardId": { "type": "integer", "minimum": 90 } } } },
+    "traversalGates": { "type": "array", "minItems": 2, "maxItems": 5, "items": { "type": "object",
+      "required": ["id", "x", "y", "label", "requiredMotion"], "properties": {
+        "id": { "type": "integer", "minimum": 80 },
+        "x": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
+        "y": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
+        "label": { "type": "string", "minLength": 1 },
+        "requiredMotion": { "type": "string", "enum": ["Grounded", "Airborne", "Gliding", "Climbing", "Swimming"] } } } },
+    "explorationRewards": { "type": "array", "minItems": 4, "maxItems": 6, "items": { "type": "object",
+      "required": ["id", "label", "sourceTraces", "gold", "fate", "itemId", "itemCount"], "properties": {
+        "id": { "type": "integer", "minimum": 90 },
+        "label": { "type": "string", "minLength": 1 },
+        "sourceTraces": { "type": "integer", "minimum": 0 },
+        "gold": { "type": "integer", "minimum": 0 },
+        "fate": { "type": "integer", "minimum": 0 },
+        "itemId": { "type": "integer", "minimum": 0 },
+        "itemCount": { "type": "integer", "minimum": 0 } } } } } }

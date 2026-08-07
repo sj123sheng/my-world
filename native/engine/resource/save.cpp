@@ -2,9 +2,8 @@
 #include <fstream>
 bool Save::write(const SaveState& s, const char* path){
   std::ofstream tmp(std::string(path)+".tmp");
-  // v8 格式：v7 全字段 + 开放世界支线完成掩码/接取任务 id（只追加
-  // 不重排，V1-V7 读入路径不受影响）。
-  tmp << "V8 " << s.campLevel << " " << s.relics << " " << s.regionProgress
+  // v9 格式：v8 全字段 + 垂直切片探索状态（只追加，不重排旧字段）。
+  tmp << "V9 " << s.campLevel << " " << s.relics << " " << s.regionProgress
       << " " << s.completedQuestCount << " " << s.activeQuestId << " "
       << s.unlockedAnchorMask << " " << s.consumedInteractableMask << " "
       << s.fateCount << " " << s.goldCount << " " << s.expCount << " "
@@ -35,8 +34,11 @@ bool Save::write(const SaveState& s, const char* path){
   for (int32_t value : s.claimedRanks) {
     tmp << " " << value;
   }
-  // V8 追加字段：开放世界支线进度。
+  // V8 字段：开放世界支线进度。
   tmp << " " << s.openWorldQuestMask << " " << s.openWorldQuestActiveId;
+  tmp << " " << s.explorationPoiMask << " " << s.explorationPuzzleMask
+      << " " << s.explorationRewardMask << " " << s.explorationGateMask
+      << " " << s.explorationTraversalMask;
   tmp << "\n";
   tmp.flush();
   std::rename((std::string(path)+".tmp").c_str(), path); // 原子替换
@@ -47,6 +49,12 @@ bool Save::read(SaveState& o, const char* path){
   std::string first;
   f >> first;
   if (f.fail()) return false;
+  // 旧版本没有垂直切片字段，避免把调用方对象中的旧值带入新会话。
+  o.explorationPoiMask = 0;
+  o.explorationPuzzleMask = 0;
+  o.explorationRewardMask = 0;
+  o.explorationGateMask = 0;
+  o.explorationTraversalMask = 0;
   if (first == "V2") {
     f >> o.campLevel >> o.relics >> o.regionProgress >> o.completedQuestCount
         >> o.activeQuestId >> o.unlockedAnchorMask >> o.consumedInteractableMask;
@@ -178,7 +186,7 @@ bool Save::read(SaveState& o, const char* path){
     }
     return !f.fail();
   }
-  if (first == "V8") {
+  if (first == "V8" || first == "V9") {
     f >> o.campLevel >> o.relics >> o.regionProgress >> o.completedQuestCount
         >> o.activeQuestId >> o.unlockedAnchorMask >> o.consumedInteractableMask
         >> o.fateCount >> o.goldCount >> o.expCount >> o.ascensionCount
@@ -231,8 +239,14 @@ bool Save::read(SaveState& o, const char* path){
     for (size_t i = 0; i < claimedCount; ++i) {
       f >> o.claimedRanks[i];
     }
-    // V8 追加字段：开放世界支线完成掩码与接取任务 id。
+    // V8 字段：开放世界支线完成掩码与接取任务 id。
     f >> o.openWorldQuestMask >> o.openWorldQuestActiveId;
+    if (f.fail()) return false;
+    if (first == "V9") {
+      f >> o.explorationPoiMask >> o.explorationPuzzleMask
+          >> o.explorationRewardMask >> o.explorationGateMask
+          >> o.explorationTraversalMask;
+    }
     return !f.fail();
   }
   // v1 兼容：首 token 即 campLevel，后续两个字段。

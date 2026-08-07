@@ -83,5 +83,20 @@ int main() {
   empty.notifyEnemiesKilled(5);
   assert(empty.completedCount() == 0);
   assert(empty.snapshot().status == QuestStatus::Locked);
+
+  // 垂直切片主线：POI -> 移动能力 -> 机关按顺序推进。
+  QuestSystem vertical = QuestSystem::verticalSliceMainline();
+  assert(vertical.quests().size() == 7);
+  assert(vertical.activeQuestId() == 101);
+  vertical.notifyNpcTalked(1);
+  assert(vertical.activeQuestId() == 102);
+  vertical.notifyPointReached(60);
+  assert(vertical.activeQuestId() == 103);
+  vertical.notifyTraversalUsed(2);  // Gliding
+  assert(vertical.snapshot().objectiveIndex == 1);
+  vertical.notifyTraversalUsed(4);  // Swimming
+  assert(vertical.activeQuestId() == 104);
+  vertical.notifyPuzzleActivated(71);
+  assert(vertical.activeQuestId() == 105);
   return 0;
 }

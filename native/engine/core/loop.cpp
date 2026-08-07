@@ -520,6 +520,23 @@ void ApplyExplorationSnapshot(GameSnapshot& output, const Loop& loop) {
   output.sprintActive = loop.motionState.sprinting ? 1 : 0;
   output.cameraExploration = loop.camera.exploration();
   output.teleportFlashMs = loop.teleportFlashMs;
+  const ExplorationProgress exploration = loop.explorationContent.progress();
+  output.explorationPoiCount = exploration.discoveredPoiCount;
+  output.explorationPuzzleCount = exploration.activatedPuzzleCount;
+  output.explorationRewardCount = exploration.claimedRewardCount;
+  output.explorationGateCount = exploration.openGateCount;
+  output.explorationTraversalMask = loop.explorationContent.traversalMask();
+  output.explorationCurrentPoiId = -1;
+  output.explorationCurrentTargetLabel.clear();
+  output.explorationCurrentTargetDistrict.clear();
+  for (const PointOfInterest& poi : loop.explorationContent.pointsOfInterest()) {
+    if (!loop.explorationContent.isPointDiscovered(poi.id) && poi.mainRoute) {
+      output.explorationCurrentPoiId = poi.id;
+      output.explorationCurrentTargetLabel = poi.label;
+      output.explorationCurrentTargetDistrict = poi.districtId;
+      break;
+    }
+  }
   output.minimapAnchorX.clear();
   output.minimapAnchorY.clear();
   output.minimapAnchorUnlocked.clear();
@@ -947,6 +964,11 @@ bool Loop::saveProgress(const std::string& path) {
     }
     state.openWorldQuestMask = openWorldMask;
     state.openWorldQuestActiveId = openWorldQuests.activeQuestId();
+    state.explorationPoiMask = explorationContent.discoveredPoiMask();
+    state.explorationPuzzleMask = explorationContent.activatedPuzzleMask();
+    state.explorationRewardMask = explorationContent.claimedRewardMask();
+    state.explorationGateMask = explorationContent.openGateMask();
+    state.explorationTraversalMask = explorationContent.traversalMask();
     Save save;
     return save.write(state, path.c_str());
   });
@@ -1294,6 +1316,10 @@ bool Loop::loadProgress(const std::string& path) {
     // restoreByMask(0,-1) 等价于初始全部可接取态）。
     openWorldQuests.restoreByMask(state.openWorldQuestMask,
                                   state.openWorldQuestActiveId);
+    explorationContent.restoreMasks(
+        state.explorationPoiMask, state.explorationPuzzleMask,
+        state.explorationRewardMask, state.explorationGateMask,
+        static_cast<uint8_t>(state.explorationTraversalMask));
     sideQuests.restoreMask(state.sideQuestMask);
     lastRewardedSideCount = sideQuests.completedCount();
     collectRespawnRemainingMs = state.collectRespawnMs;
@@ -1766,6 +1792,24 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
         motionState, motionInput, terrain, surface.player.x,
         surface.player.y, dtSeconds,
         groundOverride.active ? &groundOverride : nullptr);
+    const auto recordTraversal = [&](TraversalAbility ability) {
+      if (explorationContent.traversalUsed(ability)) return;
+      explorationContent.recordTraversal(ability);
+      quests.notifyTraversalUsed(static_cast<int32_t>(ability));
+    };
+    if (motionState.state == MotionState::Airborne) {
+      recordTraversal(TraversalAbility::Jump);
+    }
+    if (motionState.sprinting) recordTraversal(TraversalAbility::Sprint);
+    if (motionState.state == MotionState::Gliding) {
+      recordTraversal(TraversalAbility::Glide);
+    }
+    if (motionState.state == MotionState::Climbing) {
+      recordTraversal(TraversalAbility::Climb);
+    }
+    if (motionState.state == MotionState::Swimming) {
+      recordTraversal(TraversalAbility::Swim);
+    }
     jumpQueued = false;
   }
   // 开场剧情演出（阶段二验收补齐）：首次固定步懒启动，按时钟自动推进。
@@ -1783,6 +1827,14 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       {surface.player.x, surface.player.y}, 0.06f);
   currentInteractable = interactables.nearest(
       {surface.player.x, surface.player.y}, 0.06f);
+  const ExplorationTarget explorationTarget = explorationContent.nearestTarget(
+      {surface.player.x, surface.player.y}, 0.045f);
+  if (explorationTarget.kind == ExplorationTargetKind::PointOfInterest &&
+      explorationContent.discoverPoint(explorationTarget.id)) {
+    quests.notifyPointReached(explorationTarget.id);
+    teleportFlashMs = std::max<Tick>(teleportFlashMs, 300);
+    audioBridge.playUiSound(SoundEffect::AuraApplied);
+  }
   if (interactQueued) {
     interactQueued = false;
     if (dialogSession.active()) {
@@ -1814,6 +1866,43 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
           dailyQuests.notifyEvent(DailyQuestKind::Anchor);
           teleportFlashMs = 600;
           audioBridge.playUiSound(SoundEffect::AuraApplied);
+        }
+      } else if (explorationTarget.kind == ExplorationTargetKind::Puzzle) {
+        if (explorationContent.activatePuzzle(explorationTarget.id,
+                                              motionState.state)) {
+          quests.notifyPuzzleActivated(explorationTarget.id);
+          teleportFlashMs = 700;
+          audioBridge.playUiSound(SoundEffect::Resonance);
+        }
+      } else if (explorationTarget.kind == ExplorationTargetKind::Reward) {
+        const ExplorationReward* reward = nullptr;
+        for (const ExplorationReward& candidate :
+             explorationContent.rewards()) {
+          if (candidate.id == explorationTarget.id) {
+            reward = &candidate;
+            break;
+          }
+        }
+        if (reward != nullptr && explorationContent.claimReward(reward->id)) {
+          if (reward->gold > 0) {
+            inventory.addItem(static_cast<int32_t>(ItemId::Gold), reward->gold);
+          }
+          if (reward->fate > 0) {
+            inventory.addItem(static_cast<int32_t>(ItemId::Fate), reward->fate);
+          }
+          if (reward->itemId > 0 && reward->itemCount > 0) {
+            inventory.addItem(reward->itemId, reward->itemCount);
+          }
+          if (reward->sourceTraces > 0) {
+            adventureRank.addExp(reward->sourceTraces);
+          }
+          if (reward->itemCount > 0 && reward->itemId == 0) {
+            dropSeed = dropSeed * 1664525u + 1013904223u;
+            artifacts.addArtifact(ArtifactSystem::dropDefId(dropSeed), 4,
+                                  dropSeed);
+          }
+          teleportFlashMs = 800;
+          audioBridge.playUiSound(SoundEffect::Resonance);
         }
       } else if (currentInteractable.id >= 0) {
         const InteractableKind kind = currentInteractable.kind;
