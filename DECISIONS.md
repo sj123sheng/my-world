@@ -1,5 +1,20 @@
 # 技术决策
 
+## 2026-08-07：主角佩剑按 handslot.r 骨骼挂载，立方体卷绕修复
+
+- `SkinnedModel` 解析时保存与蒙皮调色板同序的关节名（`jointNames()`），
+  武器挂点用纯函数 `FindJointIndex` 按名查找；KayKit 三份角色 GLB 的右手
+  挂点均为 `handslot.r`，由 `test_model_assets` 对真实资产断言锁定。
+- 主角佩剑为程序化网格 `createSword`（柄/护手/柄头三个盒体 + 菱形截面
+  剑刃棱柱，逐面独立顶点），绘制时用 `角色矩阵 × 调色板关节矩阵`
+  （globalTransform × inverseBind）挂载，严格跟随手部动画；剑身与本体
+  共用同一轮廓光/描边/受击闪白决策，武器状态不进存档。
+- 修复 `appendFace`（createCube 唯一来源）三角形卷绕与面法线反向的历史
+  问题：GL_BACK 剔除下立方体各面原本不可见，影响所有盒体回退几何与
+  剑柄；新卷绕由 `testCubeWindingMatchesFaceNormals` 与剑网格卷绕断言锁定。
+- 剑网格挂载失败（关节缺失/模型未就绪）时静默回退无武器绘制，
+  不影响角色本体与其余特效。
+
 ## 2026-08-07：原神式角色渲染：卡通着色、反向壳描边与普攻刀光
 
 - 角色（主角/敌人/首领/NPC）漫反射由连续 Lambert 改为两段式卡通（cel）着色：

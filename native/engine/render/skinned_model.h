@@ -100,6 +100,15 @@ SkinPalette BuildSkinPalette(const std::vector<int>& parents,
                              const std::vector<glm::mat4>& localTransforms,
                              const std::vector<glm::mat4>& inverseBindMatrices);
 
+// 按名查找关节索引（武器/挂饰挂点）；未找到返回 -1，调用方回退不挂载。
+inline int FindJointIndex(const std::vector<std::string>& names,
+                          const std::string& target) {
+  for (std::size_t i = 0; i < names.size(); ++i) {
+    if (names[i] == target) return static_cast<int>(i);
+  }
+  return -1;
+}
+
 class SkinnedModel {
  public:
   SkinnedModel();
@@ -125,6 +134,8 @@ class SkinnedModel {
   std::size_t vertexCount() const;
   std::size_t indexCount() const;
   std::size_t jointCount() const;
+  // 与蒙皮调色板同序的关节名（缺失为空串），供武器挂点按名查找。
+  const std::vector<std::string>& jointNames() const;
   const std::vector<std::string>& clipNames() const;
   bool hasTexture() const;
   std::size_t primitiveCount() const;

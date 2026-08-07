@@ -133,6 +133,21 @@ bool normalsUnitLength(const Mesh& mesh) {
   return true;
 }
 
+void testCubeWindingMatchesFaceNormals() {
+  // 卷绕法线（e1×e2）必须与面法线同向（外翻 = 正面），否则
+  // GL_BACK 剔除下立方体各面不可见（角色回退/剑柄都依赖它）。
+  Mesh cube = createCube(1.0f);
+  assert(indicesInBounds(cube));
+  for (std::size_t t = 0; t + 2 < cube.indices.size(); t += 3) {
+    const Vertex& v0 = cube.vertices[cube.indices[t]];
+    const Vertex& v1 = cube.vertices[cube.indices[t + 1]];
+    const Vertex& v2 = cube.vertices[cube.indices[t + 2]];
+    const glm::vec3 winding = glm::cross(v1.position - v0.position,
+                                         v2.position - v0.position);
+    assert(glm::dot(winding, v0.normal) > 0.0f);
+  }
+}
+
 // 球心在原点的凸体：每个三角形的卷绕法线（e1×e2）应指向外侧，
 // 即与三角形质心方向点积非负。验证 CCW 外翻约定与 GL_BACK 剔除兼容。
 bool trianglesFaceOutward(const Mesh& mesh) {
@@ -276,6 +291,54 @@ void testSlashArcRejectsDegenerateInputs() {
   assert(createSlashArc(0.55f, 1.0f, 2.4f, 1).vertices.empty());
 }
 
+void testSwordHasValidStructureAndEnvelope() {
+  Mesh sword = createSword();
+  assert(!sword.vertices.empty());
+  assert(indicesInBounds(sword));
+  assert(normalsUnitLength(sword));
+  float minY = 1e9f, maxY = -1e9f;
+  for (const Vertex& vertex : sword.vertices) {
+    minY = std::min(minY, vertex.position.y);
+    maxY = std::max(maxY, vertex.position.y);
+  }
+  // 柄头略低于原点（手握住柄中段），剑尖朝 +Y 约 1.05。
+  assert(minY < 0.0f && minY > -0.1f);
+  assert(close(maxY, 1.05f, 0.01f));
+}
+
+void testSwordWindingMatchesStoredNormals() {
+  Mesh sword = createSword();
+  // 每个三角形的卷绕法线（e1×e2）应与存储的外翻法线同向，保证
+  // GL_BACK 剔除下剑柄盒体与剑刃棱柱各面均可见。
+  assert(indicesInBounds(sword));
+  for (std::size_t t = 0; t + 2 < sword.indices.size(); t += 3) {
+    const Vertex& v0 = sword.vertices[sword.indices[t]];
+    const Vertex& v1 = sword.vertices[sword.indices[t + 1]];
+    const Vertex& v2 = sword.vertices[sword.indices[t + 2]];
+    const glm::vec3 winding = glm::cross(v1.position - v0.position,
+                                         v2.position - v0.position);
+    assert(glm::dot(winding, v0.normal) > 0.0f);
+  }
+}
+
+void testSwordBladeSideFacesPointAwayFromAxis() {
+  Mesh sword = createSword();
+  // 仅对剑刃段（y ∈ [0.21, 1.05]）的侧面做径向检查：卷绕法线应
+  // 背离剑身中轴，避免棱柱面内翻导致剔除后剑刃消失。
+  for (std::size_t t = 0; t + 2 < sword.indices.size(); t += 3) {
+    const glm::vec3& p0 = sword.vertices[sword.indices[t]].position;
+    const glm::vec3& p1 = sword.vertices[sword.indices[t + 1]].position;
+    const glm::vec3& p2 = sword.vertices[sword.indices[t + 2]].position;
+    const glm::vec3 centroid = (p0 + p1 + p2) / 3.0f;
+    if (centroid.y < 0.21f) continue;  // 跳过柄/护手盒体
+    const glm::vec3 normal = glm::normalize(glm::cross(p1 - p0, p2 - p0));
+    const glm::vec3 outward{centroid.x, 0.0f, centroid.z};
+    if (glm::length(outward) > 0.001f) {
+      assert(glm::dot(normal, glm::normalize(outward)) > 0.0f);
+    }
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -283,6 +346,7 @@ int main() {
   testPlaneHasCorrectVertexCount();
   testCubeNormalsFaceOutward();
   testPlaneNormalFacesUp();
+  testCubeWindingMatchesFaceNormals();
   testCubeVertexPositionsFitSize();
   testPlaneCoversRequestedSize();
   testCubeIndicesInBounds();
@@ -298,5 +362,8 @@ int main() {
   testSlashArcHasExpectedStructure();
   testSlashArcTapersTipsAndCentersOnForward();
   testSlashArcRejectsDegenerateInputs();
+  testSwordHasValidStructureAndEnvelope();
+  testSwordWindingMatchesStoredNormals();
+  testSwordBladeSideFacesPointAwayFromAxis();
   return 0;
 }

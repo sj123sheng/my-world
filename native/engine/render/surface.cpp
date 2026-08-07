@@ -615,6 +615,8 @@ static constexpr float kNeutralRimStrength = 0.45f;
 // 角色阶段默认的中性高光：与逐帧全局状态一致，drawActor 结束后恢复。
 static constexpr float kNeutralSpecularStrength = 0.28f;
 static constexpr float kNeutralSpecularShininess = 24.0f;
+// 主角佩剑配色：冷银蓝，经 applyEntityTint 派生刃面光照。
+static const glm::vec3 kBladeTint{0.72f, 0.78f, 0.88f};
 
 static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
                       SkinnedAnimationState& animationState,
@@ -622,7 +624,8 @@ static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
                       const glm::mat4& vp, const glm::vec3& base,
                       const AssetProfile& profile, float hitFlashSeconds,
                       bool targeted, float fadeAlpha, float appearance,
-                      const char* actorName) {
+                      const char* actorName, const Mesh* weapon = nullptr,
+                      int weaponJoint = -1) {
   if (fadeAlpha <= 0.0f) return;  // 尸体淡出完毕：整体跳过绘制。
   // 逐角色轮廓光：玩家青绿/敌人紫/Boss 品红，受击窗口内增强，
   // 被软锁定时常亮抬升，出场进度驱动渐入；绘制结束后恢复中性轮廓光，
@@ -691,7 +694,9 @@ static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
   };
 
   if (model.ready()) {
-    s.shader3d.setSkinPalette(model.update(animationState, actor, 1.0f / 60.0f));
+    const SkinPalette palette =
+        model.update(animationState, actor, 1.0f / 60.0f);
+    s.shader3d.setSkinPalette(palette);
 #ifdef OHOS_PLATFORM
     const RenderAnimation animation = ChooseAnimation(actor);
     const std::string clip = ResolveClip(model.clipNames(), animation,
@@ -704,7 +709,47 @@ static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
     s.shader3d.setSkinned(true);
     if (s.shader3d.skinningEnabled()) {
       model.draw(s.shader3d);
+      // 武器挂载：关节矩阵（globalTransform * inverseBind）把剑网格放进
+      // handslot 绑定姿态，严格跟随手部动画；受击闪白同步染白剑身。
+      const bool hasWeapon = weapon != nullptr && weapon->vbo != 0u &&
+                             weaponJoint >= 0 &&
+                             weaponJoint <
+                                 static_cast<int>(palette.matrices.size());
+      if (hasWeapon) {
+        const glm::mat4 weaponMatrix = matrix * palette.matrices[weaponJoint];
+        s.shader3d.setMVP(vp * weaponMatrix);
+        s.shader3d.setModel(weaponMatrix);
+        s.shader3d.setSkinned(false);
+        s.shader3d.setHasTexture(false);
+        applyEntityTint(s, hitFlashTint(kBladeTint, hitFlashSeconds));
+        weapon->draw();
+      }
       drawOutline();
+      if (hasWeapon) {
+        // 武器与本体共用同一线宽/线色描边，保持轮廓语言一致。
+        const float weaponWidth = ActorOutlineWidthFor(
+            profile, hitFlashSeconds, targeted, appearance);
+        if (weaponWidth > 0.0f) {
+          const glm::mat4 weaponMatrix =
+              matrix * palette.matrices[weaponJoint];
+          s.shader3d.setOutlinePass(
+              weaponWidth / std::max(profile.scale, 1e-6f),
+              ActorOutlineColorFor(profile, hitFlashSeconds, targeted,
+                                   appearance));
+          s.shader3d.setMVP(vp * weaponMatrix);
+          s.shader3d.setModel(weaponMatrix);
+          s.shader3d.setSkinned(false);
+          s.shader3d.setHasTexture(false);
+#ifdef OHOS_PLATFORM
+          glCullFace(GL_FRONT);
+#endif
+          weapon->draw();
+#ifdef OHOS_PLATFORM
+          glCullFace(GL_BACK);
+#endif
+          s.shader3d.setOutlinePass(0.0f, glm::vec3(0.0f));
+        }
+      }
       restoreActorState();
       return;
     }
@@ -768,6 +813,9 @@ static void tryInitializeModelAsset(Surface& s, ModelKind kind,
 
   // 替换和清空都必须先在 current context 下释放旧 GPU 资源。
   model.destroy();
+  if (kind == ModelKind::Player) {
+    s.playerWeaponJoint = -1;
+  }
   if (bytes.empty()) {
     LOGI("%{public}s cleared; static Mesh fallback remains active", assetName);
     return;
@@ -775,6 +823,12 @@ static void tryInitializeModelAsset(Surface& s, ModelKind kind,
   if (!model.tryInitialize(bytes, assetName)) {
     LOGE("%{public}s; static Mesh fallback remains active",
          model.lastError().c_str());
+    return;
+  }
+  if (kind == ModelKind::Player) {
+    // KayKit 角色右手的武器挂点；缺失时保持 -1，武器不挂载。
+    s.playerWeaponJoint = FindJointIndex(model.jointNames(), "handslot.r");
+    LOGI("player weapon joint=%{public}d", s.playerWeaponJoint);
   }
 }
 
@@ -1788,7 +1842,8 @@ static void draw3DPhase(Surface& s) {
               vp, hitFlashTint(s.playerAssetProfile.materialTint,
                                s.playerHitAnimationSeconds),
               s.playerAssetProfile, s.playerHitAnimationSeconds,
-              false, 1.0f, 1.0f, "player");
+              false, 1.0f, 1.0f, "player", &s.swordMesh,
+              s.playerWeaponJoint);
     if (s.playerInvulnerable) {
       s.shader3d.setAlpha(1.0f);
       glDisable(GL_BLEND);
@@ -2311,6 +2366,8 @@ static void init3DResources(Surface& s) {
   s.targetRingMesh = createRing(0.075f, 0.014f, 40);
   // 普攻刀光新月弧线：单位外径（1.0），绘制时按角色缩放放大。
   s.slashArcMesh = createSlashArc(0.55f, 1.0f, 2.4f, 20);
+  // 主角佩剑：按 handslot.r 关节矩阵挂载，随动画挥舞。
+  s.swordMesh = createSword();
   // 地形/水面/天空：地形网格需要高度场，未注入时由 drawTerrain 惰性生成；
   // 水面为单位平面（绘制时抬升到水面高度），天空为单位球体（绘制时
   // 以相机为心放大成穹顶）。
@@ -2339,6 +2396,7 @@ static void init3DResources(Surface& s) {
   s.bossRingMesh.upload();
   s.targetRingMesh.upload();
   s.slashArcMesh.upload();
+  s.swordMesh.upload();
   s.hpBarQuadMesh.upload();
   s.shadowMesh.upload();
   s.fallbackPillarMesh.upload();
@@ -2389,6 +2447,7 @@ static void destroy3DResource(Surface& s, SurfaceGlResource resource) {
       s.waterMesh.destroy();
       s.skyMesh.destroy();
       s.slashArcMesh.destroy();
+      s.swordMesh.destroy();
       for (auto& entry : s.terrainChunkMeshes) entry.second.destroy();
       s.terrainChunkMeshes.clear();
       break;
@@ -2443,6 +2502,7 @@ static void abandon3DResources(Surface& s) {
   s.hpBarQuadMesh.abandonGpuResources();
   s.shadowMesh.abandonGpuResources();
   s.slashArcMesh.abandonGpuResources();
+  s.swordMesh.abandonGpuResources();
   s.terrainMesh.abandonGpuResources();
   s.waterMesh.abandonGpuResources();
   s.skyMesh.abandonGpuResources();

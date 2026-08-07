@@ -368,6 +368,10 @@ struct Surface {
   // ---- 普攻刀光与技能冲击波字段 ----
   // 新月形刀光单位网格（XZ 平面，外径 1.0），绘制时按角色缩放定位。
   Mesh slashArcMesh;
+  // 主角佩剑网格（柄底原点、刃沿 +Y）：按 handslot.r 关节矩阵挂载，
+  // 随攻击/跑动动画挥舞；playerWeaponJoint<0 时不挂载。
+  Mesh swordMesh;
+  int playerWeaponJoint = -1;
   // 主角刀光状态：seconds<0 表示无激活刀光；挥击边沿由 Loop 写入
   // 起点秒数 0 与当时朝向，渲染层按 SlashArcPoseAt 扫掠绘制。
   float playerSlashSeconds = -1.0f;

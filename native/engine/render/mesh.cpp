@@ -29,13 +29,14 @@ void appendFace(std::vector<Vertex>& vertices, std::vector<uint32_t>& indices,
   vertices.push_back({p1, normal, {1.0f, 0.0f}});
   vertices.push_back({p2, normal, {1.0f, 1.0f}});
   vertices.push_back({p3, normal, {0.0f, 1.0f}});
-  // 两个三角形：base, base+1, base+2 与 base, base+2, base+3
+  // 两个三角形卷绕需与面法线一致（外翻 = 正面），否则 GL_BACK 剔除下
+  // 立方体各面不可见：使用 (0,2,1) 与 (0,3,2)。
   indices.push_back(base + 0);
+  indices.push_back(base + 2);
   indices.push_back(base + 1);
-  indices.push_back(base + 2);
   indices.push_back(base + 0);
-  indices.push_back(base + 2);
   indices.push_back(base + 3);
+  indices.push_back(base + 2);
 }
 
 }  // namespace
@@ -349,6 +350,59 @@ Mesh createSlashArc(float innerRadius, float outerRadius, float arcRadians,
                           {base, base + 1u, base + 3u,
                            base, base + 3u, base + 2u});
     }
+  }
+  return mesh;
+}
+
+Mesh createSword() {
+  Mesh mesh;
+  // 柄/护手/柄头：单位立方体变换合并（轴对齐盒的非均匀缩放不改变
+  // 面法线方向，mergeMesh 重归一化后仍正确）。
+  mergeMesh(mesh, createCube(1.0f),
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.08f, 0.0f)) *
+                glm::scale(glm::mat4(1.0f),
+                           glm::vec3(0.035f, 0.16f, 0.035f)));
+  mergeMesh(mesh, createCube(1.0f),
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.185f, 0.0f)) *
+                glm::scale(glm::mat4(1.0f),
+                           glm::vec3(0.16f, 0.03f, 0.05f)));
+  mergeMesh(mesh, createCube(1.0f),
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -0.025f, 0.0f)) *
+                glm::scale(glm::mat4(1.0f), glm::vec3(0.05f, 0.05f, 0.05f)));
+
+  // 剑刃：菱形截面四棱柱向剑尖收拢，宽面朝向 ±Z。采用逐面独立顶点
+  //（三角形 soup），每面存储法线即卷绕法线，保证 GL_BACK 剔除下各面
+  // 可见，且与 createCube 的“每面法线独立”约定一致。
+  const float baseY = 0.21f;
+  const float midY = 0.95f;
+  const float tipY = 1.05f;
+  const float baseW = 0.05f, midW = 0.016f;   // X 向半宽（刃面）
+  const float baseT = 0.014f, midT = 0.005f;  // Z 向半厚（剑脊）
+  const glm::vec3 ring0[4] = {{baseW, baseY, 0.0f}, {0.0f, baseY, baseT},
+                              {-baseW, baseY, 0.0f}, {0.0f, baseY, -baseT}};
+  const glm::vec3 ring1[4] = {{midW, midY, 0.0f}, {0.0f, midY, midT},
+                              {-midW, midY, 0.0f}, {0.0f, midY, -midT}};
+  const glm::vec3 apex{0.0f, tipY, 0.0f};
+  // 追加一个三角形：3 个独立顶点共用同一卷绕法线（外翻）。
+  const auto pushTriangle = [&mesh](const glm::vec3& p0, const glm::vec3& p1,
+                                    const glm::vec3& p2) {
+    const glm::vec3 normal = glm::normalize(glm::cross(p1 - p0, p2 - p0));
+    const uint32_t baseIndex = static_cast<uint32_t>(mesh.vertices.size());
+    mesh.vertices.push_back({p0, normal, {0.0f, 0.0f}});
+    mesh.vertices.push_back({p1, normal, {0.0f, 0.0f}});
+    mesh.vertices.push_back({p2, normal, {0.0f, 0.0f}});
+    mesh.indices.insert(mesh.indices.end(),
+                        {baseIndex, baseIndex + 1u, baseIndex + 2u});
+  };
+  for (int i = 0; i < 4; ++i) {
+    const glm::vec3& a0 = ring0[i];
+    const glm::vec3& b0 = ring0[(i + 1) % 4];
+    const glm::vec3& a1 = ring1[i];
+    const glm::vec3& b1 = ring1[(i + 1) % 4];
+    // 侧面两个三角形 + 尖端一个三角形，卷绕均为外翻（见测试断言）。
+    pushTriangle(a0, a1, b0);
+    pushTriangle(a1, b1, b0);
+    pushTriangle(a1, apex, b1);
   }
   return mesh;
 }

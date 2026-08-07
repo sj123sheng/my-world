@@ -35,6 +35,12 @@ void auditAsset(const std::string& kind) {
   assert(model.embeddedTextureCount() == 1);
   assert(model.hasTexture());
 
+  // 关节名与调色板同序且数量一致；KayKit 右手武器挂点必须存在，
+  // 供主角佩剑按名挂载（FindJointIndex 命中）。
+  assert(model.jointNames().size() == model.jointCount());
+  assert(FindJointIndex(model.jointNames(), "handslot.r") >= 0);
+  assert(FindJointIndex(model.jointNames(), "no-such-joint") == -1);
+
   const std::vector<std::string>& clips = model.clipNames();
   for (const char* required : {"idle", "run", "attack", "hit", "death"}) {
     assert(std::find(clips.begin(), clips.end(), required) != clips.end());

@@ -95,6 +95,9 @@ struct RuntimeData {
   std::vector<PrimitiveRange> primitives;
   std::vector<OwnedNode> nodes;
   std::vector<std::size_t> jointNodes;
+  // 与 jointNodes 同序的关节名（skin.joints[i]->name），缺失为空串；
+  // 供武器挂点（如 KayKit handslot.r）按名查找。
+  std::vector<std::string> jointNames;
   std::vector<glm::mat4> inverseBindMatrices;
   std::vector<OwnedClip> clips;
   std::vector<std::string> clipNames;
@@ -414,12 +417,16 @@ bool copySkin(const cgltf_data& data, RuntimeData& output,
     return fail(assetName, "joint count exceeds 64", error);
   }
   output.jointNodes.reserve(skin.joints_count);
+  output.jointNames.reserve(skin.joints_count);
   for (std::size_t i = 0; i < skin.joints_count; ++i) {
     const std::size_t index = nodeIndex(data, skin.joints[i]);
     if (index >= data.nodes_count) {
       return fail(assetName, "skin joint node is out of bounds", error);
     }
     output.jointNodes.push_back(index);
+    output.jointNames.emplace_back(skin.joints[i]->name != nullptr
+                                       ? skin.joints[i]->name
+                                       : "");
   }
 
   output.inverseBindMatrices.assign(skin.joints_count, glm::mat4(1.0f));
@@ -1165,6 +1172,10 @@ std::size_t SkinnedModel::vertexCount() const { return impl_->data.vertices.size
 std::size_t SkinnedModel::indexCount() const { return impl_->data.indices.size(); }
 
 std::size_t SkinnedModel::jointCount() const { return impl_->data.jointNodes.size(); }
+
+const std::vector<std::string>& SkinnedModel::jointNames() const {
+  return impl_->data.jointNames;
+}
 
 const std::vector<std::string>& SkinnedModel::clipNames() const {
   return impl_->data.clipNames;

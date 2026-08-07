@@ -89,6 +89,10 @@ Mesh createDisk(float radius, uint32_t segments);
 Mesh createSlashArc(float innerRadius, float outerRadius, float arcRadians,
                     uint32_t segments);
 
+// 风格化单手剑：握柄底部在原点，剑刃沿 +Y 延伸，全长约 1.05。
+// 用于按骨骼挂点（handslot.r）随动画挥舞，给出可见的普攻武器。
+Mesh createSword();
+
 // 生成胶囊网格：沿 Y 轴，圆柱段高 height，两端为半径 radius 的半球。
 Mesh createCapsule(float radius, float height, uint32_t segments,
                    uint32_t rings);

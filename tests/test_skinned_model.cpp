@@ -504,6 +504,20 @@ void testLowSpeedMovementSwitchesToWalkClip() {
   assert(fastPose.matrices[0][3].x > slowPose.matrices[0][3].x);
 }
 
+void testJointNamesTrackPaletteAndFindJointIndexHits() {
+  // FindJointIndex 纯函数：命中返回下标，未命中/空表返回 -1。
+  const std::vector<std::string> names{"root", "hips", "handslot.r"};
+  assert(FindJointIndex(names, "handslot.r") == 2);
+  assert(FindJointIndex(names, "root") == 0);
+  assert(FindJointIndex(names, "missing") == -1);
+  assert(FindJointIndex({}, "root") == -1);
+
+  // 关节名表与调色板同序同长（fixture 节点无名时为空串占位）。
+  SkinnedModel model;
+  assert(model.tryInitialize(gltf_fixture::makeMinimalGlb(), "fixture.glb"));
+  assert(model.jointNames().size() == model.jointCount());
+}
+
 }  // namespace
 
 int main() {
@@ -527,5 +541,6 @@ int main() {
   testRejectsInvalidSkinHierarchy();
   testRejectsUnsupportedGltfInputsWithAssetNames();
   testRejectsOver64Joints();
+  testJointNamesTrackPaletteAndFindJointIndexHits();
   return 0;
 }
