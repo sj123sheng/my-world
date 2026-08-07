@@ -348,6 +348,29 @@ std::optional<Vec2> resolveEntityPosition(const Surface& surface,
   return std::nullopt;
 }
 
+// 按实体 ID 解析敌方元素归属（原神式元素可读性）：遭遇敌人与野外
+// 敌人同表查询，返回源质编号（0=辉印 1=脉流 2=蚀质）；物理原型 /
+// 首领 / 训练假人 / 未知实体返回 nullopt，击杀反馈保持亮金。
+std::optional<int> resolveEnemyElement(const EncounterSnapshot& encounter,
+                                       EntityId id,
+                                       const WildSpawnSystem* wild = nullptr) {
+  for (const EncounterEnemySnapshot& enemy : encounter.enemies) {
+    if (enemy.id == id) {
+      const int element = EnemyElementFor(static_cast<int>(enemy.archetype));
+      return element >= 0 ? std::optional<int>{element} : std::nullopt;
+    }
+  }
+  if (wild != nullptr) {
+    for (const WildEnemySnapshot& enemy : wild->snapshot()) {
+      if (enemy.id == id) {
+        const int element = EnemyElementFor(enemy.archetype);
+        return element >= 0 ? std::optional<int>{element} : std::nullopt;
+      }
+    }
+  }
+  return std::nullopt;
+}
+
 // 命中火花发射：LCG 伪随机确定方向/速度（同输入可重现），
 // 在命中点爆发一圈向外上扬的短命粒子。
 // kind：0=金橙命中，1=红色玩家受击，2=亮金击杀爆裂，
@@ -2554,8 +2577,22 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       const std::optional<Vec2> deathPos = resolveEntityPosition(
           surface, encounter.snapshot(), event.target, &wildSpawn);
       if (deathPos.has_value()) {
-        spawnHitSparks(surface, *deathPos, 2, 14, 1.8f, 1.4f,
-                       actorVfxRatio(surface, event.target));
+        const float deathRatio = actorVfxRatio(surface, event.target);
+        // 元素死亡爆发（原神式）：元素系敌人按原型元素色爆散
+        //（元素火花 + 小型元素冲击波），物理系/首领/假人保持亮金
+        // 击杀爆裂，颜色语言与附着/技能同源。
+        const std::optional<int> deathElement =
+            resolveEnemyElement(encounter.snapshot(), event.target,
+                                &wildSpawn);
+        if (deathElement.has_value()) {
+          spawnHitSparks(surface, *deathPos,
+                         AuraSparkKindFor(*deathElement), 16, 1.8f, 1.4f,
+                         deathRatio);
+          spawnShockwave(surface, *deathPos, AuraColorFor(*deathElement),
+                         0.09f * deathRatio);
+        } else {
+          spawnHitSparks(surface, *deathPos, 2, 14, 1.8f, 1.4f, deathRatio);
+        }
       }
       continue;
     }

@@ -82,6 +82,9 @@
 - 敌方技能元素色化（原神式敌方元素可读性）：Priest 金白 / Caster 青蓝 /
   Elite 暗紫，蓄力火花/投射物/刀光按原型元素染色，物理原型保持红；
   EnemyElementFor/EnemySkillColorFor/EnemySkillSparkKindFor 纯函数锁定。
+- 元素死亡爆发（原神式死亡反馈）：元素系敌人死亡瞬间按原型元素色
+  爆散（元素火花 + 小型元素冲击波），物理系/首领/假人保持亮金击杀
+  爆裂；resolveEnemyElement 从遭遇/野外快照查元素归属（含死亡槽位）。
 
 ## 验证状态
 
