@@ -433,6 +433,10 @@ struct Surface {
     float yaw = 0.0f;
     float seconds = 0.0f;
     float scale = 1.0f;
+    // 原型元素色（原神式敌方元素可读性）：物理原型为红，
+    // Priest 金白 / Caster 青蓝 / Elite 暗紫，生成时由
+    // EnemySkillColorFor 写入。
+    glm::vec3 color{1.0f, 0.42f, 0.36f};
   };
   std::vector<EnemySlashArc> enemySlashArcs;
   // 技能释放冲击波环：施法边沿在施法者脚下生成，扩张并淡出。

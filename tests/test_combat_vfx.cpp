@@ -436,6 +436,33 @@ void testBossPhaseVfxDistinctAndEscalating() {
   assert(unknown.sparkKind == lockdown.sparkKind);
 }
 
+void testEnemySkillElementPerArchetype() {
+  // 元素原型：Priest=辉印(0)、Caster=脉流(1)、Elite=蚀质(2)。
+  assert(EnemyElementFor(1) == 0);
+  assert(EnemyElementFor(4) == 1);
+  assert(EnemyElementFor(5) == 2);
+  // 物理原型：RiftClaw/Guard/Bruiser 无元素(-1)。
+  assert(EnemyElementFor(0) == -1);
+  assert(EnemyElementFor(2) == -1);
+  assert(EnemyElementFor(3) == -1);
+  assert(EnemyElementFor(99) == -1);
+  // 刀光颜色：元素色与 AuraColorFor 同源；物理红保持原值。
+  assert(EnemySkillColorFor(1) == AuraColorFor(0));
+  assert(EnemySkillColorFor(4) == AuraColorFor(1));
+  assert(EnemySkillColorFor(5) == AuraColorFor(2));
+  const glm::vec3 physicalRed{1.0f, 0.42f, 0.36f};
+  assert(EnemySkillColorFor(0) == physicalRed);
+  assert(EnemySkillColorFor(3) == physicalRed);
+  assert(EnemySkillColorFor(99) == physicalRed);
+  // 火花 kind：元素 kind 4/5/6；物理红 kind 1。
+  assert(EnemySkillSparkKindFor(1) == 4);
+  assert(EnemySkillSparkKindFor(4) == 5);
+  assert(EnemySkillSparkKindFor(5) == 6);
+  assert(EnemySkillSparkKindFor(0) == 1);
+  assert(EnemySkillSparkKindFor(2) == 1);
+  assert(EnemySkillSparkKindFor(99) == 1);
+}
+
 }  // namespace
 
 int main() {
@@ -462,5 +489,6 @@ int main() {
   testSlashArcColorFollowsInfusion();
   testWeaponTrailKindFollowsInfusion();
   testBossPhaseVfxDistinctAndEscalating();
+  testEnemySkillElementPerArchetype();
   return 0;
 }

@@ -381,6 +381,38 @@ inline int WeaponTrailKindFor(int lastSource) {
   }
 }
 
+// 敌方技能元素（原神式敌方元素可读性）：每类敌人原型的攻击携带
+// 专属元素色，玩家凭颜色即可读出敌人系别与威胁类型。
+// 原型数值：0=RiftClaw 1=Priest 2=Guard 3=Bruiser 4=Caster 5=Elite。
+// 返回源质编号 0=辉印 1=脉流 2=蚀质，-1=无元素（物理红）。
+inline int EnemyElementFor(int archetype) {
+  switch (archetype) {
+    case 1:  // Priest：辉印祭司，金白仪式系
+      return 0;
+    case 4:  // Caster：脉流法师，青蓝法术系
+      return 1;
+    case 5:  // Elite：蚀质精英，暗紫侵蚀系
+      return 2;
+    default:  // RiftClaw/Guard/Bruiser：物理爪击/盾击/重击
+      return -1;
+  }
+}
+
+// 敌方刀光颜色：元素色或物理红（与渲染层原红色一致）。
+inline glm::vec3 EnemySkillColorFor(int archetype) {
+  const int element = EnemyElementFor(archetype);
+  if (element < 0) return {1.0f, 0.42f, 0.36f};
+  return AuraColorFor(element);
+}
+
+// 敌方蓄力火花/投射物 kind：元素 kind 或物理红 kind 1
+//（复用火花配色表，kind>=4 为三系元素色）。
+inline int EnemySkillSparkKindFor(int archetype) {
+  const int element = EnemyElementFor(archetype);
+  if (element < 0) return 1;
+  return AuraSparkKindFor(element);
+}
+
 // 首领阶段转换爆发配色（原神首领转阶段语言）：阶段切换瞬间按
 // 该阶段主导源质着色——1=辉印封锁金白、2=脉流风暴青蓝、
 // 3=蚀质崩塌暗紫；终段规模更大，转阶段一阶段比一阶段凶。

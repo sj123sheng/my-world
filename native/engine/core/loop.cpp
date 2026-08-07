@@ -472,12 +472,14 @@ void spawnSkillRune(Surface& surface, Vec2 position, glm::vec3 color,
       {position.x, position.y, 0.0f, maxRadius, color});
 }
 
-// 敌方普攻刀光：挥击上升沿生成红色新月弧线，尺寸随原型缩放。
+// 敌方普攻刀光：挥击上升沿生成新月弧线，尺寸随原型缩放，
+// 颜色按原型元素染色（原神式敌方元素可读性）。
 void spawnEnemySlashArc(Surface& surface, uint32_t id, Vec2 position,
                         float yaw, int archetype) {
   if (surface.enemySlashArcs.size() > 16) return;
   surface.enemySlashArcs.push_back(
-      {id, position.x, position.y, yaw, 0.0f, EnemyArchetypeScale(archetype)});
+      {id, position.x, position.y, yaw, 0.0f, EnemyArchetypeScale(archetype),
+       EnemySkillColorFor(archetype)});
 }
 
 // 敌方释放动效：与主角侧对称——敌人前摇开始时在自身位置爆出
@@ -499,11 +501,15 @@ bool spawnEnemyReleaseVfx(Surface& surface) {
       const float ratio =
           actorVfxRatio(surface, static_cast<EntityId>(enemy.id));
       const Vec2 enemyPos{enemy.x, enemy.y};
+      // 敌方技能元素色化：蓄力火花与投射物 kind 按原型元素染色
+      //（物理原型保持红 kind 1）。
+      const int skillKind = EnemySkillSparkKindFor(enemy.archetype);
       if (enemy.windingUp && !wasWinding) {
-        spawnHitSparks(surface, enemyPos, 1, 6, 1.0f, 1.0f, ratio);
+        spawnHitSparks(surface, enemyPos, skillKind, 6, 1.0f, 1.0f, ratio);
       }
       if (enemy.attacking && !wasAttacking) {
-        spawnAttackProjectiles(surface, enemyPos, playerPos, 1, ratio, 2);
+        spawnAttackProjectiles(surface, enemyPos, playerPos, skillKind, ratio,
+                               2);
         spawnEnemySlashArc(surface, enemy.id, enemyPos, enemy.angle,
                            enemy.archetype);
       }
@@ -2319,6 +2325,14 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       // 终结技符文环：更大更亮的旋转符阵，强化爆发仪式感。
       spawnSkillRune(surface, playerPos, glm::vec3{1.0f, 0.90f, 0.50f},
                      0.08f * playerRatio);
+      // 终结技光柱：施法者位置升起亮金元素光柱（原神元素爆发语言），
+      // 高度随模型缩放，与共鸣光柱同源曲线。
+      spawnLightPillar(surface, playerPos, glm::vec3{1.0f, 0.90f, 0.50f},
+                       0.15f * playerRatio);
+      // 终结技镜头语言：FOV 收窄冲击 + 64ms 卡肉（重于普攻命中、
+      // 略轻于转阶段），把终结一击从普通技能里拎出来。
+      surface.resonanceFovSeconds = 0.0f;
+      hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + 64, 96);
     }
     prevActionForVfx = actionNow;
     // 普攻释放动效：连击段数变化（每次挥击升阶/回绕）时，主角周身

@@ -1552,7 +1552,8 @@ static void drawSlashArcs(Surface& s, const glm::mat4& vp) {
   for (const Surface::EnemySlashArc& arc : s.enemySlashArcs) {
     const SlashArcPose pose = SlashArcPoseAt(arc.seconds, 0);
     if (!pose.visible) continue;
-    const glm::vec3 color{1.0f, 0.42f, 0.36f};
+    // 原型元素色刀光：物理红 / Priest 金白 / Caster 青蓝 / Elite 暗紫。
+    const glm::vec3 color = arc.color;
     const float radius =
         s.enemyAssetProfile.scale * arc.scale * 2.2f * pose.scale;
     const glm::vec3 center{arc.x,

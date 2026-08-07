@@ -77,6 +77,11 @@
   首领周身爆发阶段元素色大火花 + 冲击波 + 光柱 + 旋转符文环，
   规模随阶段递增（终阶段最猛烈），伴随 80ms 卡肉与 FOV 冲击；
   配色/规模纯函数 BossPhaseVfxFor 决策，test_combat_vfx 锁定。
+- 终结技爆发强化（原神元素爆发语言）：释放瞬间施法者位置升起亮金
+  光柱 + FOV 收窄冲击 + 64ms 卡肉，叠在既有火花/束流/冲击波/符阵上。
+- 敌方技能元素色化（原神式敌方元素可读性）：Priest 金白 / Caster 青蓝 /
+  Elite 暗紫，蓄力火花/投射物/刀光按原型元素染色，物理原型保持红；
+  EnemyElementFor/EnemySkillColorFor/EnemySkillSparkKindFor 纯函数锁定。
 
 ## 验证状态
 
