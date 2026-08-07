@@ -659,3 +659,13 @@ inline glm::vec3 InfusedHitDecalColorFor(int infusionSource,
   if (infusionSource < 0) return baseColor;
   return AuraColorFor(infusionSource);
 }
+
+// 滑翔风线发射间隔（秒）。
+inline float GlideWindInterval() { return 0.07f; }
+
+// 滑翔风线初速度（原神滑翔语言）：逆移动方向掠过（相对风），
+// 速度为移动速度 1.5 倍并轻微下飘，给出空中速度感；零速度退化
+// 为纯下飘。
+inline glm::vec3 GlideWindVelocityFor(const glm::vec2& velocity) {
+  return glm::vec3(-velocity.x * 1.5f, -0.05f, -velocity.y * 1.5f);
+}

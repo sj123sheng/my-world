@@ -1,5 +1,6 @@
 // test_combat_vfx.cpp: 普攻刀光与技能冲击波的纯函数曲线断言。
 
+#include <glm/vec2.hpp>
 #include "native/engine/render/combat_vfx.h"
 
 #include <cassert>
@@ -715,6 +716,24 @@ void testInfusedHitSparkFollowsInfusion() {
   assert(InfusedHitDecalColorFor(1, physical) == AuraColorFor(1));
 }
 
+void testGlideWindVelocityOpposesMovement() {
+  // 逆移动方向掠过，速度按移动速度 1.5 倍。
+  const glm::vec3 wind = GlideWindVelocityFor(glm::vec2(0.4f, 0.0f));
+  assert(nearlyEqual(wind.x, -0.6f));
+  assert(nearlyEqual(wind.z, 0.0f));
+  assert(wind.y < 0.0f);  // 轻微下飘
+  const glm::vec3 wind2 = GlideWindVelocityFor(glm::vec2(0.0f, -0.3f));
+  assert(nearlyEqual(wind2.z, 0.45f));
+  assert(nearlyEqual(wind2.x, 0.0f));
+  // 零速度退化为纯下飘。
+  const glm::vec3 still = GlideWindVelocityFor(glm::vec2(0.0f, 0.0f));
+  assert(nearlyEqual(still.x, 0.0f));
+  assert(nearlyEqual(still.z, 0.0f));
+  assert(still.y < 0.0f);
+  // 发射间隔为正。
+  assert(GlideWindInterval() > 0.0f);
+}
+
 }  // namespace
 
 int main() {
@@ -759,5 +778,6 @@ int main() {
   testWindupScaleBreathesWithinBounds();
   testDodgeGhostAlphaFadesWithAge();
   testInfusedHitSparkFollowsInfusion();
+  testGlideWindVelocityOpposesMovement();
   return 0;
 }

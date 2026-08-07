@@ -2344,16 +2344,47 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       surface.particles.end());
 
   // 3D 移动尾迹：移动中每 0.09s 在脚下发射一颗缓升淡蓝粒子（kind=3），
-  // 在 3D 场景中给出运动轨迹感；与 2D 脚步粒子同源条件。
+  // 在 3D 场景中给出运动轨迹感；与 2D 脚步粒子同源条件。离地
+  //（跳跃/滑翔）停用地面脚步尾迹，滑翔改用风线粒子。
   trailEmitTimer += dtSeconds;
-  if (surface.player.moving && intent.move.length() > 0.0f &&
-      trailEmitTimer > 0.09f) {
+  const bool playerOnGround =
+      motionState.state == MotionState::Grounded ||
+      motionState.state == MotionState::Climbing ||
+      motionState.state == MotionState::Swimming;
+  if (playerOnGround && surface.player.moving &&
+      intent.move.length() > 0.0f && trailEmitTimer > 0.09f) {
     trailEmitTimer = 0.0f;
     if (surface.hitSparks3d.size() <= 128) {
       surface.hitSparks3d.push_back(
           {surface.player.x, 0.006f, surface.player.y, 0.0f, 0.012f, 0.0f,
            0.45f, 0.45f, 3,
            VfxSizeRatio(surface.playerAssetProfile, ModelKind::Player)});
+    }
+  }
+  // 滑翔风线（原神滑翔语言）：滑翔中每 0.07s 在角色周身发射两颗
+  // 逆移动方向掠过的淡蓝风线粒子（与移动尾迹同 kind），替代地面
+  // 尾迹给出空中速度感；位置围绕角色当前高度随机偏移。
+  if (motionState.state == MotionState::Gliding &&
+      trailEmitTimer > GlideWindInterval()) {
+    trailEmitTimer = 0.0f;
+    if (surface.hitSparks3d.size() <= 126) {
+      const glm::vec3 windVelocity = GlideWindVelocityFor(
+          {surface.player.velocity.x, surface.player.velocity.y});
+      for (int i = 0; i < 2; ++i) {
+        surface.hitSparkSeed = surface.hitSparkSeed * 1664525u + 1013904223u;
+        const float offsetX =
+            (static_cast<float>(surface.hitSparkSeed % 1000u) / 1000.0f -
+             0.5f) * 0.06f;
+        surface.hitSparkSeed = surface.hitSparkSeed * 1664525u + 1013904223u;
+        const float offsetZ =
+            (static_cast<float>(surface.hitSparkSeed % 1000u) / 1000.0f -
+             0.5f) * 0.06f;
+        surface.hitSparks3d.push_back(
+            {surface.player.x + offsetX, motionState.height + 0.05f,
+             surface.player.y + offsetZ, windVelocity.x, windVelocity.y,
+             windVelocity.z, 0.35f, 0.35f, 3,
+             VfxSizeRatio(surface.playerAssetProfile, ModelKind::Player)});
+      }
     }
   }
 

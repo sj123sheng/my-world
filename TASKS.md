@@ -171,6 +171,9 @@
       Jump_Idle，滑翔复用空中姿态，落地 0.25s Jump_Land + 脚下轻尘
       （PlayerJumpClipFor 纯函数，ResolveClip 偏好链扩展到 Jump，
       资产缺失逐级回退），补全角色离地运动语言。
+- [x] 滑翔风线粒子：滑翔中每 0.07s 周身发射两颗逆移动方向掠过的
+      淡蓝风线（GlideWindVelocityFor 纯函数，相对风 1.5 倍移速），
+      替代离地后不合理的地面脚步尾迹，滑翔速度感可视化。
 
 ## 下一阶段优先级
 

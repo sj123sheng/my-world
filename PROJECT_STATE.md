@@ -230,6 +230,10 @@
   RenderAnimation 扩展 Jump/Land，ResolveClip 偏好链扩展到 Jump
   （缺失资产按 Jump_Full_Short/idle 逐级回退），playerAirSeconds/
   playerLandSeconds 遭遇重置归零。
+- 滑翔风线粒子：滑翔中每 0.07s（GlideWindInterval 锁定）在角色周身
+  发射两颗逆移动方向掠过的淡蓝风线（GlideWindVelocityFor 纯函数
+  锁定：相对风 1.5 倍移速 + 轻微下飘，kind 3 与移动尾迹同源），
+  离地（跳跃/滑翔）停用地面脚步尾迹，滑翔速度感可视化。
 
 ## 验证状态
 
