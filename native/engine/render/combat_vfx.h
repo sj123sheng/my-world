@@ -609,3 +609,18 @@ inline glm::vec3 WindupBodyTintFor(const glm::vec3& base,
       0.35f + 0.3f * std::clamp(pulse01, 0.0f, 1.0f);
   return base * (1.0f - mix) + warningColor * mix;
 }
+
+// 受击旋转后仰（原神受击身法）：命中窗口内模型绕局部侧向轴向后
+// 倾仰，与既有平移后仰同窗口同平方衰减（前强后弱更干脆），用
+// 姿态把"被打实"物理化；remaining/duration<=0 或 maxTilt<=0 返回 0，
+// remaining 超过 duration 时强度钳制在峰值，不产生外插超调。
+inline float HitRecoilTiltFor(float remainingSeconds, float durationSeconds,
+                              float maxTiltRadians) {
+  if (remainingSeconds <= 0.0f || durationSeconds <= 0.0f ||
+      maxTiltRadians <= 0.0f) {
+    return 0.0f;
+  }
+  const float strength =
+      std::clamp(remainingSeconds / durationSeconds, 0.0f, 1.0f);
+  return maxTiltRadians * strength * strength;
+}

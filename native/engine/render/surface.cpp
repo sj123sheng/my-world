@@ -688,6 +688,12 @@ static glm::vec2 hitKnockback(const Surface& s, uint32_t id, float angle) {
   return glm::vec2(-std::sin(angle) * amount, -std::cos(angle) * amount);
 }
 
+// 受击后仰倾角：与平移后仰同窗口（0.15s 闪白）同平方衰减，峰值
+// 约 6°；敌人/假人共用（玩家/首领命中窗口为 0.2s，调用侧直传）。
+static float enemyHitRecoilTilt(const Surface& s, uint32_t id) {
+  return HitRecoilTiltFor(hitFlashRemaining(s, id), 0.15f, 0.105f);
+}
+
 static void drawMeshAt(Surface& s, const Mesh& mesh,
                        const glm::mat4& vp, const glm::vec3& position,
                        float scale, const glm::vec3& base) {
@@ -704,10 +710,18 @@ static void drawMeshAt(Surface& s, const Mesh& mesh,
 }
 
 static glm::mat4 actorModelMatrix(const glm::vec3& position, float scale,
-                                  float yaw = 0.0f) {
-  return glm::translate(glm::mat4(1.0f), position) *
-         glm::rotate(glm::mat4(1.0f), yaw, glm::vec3(0.0f, 1.0f, 0.0f)) *
-         glm::scale(glm::mat4(1.0f), glm::vec3(scale));
+                                  float yaw = 0.0f,
+                                  float recoilTiltRadians = 0.0f) {
+  glm::mat4 model = glm::translate(glm::mat4(1.0f), position) *
+                    glm::rotate(glm::mat4(1.0f), yaw,
+                                glm::vec3(0.0f, 1.0f, 0.0f));
+  // 受击旋转后仰：朝向之后绕局部侧向轴（+X）后倾，局部 +Z 为
+  // 实体朝向，负角把模型顶部倒向朝向反方向；0 时与升级前等价。
+  if (recoilTiltRadians > 0.0f) {
+    model = model * glm::rotate(glm::mat4(1.0f), -recoilTiltRadians,
+                                glm::vec3(1.0f, 0.0f, 0.0f));
+  }
+  return model * glm::scale(glm::mat4(1.0f), glm::vec3(scale));
 }
 
 static void drawBossCinematicGeometry(Surface& s, const glm::mat4& vp) {
@@ -2517,10 +2531,11 @@ static void draw3DPhase(Surface& s) {
     }
     drawActor(s, s.playerModel, s.playerMesh, s.playerAnimationState,
               s.player3dAnimation,
-              actorModelMatrix(playerFeet,
-                               s.playerAssetProfile.scale,
-                               s.player.angle +
-                                   s.playerAssetProfile.yawOffsetRadians),
+              actorModelMatrix(
+                  playerFeet, s.playerAssetProfile.scale,
+                  s.player.angle + s.playerAssetProfile.yawOffsetRadians,
+                  HitRecoilTiltFor(s.playerHitAnimationSeconds, 0.2f,
+                                   0.105f)),
               vp, hitFlashTint(s.playerAssetProfile.materialTint,
                                s.playerHitAnimationSeconds),
               s.playerAssetProfile, s.playerHitAnimationSeconds,
@@ -2541,9 +2556,9 @@ static void draw3DPhase(Surface& s) {
     if (actorInFrustum(frustum, dummyFeet, s.enemyAssetProfile.scale)) {
       drawActor(s, s.enemyModel, s.enemyMesh, s.trainingTargetAnimationState,
                 s.trainingTarget3dAnimation,
-                actorModelMatrix(dummyFeet,
-                                 s.enemyAssetProfile.scale,
-                                 s.enemyAssetProfile.yawOffsetRadians),
+                actorModelMatrix(dummyFeet, s.enemyAssetProfile.scale,
+                                 s.enemyAssetProfile.yawOffsetRadians,
+                                 enemyHitRecoilTilt(s, s.trainingTarget.id)),
                 vp, hitFlashTint(s.enemyAssetProfile.materialTint,
                                  hitFlashRemaining(s, s.trainingTarget.id)),
                 s.enemyAssetProfile, hitFlashRemaining(s, s.trainingTarget.id),
@@ -2565,10 +2580,10 @@ static void draw3DPhase(Surface& s) {
       continue;
     }
     drawActor(s, s.enemyModel, s.enemyMesh, animationState, enemy.animation,
-              actorModelMatrix(enemyFeet,
-                               s.enemyAssetProfile.scale,
+              actorModelMatrix(enemyFeet, s.enemyAssetProfile.scale,
                                enemy.angle +
-                                   s.enemyAssetProfile.yawOffsetRadians),
+                                   s.enemyAssetProfile.yawOffsetRadians,
+                               enemyHitRecoilTilt(s, enemy.id)),
               vp, hitFlashTint(
                       windupBodyTint(s, enemyColorByArchetype(enemy.archetype),
                                      WindupWarningColorFor(enemy.archetype),
@@ -2598,7 +2613,8 @@ static void draw3DPhase(Surface& s) {
               actorModelMatrix(enemyFeet,
                                s.enemyAssetProfile.scale * archetypeScale,
                                enemy.angle +
-                                   s.enemyAssetProfile.yawOffsetRadians),
+                                   s.enemyAssetProfile.yawOffsetRadians,
+                               enemyHitRecoilTilt(s, enemy.id)),
               vp, hitFlashTint(
                       windupBodyTint(s, enemyColorByArchetype(enemy.archetype),
                                      WindupWarningColorFor(enemy.archetype),
@@ -2649,10 +2665,12 @@ static void draw3DPhase(Surface& s) {
     if (actorInFrustum(frustum, bossFeet, s.bossAssetProfile.scale)) {
       drawActor(s, s.bossModel, s.bossMesh, s.bossAnimationState,
                 s.boss3d.animation,
-                actorModelMatrix(bossFeet,
-                                 s.bossAssetProfile.scale,
-                                 s.boss3d.angle +
-                                     s.bossAssetProfile.yawOffsetRadians),
+                actorModelMatrix(
+                    bossFeet, s.bossAssetProfile.scale,
+                    s.boss3d.angle + s.bossAssetProfile.yawOffsetRadians,
+                    // 首领体量更大，后仰峰值收敛到约 3.4°。
+                    HitRecoilTiltFor(s.boss3d.hitAnimationSeconds, 0.2f,
+                                     0.06f)),
                vp, hitFlashTint(
                        windupBodyTint(s, bossColorByPhase(s.boss3d.phase),
                                       BossWindupWarningColorFor(s.boss3d.phase),

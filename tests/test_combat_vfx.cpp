@@ -660,6 +660,20 @@ void testWindupBodyTintBlendsTowardWarning() {
   assert(WindupBodyTintFor(base, warning, 5.0f) == high);
 }
 
+void testHitRecoilTiltDecaysQuadratically() {
+  constexpr float kMax = 0.105f;
+  // 窗口外与非法参数归零。
+  assert(HitRecoilTiltFor(0.0f, 0.15f, kMax) == 0.0f);
+  assert(HitRecoilTiltFor(-1.0f, 0.15f, kMax) == 0.0f);
+  assert(HitRecoilTiltFor(0.1f, 0.0f, kMax) == 0.0f);
+  assert(HitRecoilTiltFor(0.1f, 0.15f, 0.0f) == 0.0f);
+  // 命中瞬间取峰值；remaining 超过 duration 钳制在峰值不外插。
+  assert(nearlyEqual(HitRecoilTiltFor(0.15f, 0.15f, kMax), kMax));
+  assert(nearlyEqual(HitRecoilTiltFor(9.0f, 0.15f, kMax), kMax));
+  // 半程强度平方衰减（0.5² = 0.25），前强后弱。
+  assert(nearlyEqual(HitRecoilTiltFor(0.075f, 0.15f, kMax), kMax * 0.25f));
+}
+
 }  // namespace
 
 int main() {
@@ -700,5 +714,6 @@ int main() {
   testUltimateDimAlphaRampsAndCaps();
   testPlayerDeathVfxUsesDangerLanguage();
   testWindupBodyTintBlendsTowardWarning();
+  testHitRecoilTiltDecaysQuadratically();
   return 0;
 }
