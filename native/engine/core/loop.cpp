@@ -520,6 +520,45 @@ void ApplyExplorationSnapshot(GameSnapshot& output, const Loop& loop) {
   output.sprintActive = loop.motionState.sprinting ? 1 : 0;
   output.cameraExploration = loop.camera.exploration();
   output.teleportFlashMs = loop.teleportFlashMs;
+  const ExplorationProgress exploration = loop.explorationContent.progress();
+  output.explorationPoiCount = exploration.discoveredPoiCount;
+  output.explorationPuzzleCount = exploration.activatedPuzzleCount;
+  output.explorationRewardCount = exploration.claimedRewardCount;
+  output.explorationGateCount = exploration.openGateCount;
+  output.explorationTraversalMask = loop.explorationContent.traversalMask();
+  output.explorationCurrentPoiId = -1;
+  output.explorationCurrentTargetLabel.clear();
+  output.explorationCurrentTargetDistrict.clear();
+  output.explorationBlockedGateId = -1;
+  output.explorationBlockedGateLabel.clear();
+  output.explorationBlockedByPuzzleLabel.clear();
+  const ExplorationFeedback& feedback = loop.explorationFeedback.snapshot();
+  output.explorationFeedbackType = static_cast<int32_t>(feedback.type);
+  output.explorationFeedbackId = feedback.id;
+  output.explorationFeedbackTitle = feedback.title;
+  output.explorationFeedbackSubtitle = feedback.subtitle;
+  output.explorationFeedbackRemainingMs = feedback.remainingMs;
+  const ExplorationTarget nearbyTarget = loop.explorationContent.nearestTarget(
+      {loop.surface.player.x, loop.surface.player.y}, 0.045f);
+  if (nearbyTarget.kind == ExplorationTargetKind::TraversalGate &&
+      !loop.explorationContent.isGateOpen(nearbyTarget.id)) {
+    output.explorationBlockedGateId = nearbyTarget.id;
+    output.explorationBlockedGateLabel = nearbyTarget.label;
+    for (const PuzzleNode& puzzle : loop.explorationContent.puzzles()) {
+      if (puzzle.opensGateId == nearbyTarget.id) {
+        output.explorationBlockedByPuzzleLabel = puzzle.label;
+        break;
+      }
+    }
+  }
+  for (const PointOfInterest& poi : loop.explorationContent.pointsOfInterest()) {
+    if (!loop.explorationContent.isPointDiscovered(poi.id) && poi.mainRoute) {
+      output.explorationCurrentPoiId = poi.id;
+      output.explorationCurrentTargetLabel = poi.label;
+      output.explorationCurrentTargetDistrict = poi.districtId;
+      break;
+    }
+  }
   output.minimapAnchorX.clear();
   output.minimapAnchorY.clear();
   output.minimapAnchorUnlocked.clear();
@@ -722,6 +761,29 @@ void ApplyGrowthSnapshot(GameSnapshot& output, const Loop& loop) {
   output.npcOfferQuestTitle = loop.npcOfferQuestTitle;
 }
 }  // namespace
+
+void Loop::refreshExplorationGateCollision() {
+  explorationGateCollision =
+      ExplorationGateCollision::fromContent(explorationContent);
+}
+
+void Loop::publishExplorationFeedback(ExplorationFeedbackType type, int32_t id,
+                                      const std::string& title,
+                                      const std::string& subtitle,
+                                      Tick durationMs) {
+  explorationFeedback.publish(type, id, title, subtitle, durationMs);
+}
+
+BuildingContact Loop::resolvePlayerWorldCollision(float& x, float& y,
+                                                  float radius, float height) {
+  BuildingContact contact = buildingCollision.resolve(x, y, radius, height);
+  const BuildingContact gateContact =
+      explorationGateCollision.resolve(x, y, radius, height);
+  contact.touching = contact.touching || gateContact.touching;
+  contact.normal = gateContact.touching ? gateContact.normal : contact.normal;
+  contact.highestTop = std::max(contact.highestTop, gateContact.highestTop);
+  return contact;
+}
 
 void Loop::start() {
   withLifecycle([this]() {
@@ -947,6 +1009,11 @@ bool Loop::saveProgress(const std::string& path) {
     }
     state.openWorldQuestMask = openWorldMask;
     state.openWorldQuestActiveId = openWorldQuests.activeQuestId();
+    state.explorationPoiMask = explorationContent.discoveredPoiMask();
+    state.explorationPuzzleMask = explorationContent.activatedPuzzleMask();
+    state.explorationRewardMask = explorationContent.claimedRewardMask();
+    state.explorationGateMask = explorationContent.openGateMask();
+    state.explorationTraversalMask = explorationContent.traversalMask();
     Save save;
     return save.write(state, path.c_str());
   });
@@ -1294,6 +1361,10 @@ bool Loop::loadProgress(const std::string& path) {
     // restoreByMask(0,-1) 等价于初始全部可接取态）。
     openWorldQuests.restoreByMask(state.openWorldQuestMask,
                                   state.openWorldQuestActiveId);
+    explorationContent.restoreMasks(
+        state.explorationPoiMask, state.explorationPuzzleMask,
+        state.explorationRewardMask, state.explorationGateMask,
+        static_cast<uint8_t>(state.explorationTraversalMask));
     sideQuests.restoreMask(state.sideQuestMask);
     lastRewardedSideCount = sideQuests.completedCount();
     collectRespawnRemainingMs = state.collectRespawnMs;
@@ -1715,7 +1786,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
 
   // 建筑碰撞：把主角从城墙/塔楼盒内推出并沿墙滑动，不再穿模；
   // 接触信息驱动墙面攀爬判定（高度越过盒顶时不再阻挡，可翻上墙头）。
-  const BuildingContact wallContact = buildingCollision.resolve(
+  const BuildingContact wallContact = resolvePlayerWorldCollision(
       surface.player.x, surface.player.y, playerCollisionRadius,
       motionState.height);
 
@@ -1766,6 +1837,24 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
         motionState, motionInput, terrain, surface.player.x,
         surface.player.y, dtSeconds,
         groundOverride.active ? &groundOverride : nullptr);
+    const auto recordTraversal = [&](TraversalAbility ability) {
+      if (explorationContent.traversalUsed(ability)) return;
+      explorationContent.recordTraversal(ability);
+      quests.notifyTraversalUsed(static_cast<int32_t>(ability));
+    };
+    if (motionState.state == MotionState::Airborne) {
+      recordTraversal(TraversalAbility::Jump);
+    }
+    if (motionState.sprinting) recordTraversal(TraversalAbility::Sprint);
+    if (motionState.state == MotionState::Gliding) {
+      recordTraversal(TraversalAbility::Glide);
+    }
+    if (motionState.state == MotionState::Climbing) {
+      recordTraversal(TraversalAbility::Climb);
+    }
+    if (motionState.state == MotionState::Swimming) {
+      recordTraversal(TraversalAbility::Swim);
+    }
     jumpQueued = false;
   }
   // 开场剧情演出（阶段二验收补齐）：首次固定步懒启动，按时钟自动推进。
@@ -1783,6 +1872,17 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       {surface.player.x, surface.player.y}, 0.06f);
   currentInteractable = interactables.nearest(
       {surface.player.x, surface.player.y}, 0.06f);
+  const ExplorationTarget explorationTarget = explorationContent.nearestTarget(
+      {surface.player.x, surface.player.y}, 0.045f);
+  if (explorationTarget.kind == ExplorationTargetKind::PointOfInterest &&
+      explorationContent.discoverPoint(explorationTarget.id)) {
+    quests.notifyPointReached(explorationTarget.id);
+    publishExplorationFeedback(ExplorationFeedbackType::PoiDiscovered,
+                               explorationTarget.id, explorationTarget.label,
+                               "发现新地标", 1200);
+    teleportFlashMs = std::max<Tick>(teleportFlashMs, 300);
+    audioBridge.playUiSound(SoundEffect::AuraApplied);
+  }
   if (interactQueued) {
     interactQueued = false;
     if (dialogSession.active()) {
@@ -1814,6 +1914,63 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
           dailyQuests.notifyEvent(DailyQuestKind::Anchor);
           teleportFlashMs = 600;
           audioBridge.playUiSound(SoundEffect::AuraApplied);
+        }
+      } else if (explorationTarget.kind == ExplorationTargetKind::Puzzle) {
+        if (explorationContent.activatePuzzle(explorationTarget.id,
+                                              motionState.state)) {
+          quests.notifyPuzzleActivated(explorationTarget.id);
+          publishExplorationFeedback(ExplorationFeedbackType::PuzzleActivated,
+                                     explorationTarget.id,
+                                     explorationTarget.label, "机关已激活",
+                                     1200);
+          const PuzzleNode* puzzle =
+              explorationContent.puzzleById(explorationTarget.id);
+          const TraversalGate* openedGate =
+              puzzle != nullptr
+                  ? explorationContent.gateById(puzzle->opensGateId)
+                  : nullptr;
+          if (openedGate != nullptr &&
+              explorationContent.isGateOpen(openedGate->id)) {
+            publishExplorationFeedback(ExplorationFeedbackType::GateOpened,
+                                       openedGate->id, openedGate->label,
+                                       "路径已开启", 1400);
+          }
+          refreshExplorationGateCollision();
+          teleportFlashMs = 700;
+          audioBridge.playUiSound(SoundEffect::Resonance);
+        }
+      } else if (explorationTarget.kind == ExplorationTargetKind::Reward) {
+        const ExplorationReward* reward = nullptr;
+        for (const ExplorationReward& candidate :
+             explorationContent.rewards()) {
+          if (candidate.id == explorationTarget.id) {
+            reward = &candidate;
+            break;
+          }
+        }
+        if (reward != nullptr && explorationContent.claimReward(reward->id)) {
+          publishExplorationFeedback(ExplorationFeedbackType::RewardClaimed,
+                                     reward->id, reward->label,
+                                     "获得探索奖励", 1200);
+          if (reward->gold > 0) {
+            inventory.addItem(static_cast<int32_t>(ItemId::Gold), reward->gold);
+          }
+          if (reward->fate > 0) {
+            inventory.addItem(static_cast<int32_t>(ItemId::Fate), reward->fate);
+          }
+          if (reward->itemId > 0 && reward->itemCount > 0) {
+            inventory.addItem(reward->itemId, reward->itemCount);
+          }
+          if (reward->sourceTraces > 0) {
+            adventureRank.addExp(reward->sourceTraces);
+          }
+          if (reward->itemCount > 0 && reward->itemId == 0) {
+            dropSeed = dropSeed * 1664525u + 1013904223u;
+            artifacts.addArtifact(ArtifactSystem::dropDefId(dropSeed), 4,
+                                  dropSeed);
+          }
+          teleportFlashMs = 800;
+          audioBridge.playUiSound(SoundEffect::Resonance);
         }
       } else if (currentInteractable.id >= 0) {
         const InteractableKind kind = currentInteractable.kind;
@@ -1861,6 +2018,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   if (teleportFlashMs > 0) {
     teleportFlashMs = dtMs >= teleportFlashMs ? 0 : teleportFlashMs - dtMs;
   }
+  explorationFeedback.update(dtMs);
   // 采集物重生（优化）：倒计时归零后恢复全部已消耗采集物可交互。
   if (collectRespawnRemainingMs > 0) {
     collectRespawnRemainingMs -= dtMs;
@@ -2067,6 +2225,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   const auto enemyPositionResolver = [this](Vec2& position, float radius) {
     const float ground = terrain.heightAt(position.x, position.y);
     buildingCollision.resolve(position.x, position.y, radius, ground);
+    explorationGateCollision.resolve(position.x, position.y, radius, ground);
   };
   // 野外刷怪（Phase 3.2/3.3）：worldGrid 流式之后推进；生成/回收/重生/
   // 巡逻/LOD 在此结算，敌方命中转发 combat 外部通道。

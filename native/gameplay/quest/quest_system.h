@@ -14,6 +14,9 @@ enum class ObjectiveKind : uint8_t {
   Collect = 2,       // 采集指定采集物
   OpenChest = 3,     // 开启指定宝箱
   TalkToNpc = 4,     // 与指定 NPC 对话
+  ReachPoi = 5,      // 到达指定地标
+  ActivatePuzzle = 6, // 激活指定机关
+  UseTraversal = 7,  // 使用指定移动能力，targetId 为 MotionState 值
 };
 
 enum class QuestStatus : uint8_t {
@@ -55,6 +58,7 @@ class QuestSystem {
  public:
   // 首条主线（教学→探索→战斗→收集→远行），与默认世界布局对应。
   static QuestSystem mainline();
+  static QuestSystem verticalSliceMainline();
 
   // 开放世界支线（Phase 4）：由 NPC 对话发布的独立任务，
   // id 段 201+ 避开主线（1-5）；目标链为 TalkToNpc → KillEnemies → TalkToNpc。
@@ -72,6 +76,9 @@ class QuestSystem {
   void notifyCollect(int32_t collectibleId);
   void notifyChestOpened(int32_t chestId);
   void notifyNpcTalked(int32_t npcId);
+  void notifyPointReached(int32_t poiId);
+  void notifyPuzzleActivated(int32_t puzzleId);
+  void notifyTraversalUsed(int32_t motionState);
 
   QuestStatus statusOf(int32_t questId) const;
   bool isCompleted(int32_t questId) const;

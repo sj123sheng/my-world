@@ -39,6 +39,9 @@ for (const [label, type] of buttonActions) {
 // 探索动作 7（交互）由 ExplorationHud 发出，8/9（滑翔按下/松开）由 CombatControls 发出。
 const explorationHud = fs.existsSync('entry/src/main/ets/ui/ExplorationHud.ets')
   ? fs.readFileSync('entry/src/main/ets/ui/ExplorationHud.ets', 'utf8') : '';
+assert.match(loop,
+  /const auto enemyPositionResolver[\s\S]*buildingCollision\.resolve[\s\S]*explorationGateCollision\.resolve/,
+  'enemy and boss resolver must apply static buildings before dynamic gates');
 assert.match(explorationHud, /pushAction\(7\);/,
   'ExplorationHud must issue the interact action');
 assert.match(controls, /pushAction\(8\);/,
@@ -725,6 +728,51 @@ assert.match(loop, /anchors\.nearestInteraction/,
 assert.match(loop, /camera\.setExploration\(!currentTarget\.has_value\(\)\);/,
   'camera must switch exploration mode without a locked target');
 
+// ---- Stage 16b: closed traversal gate blocking feedback ----
+for (const field of ['explorationBlockedGateId', 'explorationBlockedGateLabel',
+  'explorationBlockedByPuzzleLabel']) {
+  assert.match(gameSnapshot, new RegExp(`\\b${field}\\b`),
+    `GameSnapshot must expose ${field}`);
+  assert.match(nativeBridge, new RegExp(`"${field}"`),
+    `native bridge must marshal ${field}`);
+  assert.match(bridge, new RegExp(`${field}: (?:number|string);`),
+    `Bridge Snapshot must declare ${field}`);
+  assert.match(declarations, new RegExp(`${field}: (?:number|string),`),
+    `Index.d.ts must declare ${field}`);
+  assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
+    `GamePage polling must assign ${field}`);
+}
+assert.match(loop, /explorationContent\.nearestTarget\(\s*\{loop\.surface\.player\.x, loop\.surface\.player\.y\}/,
+  'loop must resolve nearby exploration targets for gate feedback');
+assert.match(explorationHud, /explorationBlockedGateLabel/,
+  'ExplorationHud must render blocked gate feedback');
+assert.match(explorationHud, /路径受阻/,
+  'ExplorationHud must identify a blocked traversal gate');
+
+// ---- Stage 16c: unified exploration feedback ----
+const explorationToast = fs.existsSync('entry/src/main/ets/ui/ExplorationToast.ets')
+  ? fs.readFileSync('entry/src/main/ets/ui/ExplorationToast.ets', 'utf8') : '';
+for (const field of ['explorationFeedbackType', 'explorationFeedbackId',
+  'explorationFeedbackTitle', 'explorationFeedbackSubtitle',
+  'explorationFeedbackRemainingMs']) {
+  assert.match(gameSnapshot, new RegExp(`\\b${field}\\b`),
+    `GameSnapshot must expose ${field}`);
+  assert.match(nativeBridge, new RegExp(`"${field}"`),
+    `native bridge must marshal ${field}`);
+  assert.match(bridge, new RegExp(`${field}: (?:number|string);`),
+    `Bridge Snapshot must declare ${field}`);
+  assert.match(declarations, new RegExp(`${field}: (?:number|string),`),
+    `Index.d.ts must declare ${field}`);
+  assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
+    `GamePage polling must assign ${field}`);
+}
+assert.match(page, /prevExplorationFeedbackId/, 'GamePage must edge-detect feedback');
+assert.match(page, /Haptics\.(?:light|heavy)\(\)/,
+  'GamePage must vibrate for exploration feedback');
+assert.match(page, /ExplorationToast\(\{/, 'GamePage must mount ExplorationToast');
+assert.match(explorationToast, /地标|机关|路径|奖励/,
+  'ExplorationToast must map the four exploration feedback types');
+
 // ---- Stage 17: content systems (quests, dialog, interactables, save) ----
 for (const field of ['questId', 'questStatus', 'questTitle',
   'questObjectiveLabel', 'questObjectiveProgress', 'questObjectiveRequired',
@@ -934,12 +982,22 @@ assert.match(loop, /sideQuests\.completedMask\(\)/,
 assert.match(loop, /sideQuests\.restoreMask\(state\.sideQuestMask\)/,
   'loadProgress must restore the side quest mask');
 const saveImpl = fs.readFileSync('native/engine/resource/save.cpp', 'utf8');
-assert.match(saveImpl, /"V8 "/,
-  'save format must be V8 with open world quest mask and active id');
-// V8 只追加不重排：写入追加 openWorldQuestMask/openWorldQuestActiveId，
-// 且保留 V7 读取分支兼容旧存档（Phase 5）。
+assert.match(saveImpl, /"V9 "/,
+  'save format must be V9 with open world quest and exploration fields');
+// V9 只追加不重排：写入追加开放世界任务与垂直切片探索字段，
+// 且保留 V8/V7 读取分支兼容旧存档。
 assert.match(saveImpl, /s\.openWorldQuestMask << " " << s\.openWorldQuestActiveId/,
-  'save V8 must append open world quest fields');
+  'save V9 must append open world quest fields');
+for (const field of ['explorationPoiMask', 'explorationPuzzleMask',
+  'explorationRewardMask', 'explorationGateMask',
+  'explorationTraversalMask']) {
+  assert.match(saveImpl, new RegExp(`s\\.${field}`),
+    `save V9 must append ${field}`);
+}
+assert.match(saveImpl, /if \(first == "V8" \|\| first == "V9"\)/,
+  'save reader must keep the V8/V9 shared compatibility branch');
+assert.match(saveImpl, /if \(first == "V9"\) \{[\s\S]*explorationPoiMask/,
+  'save reader must restore V9 exploration fields');
 assert.match(saveImpl, /if \(first == "V7"\)/,
   'save reader must keep the V7 backward-compatible branch');
 assert.match(saveImpl, /if \(first == "V6"\)/,
@@ -1256,6 +1314,23 @@ assert.match(page, /this\.prevNpcOfferQuestId/,
   'GamePage polling must edge-detect npcOfferQuestId');
 assert.match(page, /已接取任务：/,
   'GamePage must show the quest accept toast text');
+for (const field of ['explorationPoiCount', 'explorationPuzzleCount',
+  'explorationRewardCount', 'explorationGateCount',
+  'explorationTraversalMask', 'explorationCurrentPoiId',
+  'explorationCurrentTargetLabel', 'explorationCurrentTargetDistrict']) {
+  assert.match(gameSnapshot, new RegExp(`\\b${field}\\b`),
+    `GameSnapshot must expose ${field}`);
+  assert.match(nativeBridge, new RegExp(`"${field}"`),
+    `native bridge must marshal ${field}`);
+  assert.match(declarations, new RegExp(`${field}:`),
+    `Index.d.ts must declare ${field}`);
+  assert.match(bridge, new RegExp(`${field}:`),
+    `Bridge Snapshot interface must declare ${field}`);
+  assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
+    `GamePage polling must assign ${field}`);
+}
+assert.match(explorationHud, /explorationCurrentTargetLabel/,
+  'ExplorationHud must show the current exploration target');
 assert.match(bridge, /export const nativeSetNpcAsset/,
   'Bridge must export nativeSetNpcAsset');
 assert.match(declarations, /nativeSetNpcAsset: \(bytes: ArrayBuffer\) => boolean;/,

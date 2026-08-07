@@ -131,6 +131,9 @@ add_library(native_game SHARED
     # gameplay world
     ${NATIVE_ROOT}/gameplay/world/teleport_anchor.cpp
     ${NATIVE_ROOT}/gameplay/world/interactable.cpp
+    ${NATIVE_ROOT}/gameplay/world/exploration_content.cpp
+    ${NATIVE_ROOT}/gameplay/world/exploration_gate_collision.cpp
+    ${NATIVE_ROOT}/gameplay/world/exploration_feedback.cpp
     ${NATIVE_ROOT}/gameplay/world/npc_agent.cpp
     ${NATIVE_ROOT}/gameplay/world/npc_agent.h
 

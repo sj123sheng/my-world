@@ -145,5 +145,46 @@ int main() {
                       collectible.x, collectible.y));
   }
 
+  // ---- 垂直切片探索内容：POI、机关、路径门与奖励 ----
+  static_assert(WL::kPointOfInterestCount >= 4 &&
+                    WL::kPointOfInterestCount <= 6,
+                "vertical slice needs 4-6 points of interest");
+  static_assert(WL::kPuzzleNodeCount >= 3 && WL::kPuzzleNodeCount <= 5,
+                "vertical slice needs 3-5 puzzles");
+  static_assert(WL::kTraversalGateCount >= 2 && WL::kTraversalGateCount <= 5,
+                "vertical slice needs 2-5 traversal gates");
+  static_assert(WL::kExplorationRewardCount >= 4 &&
+                    WL::kExplorationRewardCount <= 6,
+                "vertical slice needs 4-6 exploration rewards");
+  std::set<int32_t> explorationIds;
+  for (const auto& poi : WL::kPointsOfInterest) {
+    assert(poi.id >= 60);
+    assert(explorationIds.insert(poi.id).second);
+    assert(InBounds(poi.x) && InBounds(poi.y));
+    assert(!poi.label.empty() && !poi.districtId.empty());
+  }
+  for (const auto& puzzle : WL::kPuzzleNodes) {
+    assert(puzzle.id >= 70);
+    assert(explorationIds.insert(puzzle.id).second);
+    assert(InBounds(puzzle.x) && InBounds(puzzle.y));
+    assert(puzzle.opensGateId >= 80);
+    assert(puzzle.rewardId >= 90);
+  }
+  for (const auto& gate : WL::kTraversalGates) {
+    assert(gate.id >= 80);
+    assert(explorationIds.insert(gate.id).second);
+    assert(InBounds(gate.x) && InBounds(gate.y));
+    assert(gate.halfExtents[0] > 0.0f && gate.halfExtents[0] < 0.15f);
+    assert(gate.halfExtents[1] > 0.0f && gate.halfExtents[1] < 0.15f);
+    assert(std::isfinite(gate.yaw));
+    assert(gate.top > 0.0f && gate.top < 0.5f);
+  }
+  for (const auto& reward : WL::kExplorationRewards) {
+    assert(reward.id >= 90);
+    assert(explorationIds.insert(reward.id).second);
+    assert(!reward.label.empty());
+    assert(reward.sourceTraces >= 0 && reward.gold >= 0 && reward.fate >= 0);
+  }
+
   return 0;
 }

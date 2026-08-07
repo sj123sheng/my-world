@@ -215,5 +215,30 @@
     { "id": 43, "x": 0.3, "y": 0.7, "kind": "ore", "districtId": "ashen_wastes", "label": "灰烬铁块" },
     { "id": 44, "x": 0.55, "y": 0.55, "kind": "mushroom", "districtId": "sanctum_highlands", "label": "圣所菇" },
     { "id": 45, "x": 0.05, "y": 0.25, "kind": "berry", "districtId": "westlands", "label": "翠风浆果" }
+  ],
+  "pointsOfInterest": [
+    { "id": 60, "x": 0.52, "y": 0.16, "label": "启明台地观景台", "districtId": "spawn_plateau", "mainRoute": true },
+    { "id": 61, "x": 0.18, "y": 0.28, "label": "翠风低地哨站", "districtId": "westlands", "mainRoute": true },
+    { "id": 62, "x": 0.70, "y": 0.22, "label": "辉光湖畔渡口", "districtId": "gimmerlake", "mainRoute": true },
+    { "id": 63, "x": 0.50, "y": 0.34, "label": "中枢回廊遗门", "districtId": "central_corridor", "mainRoute": true },
+    { "id": 64, "x": 0.86, "y": 0.12, "label": "湖心残塔", "districtId": "gimmerlake", "mainRoute": false }
+  ],
+  "puzzles": [
+    { "id": 70, "x": 0.25, "y": 0.30, "label": "风铃导流机关", "requiredMotion": "Grounded", "opensGateId": 80, "rewardId": 90 },
+    { "id": 71, "x": 0.74, "y": 0.25, "label": "湖畔浮桥机关", "requiredMotion": "Swimming", "opensGateId": 81, "rewardId": 91 },
+    { "id": 72, "x": 0.84, "y": 0.10, "label": "残塔风脉机关", "requiredMotion": "Gliding", "opensGateId": 82, "rewardId": 92 },
+    { "id": 73, "x": 0.48, "y": 0.38, "label": "回廊升降机关", "requiredMotion": "Climbing", "opensGateId": 83, "rewardId": 93 }
+  ],
+  "traversalGates": [
+    { "id": 80, "x": 0.28, "y": 0.31, "label": "通往低地的风门", "requiredMotion": "Grounded", "halfExtents": [0.035, 0.008], "yaw": 0.0, "top": 0.12 },
+    { "id": 81, "x": 0.78, "y": 0.28, "label": "湖心浮桥", "requiredMotion": "Swimming", "halfExtents": [0.035, 0.008], "yaw": 1.570796, "top": 0.12 },
+    { "id": 82, "x": 0.88, "y": 0.09, "label": "残塔隐藏路径", "requiredMotion": "Gliding", "halfExtents": [0.035, 0.008], "yaw": 0.785398, "top": 0.12 },
+    { "id": 83, "x": 0.52, "y": 0.40, "label": "回廊升降台", "requiredMotion": "Climbing", "halfExtents": [0.035, 0.008], "yaw": 0.0, "top": 0.12 }
+  ],
+  "explorationRewards": [
+    { "id": 90, "label": "风铃花种", "sourceTraces": 10, "gold": 0, "fate": 0, "itemId": 0, "itemCount": 0 },
+    { "id": 91, "label": "湖心源痕", "sourceTraces": 20, "gold": 50, "fate": 0, "itemId": 0, "itemCount": 0 },
+    { "id": 92, "label": "残塔隐藏宝匣", "sourceTraces": 30, "gold": 100, "fate": 1, "itemId": 0, "itemCount": 0 },
+    { "id": 93, "label": "回廊遗物构件", "sourceTraces": 0, "gold": 0, "fate": 0, "itemId": 0, "itemCount": 1 }
   ]
 }

@@ -51,6 +51,15 @@ export struct ExplorationHud {
   @Prop adventureExp: number = 0;
   @Prop adventureExpRequired: number = 375;
   @Prop worldLevel: number = 0;
+  @Prop explorationPoiCount: number = 0;
+  @Prop explorationPuzzleCount: number = 0;
+  @Prop explorationRewardCount: number = 0;
+  @Prop explorationTraversalMask: number = 0;
+  @Prop explorationCurrentTargetLabel: string = '';
+  @Prop explorationCurrentTargetDistrict: string = '';
+  @Prop explorationBlockedGateId: number = -1;
+  @Prop explorationBlockedGateLabel: string = '';
+  @Prop explorationBlockedByPuzzleLabel: string = '';
 
   private activeCharacterName(): string {
     switch (this.activeCharacterId) {
@@ -91,6 +100,16 @@ export struct ExplorationHud {
       case 4: return '游泳';
       default: return '';
     }
+  }
+
+  private traversalCount(): number {
+    let count = 0;
+    let mask = this.explorationTraversalMask;
+    for (let index = 0; index < 5; index += 1) {
+      if ((mask & 1) === 1) count += 1;
+      mask = Math.floor(mask / 2);
+    }
+    return count;
   }
 
   private staminaVisible(): boolean {
@@ -284,6 +303,48 @@ export struct ExplorationHud {
       .hitTestBehavior(HitTestMode.None)
 
       // 支线任务追踪条：小地图下方，三条支线进度与每日委托。
+      if (this.explorationBlockedGateId >= 0) {
+        Column({ space: 2 }) {
+          Text('路径受阻')
+            .fontSize(12)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#F08A72')
+          Text(this.explorationBlockedGateLabel)
+            .fontSize(10)
+            .fontColor('#F2E0B8')
+          if (this.explorationBlockedByPuzzleLabel.length > 0) {
+            Text(`需要激活：${this.explorationBlockedByPuzzleLabel}`)
+              .fontSize(9)
+              .fontColor('#9FD8CB')
+          }
+        }
+        .alignItems(HorizontalAlign.Start)
+        .padding({ left: 8, right: 8, top: 6, bottom: 6 })
+        .backgroundColor('rgba(10, 14, 22, 0.72)')
+        .borderRadius(8)
+        .position({ x: 140, y: 84 })
+        .hitTestBehavior(HitTestMode.Transparent)
+      } else if (this.explorationCurrentTargetLabel.length > 0) {
+        Column({ space: 2 }) {
+          Text(this.explorationCurrentTargetLabel)
+            .fontSize(12)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#F2E0B8')
+          Text(`${this.explorationCurrentTargetDistrict} · 地标 ${this.explorationPoiCount}/5 · 机关 ${this.explorationPuzzleCount}/4`)
+            .fontSize(9)
+            .fontColor('rgba(199, 208, 206, 0.82)')
+          Text(`奖励 ${this.explorationRewardCount}/4 · 移动能力 ${this.traversalCount()}/5`)
+            .fontSize(9)
+            .fontColor('#9FD8CB')
+        }
+        .alignItems(HorizontalAlign.Start)
+        .padding({ left: 8, right: 8, top: 6, bottom: 6 })
+        .backgroundColor('rgba(10, 14, 22, 0.62)')
+        .borderRadius(8)
+        .position({ x: 140, y: 84 })
+        .hitTestBehavior(HitTestMode.Transparent)
+      }
+
       if (this.sideQuestProgress.length > 0) {
         Column({ space: 4 }) {
           Text(`每日委托 ${this.dailyCompletedCount}/4${this.dailyQuestClaimed === 1 ? ' · 已领取' : ''}`)

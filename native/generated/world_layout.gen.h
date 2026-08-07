@@ -98,6 +98,27 @@ struct WorldCollectibleDef {
   std::string_view districtId;
 };
 
+struct WorldPointOfInterestDef {
+  int32_t id; float x; float y;
+  std::string_view label; std::string_view districtId; bool mainRoute;
+};
+
+enum class TraversalMotion : int32_t { Grounded = 0, Airborne = 1, Gliding = 2, Climbing = 3, Swimming = 4 };
+struct WorldPuzzleNodeDef {
+  int32_t id; float x; float y; std::string_view label;
+  TraversalMotion requiredMotion; int32_t opensGateId; int32_t rewardId;
+};
+
+struct WorldTraversalGateDef {
+  int32_t id; float x; float y; std::string_view label; TraversalMotion requiredMotion;
+  float halfExtents[2]; float yaw; float top;
+};
+
+struct WorldExplorationRewardDef {
+  int32_t id; std::string_view label; int32_t sourceTraces; int32_t gold;
+  int32_t fate; int32_t itemId; int32_t itemCount;
+};
+
 constexpr std::size_t kDistrictCount = 6;
 constexpr std::array<WorldDistrictDef, kDistrictCount> kDistricts{{
     {
@@ -314,6 +335,39 @@ constexpr std::array<WorldCollectibleDef, kCollectibleCount> kCollectibles{{
         45, 0.05f, 0.25f,
         "berry"sv, "翠风浆果"sv, "westlands"sv,
     },
+}};
+
+constexpr std::size_t kPointOfInterestCount = 5;
+constexpr std::array<WorldPointOfInterestDef, kPointOfInterestCount> kPointsOfInterest{{
+    {60, 0.52f, 0.16f, "启明台地观景台"sv, "spawn_plateau"sv, true},
+    {61, 0.18f, 0.28f, "翠风低地哨站"sv, "westlands"sv, true},
+    {62, 0.7f, 0.22f, "辉光湖畔渡口"sv, "gimmerlake"sv, true},
+    {63, 0.5f, 0.34f, "中枢回廊遗门"sv, "central_corridor"sv, true},
+    {64, 0.86f, 0.12f, "湖心残塔"sv, "gimmerlake"sv, false},
+}};
+
+constexpr std::size_t kPuzzleNodeCount = 4;
+constexpr std::array<WorldPuzzleNodeDef, kPuzzleNodeCount> kPuzzleNodes{{
+    {70, 0.25f, 0.3f, "风铃导流机关"sv, TraversalMotion::Grounded, 80, 90},
+    {71, 0.74f, 0.25f, "湖畔浮桥机关"sv, TraversalMotion::Swimming, 81, 91},
+    {72, 0.84f, 0.1f, "残塔风脉机关"sv, TraversalMotion::Gliding, 82, 92},
+    {73, 0.48f, 0.38f, "回廊升降机关"sv, TraversalMotion::Climbing, 83, 93},
+}};
+
+constexpr std::size_t kTraversalGateCount = 4;
+constexpr std::array<WorldTraversalGateDef, kTraversalGateCount> kTraversalGates{{
+    {80, 0.28f, 0.31f, "通往低地的风门"sv, TraversalMotion::Grounded, {0.035f, 0.008f}, 0.0f, 0.12f},
+    {81, 0.78f, 0.28f, "湖心浮桥"sv, TraversalMotion::Swimming, {0.035f, 0.008f}, 1.570796f, 0.12f},
+    {82, 0.88f, 0.09f, "残塔隐藏路径"sv, TraversalMotion::Gliding, {0.035f, 0.008f}, 0.785398f, 0.12f},
+    {83, 0.52f, 0.4f, "回廊升降台"sv, TraversalMotion::Climbing, {0.035f, 0.008f}, 0.0f, 0.12f},
+}};
+
+constexpr std::size_t kExplorationRewardCount = 4;
+constexpr std::array<WorldExplorationRewardDef, kExplorationRewardCount> kExplorationRewards{{
+    {90, "风铃花种"sv, 10, 0, 0, 0, 0},
+    {91, "湖心源痕"sv, 20, 50, 0, 0, 0},
+    {92, "残塔隐藏宝匣"sv, 30, 100, 1, 0, 0},
+    {93, "回廊遗物构件"sv, 0, 0, 0, 0, 1},
 }};
 
 }  // namespace WorldLayout

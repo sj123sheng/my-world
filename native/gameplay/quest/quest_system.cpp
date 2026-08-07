@@ -37,6 +37,35 @@ QuestSystem QuestSystem::mainline() {
   return system;
 }
 
+QuestSystem QuestSystem::verticalSliceMainline() {
+  std::vector<QuestDef> quests;
+  quests.push_back({101, "启明台地的回声",
+                    {{ObjectiveKind::TalkToNpc, 1, 1, "与台地引路人对话"}},
+                    102});
+  quests.push_back({102, "看见远方的路",
+                    {{ObjectiveKind::ReachPoi, 60, 1, "抵达启明台地观景台"}},
+                    103});
+  quests.push_back({103, "穿越风与水",
+                    {{ObjectiveKind::UseTraversal, 2, 1, "使用滑翔穿过台地风口"},
+                     {ObjectiveKind::UseTraversal, 4, 1, "游过辉光湖"}},
+                    104});
+  quests.push_back({104, "湖畔浮桥",
+                    {{ObjectiveKind::ActivatePuzzle, 71, 1, "激活湖畔浮桥机关"}},
+                    105});
+  quests.push_back({105, "回廊前的阻击",
+                    {{ObjectiveKind::KillEnemies, 0, 3, "击败回廊前的敌人"}},
+                    106});
+  quests.push_back({106, "残塔秘藏",
+                    {{ObjectiveKind::ReachPoi, 64, 1, "抵达湖心残塔"},
+                     {ObjectiveKind::OpenChest, 50, 1, "打开湖湾沉箱"}},
+                    107});
+  quests.push_back({107, "静默断层核心",
+                    {{ObjectiveKind::ReachPoi, 63, 1, "进入中枢回廊"}}, -1});
+  QuestSystem system(std::move(quests));
+  system.accept(101);
+  return system;
+}
+
 QuestSystem QuestSystem::openWorldQuests() {
   // NPC 对话发布的支线（Phase 4）：目标链 TalkToNpc → KillEnemies → TalkToNpc。
   // 发布对话结束时接取并补发一次 TalkToNpc 事件，首个对话目标即告完成；
@@ -107,6 +136,18 @@ void QuestSystem::notifyChestOpened(int32_t chestId) {
 
 void QuestSystem::notifyNpcTalked(int32_t npcId) {
   applyEvent(ObjectiveKind::TalkToNpc, npcId, 1);
+}
+
+void QuestSystem::notifyPointReached(int32_t poiId) {
+  applyEvent(ObjectiveKind::ReachPoi, poiId, 1);
+}
+
+void QuestSystem::notifyPuzzleActivated(int32_t puzzleId) {
+  applyEvent(ObjectiveKind::ActivatePuzzle, puzzleId, 1);
+}
+
+void QuestSystem::notifyTraversalUsed(int32_t motionState) {
+  applyEvent(ObjectiveKind::UseTraversal, motionState, 1);
 }
 
 void QuestSystem::applyEvent(ObjectiveKind kind, int32_t targetId,

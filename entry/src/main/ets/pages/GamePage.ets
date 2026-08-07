@@ -16,6 +16,7 @@ import { DialogBox } from '../ui/DialogBox';
 import { GachaPanel } from '../ui/GachaPanel';
 import { MapPanel } from '../ui/MapPanel';
 import { QuestRewardToast } from '../ui/QuestRewardToast';
+import { ExplorationToast } from '../ui/ExplorationToast';
 import { InventoryPanel } from '../ui/InventoryPanel';
 import { ArtifactPanel } from '../ui/ArtifactPanel';
 
@@ -78,7 +79,16 @@ struct GamePage {
     expSmallCount: 0, expMediumCount: 0, expLargeCount: 0,
     sprintActive: 0, dailyCompletedCount: 0, dailyQuestClaimed: 0,
     gachaPoolKind: 0,
-    npcOfferQuestId: -1, npcOfferQuestTitle: ''
+    npcOfferQuestId: -1, npcOfferQuestTitle: '',
+    explorationPoiCount: 0, explorationPuzzleCount: 0,
+    explorationRewardCount: 0, explorationGateCount: 0,
+    explorationTraversalMask: 0, explorationCurrentPoiId: -1,
+    explorationCurrentTargetLabel: '', explorationCurrentTargetDistrict: '',
+    explorationBlockedGateId: -1, explorationBlockedGateLabel: '',
+    explorationBlockedByPuzzleLabel: '',
+    explorationFeedbackType: 0, explorationFeedbackId: -1,
+    explorationFeedbackTitle: '', explorationFeedbackSubtitle: '',
+    explorationFeedbackRemainingMs: 0
   };
   @State tick: number = 0;
   @State hp: number = 100;
@@ -178,6 +188,23 @@ struct GamePage {
   @State dialogLineIndex: number = 0;
   @State dialogLineCount: number = 0;
   @State interactionKind: number = 0;
+  @State explorationPoiCount: number = 0;
+  @State explorationPuzzleCount: number = 0;
+  @State explorationRewardCount: number = 0;
+  @State explorationGateCount: number = 0;
+  @State explorationTraversalMask: number = 0;
+  @State explorationCurrentPoiId: number = -1;
+  @State explorationCurrentTargetLabel: string = '';
+  @State explorationCurrentTargetDistrict: string = '';
+  @State explorationBlockedGateId: number = -1;
+  @State explorationBlockedGateLabel: string = '';
+  @State explorationBlockedByPuzzleLabel: string = '';
+  @State explorationFeedbackType: number = 0;
+  @State explorationFeedbackId: number = -1;
+  @State explorationFeedbackTitle: string = '';
+  @State explorationFeedbackSubtitle: string = '';
+  @State explorationFeedbackRemainingMs: number = 0;
+  private prevExplorationFeedbackId: number = -1;
   // 养成与抽卡状态（阶段三）。
   @State fateCount: number = 0;
   @State goldCount: number = 0;
@@ -550,6 +577,15 @@ struct GamePage {
         adventureExp: this.adventureExp,
         adventureExpRequired: this.adventureExpRequired,
         worldLevel: this.worldLevel,
+        explorationPoiCount: this.explorationPoiCount,
+        explorationPuzzleCount: this.explorationPuzzleCount,
+        explorationRewardCount: this.explorationRewardCount,
+        explorationTraversalMask: this.explorationTraversalMask,
+        explorationCurrentTargetLabel: this.explorationCurrentTargetLabel,
+        explorationCurrentTargetDistrict: this.explorationCurrentTargetDistrict,
+        explorationBlockedGateId: this.explorationBlockedGateId,
+        explorationBlockedGateLabel: this.explorationBlockedGateLabel,
+        explorationBlockedByPuzzleLabel: this.explorationBlockedByPuzzleLabel,
         onOpenGacha: () => { this.gachaOpen = true; },
         onOpenMap: () => { this.mapOpen = true; },
         onOpenInventory: () => { this.inventoryOpen = true; },
@@ -631,6 +667,13 @@ struct GamePage {
       QuestRewardToast({ visible: this.rewardToastVisible,
         questTitle: this.rewardToastTitle,
         rewardLabel: this.rewardToastLabel })
+
+      ExplorationToast({
+        explorationFeedbackType: this.explorationFeedbackType,
+        explorationFeedbackTitle: this.explorationFeedbackTitle,
+        explorationFeedbackSubtitle: this.explorationFeedbackSubtitle,
+        explorationFeedbackRemainingMs: this.explorationFeedbackRemainingMs })
+        .hitTestBehavior(HitTestMode.Transparent)
 
       // 对话、召唤面板、地图、背包或圣遗物面板打开时隐藏技能按钮，避免遮挡弹窗按钮。
       if (!this.dialogActive && !this.gachaOpen && !this.mapOpen &&
@@ -794,6 +837,38 @@ struct GamePage {
         this.dialogLineIndex = this.snapshot.dialogLineIndex;
         this.dialogLineCount = this.snapshot.dialogLineCount;
         this.interactionKind = this.snapshot.interactionKind;
+        this.explorationPoiCount = this.snapshot.explorationPoiCount;
+        this.explorationPuzzleCount = this.snapshot.explorationPuzzleCount;
+        this.explorationRewardCount = this.snapshot.explorationRewardCount;
+        this.explorationGateCount = this.snapshot.explorationGateCount;
+        this.explorationTraversalMask = this.snapshot.explorationTraversalMask;
+        this.explorationCurrentPoiId = this.snapshot.explorationCurrentPoiId;
+        this.explorationCurrentTargetLabel =
+          this.snapshot.explorationCurrentTargetLabel;
+        this.explorationCurrentTargetDistrict =
+          this.snapshot.explorationCurrentTargetDistrict;
+        this.explorationBlockedGateId = this.snapshot.explorationBlockedGateId;
+        this.explorationBlockedGateLabel =
+          this.snapshot.explorationBlockedGateLabel;
+        this.explorationBlockedByPuzzleLabel =
+          this.snapshot.explorationBlockedByPuzzleLabel;
+        this.explorationFeedbackType = this.snapshot.explorationFeedbackType;
+        this.explorationFeedbackId = this.snapshot.explorationFeedbackId;
+        this.explorationFeedbackTitle =
+          this.snapshot.explorationFeedbackTitle;
+        this.explorationFeedbackSubtitle =
+          this.snapshot.explorationFeedbackSubtitle;
+        this.explorationFeedbackRemainingMs =
+          this.snapshot.explorationFeedbackRemainingMs;
+        if (this.explorationFeedbackId >= 0 &&
+            this.explorationFeedbackId !== this.prevExplorationFeedbackId) {
+          if (this.explorationFeedbackType === 3) {
+            Haptics.heavy();
+          } else {
+            Haptics.light();
+          }
+        }
+        this.prevExplorationFeedbackId = this.explorationFeedbackId;
         this.fateCount = this.snapshot.fateCount;
         this.goldCount = this.snapshot.goldCount;
         this.expMaterialCount = this.snapshot.expMaterialCount;

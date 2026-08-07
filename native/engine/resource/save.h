@@ -54,9 +54,15 @@ struct SaveState {
   int32_t openWorldQuestMask = 0;
   // 开放世界支线当前接取任务 id（-1 = 无）。
   int32_t openWorldQuestActiveId = -1;
+  // 垂直切片探索状态（V9）：POI/机关/奖励/路径门位掩码与移动能力位掩码。
+  int32_t explorationPoiMask = 0;
+  int32_t explorationPuzzleMask = 0;
+  int32_t explorationRewardMask = 0;
+  int32_t explorationGateMask = 0;
+  int32_t explorationTraversalMask = 0;
 };
 struct Save {
   bool write(const SaveState& s, const char* path);
-  // 兼容 v1-v6、v7（冒险等级/武器七元组/圣遗物）与 v8（开放世界支线）存档。
+  // 兼容 v1-v9（垂直切片探索状态）存档。
   bool read(SaveState& out, const char* path);
 };

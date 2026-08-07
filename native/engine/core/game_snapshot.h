@@ -197,4 +197,23 @@ struct GameSnapshot {
   // 快照尾部纯追加，UI 侧边沿检测触发接取提示。
   int32_t npcOfferQuestId = -1;
   std::string npcOfferQuestTitle;
+
+  // 垂直切片探索进度与当前导航目标。
+  int32_t explorationPoiCount = 0;
+  int32_t explorationPuzzleCount = 0;
+  int32_t explorationRewardCount = 0;
+  int32_t explorationGateCount = 0;
+  int32_t explorationTraversalMask = 0;
+  int32_t explorationCurrentPoiId = -1;
+  std::string explorationCurrentTargetLabel;
+  std::string explorationCurrentTargetDistrict;
+  // 玩家接近关闭的路径门时发布阻挡原因；离开或开门后恢复默认值。
+  int32_t explorationBlockedGateId = -1;
+  std::string explorationBlockedGateLabel;
+  std::string explorationBlockedByPuzzleLabel;
+  int32_t explorationFeedbackType = 0;
+  int32_t explorationFeedbackId = -1;
+  std::string explorationFeedbackTitle;
+  std::string explorationFeedbackSubtitle;
+  Tick explorationFeedbackRemainingMs = 0;
 };

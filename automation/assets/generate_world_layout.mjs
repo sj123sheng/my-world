@@ -212,6 +212,61 @@ export function validateWorldLayout(world, schema) {
     inDeclaredDistrict(`collectible ${collectible.id}`, collectible.districtId, collectible.x, collectible.y);
   }
 
+  const motionStates = new Set(['Grounded', 'Airborne', 'Gliding', 'Climbing', 'Swimming']);
+  const seenExplorationIds = new Map();
+  const claimExplorationId = (kind, id) => {
+    if (seenExplorationIds.has(id)) {
+      errors.push(`duplicate exploration id ${id}: ${seenExplorationIds.get(id)} and ${kind}`);
+    } else {
+      seenExplorationIds.set(id, kind);
+    }
+  };
+  for (const poi of world.pointsOfInterest) {
+    claimExplorationId('pointOfInterest', poi.id);
+    if (!coordInBounds(poi.x) || !coordInBounds(poi.y)) {
+      errors.push(`pointOfInterest ${poi.id}: coordinates out of [0.02, 0.98]`);
+    }
+    inDeclaredDistrict(`pointOfInterest ${poi.id}`, poi.districtId, poi.x, poi.y);
+  }
+  const gateIds = new Set(world.traversalGates.map((gate) => gate.id));
+  const rewardIds = new Set(world.explorationRewards.map((reward) => reward.id));
+  for (const puzzle of world.puzzles) {
+    claimExplorationId('puzzle', puzzle.id);
+    if (!coordInBounds(puzzle.x) || !coordInBounds(puzzle.y)) {
+      errors.push(`puzzle ${puzzle.id}: coordinates out of [0.02, 0.98]`);
+    }
+    if (!motionStates.has(puzzle.requiredMotion)) {
+      errors.push(`puzzle ${puzzle.id}: unknown requiredMotion ${puzzle.requiredMotion}`);
+    }
+    if (!gateIds.has(puzzle.opensGateId)) errors.push(`puzzle ${puzzle.id}: unknown gate ${puzzle.opensGateId}`);
+    if (!rewardIds.has(puzzle.rewardId)) errors.push(`puzzle ${puzzle.id}: unknown reward ${puzzle.rewardId}`);
+  }
+  for (const gate of world.traversalGates) {
+    claimExplorationId('traversalGate', gate.id);
+    if (!coordInBounds(gate.x) || !coordInBounds(gate.y)) {
+      errors.push(`traversalGate ${gate.id}: coordinates out of [0.02, 0.98]`);
+    }
+    if (!motionStates.has(gate.requiredMotion)) {
+      errors.push(`traversalGate ${gate.id}: unknown requiredMotion ${gate.requiredMotion}`);
+    }
+    if (!Array.isArray(gate.halfExtents) || gate.halfExtents.length !== 2 ||
+        gate.halfExtents.some((value) => !Number.isFinite(value) || value <= 0 || value > 0.15)) {
+      errors.push(`traversalGate ${gate.id}: halfExtents must contain two finite values in (0, 0.15]`);
+    }
+    if (!Number.isFinite(gate.yaw)) {
+      errors.push(`traversalGate ${gate.id}: yaw must be finite`);
+    }
+    if (!Number.isFinite(gate.top) || gate.top <= 0 || gate.top > 0.5) {
+      errors.push(`traversalGate ${gate.id}: top must be finite and in (0, 0.5]`);
+    }
+  }
+  for (const reward of world.explorationRewards) {
+    claimExplorationId('explorationReward', reward.id);
+    if (reward.sourceTraces === 0 && reward.gold === 0 && reward.fate === 0 && reward.itemCount === 0) {
+      errors.push(`explorationReward ${reward.id}: reward must not be empty`);
+    }
+  }
+
   return errors;
 }
 
@@ -350,6 +405,27 @@ export function generateWorldLayoutHeader(world) {
   emit('  std::string_view districtId;');
   emit('};');
   emit();
+  emit('struct WorldPointOfInterestDef {');
+  emit('  int32_t id; float x; float y;');
+  emit('  std::string_view label; std::string_view districtId; bool mainRoute;');
+  emit('};');
+  emit();
+  emit('enum class TraversalMotion : int32_t { Grounded = 0, Airborne = 1, Gliding = 2, Climbing = 3, Swimming = 4 };');
+  emit('struct WorldPuzzleNodeDef {');
+  emit('  int32_t id; float x; float y; std::string_view label;');
+  emit('  TraversalMotion requiredMotion; int32_t opensGateId; int32_t rewardId;');
+  emit('};');
+  emit();
+  emit('struct WorldTraversalGateDef {');
+  emit('  int32_t id; float x; float y; std::string_view label; TraversalMotion requiredMotion;');
+  emit('  float halfExtents[2]; float yaw; float top;');
+  emit('};');
+  emit();
+  emit('struct WorldExplorationRewardDef {');
+  emit('  int32_t id; std::string_view label; int32_t sourceTraces; int32_t gold;');
+  emit('  int32_t fate; int32_t itemId; int32_t itemCount;');
+  emit('};');
+  emit();
 
   emit(`constexpr std::size_t kDistrictCount = ${world.districts.length};`);
   emit('constexpr std::array<WorldDistrictDef, kDistrictCount> kDistricts{{');
@@ -421,6 +497,35 @@ export function generateWorldLayoutHeader(world) {
     emit(`        ${collectible.id}, ${floatLiteral(collectible.x)}, ${floatLiteral(collectible.y)},`);
     emit(`        ${cxxStringLiteral(collectible.kind)}, ${cxxStringLiteral(collectible.label)}, ${cxxStringLiteral(collectible.districtId)},`);
     emit('    },');
+  }
+  emit('}};');
+  emit();
+  emit(`constexpr std::size_t kPointOfInterestCount = ${world.pointsOfInterest.length};`);
+  emit('constexpr std::array<WorldPointOfInterestDef, kPointOfInterestCount> kPointsOfInterest{{');
+  for (const poi of world.pointsOfInterest) {
+    emit(`    {${poi.id}, ${floatLiteral(poi.x)}, ${floatLiteral(poi.y)}, ${cxxStringLiteral(poi.label)}, ${cxxStringLiteral(poi.districtId)}, ${poi.mainRoute ? 'true' : 'false'}},`);
+  }
+  emit('}};');
+  emit();
+  const motionLiteral = (value) => `TraversalMotion::${value}`;
+  emit(`constexpr std::size_t kPuzzleNodeCount = ${world.puzzles.length};`);
+  emit('constexpr std::array<WorldPuzzleNodeDef, kPuzzleNodeCount> kPuzzleNodes{{');
+  for (const puzzle of world.puzzles) {
+    emit(`    {${puzzle.id}, ${floatLiteral(puzzle.x)}, ${floatLiteral(puzzle.y)}, ${cxxStringLiteral(puzzle.label)}, ${motionLiteral(puzzle.requiredMotion)}, ${puzzle.opensGateId}, ${puzzle.rewardId}},`);
+  }
+  emit('}};');
+  emit();
+  emit(`constexpr std::size_t kTraversalGateCount = ${world.traversalGates.length};`);
+  emit('constexpr std::array<WorldTraversalGateDef, kTraversalGateCount> kTraversalGates{{');
+  for (const gate of world.traversalGates) {
+    emit(`    {${gate.id}, ${floatLiteral(gate.x)}, ${floatLiteral(gate.y)}, ${cxxStringLiteral(gate.label)}, ${motionLiteral(gate.requiredMotion)}, {${floatLiteral(gate.halfExtents[0])}, ${floatLiteral(gate.halfExtents[1])}}, ${floatLiteral(gate.yaw)}, ${floatLiteral(gate.top)}},`);
+  }
+  emit('}};');
+  emit();
+  emit(`constexpr std::size_t kExplorationRewardCount = ${world.explorationRewards.length};`);
+  emit('constexpr std::array<WorldExplorationRewardDef, kExplorationRewardCount> kExplorationRewards{{');
+  for (const reward of world.explorationRewards) {
+    emit(`    {${reward.id}, ${cxxStringLiteral(reward.label)}, ${reward.sourceTraces}, ${reward.gold}, ${reward.fate}, ${reward.itemId}, ${reward.itemCount}},`);
   }
   emit('}};');
   emit();
