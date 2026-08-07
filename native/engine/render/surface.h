@@ -399,6 +399,10 @@ struct Surface {
   // enemyModel.attachmentNames() 同序）：6 类原型共享法师模型，
   // 用装备组合差异化剪影；越界原型回退全局开关。
   std::array<std::vector<bool>, 6> enemyArchetypeAttachments;
+  // NPC 市民装备变体表（向量与 npcModel.attachmentNames() 同序）：
+  // NPC 共享玩家 KayKit 模型，按 id 取模分配 3 种装备组合差异化
+  // 剪影（披风基础 + 头盔/盾牌变体），与全副武装的主角区分。
+  std::array<std::vector<bool>, 3> npcAttachmentVariants;
 
   // ---- 命中火花字段 ----
   std::vector<HitSpark3D> hitSparks3d;

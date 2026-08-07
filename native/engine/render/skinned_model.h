@@ -120,6 +120,13 @@ inline bool AttachmentEnabledFor(const std::vector<bool>* overrideFlags,
   return globalEnabled;
 }
 
+// NPC 装备变体选择（纯函数）：按 id 取模确定性分配变体，同一 NPC
+// 每次渲染装备组合稳定；variantCount<=0 回退 0（调用侧再兜底）。
+inline int NpcAttachmentVariantFor(uint32_t id, int variantCount) {
+  if (variantCount <= 0) return 0;
+  return static_cast<int>(id % static_cast<uint32_t>(variantCount));
+}
+
 class SkinnedModel {
  public:
   SkinnedModel();

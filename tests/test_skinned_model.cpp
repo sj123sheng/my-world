@@ -567,6 +567,24 @@ void testAttachmentEnabledForOverridePrecedence() {
   assert(AttachmentEnabledFor(&overrideOn, -1, true));
 }
 
+void testNpcAttachmentVariantIsDeterministic() {
+  // 按 id 取模分配：同一 id 结果稳定，覆盖全部变体下标。
+  assert(NpcAttachmentVariantFor(0, 3) == 0);
+  assert(NpcAttachmentVariantFor(1, 3) == 1);
+  assert(NpcAttachmentVariantFor(2, 3) == 2);
+  assert(NpcAttachmentVariantFor(3, 3) == 0);
+  assert(NpcAttachmentVariantFor(7, 3) == 1);
+  assert(NpcAttachmentVariantFor(4001, 3) == NpcAttachmentVariantFor(2, 3));
+  // 结果恒在 [0, variantCount) 内。
+  for (uint32_t id = 0; id < 64; ++id) {
+    const int variant = NpcAttachmentVariantFor(id, 3);
+    assert(variant >= 0 && variant < 3);
+  }
+  // variantCount<=0 回退 0，不产生负下标。
+  assert(NpcAttachmentVariantFor(5, 0) == 0);
+  assert(NpcAttachmentVariantFor(5, -2) == 0);
+}
+
 }  // namespace
 
 int main() {
@@ -593,5 +611,6 @@ int main() {
   testJointNamesTrackPaletteAndFindJointIndexHits();
   testRigidAttachmentBakesIntoSingleJointSkinning();
   testAttachmentEnabledForOverridePrecedence();
+  testNpcAttachmentVariantIsDeterministic();
   return 0;
 }

@@ -903,6 +903,19 @@ static const std::vector<bool>* enemyAttachmentOverride(const Surface& s,
   return &s.enemyArchetypeAttachments[static_cast<std::size_t>(archetype)];
 }
 
+// NPC 市民装备覆盖指针：按 id 取模分配变体（NpcAttachmentVariantFor），
+// 变体表未构建（模型未加载）时返回 nullptr 回退全局开关。
+static const std::vector<bool>* npcAttachmentOverride(const Surface& s,
+                                                      uint32_t id) {
+  const int variantCount = static_cast<int>(s.npcAttachmentVariants.size());
+  const int index = NpcAttachmentVariantFor(id, variantCount);
+  if (index < 0 || index >= variantCount) return nullptr;
+  const std::vector<bool>& variant =
+      s.npcAttachmentVariants[static_cast<std::size_t>(index)];
+  if (variant.empty()) return nullptr;
+  return &variant;
+}
+
 static void tryInitializeModelAsset(Surface& s, ModelKind kind,
                                     SkinnedModel& model,
                                     const char* assetName) {
@@ -967,6 +980,18 @@ static void tryInitializeModelAsset(Surface& s, ModelKind kind,
     model.setAttachmentEnabled("Barbarian_Hat", true);
     model.setAttachmentEnabled("Barbarian_Cape", true);
     model.setAttachmentEnabled("Barbarian_Round_Shield", true);
+  }
+  if (kind == ModelKind::Npc) {
+    // 市民模块化装备（NPC 复用玩家 KayKit 模型）：披风为基础着装，
+    // 与全副武装的主角（头盔+披风+盾牌）区分；按 id 分配三种变体
+    // 差异化剪影——披风市民 / 头盔民兵 / 披风+盾卫兵。
+    model.setAttachmentEnabled("Knight_Cape", true);
+    s.npcAttachmentVariants[0] =
+        buildAttachmentOverride(model, {"Knight_Cape"});
+    s.npcAttachmentVariants[1] =
+        buildAttachmentOverride(model, {"Knight_Helmet", "Knight_Cape"});
+    s.npcAttachmentVariants[2] = buildAttachmentOverride(
+        model, {"Knight_Cape", "Round_Shield"});
   }
 }
 
@@ -2494,7 +2519,8 @@ static void draw3DPhase(Surface& s) {
                                s.npcAssetProfile.scale,
                                npc.angle + s.npcAssetProfile.yawOffsetRadians),
               vp, hitFlashTint(s.npcAssetProfile.materialTint, 0.0f),
-              s.npcAssetProfile, 0.0f, false, 1.0f, 1.0f, "npc");
+              s.npcAssetProfile, 0.0f, false, 1.0f, 1.0f, "npc", nullptr, -1,
+              npcAttachmentOverride(s, npc.id));
   }
 
   // 首领立方体（按阶段配色，击败后跳过）。

@@ -1,5 +1,16 @@
 # 技术决策
 
+## 2026-08-08：NPC 市民装备变体（建模剪影差异化）
+
+- NPC 模型槽位注入的是 player.glb 字节（GamePage 已实现 npc.glb
+  优先 + player.glb 回退），但此前无 ModelKind::Npc 装备分支，
+  NPC 恒为裸体低模。本次补齐：披风为基础着装（Knight_Cape 全局
+  启用），按 id 取模分配三种逐实例变体——披风市民 / 头盔+披风
+  民兵 / 披风+盾卫兵，与全副武装的主角（头盔+披风+盾）区分剪影。
+- 变体选择为纯函数 NpcAttachmentVariantFor（id 取模、数量<=0
+  回退 0），test 锁定；复用敌人原型的 buildAttachmentOverride 与
+  drawActor 覆盖参数通道，不换资产即完成市民着装。
+
 ## 2026-08-08：元素死亡爆发（敌人死亡元素色爆散）
 
 - 死亡爆发按原型元素色化（原神式死亡反馈）：resolveEnemyElement 从
