@@ -298,6 +298,33 @@ inline float FovPunchOffsetAt(float seconds, float maxOffsetDegrees) {
   return maxOffsetDegrees * dive * (1.0f - ease);
 }
 
+// 元素技能符文环：元素技能释放瞬间施法者脚下浮现旋转双新月
+// 符阵（原神技能法阵语言），加法混合，缓出旋转 + 淡入淡出。
+inline float SkillRuneDuration() { return 0.5f; }
+
+struct SkillRunePose {
+  float rotationRadians = 0.0f;  // 符阵旋转角（缓出减速，约 240°）
+  float alpha = 0.0f;            // 整体透明度
+  float scale = 1.0f;            // 半径微胀（0.85→1.0）
+  bool visible = false;
+};
+
+inline SkillRunePose SkillRunePoseAt(float seconds) {
+  SkillRunePose pose;
+  const float duration = SkillRuneDuration();
+  if (seconds < 0.0f || seconds >= duration) return pose;
+  pose.visible = true;
+  const float t = seconds / duration;
+  // 缓出三次方旋转：起手快、收尾慢，总转角约 240°。
+  const float ease = 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t);
+  pose.rotationRadians = ease * 4.18879f;
+  // 前 10% 淡入，随后随全程线性淡出。
+  const float fadeIn = std::clamp(t / 0.1f, 0.0f, 1.0f);
+  pose.alpha = fadeIn * (1.0f - t);
+  pose.scale = 0.85f + 0.15f * ease;
+  return pose;
+}
+
 // 武器挥舞粒子拖尾：普攻窗口内发射点沿刀光扫掠角移动（与
 // SlashArcPoseAt 同源），形成原神式武器拖尾。发射位置 =
 // 角色位置 + 极坐标（朝向+angleRadians, radiusFactor×模型缩放）。

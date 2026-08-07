@@ -451,6 +451,15 @@ struct Surface {
     glm::vec3 color{1.0f};
   };
   std::vector<LightPillar> lightPillars;
+  // 元素技能符文环：技能释放瞬间施法者脚下的旋转双新月符阵。
+  struct SkillRune {
+    float x = 0.0f;
+    float z = 0.0f;
+    float seconds = 0.0f;
+    float maxRadius = 0.0f;
+    glm::vec3 color{1.0f};
+  };
+  std::vector<SkillRune> skillRunes;
 
   // 玩家当前血量比例（0..1）：低于阈值时渲染层绘制边缘脉冲警示。
   float playerHpRatio = 1.0f;

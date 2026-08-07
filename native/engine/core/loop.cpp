@@ -464,6 +464,14 @@ void spawnLightPillar(Surface& surface, Vec2 position, glm::vec3 color,
       {position.x, position.y, 0.0f, maxHeight, color});
 }
 
+// 元素技能符文环：施法者脚下生成旋转双新月符阵（上限防溢出）。
+void spawnSkillRune(Surface& surface, Vec2 position, glm::vec3 color,
+                    float maxRadius) {
+  if (surface.skillRunes.size() > 16) return;
+  surface.skillRunes.push_back(
+      {position.x, position.y, 0.0f, maxRadius, color});
+}
+
 // 敌方普攻刀光：挥击上升沿生成红色新月弧线，尺寸随原型缩放。
 void spawnEnemySlashArc(Surface& surface, uint32_t id, Vec2 position,
                         float yaw, int archetype) {
@@ -1656,6 +1664,7 @@ void Loop::resetInput() {
   surface.impactDecals.clear();
   surface.lightPillars.clear();
   surface.resonanceFovSeconds = -1.0f;
+  surface.skillRunes.clear();
   hitStopRemainingMs = 0;
   surface.player3dAnimation.action = RenderAnimation::Idle;
   surface.player3dAnimation.hit = false;
@@ -2236,6 +2245,8 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       }
       spawnShockwave(surface, playerPos, glm::vec3{1.0f, 0.96f, 0.72f},
                      0.07f * playerRatio);
+      spawnSkillRune(surface, playerPos, glm::vec3{1.0f, 0.96f, 0.72f},
+                     0.05f * playerRatio);
     }
     if (skillSnapshot.currentCooldownMs > 0 && prevCurrentCdMs <= 0) {
       spawnHitSparks(surface, playerPos, 5, 12, 1.3f, 1.3f, playerRatio);
@@ -2245,6 +2256,8 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       }
       spawnShockwave(surface, playerPos, glm::vec3{0.45f, 0.85f, 1.0f},
                      0.07f * playerRatio);
+      spawnSkillRune(surface, playerPos, glm::vec3{0.45f, 0.85f, 1.0f},
+                     0.05f * playerRatio);
     }
     if (skillSnapshot.corruptionCooldownMs > 0 && prevCorruptionCdMs <= 0) {
       spawnHitSparks(surface, playerPos, 6, 12, 1.3f, 1.3f, playerRatio);
@@ -2254,6 +2267,8 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       }
       spawnShockwave(surface, playerPos, glm::vec3{0.72f, 0.45f, 0.95f},
                      0.07f * playerRatio);
+      spawnSkillRune(surface, playerPos, glm::vec3{0.72f, 0.45f, 0.95f},
+                     0.05f * playerRatio);
     }
     // 终结技释放动效：进入吟唱状态瞬间在主角周身爆发大规模金白火花，
     // 并向目标齐射更粗更亮的密集束流，强化“终结一击”的仪式感。
@@ -2270,6 +2285,9 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       // 终结技冲击波：半径更大，强化“终结一击”的地面震荡感。
       spawnShockwave(surface, playerPos, glm::vec3{1.0f, 0.90f, 0.50f},
                      0.11f * playerRatio);
+      // 终结技符文环：更大更亮的旋转符阵，强化爆发仪式感。
+      spawnSkillRune(surface, playerPos, glm::vec3{1.0f, 0.90f, 0.50f},
+                     0.08f * playerRatio);
     }
     prevActionForVfx = actionNow;
     // 普攻释放动效：连击段数变化（每次挥击升阶/回绕）时，主角周身
@@ -2845,6 +2863,15 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                        return pillar.seconds >= LightPillarDuration();
                      }),
       surface.lightPillars.end());
+  for (Surface::SkillRune& rune : surface.skillRunes) {
+    rune.seconds += dtSeconds;
+  }
+  surface.skillRunes.erase(
+      std::remove_if(surface.skillRunes.begin(), surface.skillRunes.end(),
+                     [](const Surface::SkillRune& rune) {
+                       return rune.seconds >= SkillRuneDuration();
+                     }),
+      surface.skillRunes.end());
   // 共鸣 FOV 冲击计时推进：到期归位（渲染层据此恢复默认视场角）。
   if (surface.resonanceFovSeconds >= 0.0f) {
     surface.resonanceFovSeconds += dtSeconds;

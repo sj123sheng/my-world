@@ -1388,6 +1388,60 @@ static void drawLightPillars(Surface& s, const glm::mat4& vp) {
   s.shader3d.setSpecular(kNeutralSpecularStrength, kNeutralSpecularShininess);
 }
 
+// 元素技能符文环：技能释放瞬间施法者脚下的旋转双新月符阵
+// （复用刀光新月网格，两弧相差 180°），加法混合贴地，缓出旋转 +
+// 淡入淡出，原神技能法阵语言。结束后恢复状态。
+static void drawSkillRunes(Surface& s, const glm::mat4& vp) {
+  if (s.skillRunes.empty() || s.slashArcMesh.vbo == 0u) return;
+  glDepthMask(GL_FALSE);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+  glDisable(GL_CULL_FACE);
+  s.shader3d.setSkinned(false);
+  s.shader3d.setHasTexture(false);
+  s.shader3d.setToonShading(false, glm::vec3(0.7f), 0.1f, 0.08f);
+  s.shader3d.setOutlinePass(0.0f, glm::vec3(0.0f));
+  s.shader3d.setRim(glm::vec3(0.0f), 0.0f);
+  s.shader3d.setSpecular(0.0f, 1.0f);
+  s.shader3d.setEnvironmentTint(glm::vec3(0.0f), 0.0f);
+  const glm::vec3 up{0.0f, 1.0f, 0.0f};
+  for (const Surface::SkillRune& rune : s.skillRunes) {
+    const SkillRunePose pose = SkillRunePoseAt(rune.seconds);
+    if (!pose.visible) continue;
+    const float radius = rune.maxRadius * pose.scale;
+    const glm::vec3 center{rune.x, groundYAt(s, rune.x, rune.z) + 0.012f,
+                           rune.z};
+    // 双新月符阵：两弧相差 180°，外层柔晕 + 内层亮芯各画一遍。
+    for (int arc = 0; arc < 2; ++arc) {
+      const float rotation =
+          pose.rotationRadians + static_cast<float>(arc) * 3.14159265f;
+      for (int layer = 0; layer < 2; ++layer) {
+        const float layerRadius =
+            layer == 0 ? radius * 1.15f : radius * 0.82f;
+        const float layerAlpha =
+            layer == 0 ? pose.alpha * 0.35f : pose.alpha * 0.75f;
+        const glm::mat4 model =
+            glm::translate(glm::mat4(1.0f), center) *
+            glm::rotate(glm::mat4(1.0f), rotation, up) *
+            glm::scale(glm::mat4(1.0f),
+                       glm::vec3(layerRadius, 1.0f, layerRadius));
+        s.shader3d.setLight(up, rune.color * 0.8f, rune.color * 0.6f);
+        s.shader3d.setAlpha(layerAlpha);
+        s.shader3d.setMVP(vp * model);
+        s.shader3d.setModel(model);
+        s.slashArcMesh.draw();
+      }
+    }
+  }
+  s.shader3d.setAlpha(1.0f);
+  glDisable(GL_BLEND);
+  glDepthMask(GL_TRUE);
+  glEnable(GL_CULL_FACE);
+  glCullFace(GL_BACK);
+  s.shader3d.setRim(kNeutralRimColor, kNeutralRimStrength);
+  s.shader3d.setSpecular(kNeutralSpecularStrength, kNeutralSpecularShininess);
+}
+
 // 普攻刀光：加法混合的新月弧线，双层叠加（外层柔晕 + 内层亮芯）
 // 模拟渐变刀光；双面可见，深度只读不写。主角为金白刀光、终结段
 // 更亮更大；敌人为红色刀光，尺寸随原型缩放。结束后恢复状态。
@@ -2264,6 +2318,8 @@ static void draw3DPhase(Surface& s) {
   drawShockwaveRings(s, vp);
   // 命中贴地冲击贴花：与冲击波同层，先于角色绘制。
   drawImpactDecals(s, vp);
+  // 元素技能符文环：与冲击波同层，先于角色绘制。
+  drawSkillRunes(s, vp);
   s.shader3d.setRim({0.62f, 0.72f, 0.85f}, 0.45f);
   s.shader3d.setSpecular(0.28f, 24.0f);
 

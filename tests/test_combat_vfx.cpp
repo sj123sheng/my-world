@@ -344,6 +344,36 @@ void testFovPunchDivesThenRecovers() {
   assert(FovPunchOffsetAt(FovPunchDuration() * 0.2f, -7.0f) < 0.0f);
 }
 
+void testSkillRuneSpinsEaseOutAndFades() {
+  // 窗口外不可见。
+  assert(!SkillRunePoseAt(-0.01f).visible);
+  assert(!SkillRunePoseAt(SkillRuneDuration()).visible);
+  assert(!SkillRunePoseAt(SkillRuneDuration() + 0.1f).visible);
+  // 旋转单调递增（缓出：前段快、后段慢）。
+  float previous = -1.0f;
+  float previousDelta = 1e9f;
+  for (int i = 0; i <= 10; ++i) {
+    const SkillRunePose pose = SkillRunePoseAt(
+        SkillRuneDuration() * static_cast<float>(i) / 10.0f * 0.999f);
+    assert(pose.visible);
+    assert(pose.rotationRadians >= previous);
+    const float delta = pose.rotationRadians - previous;
+    if (i >= 2) assert(delta <= previousDelta + 1e-5f);  // 减速
+    previousDelta = delta;
+    previous = pose.rotationRadians;
+  }
+  // 总转角约 240°（4.18879rad）。
+  assert(nearlyEqual(previous, 4.18879f, 0.05f));
+  // 透明度：起点 0（淡入中），中段接近峰值，终点趋零。
+  assert(SkillRunePoseAt(0.0f).alpha < 0.05f);
+  const float midAlpha = SkillRunePoseAt(SkillRuneDuration() * 0.2f).alpha;
+  assert(midAlpha > 0.6f);
+  assert(SkillRunePoseAt(SkillRuneDuration() - 0.001f).alpha < 0.05f);
+  // 缩放从 0.85 缓出膨胀到 1.0。
+  assert(nearlyEqual(SkillRunePoseAt(0.0f).scale, 0.85f));
+  assert(SkillRunePoseAt(SkillRuneDuration() * 0.999f).scale > 0.99f);
+}
+
 }  // namespace
 
 int main() {
@@ -366,5 +396,6 @@ int main() {
   testWeaponTrailFollowsSlashArcWindow();
   testWeaponTrailVelocityTangential();
   testFovPunchDivesThenRecovers();
+  testSkillRuneSpinsEaseOutAndFades();
   return 0;
 }
