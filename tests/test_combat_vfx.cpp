@@ -374,6 +374,39 @@ void testSkillRuneSpinsEaseOutAndFades() {
   assert(SkillRunePoseAt(SkillRuneDuration() * 0.999f).scale > 0.99f);
 }
 
+void testSlashArcColorFollowsInfusion() {
+  // 无附魔默认金白；三系附魔颜色互不相同且与源质语义一致。
+  const glm::vec3 none = SlashArcColorFor(1, -1);
+  const glm::vec3 radiance = SlashArcColorFor(1, 0);
+  const glm::vec3 current = SlashArcColorFor(1, 1);
+  const glm::vec3 corruption = SlashArcColorFor(1, 2);
+  assert(none != radiance);
+  assert(radiance != current);
+  assert(current != corruption);
+  assert(radiance != corruption);
+  // 辉印金白（r>b）、脉流青蓝（b>r）、蚀质暗紫（r>g）。
+  assert(radiance.r > radiance.b);
+  assert(current.b > current.r);
+  assert(corruption.r > corruption.g);
+  // 终结段固定金橙，不受附魔影响。
+  const glm::vec3 finisherPlain = SlashArcColorFor(4, -1);
+  assert(SlashArcColorFor(4, 1) == finisherPlain);
+  assert(SlashArcColorFor(4, 2) == finisherPlain);
+  assert(finisherPlain.r > finisherPlain.b);
+  // 未知源质回退默认金白。
+  assert(SlashArcColorFor(1, 99) == none);
+}
+
+void testWeaponTrailKindFollowsInfusion() {
+  // 无附魔/辉印 → 金白拖尾 kind 7；脉流 → 9；蚀质 → 10。
+  assert(WeaponTrailKindFor(-1) == 7);
+  assert(WeaponTrailKindFor(0) == 7);
+  assert(WeaponTrailKindFor(1) == 9);
+  assert(WeaponTrailKindFor(2) == 10);
+  // 未知源质回退金白拖尾。
+  assert(WeaponTrailKindFor(99) == 7);
+}
+
 }  // namespace
 
 int main() {
@@ -397,5 +430,7 @@ int main() {
   testWeaponTrailVelocityTangential();
   testFovPunchDivesThenRecovers();
   testSkillRuneSpinsEaseOutAndFades();
+  testSlashArcColorFollowsInfusion();
+  testWeaponTrailKindFollowsInfusion();
   return 0;
 }

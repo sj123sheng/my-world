@@ -350,3 +350,33 @@ inline void WeaponTrailVelocity(float polarAngle, float tangentSpeed,
   vz = -std::sin(polarAngle) * tangentSpeed;
   vy = 0.006f;
 }
+
+// 普攻刀光元素染色（原神元素附魔语言）：施放元素技能后武器
+// 附着对应源质，普攻刀光随之染色，直到施放另一系源质替换。
+// lastSource：0=辉印 1=脉流 2=蚀质，-1/未知=默认金白；
+// 终结段（comboSegment>=4）固定金橙不受附魔影响。
+inline glm::vec3 SlashArcColorFor(int comboSegment, int lastSource) {
+  if (comboSegment >= 4) return {1.0f, 0.78f, 0.38f};
+  switch (lastSource) {
+    case 0:  // 辉印附魔：金白
+      return {1.0f, 0.92f, 0.55f};
+    case 1:  // 脉流附魔：青蓝
+      return {0.45f, 0.85f, 1.0f};
+    case 2:  // 蚀质附魔：暗紫
+      return {0.75f, 0.42f, 0.95f};
+    default:  // 无附魔：默认金白
+      return {1.0f, 0.88f, 0.55f};
+  }
+}
+
+// 附魔武器拖尾火花 kind：随附魔源质切换配色（kind>=3 不受重力）。
+inline int WeaponTrailKindFor(int lastSource) {
+  switch (lastSource) {
+    case 1:
+      return 9;  // 脉流附魔青蓝拖尾
+    case 2:
+      return 10;  // 蚀质附魔暗紫拖尾
+    default:
+      return 7;  // 无附魔/辉印金白拖尾
+  }
+}

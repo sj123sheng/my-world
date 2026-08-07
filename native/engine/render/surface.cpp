@@ -1537,9 +1537,9 @@ static void drawSlashArcs(Surface& s, const glm::mat4& vp) {
     const SlashArcPose pose =
         SlashArcPoseAt(s.playerSlashSeconds, s.playerSlashCombo);
     if (pose.visible) {
-      const glm::vec3 color = s.playerSlashCombo >= 4
-                                  ? glm::vec3{1.0f, 0.78f, 0.38f}
-                                  : glm::vec3{1.0f, 0.88f, 0.55f};
+      // 元素附魔染色：刀光颜色跟随最近施放的源质（终结段固定金橙）。
+      const glm::vec3 color =
+          SlashArcColorFor(s.playerSlashCombo, s.playerSlashSource);
       const float radius = s.playerAssetProfile.scale * 2.4f * pose.scale;
       const glm::vec3 center{s.player.x,
                              groundYAt(s, s.player.x, s.player.y) +
@@ -1606,6 +1606,10 @@ static void drawHitSparks(Surface& s, const glm::mat4& vp) {
       color = {1.0f, 0.94f, 0.66f};            // 7 = 主角武器拖尾金白
     } else if (spark.kind == 8) {
       color = {1.0f, 0.45f, 0.38f};            // 8 = 敌方武器拖尾红
+    } else if (spark.kind == 9) {
+      color = {0.50f, 0.87f, 1.0f};            // 9 = 脉流附魔青蓝拖尾
+    } else if (spark.kind == 10) {
+      color = {0.78f, 0.48f, 0.98f};           // 10 = 蚀质附魔暗紫拖尾
     }
     s.shader3d.setLight(billboardNormal, color * 0.8f, color * 0.6f);
     // 尾迹粒子低透明度小尺寸，不与战斗火花争夺注意力。

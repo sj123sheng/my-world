@@ -1659,6 +1659,7 @@ void Loop::resetInput() {
   surface.playerSlashSeconds = -1.0f;
   surface.playerSlashCombo = 0;
   surface.playerSlashYaw = 0.0f;
+  surface.playerSlashSource = -1;
   surface.enemySlashArcs.clear();
   surface.shockwaveRings.clear();
   surface.impactDecals.clear();
@@ -2247,6 +2248,8 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                      0.07f * playerRatio);
       spawnSkillRune(surface, playerPos, glm::vec3{1.0f, 0.96f, 0.72f},
                      0.05f * playerRatio);
+      // 元素附魔：武器附着辉印，普攻刀光/拖尾随之染金白。
+      surface.playerSlashSource = 0;
     }
     if (skillSnapshot.currentCooldownMs > 0 && prevCurrentCdMs <= 0) {
       spawnHitSparks(surface, playerPos, 5, 12, 1.3f, 1.3f, playerRatio);
@@ -2258,6 +2261,8 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                      0.07f * playerRatio);
       spawnSkillRune(surface, playerPos, glm::vec3{0.45f, 0.85f, 1.0f},
                      0.05f * playerRatio);
+      // 元素附魔：武器附着脉流，普攻刀光/拖尾随之染青蓝。
+      surface.playerSlashSource = 1;
     }
     if (skillSnapshot.corruptionCooldownMs > 0 && prevCorruptionCdMs <= 0) {
       spawnHitSparks(surface, playerPos, 6, 12, 1.3f, 1.3f, playerRatio);
@@ -2269,6 +2274,8 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                      0.07f * playerRatio);
       spawnSkillRune(surface, playerPos, glm::vec3{0.72f, 0.45f, 0.95f},
                      0.05f * playerRatio);
+      // 元素附魔：武器附着蚀质，普攻刀光/拖尾随之染暗紫。
+      surface.playerSlashSource = 2;
     }
     // 终结技释放动效：进入吟唱状态瞬间在主角周身爆发大规模金白火花，
     // 并向目标齐射更粗更亮的密集束流，强化“终结一击”的仪式感。
@@ -2803,7 +2810,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
           {surface.player.x + std::sin(phi) * radius,
            surface.playerGroundHeight + playerTrail.heightFactor * scale,
            surface.player.y + std::cos(phi) * radius, vx, vy, vz, 0.2f, 0.2f,
-           7, 1.0f});
+           WeaponTrailKindFor(surface.playerSlashSource), 1.0f});
     }
     surface.playerSlashSeconds += dtSeconds;
     if (surface.playerSlashSeconds >= SlashArcDuration()) {

@@ -67,6 +67,7 @@ struct HitSpark3D {
   int kind;  // 0=命中金橙 1=玩家受击红 2=击杀亮金 3=移动尾迹
              // 4=辉印金白 5=脉流青蓝 6=蚀质暗紫
              // 7=主角武器拖尾金白 8=敌方武器拖尾红
+             // 9=脉流附魔拖尾青蓝 10=蚀质附魔拖尾暗紫
   // 渲染尺寸倍率：按归属实体的模型缩放比例同步放大特效，
   // 保证模型变大/变小时火花与投射物尺寸始终匹配。
   float sizeScale = 1.0f;
@@ -418,6 +419,9 @@ struct Surface {
   float playerSlashSeconds = -1.0f;
   int playerSlashCombo = 0;
   float playerSlashYaw = 0.0f;
+  // 主角武器附魔源质（原神元素附魔）：0=辉印 1=脉流 2=蚀质，
+  // -1=无附魔；施放元素技能时写入，普攻刀光/拖尾据此染色。
+  int playerSlashSource = -1;
   // 敌方普攻刀光：遭遇敌人挥击边沿触发，按实体存活与时长裁剪。
   struct EnemySlashArc {
     uint32_t id = 0;
