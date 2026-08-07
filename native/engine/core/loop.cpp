@@ -3362,6 +3362,8 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     surface.fovPunchMaxOffset = FovPunchMaxOffsetFor(2);
     surface.resonanceFovSeconds = 0.0f;
     vfxSystem.triggerCameraShake(2 * FP_ONE);
+    // 打断音效：噪声碎裂（此前仅事件映射存在、无触发源）。
+    audioBridge.playUiSound(SoundEffect::CastBarBroken);
   }
   prevFinalForgeCasting = finalForgeCasting;
 
