@@ -14,8 +14,11 @@ struct CombatRegionConfig {
 };
 
 struct EnemyAiConfig {
-  static constexpr std::size_t kMaxEnemies = 3;
+  // 同屏敌人容量上限：放开到 8 以支撑野外刷怪（WildSpawnSystem）。
+  static constexpr std::size_t kMaxEnemies = 8;
 
+  // 默认值保持 3：竞技场/关卡配置不变，仅放开校验上限；
+  // 需要更多敌人的场景显式调大 maxEnemies（≤ kMaxEnemies）。
   std::size_t maxEnemies = 3;
   std::vector<EnemyAbility> abilities;
   CombatRegionConfig region;

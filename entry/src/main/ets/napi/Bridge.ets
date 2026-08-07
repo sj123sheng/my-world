@@ -164,6 +164,9 @@ export interface Snapshot {
   dailyCompletedCount: number;
   dailyQuestClaimed: number;
   gachaPoolKind: number;
+  // NPC 任务发布（Phase 4）：对话结束时接取的支线；-1 表示无。
+  npcOfferQuestId: number;
+  npcOfferQuestTitle: string;
 }
 
 export const nativeStart = (): void => native.nativeStart();
@@ -174,6 +177,12 @@ export const nativeSetModelAssets = (player: ArrayBuffer, enemy: ArrayBuffer,
 export const nativeSetEnvironmentAssets = (outer: ArrayBuffer, center: ArrayBuffer,
   backdrop: ArrayBuffer, decoration: ArrayBuffer): boolean =>
   native.nativeSetEnvironmentAssets(outer, center, backdrop, decoration);
+export const nativeSetBlockAsset = (blockId: number, bytes: ArrayBuffer): boolean =>
+  native.nativeSetBlockAsset(blockId, bytes);
+// NPC 模型槽位（Phase 4）：第一版由 GamePage 注入 player.glb 占位字节，
+// 缺失时 native 侧保持静态 Mesh 回退。
+export const nativeSetNpcAsset = (bytes: ArrayBuffer): boolean =>
+  native.nativeSetNpcAsset(bytes);
 export const pushInput = (e: InputEvent): void => native.pushInput(e);
 export const pushAction = (type: number): void => native.pushAction(type);
 export const startEncounter = (mode: number): boolean => native.startEncounter(mode);

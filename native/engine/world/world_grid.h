@@ -39,6 +39,10 @@ struct WorldGrid {
   const std::vector<int32_t>& activeChunks() const { return active_; }
 
   int32_t chunkIndexAt(Vec2 position) const;
+  // 分块 id 的网格坐标（id = y * countX + x），供流式调度器计算
+  // 切比雪夫距离；非法 id 钳制到有效范围。
+  int32_t chunkXOf(int32_t chunkId) const;
+  int32_t chunkYOf(int32_t chunkId) const;
   int32_t chunkCount() const { return config_.countX * config_.countY; }
   float chunkSizeX() const { return 1.0f / static_cast<float>(config_.countX); }
   float chunkSizeY() const { return 1.0f / static_cast<float>(config_.countY); }

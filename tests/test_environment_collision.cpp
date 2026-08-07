@@ -8,6 +8,8 @@
 
 #include <cassert>
 #include <cmath>
+#include <cstdint>
+#include <vector>
 
 namespace {
 
@@ -167,6 +169,99 @@ int main() {
     }
     assert(state.state == MotionState::Grounded);
     assert(std::abs(state.height - 0.05f) < 1e-4f);
+  }
+
+  // ---- Phase 2 分桶：桶表结构与盒覆盖 ----
+  {
+    assert(layout.buckets().size() ==
+           static_cast<size_t>(BuildingCollision::kBucketCountX *
+                               BuildingCollision::kBucketCountY));
+    // 每个盒至少归属一个分块；桶内下标升序。
+    std::vector<int> membership(layout.boxes().size(), 0);
+    for (const std::vector<int32_t>& bucket : layout.buckets()) {
+      for (size_t i = 1; i < bucket.size(); ++i) {
+        assert(bucket[i - 1] < bucket[i]);
+      }
+      for (const int32_t index : bucket) {
+        assert(index >= 0 &&
+               index < static_cast<int32_t>(layout.boxes().size()));
+        ++membership[static_cast<size_t>(index)];
+      }
+    }
+    for (const int count : membership) assert(count >= 1);
+    // 越界坐标钳制到边缘分块。
+    assert(BuildingCollision::bucketIndexAt(-3.0f, -3.0f) == 0);
+    assert(BuildingCollision::bucketIndexAt(3.0f, 3.0f) == 63);
+  }
+
+  // ---- Phase 2 分桶查询与全量遍历严格一致 ----
+  {
+    constexpr float kRadius = 0.012f;
+    constexpr int kSamples = 25;
+    for (int iy = 0; iy < kSamples; ++iy) {
+      for (int ix = 0; ix < kSamples; ++ix) {
+        const float px = (static_cast<float>(ix) + 0.5f) / kSamples;
+        const float py = (static_cast<float>(iy) + 0.5f) / kSamples;
+        float bucketX = px;
+        float bucketY = py;
+        float bruteX = px;
+        float bruteY = py;
+        const BuildingContact bucketContact =
+            layout.resolve(bucketX, bucketY, kRadius, 0.0f);
+        const BuildingContact bruteContact =
+            layout.resolveBruteForce(bruteX, bruteY, kRadius, 0.0f);
+        assert(bucketContact.touching == bruteContact.touching);
+        assert(std::abs(bucketX - bruteX) < 1e-6f);
+        assert(std::abs(bucketY - bruteY) < 1e-6f);
+        assert(std::abs(bucketContact.highestTop - bruteContact.highestTop) <
+               1e-6f);
+        const float bucketTop = layout.supportTopAt(px, py, kRadius);
+        const float bruteTop = layout.supportTopAtBruteForce(px, py, kRadius);
+        assert(bucketTop == bruteTop ||
+               std::abs(bucketTop - bruteTop) < 1e-6f);
+      }
+    }
+  }
+
+  // ---- Phase 2 跨块隔离：远块盒子不进入本块候选 ----
+  {
+    // 两个相距很远的盒：分属不同分块，互不影响对方分块的查询。
+    BuildingBox near;
+    near.cx = 0.0625f;  // 分块 (0,0) 中心
+    near.cz = 0.0625f;
+    near.hx = 0.02f;
+    near.hz = 0.02f;
+    near.yaw = 0.0f;
+    near.top = 0.05f;
+    BuildingBox far;
+    far.cx = 0.9375f;  // 分块 (7,7) 中心
+    far.cz = 0.9375f;
+    far.hx = 0.02f;
+    far.hz = 0.02f;
+    far.yaw = 0.0f;
+    far.top = 0.05f;
+    const BuildingCollision isolated{{near, far}};
+    // 远盒只出现在其覆盖分块的桶里，不泄漏到近盒分块。
+    const int32_t nearBucket = BuildingCollision::bucketIndexAt(0.0625f, 0.0625f);
+    const int32_t farBucket = BuildingCollision::bucketIndexAt(0.9375f, 0.9375f);
+    assert(nearBucket != farBucket);
+    for (const int32_t index : isolated.buckets()[static_cast<size_t>(nearBucket)]) {
+      assert(index == 0);
+    }
+    for (const int32_t index : isolated.buckets()[static_cast<size_t>(farBucket)]) {
+      assert(index == 1);
+    }
+    // 近盒分块内的点：分桶解算与全量遍历一致，且只被近盒推出。
+    float x = 0.0625f;
+    float y = 0.0625f;
+    const BuildingContact contact = isolated.resolve(x, y, 0.012f, 0.0f);
+    assert(contact.touching);
+    assert(std::abs(x - 0.0625f) >= 0.02f + 0.012f - 1e-5f ||
+           std::abs(y - 0.0625f) >= 0.02f + 0.012f - 1e-5f);
+    float fx = 0.0625f;
+    float fy = 0.0625f;
+    isolated.resolveBruteForce(fx, fy, 0.012f, 0.0f);
+    assert(std::abs(x - fx) < 1e-6f && std::abs(y - fy) < 1e-6f);
   }
 
   return 0;

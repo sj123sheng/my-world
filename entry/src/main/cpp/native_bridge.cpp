@@ -209,6 +209,69 @@ static napi_value NativeSetEnvironmentAssets(napi_env env,
   return result;
 }
 
+// Phase 2：按区块懒注入环境批次资产（blockId, ArrayBuffer）。
+// 注意：N-API 数值参数必须先解包为 double 再 TryConvertInt32。
+static napi_value NativeSetBlockEnvironmentAsset(napi_env env,
+                                                 napi_callback_info info) {
+  size_t argc = 2;
+  napi_value args[2] = {nullptr, nullptr};
+  napi_value result = nullptr;
+  if (napi_get_cb_info(env, info, &argc, args, nullptr, nullptr) != napi_ok ||
+      argc != 2) {
+    napi_get_boolean(env, false, &result);
+    return result;
+  }
+  napi_valuetype idType = napi_undefined;
+  double idNumber = 0.0;
+  if (args[0] == nullptr || napi_typeof(env, args[0], &idType) != napi_ok ||
+      idType != napi_number ||
+      napi_get_value_double(env, args[0], &idNumber) != napi_ok ||
+      !std::isfinite(idNumber)) {
+    napi_get_boolean(env, false, &result);
+    return result;
+  }
+  int32_t blockId = -1;
+  if (!TryConvertInt32(idNumber, blockId) || blockId < 0 ||
+      blockId >= kEnvironmentBlockCount) {
+    napi_get_boolean(env, false, &result);
+    return result;
+  }
+  const bool committed = CopyAndCommitBlockEnvironmentAsset(
+      blockId,
+      [&env, &args](std::vector<uint8_t>& out) {
+        return CopyArrayBuffer(env, args[1], out);
+      },
+      [](auto operation) { g_loop.withLifecycle(operation); },
+      [](int32_t id, std::vector<uint8_t> bytes) {
+        g_loop.surface.setBlockEnvironmentAsset(id, std::move(bytes));
+      });
+  napi_get_boolean(env, committed, &result);
+  return result;
+}
+
+// Phase 4：注入 NPC 模型字节（ArrayBuffer）。缺失时渲染保持静态 Mesh
+// 回退，不影响其余槽位；字节复制成功后才进入生命周期锁提交。
+static napi_value NativeSetNpcAsset(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value args[1] = {nullptr};
+  napi_value result = nullptr;
+  if (napi_get_cb_info(env, info, &argc, args, nullptr, nullptr) != napi_ok ||
+      argc != 1) {
+    napi_get_boolean(env, false, &result);
+    return result;
+  }
+  std::vector<uint8_t> bytes;
+  if (!CopyArrayBuffer(env, args[0], bytes)) {
+    napi_get_boolean(env, false, &result);
+    return result;
+  }
+  g_loop.withLifecycle([&bytes]() {
+    g_loop.surface.setModelAsset(ModelKind::Npc, std::vector<uint8_t>(bytes));
+  });
+  napi_get_boolean(env, true, &result);
+  return result;
+}
+
 static napi_value NativePushInput(napi_env env, napi_callback_info info) {
   size_t argc = 1;
   napi_value args[1] = {nullptr};
@@ -1311,6 +1374,16 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_value gachaPoolKindVal;
   napi_create_int32(env, snapshot.gachaPoolKind, &gachaPoolKindVal);
   napi_set_named_property(env, result, "gachaPoolKind", gachaPoolKindVal);
+  // ---- Phase 4：NPC 任务发布（尾部纯追加 2 字段） ----
+  napi_value npcOfferQuestIdVal;
+  napi_create_int32(env, snapshot.npcOfferQuestId, &npcOfferQuestIdVal);
+  napi_set_named_property(env, result, "npcOfferQuestId", npcOfferQuestIdVal);
+  napi_value npcOfferQuestTitleVal;
+  napi_create_string_utf8(env, snapshot.npcOfferQuestTitle.c_str(),
+                          snapshot.npcOfferQuestTitle.size(),
+                          &npcOfferQuestTitleVal);
+  napi_set_named_property(env, result, "npcOfferQuestTitle",
+                          npcOfferQuestTitleVal);
   return result;
 }
 
@@ -1322,6 +1395,8 @@ static napi_value Init(napi_env env, napi_value exports) {
     {"nativeStartIfForeground", nullptr, NativeStartIfForeground, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"nativeSetModelAssets", nullptr, NativeSetModelAssets, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"nativeSetEnvironmentAssets", nullptr, NativeSetEnvironmentAssets, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"nativeSetBlockAsset", nullptr, NativeSetBlockEnvironmentAsset, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"nativeSetNpcAsset", nullptr, NativeSetNpcAsset, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pushInput", nullptr, NativePushInput, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pushAction", nullptr, NativePushAction, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"startEncounter", nullptr, NativeStartEncounter, nullptr, nullptr, nullptr, napi_default, nullptr},

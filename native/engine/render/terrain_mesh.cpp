@@ -36,23 +36,34 @@ glm::vec2 heightGradient(const TerrainHeightfield& terrain, float x, float y,
 
 }  // namespace
 
-Mesh createTerrainMesh(const TerrainHeightfield& terrain, uint32_t segments) {
+Mesh createTerrainChunkMesh(const TerrainHeightfield& terrain,
+                            TerrainChunkRect rect, uint32_t segments) {
   Mesh mesh;
   if (segments < 1u) return mesh;
 
+  // 钳制到世界范围并拒绝退化矩形。
+  rect.x0 = std::clamp(rect.x0, 0.0f, 1.0f);
+  rect.x1 = std::clamp(rect.x1, 0.0f, 1.0f);
+  rect.y0 = std::clamp(rect.y0, 0.0f, 1.0f);
+  rect.y1 = std::clamp(rect.y1, 0.0f, 1.0f);
+  if (rect.x1 <= rect.x0 || rect.y1 <= rect.y0) return mesh;
+
   const uint32_t rows = segments + 1u;
-  const float step = 1.0f / static_cast<float>(segments);
+  const float stepX = (rect.x1 - rect.x0) / static_cast<float>(segments);
+  const float stepY = (rect.y1 - rect.y0) / static_cast<float>(segments);
+  // 法线差分步长取两轴间距较小者，保证与网格形状自洽。
+  const float gradientStep = std::min(stepX, stepY);
 
   mesh.vertices.reserve(static_cast<size_t>(rows) * rows);
   mesh.indices.reserve(static_cast<size_t>(segments) * segments * 6u);
 
   // 顶点：逻辑坐标 (x, y) -> 3D (x, height, z=y)，UV 存世界坐标。
   for (uint32_t j = 0; j < rows; ++j) {
-    const float v = static_cast<float>(j) * step;
+    const float v = rect.y0 + static_cast<float>(j) * stepY;
     for (uint32_t i = 0; i < rows; ++i) {
-      const float u = static_cast<float>(i) * step;
+      const float u = rect.x0 + static_cast<float>(i) * stepX;
       const float height = terrain.heightAt(u, v);
-      const glm::vec2 gradient = heightGradient(terrain, u, v, step);
+      const glm::vec2 gradient = heightGradient(terrain, u, v, gradientStep);
       // 高度场曲面法线：(-dh/dx, 1, -dh/dy) 归一化。
       const glm::vec3 normal =
           glm::normalize(glm::vec3(-gradient.x, 1.0f, -gradient.y));
@@ -72,4 +83,9 @@ Mesh createTerrainMesh(const TerrainHeightfield& terrain, uint32_t segments) {
   }
 
   return mesh;
+}
+
+Mesh createTerrainMesh(const TerrainHeightfield& terrain, uint32_t segments) {
+  // 整世界网格即覆盖 [0,1]x[0,1] 的单个分块，复用分块实现避免重复。
+  return createTerrainChunkMesh(terrain, TerrainChunkRect{}, segments);
 }

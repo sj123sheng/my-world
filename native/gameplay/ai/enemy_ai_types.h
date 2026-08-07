@@ -13,6 +13,11 @@ enum class EnemyArchetype : uint8_t {
   RiftClaw,
   Priest,
   Guard,
+  // 新原型追加在末尾，不动现有数值（渲染层与 world_layout.gen.h
+  // SpawnArchetype 按数值对应：Bruiser/Caster/Elite）。
+  Bruiser = 3,  // 重甲近战：高韧性/高伤害/慢速
+  Caster = 4,   // 远程施法：保持距离、投射类能力
+  Elite = 5,    // 精英：高血量、多能力、霸体窗口
 };
 
 enum class EnemyIntent : uint8_t {

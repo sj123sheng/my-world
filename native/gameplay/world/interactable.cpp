@@ -1,6 +1,7 @@
 #include "native/gameplay/world/interactable.h"
 
 #include "native/engine/math/vec2.h"
+#include "native/generated/world_layout.gen.h"
 
 #include <algorithm>
 #include <limits>
@@ -19,6 +20,15 @@ InteractableRegistry InteractableRegistry::defaultLayout() {
   // 秘境入口（阶段二验收补齐）：可进入/退出的关卡副本。
   registry.addInteractable({4, InteractableKind::Dungeon, 0.34f, 0.38f,
                             "回声回廊·秘境", 0});
+  return registry;
+}
+
+InteractableRegistry InteractableRegistry::openWorldLayout() {
+  InteractableRegistry registry = defaultLayout();
+  for (const WorldLayout::WorldNpcDef& def : WorldLayout::kNpcs) {
+    registry.addInteractable({def.id, InteractableKind::Npc, def.x, def.y,
+                              std::string(def.label), def.dialogId});
+  }
   return registry;
 }
 

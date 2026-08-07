@@ -39,6 +39,11 @@ class InteractableRegistry {
   // 默认世界布局：与主线任务目标对应的宝箱、采集物与引路灵。
   static InteractableRegistry defaultLayout();
 
+  // 开放世界布局（Phase 4）：defaultLayout 基础上追加
+  // WorldLayout::kNpcs 的 6 个 NPC 交互点（id 32-37、dialogId 100-105），
+  // 位置与 NpcAgency 严格一致。defaultLayout 保持冻结供旧测试使用。
+  static InteractableRegistry openWorldLayout();
+
   void addInteractable(Interactable interactable);
 
   // 半径内最近的可交互物；无目标返回 id = -1。

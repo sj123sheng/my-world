@@ -37,6 +37,29 @@ QuestSystem QuestSystem::mainline() {
   return system;
 }
 
+QuestSystem QuestSystem::openWorldQuests() {
+  // NPC 对话发布的支线（Phase 4）：目标链 TalkToNpc → KillEnemies → TalkToNpc。
+  // 发布对话结束时接取并补发一次 TalkToNpc 事件，首个对话目标即告完成；
+  // KillEnemies 不限定目标 id，野外击杀（notifyEnemiesKilled）同样计入。
+  std::vector<QuestDef> quests;
+  quests.push_back({201, "裂隙爪狼之患",
+                    {{ObjectiveKind::TalkToNpc, 33, 1, "与低地巡林员交谈"},
+                     {ObjectiveKind::KillEnemies, 0, 3, "击败 3 头野外敌人"},
+                     {ObjectiveKind::TalkToNpc, 33, 1, "向低地巡林员复命"}},
+                    -1});
+  quests.push_back({202, "回廊急件",
+                    {{ObjectiveKind::TalkToNpc, 35, 1, "与回廊信使交谈"},
+                     {ObjectiveKind::KillEnemies, 0, 2, "击败 2 名野外敌人"},
+                     {ObjectiveKind::TalkToNpc, 35, 1, "向回廊信使复命"}},
+                    -1});
+  quests.push_back({203, "圣所试炼",
+                    {{ObjectiveKind::TalkToNpc, 37, 1, "与圣所守望者交谈"},
+                     {ObjectiveKind::KillEnemies, 0, 4, "击败 4 头野外敌人"},
+                     {ObjectiveKind::TalkToNpc, 37, 1, "向圣所守望者复命"}},
+                    -1});
+  return QuestSystem(std::move(quests));
+}
+
 QuestSystem::QuestSystem(std::vector<QuestDef> quests)
     : quests_(std::move(quests)) {
   statuses_.assign(quests_.size(), QuestStatus::Locked);
@@ -153,6 +176,31 @@ void QuestSystem::restoreLinear(int32_t completedQuests,
     const int32_t index = findQuestIndex(quests_, activeQuestId);
     if (index >= 0) {
       statuses_[index] = QuestStatus::Available;
+      (void)accept(activeQuestId);
+    }
+  }
+}
+
+void QuestSystem::restoreByMask(int32_t completedMask,
+                                int32_t activeQuestId) {
+  if (completedMask < 0) return;
+  // 重置激活态，存档优先于内存默认状态。
+  activeIndex_ = -1;
+  objectiveIndex_ = 0;
+  objectiveProgress_ = 0;
+  completedCount_ = 0;
+  for (size_t i = 0; i < quests_.size(); ++i) {
+    if (i < 31 && ((completedMask >> i) & 1)) {
+      statuses_[i] = QuestStatus::Completed;
+      completedCount_ += 1;
+    } else {
+      // 并行支线无前置依赖：未完成任务一律可接取。
+      statuses_[i] = QuestStatus::Available;
+    }
+  }
+  if (activeQuestId >= 0) {
+    const int32_t index = findQuestIndex(quests_, activeQuestId);
+    if (index >= 0 && statuses_[index] == QuestStatus::Available) {
       (void)accept(activeQuestId);
     }
   }

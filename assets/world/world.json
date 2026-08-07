@@ -1,0 +1,219 @@
+{
+  "schemaVersion": 1,
+  "grid": { "countX": 8, "countY": 8 },
+  "districts": [
+    {
+      "districtId": "spawn_plateau",
+      "name": "启明台地",
+      "chunkXRange": [3, 4],
+      "chunkYRange": [0, 1],
+      "description": "出生区域：南部中央台地，保留旧锚点 1-7，内容刻意稀疏，仅布少量引导性 NPC 与侦查级敌人。"
+    },
+    {
+      "districtId": "westlands",
+      "name": "翠风低地",
+      "chunkXRange": [0, 2],
+      "chunkYRange": [0, 3],
+      "description": "西部低地：新手探索区，裂隙爪狼群与守卫巡逻，采集物丰富。"
+    },
+    {
+      "districtId": "gimmerlake",
+      "name": "辉光湖畔",
+      "chunkXRange": [5, 7],
+      "chunkYRange": [0, 3],
+      "description": "东部湖区：施法者与祭司聚集地，湖畔宝箱与采集点散布。"
+    },
+    {
+      "districtId": "central_corridor",
+      "name": "中枢回廊",
+      "chunkXRange": [3, 4],
+      "chunkYRange": [2, 3],
+      "description": "连接南北的中央通道，守卫把守，是进入北境的必经之路。"
+    },
+    {
+      "districtId": "ashen_wastes",
+      "name": "灰烬荒原",
+      "chunkXRange": [0, 3],
+      "chunkYRange": [4, 7],
+      "description": "西北荒原：重型兽人游荡，精英裂隙领主潜伏，高风险区。"
+    },
+    {
+      "districtId": "sanctum_highlands",
+      "name": "圣所高地",
+      "chunkXRange": [4, 7],
+      "chunkYRange": [4, 7],
+      "description": "东北高地：圣所遗迹所在，精英驻守，终局挑战入口。"
+    }
+  ],
+  "anchors": [
+    { "id": 8, "x": 0.15, "y": 0.15, "label": "翠风哨站", "districtId": "westlands" },
+    { "id": 9, "x": 0.85, "y": 0.15, "label": "湖岸渡口", "districtId": "gimmerlake" },
+    { "id": 10, "x": 0.5, "y": 0.35, "label": "回廊门庭", "districtId": "central_corridor" },
+    { "id": 11, "x": 0.2, "y": 0.75, "label": "灰烬前哨", "districtId": "ashen_wastes" },
+    { "id": 12, "x": 0.8, "y": 0.8, "label": "圣所阶地", "districtId": "sanctum_highlands" }
+  ],
+  "npcs": [
+    {
+      "id": 32,
+      "x": 0.52,
+      "y": 0.16,
+      "facing": 3.141592653589793,
+      "dialogId": 100,
+      "behavior": "idle",
+      "patrolPoints": [],
+      "districtId": "spawn_plateau",
+      "label": "台地引路人"
+    },
+    {
+      "id": 33,
+      "x": 0.1,
+      "y": 0.3,
+      "facing": 1.5707963267948966,
+      "dialogId": 101,
+      "behavior": "patrol",
+      "patrolPoints": [[0.1, 0.3], [0.2, 0.35], [0.15, 0.42]],
+      "districtId": "westlands",
+      "label": "低地巡林员"
+    },
+    {
+      "id": 34,
+      "x": 0.7,
+      "y": 0.2,
+      "facing": 0.0,
+      "dialogId": 102,
+      "behavior": "idle",
+      "patrolPoints": [],
+      "districtId": "gimmerlake",
+      "label": "湖畔渔夫"
+    },
+    {
+      "id": 35,
+      "x": 0.45,
+      "y": 0.3,
+      "facing": 1.5707963267948966,
+      "dialogId": 103,
+      "behavior": "patrol",
+      "patrolPoints": [[0.45, 0.3], [0.55, 0.3]],
+      "districtId": "central_corridor",
+      "label": "回廊信使"
+    },
+    {
+      "id": 36,
+      "x": 0.25,
+      "y": 0.6,
+      "facing": 4.71238898038469,
+      "dialogId": 104,
+      "behavior": "idle",
+      "patrolPoints": [],
+      "districtId": "ashen_wastes",
+      "label": "荒原勘探者"
+    },
+    {
+      "id": 37,
+      "x": 0.7,
+      "y": 0.7,
+      "facing": 0.7853981633974483,
+      "dialogId": 105,
+      "behavior": "patrol",
+      "patrolPoints": [[0.7, 0.7], [0.75, 0.78], [0.72, 0.68]],
+      "districtId": "sanctum_highlands",
+      "label": "圣所守望者"
+    }
+  ],
+  "spawnZones": [
+    {
+      "zoneId": "sz_spawn_scout",
+      "districtId": "spawn_plateau",
+      "archetype": "RiftClaw",
+      "count": 1,
+      "positions": [[0.58, 0.08]],
+      "patrolCenter": [0.58, 0.08],
+      "aggroGroup": "spawn_scout",
+      "respawnMs": 30000
+    },
+    {
+      "zoneId": "sz_west_pack",
+      "districtId": "westlands",
+      "archetype": "RiftClaw",
+      "count": 3,
+      "positions": [[0.08, 0.1], [0.12, 0.14], [0.1, 0.2]],
+      "patrolCenter": [0.1, 0.15],
+      "aggroGroup": "west_pack",
+      "respawnMs": 45000
+    },
+    {
+      "zoneId": "sz_west_guard",
+      "districtId": "westlands",
+      "archetype": "Guard",
+      "count": 2,
+      "positions": [[0.25, 0.3], [0.3, 0.32]],
+      "patrolCenter": [0.28, 0.31],
+      "aggroGroup": "west_guard",
+      "respawnMs": 60000
+    },
+    {
+      "zoneId": "sz_east_caster",
+      "districtId": "gimmerlake",
+      "archetype": "Caster",
+      "count": 2,
+      "positions": [[0.8, 0.25], [0.84, 0.3]],
+      "patrolCenter": [0.82, 0.27],
+      "aggroGroup": "east_caster",
+      "respawnMs": 60000
+    },
+    {
+      "zoneId": "sz_east_priest",
+      "districtId": "gimmerlake",
+      "archetype": "Priest",
+      "count": 1,
+      "positions": [[0.65, 0.35]],
+      "patrolCenter": [0.65, 0.35],
+      "aggroGroup": "east_priest",
+      "respawnMs": 75000
+    },
+    {
+      "zoneId": "sz_corridor_sentries",
+      "districtId": "central_corridor",
+      "archetype": "Guard",
+      "count": 2,
+      "positions": [[0.42, 0.28], [0.5, 0.4]],
+      "patrolCenter": [0.46, 0.34],
+      "aggroGroup": "corridor_sentries",
+      "respawnMs": 45000
+    },
+    {
+      "zoneId": "sz_ashen_bruisers",
+      "districtId": "ashen_wastes",
+      "archetype": "Bruiser",
+      "count": 2,
+      "positions": [[0.15, 0.55], [0.2, 0.6]],
+      "patrolCenter": [0.18, 0.58],
+      "aggroGroup": "ashen_bruisers",
+      "respawnMs": 75000
+    },
+    {
+      "zoneId": "sz_sanctum_elite",
+      "districtId": "sanctum_highlands",
+      "archetype": "Elite",
+      "count": 1,
+      "positions": [[0.6, 0.65]],
+      "patrolCenter": [0.6, 0.65],
+      "aggroGroup": "sanctum_elite",
+      "respawnMs": 90000
+    }
+  ],
+  "chests": [
+    { "id": 48, "x": 0.56, "y": 0.06, "districtId": "spawn_plateau", "label": "台地旧箱" },
+    { "id": 49, "x": 0.06, "y": 0.44, "districtId": "westlands", "label": "低地藏宝" },
+    { "id": 50, "x": 0.9, "y": 0.1, "districtId": "gimmerlake", "label": "湖湾沉箱" },
+    { "id": 51, "x": 0.88, "y": 0.9, "districtId": "sanctum_highlands", "label": "圣所圣匣" }
+  ],
+  "collectibles": [
+    { "id": 40, "x": 0.44, "y": 0.1, "kind": "herb", "districtId": "spawn_plateau", "label": "晨露草" },
+    { "id": 41, "x": 0.3, "y": 0.1, "kind": "herb", "districtId": "westlands", "label": "风铃花" },
+    { "id": 42, "x": 0.68, "y": 0.15, "kind": "ore", "districtId": "gimmerlake", "label": "辉光矿石" },
+    { "id": 43, "x": 0.3, "y": 0.7, "kind": "ore", "districtId": "ashen_wastes", "label": "灰烬铁块" },
+    { "id": 44, "x": 0.55, "y": 0.55, "kind": "mushroom", "districtId": "sanctum_highlands", "label": "圣所菇" },
+    { "id": 45, "x": 0.05, "y": 0.25, "kind": "berry", "districtId": "westlands", "label": "翠风浆果" }
+  ]
+}

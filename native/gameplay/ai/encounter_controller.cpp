@@ -31,6 +31,9 @@ bool validArchetype(EnemyArchetype archetype) {
     case EnemyArchetype::RiftClaw:
     case EnemyArchetype::Priest:
     case EnemyArchetype::Guard:
+    case EnemyArchetype::Bruiser:
+    case EnemyArchetype::Caster:
+    case EnemyArchetype::Elite:
       return true;
   }
   return false;
@@ -43,6 +46,9 @@ FixedPoint archetypeMaxHp(EnemyArchetype archetype) {
     case EnemyArchetype::RiftClaw: return fp(180);  // 脆皮快速
     case EnemyArchetype::Priest: return fp(240);    // 中等
     case EnemyArchetype::Guard: return fp(420);     // 重甲坦克
+    case EnemyArchetype::Bruiser: return fp(480);   // 重甲近战
+    case EnemyArchetype::Caster: return fp(200);    // 远程脆皮
+    case EnemyArchetype::Elite: return fp(620);     // 精英高血量
   }
   return fp(300);
 }
@@ -52,6 +58,9 @@ FixedPoint archetypeMaxPoise(EnemyArchetype archetype) {
     case EnemyArchetype::RiftClaw: return fp(80);
     case EnemyArchetype::Priest: return fp(90);
     case EnemyArchetype::Guard: return fp(160);
+    case EnemyArchetype::Bruiser: return fp(200);  // 高韧性
+    case EnemyArchetype::Caster: return fp(70);    // 低韧性可快速破韧
+    case EnemyArchetype::Elite: return fp(240);    // 精英霸体窗口
   }
   return fp(100);
 }
@@ -68,6 +77,9 @@ FixedPoint archetypeBaseDamage(EnemyArchetype archetype) {
     case EnemyArchetype::RiftClaw: return fp(8);   // 快速但轻击
     case EnemyArchetype::Priest: return fp(12);    // 中距离法术
     case EnemyArchetype::Guard: return fp(18);     // 缓慢但沉重
+    case EnemyArchetype::Bruiser: return fp(22);   // 重甲高伤
+    case EnemyArchetype::Caster: return fp(10);    // 远程消耗
+    case EnemyArchetype::Elite: return fp(20);     // 精英重击
   }
   return fp(10);
 }
@@ -77,6 +89,9 @@ FixedPoint archetypePoiseDamage(EnemyArchetype archetype) {
     case EnemyArchetype::RiftClaw: return fp(4);
     case EnemyArchetype::Priest: return fp(6);
     case EnemyArchetype::Guard: return fp(12);
+    case EnemyArchetype::Bruiser: return fp(15);
+    case EnemyArchetype::Caster: return fp(5);
+    case EnemyArchetype::Elite: return fp(12);
   }
   return fp(5);
 }
@@ -107,6 +122,15 @@ EnemyAiConfig aiConfig(EnemyArchetype archetype,
       break;
     case EnemyArchetype::Guard:
       config = corrosionGuardDefaults();
+      break;
+    case EnemyArchetype::Bruiser:
+      config = bruiserDefaults();
+      break;
+    case EnemyArchetype::Caster:
+      config = casterDefaults();
+      break;
+    case EnemyArchetype::Elite:
+      config = eliteDefaults();
       break;
   }
   config.region = region;

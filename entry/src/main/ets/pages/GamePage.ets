@@ -1,4 +1,4 @@
-import { nativeSetEnvironmentAssets, nativeSetModelAssets, nativeStartIfForeground,
+import { nativeSetEnvironmentAssets, nativeSetModelAssets, nativeSetBlockAsset, nativeSetNpcAsset, nativeStartIfForeground,
   nativeStop, pullSnapshot, setAudioEnabled, saveProgress, loadProgress, Snapshot } from '../napi/Bridge';
 import { Hud } from '../ui/Hud';
 import { CombatControls } from '../ui/CombatControls';
@@ -77,7 +77,8 @@ struct GamePage {
     oreLowCount: 0, oreMidCount: 0, oreHighCount: 0,
     expSmallCount: 0, expMediumCount: 0, expLargeCount: 0,
     sprintActive: 0, dailyCompletedCount: 0, dailyQuestClaimed: 0,
-    gachaPoolKind: 0
+    gachaPoolKind: 0,
+    npcOfferQuestId: -1, npcOfferQuestTitle: ''
   };
   @State tick: number = 0;
   @State hp: number = 100;
@@ -234,6 +235,9 @@ struct GamePage {
   @State dailyCompletedCount: number = 0;
   @State dailyQuestClaimed: number = 0;
   @State gachaPoolKind: number = 0;
+  // NPC 任务接取提示（Phase 4）：快照边沿检测驱动 ActionToast 弹层。
+  @State questAcceptMessage: string = '';
+  private prevNpcOfferQuestId: number = -1;
   @State gachaOpen: boolean = false;
   @State mapOpen: boolean = false;
   @State inventoryOpen: boolean = false;
@@ -246,6 +250,9 @@ struct GamePage {
   private timer: number = -1;
   private pageActive: boolean = false;
   private modelLoadGeneration: number = 0;
+  // Phase 2 区块环境批次懒加载：已尝试（含失败）的区块不重复读取。
+  private lastEnvironmentBlockId: number = -1;
+  private loadedEnvironmentBlocks: number[] = [];
   // 快照边沿检测上一帧采样值，用于触发触感反馈。
   private prevHpForHaptics: number = 100;
   private prevInsightMs: number = 0;
@@ -328,6 +335,60 @@ struct GamePage {
     return this.pageActive && generation === this.modelLoadGeneration;
   }
 
+  // 8×8 区块 id（与 C++ 分块约定一致：row * 8 + col，[0,1] 世界坐标）。
+  private environmentBlockIdAt(x: number, y: number): number {
+    const col = Math.min(7, Math.max(0, Math.floor(x * 8)));
+    const row = Math.min(7, Math.max(0, Math.floor(y * 8)));
+    return row * 8 + col;
+  }
+
+  private neighborBlockIds(blockId: number): number[] {
+    const row = Math.floor(blockId / 8);
+    const col = blockId % 8;
+    const ids: number[] = [];
+    for (let dr = -1; dr <= 1; ++dr) {
+      for (let dc = -1; dc <= 1; ++dc) {
+        const r = row + dr;
+        const c = col + dc;
+        if (r >= 0 && r < 8 && c >= 0 && c < 8) {
+          ids.push(r * 8 + c);
+        }
+      }
+    }
+    return ids;
+  }
+
+  // 区块 GLB 逐个读取注入；文件缺失（尚未烘焙）只跳过该区块，
+  // 并记入已尝试集合避免每帧重试，不回退全局环境。
+  private async loadEnvironmentBlocks(blockIds: number[]): Promise<void> {
+    const resourceManager = getContext(this).resourceManager;
+    for (const blockId of blockIds) {
+      if (this.loadedEnvironmentBlocks.indexOf(blockId) >= 0) {
+        continue;
+      }
+      try {
+        const bytes = await resourceManager
+          .getRawFileContent(`environment/block_${blockId}.glb`);
+        if (!nativeSetBlockAsset(blockId, bytes.buffer as ArrayBuffer)) {
+          console.error('[Ethelan] Native rejected environment block ' + blockId);
+        }
+      } catch (error) {
+        console.error('[Ethelan] Environment block ' + blockId + ' unavailable, skipped');
+      }
+      this.loadedEnvironmentBlocks.push(blockId);
+    }
+  }
+
+  // 玩家所在区块变化时懒加载其 3×3 邻域。
+  private refreshEnvironmentBlocks(x: number, y: number): void {
+    const blockId = this.environmentBlockIdAt(x, y);
+    if (blockId === this.lastEnvironmentBlockId) {
+      return;
+    }
+    this.lastEnvironmentBlockId = blockId;
+    this.loadEnvironmentBlocks(this.neighborBlockIds(blockId));
+  }
+
   private async loadModelAssets(generation: number): Promise<void> {
     try {
       const resourceManager = getContext(this).resourceManager;
@@ -343,6 +404,20 @@ struct GamePage {
         if (!nativeSetModelAssets(assets[0].buffer as ArrayBuffer,
           assets[1].buffer as ArrayBuffer, assets[2].buffer as ArrayBuffer)) {
           console.error('[Ethelan] Native rejected model asset buffers; using fallback meshes');
+        }
+        // NPC 模型槽位（Phase 4）：第一版复用 player.glb 占位，
+        // 存在 models/npc.glb 时优先；注入失败保持静态 Mesh 回退。
+        try {
+          let npcAsset: Uint8Array = assets[0];
+          try {
+            npcAsset = await resourceManager.getRawFileContent('models/npc.glb');
+          } catch (npcMissing) {
+          }
+          if (this.isActiveModelLoad(generation) &&
+            !nativeSetNpcAsset(npcAsset.buffer as ArrayBuffer)) {
+            console.error('[Ethelan] Native rejected npc asset; using fallback mesh');
+          }
+        } catch (npcError) {
         }
       } catch (error) {
         if (this.isActiveModelLoad(generation)) {
@@ -370,6 +445,9 @@ struct GamePage {
             JSON.stringify(error));
         }
       }
+      // Phase 2：预取出生点（0.5, 0.12）所在区块一圈；缺失文件静默跳过。
+      this.loadEnvironmentBlocks(
+        this.neighborBlockIds(this.environmentBlockIdAt(0.5, 0.12)));
     } catch (error) {
       console.error('[Ethelan] Resource manager unavailable: ' + JSON.stringify(error));
     } finally {
@@ -570,7 +648,8 @@ struct GamePage {
       HitFeedback({ hp: this.hp })
         .hitTestBehavior(HitTestMode.Transparent)
 
-      ActionToast({ lastRejectReason: this.lastRejectReason })
+      ActionToast({ lastRejectReason: this.lastRejectReason,
+        questAcceptMessage: this.questAcceptMessage })
         .hitTestBehavior(HitTestMode.Transparent)
 
       ComboCounter({ comboSegment: this.comboSegment,
@@ -622,6 +701,8 @@ struct GamePage {
         this.poise = this.snapshot.poise;
         this.posX = this.snapshot.x;
         this.posY = this.snapshot.y;
+        // Phase 2：玩家跨区块时懒加载新区块的环境批次资产。
+        this.refreshEnvironmentBlocks(this.snapshot.x, this.snapshot.y);
         this.fps = this.snapshot.fps;
         this.moving = this.snapshot.moving;
         this.moveX = this.snapshot.moveX;
@@ -768,6 +849,12 @@ struct GamePage {
         this.dailyCompletedCount = this.snapshot.dailyCompletedCount;
         this.dailyQuestClaimed = this.snapshot.dailyQuestClaimed;
         this.gachaPoolKind = this.snapshot.gachaPoolKind;
+        // NPC 任务接取上升沿（Phase 4）：边沿检测避免重复弹层。
+        if (this.snapshot.npcOfferQuestId >= 0 &&
+          this.snapshot.npcOfferQuestId !== this.prevNpcOfferQuestId) {
+          this.questAcceptMessage = '已接取任务：' + this.snapshot.npcOfferQuestTitle;
+        }
+        this.prevNpcOfferQuestId = this.snapshot.npcOfferQuestId;
         // 任务完成上升沿即时落盘，保证杀进程重启进度不丢。
         if (this.completedQuestCount > this.prevCompletedQuestCount) {
           try { saveProgress(this.progressSavePath()); } catch (e) {}

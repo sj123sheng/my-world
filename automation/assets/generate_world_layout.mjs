@@ -1,0 +1,469 @@
+// 世界布局代码生成：读取 assets/world/world.json（单一事实来源），
+// 按 config/schema/world.schema.json 校验（手写轻量 draft-07 子集校验器，
+// 零 npm 依赖），再执行语义校验（id 唯一、分块覆盖不重叠、坐标界内、
+// archetype 合法、实体落在所属 district 分块范围内），最终生成
+// native/generated/world_layout.gen.h（constexpr 数据，零运行时 JSON 依赖）。
+// 脚本幂等：同输入重复运行产物逐字节一致。
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+// ---- 轻量 JSON Schema 校验器（draft-07 子集）----
+
+function schemaTypeMatches(schemaType, value) {
+  switch (schemaType) {
+    case 'object': return value !== null && typeof value === 'object' && !Array.isArray(value);
+    case 'array': return Array.isArray(value);
+    case 'string': return typeof value === 'string';
+    case 'integer': return typeof value === 'number' && Number.isInteger(value);
+    case 'number': return typeof value === 'number' && Number.isFinite(value);
+    case 'boolean': return typeof value === 'boolean';
+    default: return true;
+  }
+}
+
+export function validateAgainstSchema(value, schema, path = '$') {
+  const errors = [];
+  if (schema.type && !schemaTypeMatches(schema.type, value)) {
+    errors.push(`${path}: expected ${schema.type}`);
+    return errors;
+  }
+  if (schema.enum && !schema.enum.includes(value)) {
+    errors.push(`${path}: must be one of ${schema.enum.join('|')}`);
+  }
+  if (typeof value === 'number') {
+    if (schema.minimum !== undefined && value < schema.minimum) {
+      errors.push(`${path}: ${value} < minimum ${schema.minimum}`);
+    }
+    if (schema.maximum !== undefined && value > schema.maximum) {
+      errors.push(`${path}: ${value} > maximum ${schema.maximum}`);
+    }
+  }
+  if (typeof value === 'string') {
+    if (schema.minLength !== undefined && value.length < schema.minLength) {
+      errors.push(`${path}: string shorter than minLength ${schema.minLength}`);
+    }
+    if (schema.pattern && !new RegExp(schema.pattern, 'u').test(value)) {
+      errors.push(`${path}: does not match pattern ${schema.pattern}`);
+    }
+  }
+  if (Array.isArray(value)) {
+    if (schema.minItems !== undefined && value.length < schema.minItems) {
+      errors.push(`${path}: fewer than ${schema.minItems} items`);
+    }
+    if (schema.maxItems !== undefined && value.length > schema.maxItems) {
+      errors.push(`${path}: more than ${schema.maxItems} items`);
+    }
+    if (schema.items) {
+      value.forEach((item, index) => {
+        errors.push(...validateAgainstSchema(item, schema.items, `${path}[${index}]`));
+      });
+    }
+  }
+  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    for (const key of schema.required ?? []) {
+      if (!(key in value)) errors.push(`${path}: missing required property "${key}"`);
+    }
+    for (const [key, propertySchema] of Object.entries(schema.properties ?? {})) {
+      if (key in value) {
+        errors.push(...validateAgainstSchema(value[key], propertySchema, `${path}.${key}`));
+      }
+    }
+  }
+  return errors;
+}
+
+// ---- 语义校验 ----
+
+export function validateWorldLayout(world, schema) {
+  const errors = validateAgainstSchema(world, schema);
+  if (errors.length > 0) return errors;
+
+  const countX = world.grid.countX;
+  const countY = world.grid.countY;
+  const coordInBounds = (value) => value >= 0.02 && value <= 0.98;
+  const chunkOf = (value, count) => Math.min(count - 1, Math.floor(value * count));
+
+  // district 唯一性、分块范围合法、覆盖全图且互不重叠。
+  const districtById = new Map();
+  const ownerByChunk = new Map();
+  for (const district of world.districts) {
+    if (districtById.has(district.districtId)) {
+      errors.push(`duplicate districtId: ${district.districtId}`);
+      continue;
+    }
+    districtById.set(district.districtId, district);
+    const [xMin, xMax] = district.chunkXRange;
+    const [yMin, yMax] = district.chunkYRange;
+    if (xMin > xMax || yMin > yMax) {
+      errors.push(`${district.districtId}: inverted chunk range`);
+      continue;
+    }
+    for (let cy = yMin; cy <= yMax; cy += 1) {
+      for (let cx = xMin; cx <= xMax; cx += 1) {
+        const key = `${cx},${cy}`;
+        if (ownerByChunk.has(key)) {
+          errors.push(`chunk (${key}) claimed by both ${ownerByChunk.get(key)} and ${district.districtId}`);
+        } else {
+          ownerByChunk.set(key, district.districtId);
+        }
+      }
+    }
+  }
+  for (let cy = 0; cy < countY; cy += 1) {
+    for (let cx = 0; cx < countX; cx += 1) {
+      if (!ownerByChunk.has(`${cx},${cy}`)) {
+        errors.push(`chunk (${cx},${cy}) not covered by any district`);
+      }
+    }
+  }
+
+  const inDeclaredDistrict = (label, districtId, x, y) => {
+    const district = districtById.get(districtId);
+    if (!district) {
+      errors.push(`${label}: unknown districtId ${districtId}`);
+      return;
+    }
+    const cx = chunkOf(x, countX);
+    const cy = chunkOf(y, countY);
+    const [xMin, xMax] = district.chunkXRange;
+    const [yMin, yMax] = district.chunkYRange;
+    if (cx < xMin || cx > xMax || cy < yMin || cy > yMax) {
+      errors.push(`${label}: (${x}, ${y}) -> chunk (${cx},${cy}) outside district ${districtId} [x ${xMin}-${xMax}, y ${yMin}-${yMax}]`);
+    }
+  };
+
+  // 数值 id 全局唯一（锚点/NPC/宝箱/采集物共享存档 id 空间）。
+  const seenIds = new Map();
+  const claimId = (label, id) => {
+    if (seenIds.has(id)) {
+      errors.push(`duplicate entity id ${id}: ${seenIds.get(id)} and ${label}`);
+    } else {
+      seenIds.set(id, label);
+    }
+  };
+
+  for (const anchor of world.anchors) {
+    claimId(`anchor`, anchor.id);
+    if (!coordInBounds(anchor.x) || !coordInBounds(anchor.y)) {
+      errors.push(`anchor ${anchor.id}: coordinates out of [0.02, 0.98]`);
+    }
+    inDeclaredDistrict(`anchor ${anchor.id}`, anchor.districtId, anchor.x, anchor.y);
+  }
+
+  const seenDialogIds = new Set();
+  for (const npc of world.npcs) {
+    claimId(`npc`, npc.id);
+    if (seenDialogIds.has(npc.dialogId)) {
+      errors.push(`duplicate dialogId ${npc.dialogId}`);
+    }
+    seenDialogIds.add(npc.dialogId);
+    if (npc.behavior === 'patrol' && (npc.patrolPoints.length < 2 || npc.patrolPoints.length > 4)) {
+      errors.push(`npc ${npc.id}: patrol behavior needs 2-4 patrolPoints`);
+    }
+    if (npc.behavior === 'idle' && npc.patrolPoints.length !== 0) {
+      errors.push(`npc ${npc.id}: idle behavior must have empty patrolPoints`);
+    }
+    inDeclaredDistrict(`npc ${npc.id}`, npc.districtId, npc.x, npc.y);
+    npc.patrolPoints.forEach(([px, py], index) => {
+      if (!coordInBounds(px) || !coordInBounds(py)) {
+        errors.push(`npc ${npc.id}: patrolPoints[${index}] out of [0.02, 0.98]`);
+      }
+      inDeclaredDistrict(`npc ${npc.id} patrolPoints[${index}]`, npc.districtId, px, py);
+    });
+  }
+
+  const archetypes = new Set(['RiftClaw', 'Priest', 'Guard', 'Bruiser', 'Caster', 'Elite']);
+  const seenZoneIds = new Set();
+  for (const zone of world.spawnZones) {
+    if (seenZoneIds.has(zone.zoneId)) errors.push(`duplicate zoneId: ${zone.zoneId}`);
+    seenZoneIds.add(zone.zoneId);
+    if (!archetypes.has(zone.archetype)) {
+      errors.push(`${zone.zoneId}: unknown archetype ${zone.archetype}`);
+    }
+    if (zone.positions.length !== zone.count) {
+      errors.push(`${zone.zoneId}: positions length ${zone.positions.length} != count ${zone.count}`);
+    }
+    zone.positions.forEach(([px, py], index) => {
+      if (!coordInBounds(px) || !coordInBounds(py)) {
+        errors.push(`${zone.zoneId}: positions[${index}] out of [0.02, 0.98]`);
+      }
+      inDeclaredDistrict(`${zone.zoneId} positions[${index}]`, zone.districtId, px, py);
+    });
+    if (!coordInBounds(zone.patrolCenter[0]) || !coordInBounds(zone.patrolCenter[1])) {
+      errors.push(`${zone.zoneId}: patrolCenter out of [0.02, 0.98]`);
+    }
+    inDeclaredDistrict(`${zone.zoneId} patrolCenter`, zone.districtId, zone.patrolCenter[0], zone.patrolCenter[1]);
+  }
+
+  for (const chest of world.chests) {
+    claimId(`chest`, chest.id);
+    if (!coordInBounds(chest.x) || !coordInBounds(chest.y)) {
+      errors.push(`chest ${chest.id}: coordinates out of [0.02, 0.98]`);
+    }
+    inDeclaredDistrict(`chest ${chest.id}`, chest.districtId, chest.x, chest.y);
+  }
+
+  for (const collectible of world.collectibles) {
+    claimId(`collectible`, collectible.id);
+    if (!coordInBounds(collectible.x) || !coordInBounds(collectible.y)) {
+      errors.push(`collectible ${collectible.id}: coordinates out of [0.02, 0.98]`);
+    }
+    inDeclaredDistrict(`collectible ${collectible.id}`, collectible.districtId, collectible.x, collectible.y);
+  }
+
+  return errors;
+}
+
+// ---- C++ 头文件生成 ----
+
+function floatLiteral(value) {
+  if (!Number.isFinite(value)) throw new Error(`non-finite number: ${value}`);
+  const text = Object.is(value, -0) ? '0' : String(value);
+  return /[-+eE.]|\bInfinity\b|\bNaN\b/.test(text) ? `${text}f` : `${text}.0f`;
+}
+
+function cxxStringLiteral(value) {
+  const escaped = value.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
+  return `"${escaped}"sv`;
+}
+
+function patrolArrays(points, axis) {
+  const maxPoints = 4;
+  const values = new Array(maxPoints).fill('0.0f');
+  points.forEach(([x, y], index) => {
+    values[index] = floatLiteral(axis === 'x' ? x : y);
+  });
+  return `        {${values.join(', ')}},`;
+}
+
+function positionArrays(positions, axis) {
+  const maxPositions = 3;
+  const values = new Array(maxPositions).fill('0.0f');
+  positions.forEach(([x, y], index) => {
+    values[index] = floatLiteral(axis === 'x' ? x : y);
+  });
+  return `        {${values.join(', ')}},`;
+}
+
+export function generateWorldLayoutHeader(world) {
+  const lines = [];
+  const emit = (line = '') => lines.push(line);
+
+  emit('// AUTO-GENERATED by automation/assets/generate_world_layout.mjs');
+  emit('// Source of truth: assets/world/world.json. DO NOT EDIT BY HAND.');
+  emit('// Regenerate with: node automation/assets/generate_world_layout.mjs');
+  emit('#pragma once');
+  emit();
+  emit('#include <array>');
+  emit('#include <cstdint>');
+  emit('#include <string_view>');
+  emit();
+  emit('namespace WorldLayout {');
+  emit();
+  emit('using namespace std::string_view_literals;');
+  emit();
+  emit(`constexpr int32_t kGridCountX = ${world.grid.countX};`);
+  emit(`constexpr int32_t kGridCountY = ${world.grid.countY};`);
+  emit('constexpr float kCoordMin = 0.02f;');
+  emit('constexpr float kCoordMax = 0.98f;');
+  emit('constexpr int32_t kMaxNpcPatrolPoints = 4;');
+  emit('constexpr int32_t kMaxSpawnPositions = 3;');
+  emit();
+  emit('enum class NpcBehavior : int32_t { Idle = 0, Patrol = 1 };');
+  emit();
+  emit('enum class SpawnArchetype : int32_t {');
+  emit('  RiftClaw = 0, Priest = 1, Guard = 2, Bruiser = 3, Caster = 4, Elite = 5,');
+  emit('};');
+  emit();
+  emit('constexpr std::string_view ArchetypeName(SpawnArchetype archetype) {');
+  emit('  switch (archetype) {');
+  emit('    case SpawnArchetype::RiftClaw: return "RiftClaw"sv;');
+  emit('    case SpawnArchetype::Priest: return "Priest"sv;');
+  emit('    case SpawnArchetype::Guard: return "Guard"sv;');
+  emit('    case SpawnArchetype::Bruiser: return "Bruiser"sv;');
+  emit('    case SpawnArchetype::Caster: return "Caster"sv;');
+  emit('    case SpawnArchetype::Elite: return "Elite"sv;');
+  emit('  }');
+  emit('  return "Unknown"sv;');
+  emit('}');
+  emit();
+  emit('struct WorldDistrictDef {');
+  emit('  std::string_view districtId;');
+  emit('  std::string_view name;');
+  emit('  std::string_view description;');
+  emit('  int32_t chunkXMin;');
+  emit('  int32_t chunkXMax;');
+  emit('  int32_t chunkYMin;');
+  emit('  int32_t chunkYMax;');
+  emit('};');
+  emit();
+  emit('struct WorldAnchorDef {');
+  emit('  int32_t id;');
+  emit('  float x;');
+  emit('  float y;');
+  emit('  std::string_view label;');
+  emit('  std::string_view districtId;');
+  emit('};');
+  emit();
+  emit('struct WorldNpcDef {');
+  emit('  int32_t id;');
+  emit('  float x;');
+  emit('  float y;');
+  emit('  float facing;');
+  emit('  int32_t dialogId;');
+  emit('  NpcBehavior behavior;');
+  emit('  int32_t patrolCount;');
+  emit('  float patrolX[kMaxNpcPatrolPoints];');
+  emit('  float patrolY[kMaxNpcPatrolPoints];');
+  emit('  std::string_view label;');
+  emit('  std::string_view districtId;');
+  emit('};');
+  emit();
+  emit('struct WorldSpawnZoneDef {');
+  emit('  std::string_view zoneId;');
+  emit('  std::string_view districtId;');
+  emit('  std::string_view aggroGroup;');
+  emit('  SpawnArchetype archetype;');
+  emit('  int32_t count;');
+  emit('  int32_t respawnMs;');
+  emit('  float patrolCenterX;');
+  emit('  float patrolCenterY;');
+  emit('  float positionX[kMaxSpawnPositions];');
+  emit('  float positionY[kMaxSpawnPositions];');
+  emit('};');
+  emit();
+  emit('struct WorldChestDef {');
+  emit('  int32_t id;');
+  emit('  float x;');
+  emit('  float y;');
+  emit('  std::string_view label;');
+  emit('  std::string_view districtId;');
+  emit('};');
+  emit();
+  emit('struct WorldCollectibleDef {');
+  emit('  int32_t id;');
+  emit('  float x;');
+  emit('  float y;');
+  emit('  std::string_view kind;');
+  emit('  std::string_view label;');
+  emit('  std::string_view districtId;');
+  emit('};');
+  emit();
+
+  emit(`constexpr std::size_t kDistrictCount = ${world.districts.length};`);
+  emit('constexpr std::array<WorldDistrictDef, kDistrictCount> kDistricts{{');
+  for (const district of world.districts) {
+    emit('    {');
+    emit(`        ${cxxStringLiteral(district.districtId)},`);
+    emit(`        ${cxxStringLiteral(district.name)},`);
+    emit(`        ${cxxStringLiteral(district.description)},`);
+    emit(`        ${district.chunkXRange[0]}, ${district.chunkXRange[1]}, ${district.chunkYRange[0]}, ${district.chunkYRange[1]},`);
+    emit('    },');
+  }
+  emit('}};');
+  emit();
+
+  emit(`constexpr std::size_t kAnchorCount = ${world.anchors.length};`);
+  emit('constexpr std::array<WorldAnchorDef, kAnchorCount> kAnchors{{');
+  for (const anchor of world.anchors) {
+    emit('    {');
+    emit(`        ${anchor.id}, ${floatLiteral(anchor.x)}, ${floatLiteral(anchor.y)},`);
+    emit(`        ${cxxStringLiteral(anchor.label)}, ${cxxStringLiteral(anchor.districtId)},`);
+    emit('    },');
+  }
+  emit('}};');
+  emit();
+
+  emit(`constexpr std::size_t kNpcCount = ${world.npcs.length};`);
+  emit('constexpr std::array<WorldNpcDef, kNpcCount> kNpcs{{');
+  for (const npc of world.npcs) {
+    emit('    {');
+    emit(`        ${npc.id}, ${floatLiteral(npc.x)}, ${floatLiteral(npc.y)}, ${floatLiteral(npc.facing)},`);
+    emit(`        ${npc.dialogId}, NpcBehavior::${npc.behavior === 'patrol' ? 'Patrol' : 'Idle'}, ${npc.patrolPoints.length},`);
+    emit(patrolArrays(npc.patrolPoints, 'x'));
+    emit(patrolArrays(npc.patrolPoints, 'y'));
+    emit(`        ${cxxStringLiteral(npc.label)}, ${cxxStringLiteral(npc.districtId)},`);
+    emit('    },');
+  }
+  emit('}};');
+  emit();
+
+  emit(`constexpr std::size_t kSpawnZoneCount = ${world.spawnZones.length};`);
+  emit('constexpr std::array<WorldSpawnZoneDef, kSpawnZoneCount> kSpawnZones{{');
+  for (const zone of world.spawnZones) {
+    emit('    {');
+    emit(`        ${cxxStringLiteral(zone.zoneId)}, ${cxxStringLiteral(zone.districtId)}, ${cxxStringLiteral(zone.aggroGroup)},`);
+    emit(`        SpawnArchetype::${zone.archetype}, ${zone.count}, ${zone.respawnMs},`);
+    emit(`        ${floatLiteral(zone.patrolCenter[0])}, ${floatLiteral(zone.patrolCenter[1])},`);
+    emit(positionArrays(zone.positions, 'x'));
+    emit(positionArrays(zone.positions, 'y'));
+    emit('    },');
+  }
+  emit('}};');
+  emit();
+
+  emit(`constexpr std::size_t kChestCount = ${world.chests.length};`);
+  emit('constexpr std::array<WorldChestDef, kChestCount> kChests{{');
+  for (const chest of world.chests) {
+    emit('    {');
+    emit(`        ${chest.id}, ${floatLiteral(chest.x)}, ${floatLiteral(chest.y)},`);
+    emit(`        ${cxxStringLiteral(chest.label)}, ${cxxStringLiteral(chest.districtId)},`);
+    emit('    },');
+  }
+  emit('}};');
+  emit();
+
+  emit(`constexpr std::size_t kCollectibleCount = ${world.collectibles.length};`);
+  emit('constexpr std::array<WorldCollectibleDef, kCollectibleCount> kCollectibles{{');
+  for (const collectible of world.collectibles) {
+    emit('    {');
+    emit(`        ${collectible.id}, ${floatLiteral(collectible.x)}, ${floatLiteral(collectible.y)},`);
+    emit(`        ${cxxStringLiteral(collectible.kind)}, ${cxxStringLiteral(collectible.label)}, ${cxxStringLiteral(collectible.districtId)},`);
+    emit('    },');
+  }
+  emit('}};');
+  emit();
+  emit('}  // namespace WorldLayout');
+
+  return `${lines.join('\n')}\n`;
+}
+
+async function main() {
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+  const worldPath = join(root, 'assets/world/world.json');
+  const schemaPath = join(root, 'config/schema/world.schema.json');
+  const outputPath = join(root, 'native/generated/world_layout.gen.h');
+
+  const world = JSON.parse(await readFile(worldPath, 'utf8'));
+  const schema = JSON.parse(await readFile(schemaPath, 'utf8'));
+
+  const errors = validateWorldLayout(world, schema);
+  if (errors.length > 0) {
+    for (const error of errors) console.error(`WORLD LAYOUT ERROR: ${error}`);
+    throw new Error(`world layout validation failed with ${errors.length} error(s)`);
+  }
+
+  const header = generateWorldLayoutHeader(world);
+  await mkdir(dirname(outputPath), { recursive: true });
+  // 幂等：内容一致时不重写，避免无意义的文件时间戳变更。
+  let previous = null;
+  try {
+    previous = await readFile(outputPath, 'utf8');
+  } catch {
+    previous = null;
+  }
+  if (previous !== header) {
+    await writeFile(outputPath, header, 'utf8');
+  }
+
+  console.log(`WORLD LAYOUT GEN: ${previous === header ? 'up to date' : 'written'} ${outputPath}`);
+  console.log(`WORLD LAYOUT GEN: districts=${world.districts.length} anchors=${world.anchors.length}` +
+    ` npcs=${world.npcs.length} spawnZones=${world.spawnZones.length}` +
+    ` chests=${world.chests.length} collectibles=${world.collectibles.length}`);
+}
+
+if (process.argv[1] &&
+    pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
+  await main();
+}

@@ -77,3 +77,28 @@ for (const derived of manifest.derivedAssets) {
   const actual = createHash('sha256').update(bytes).digest('hex');
   if (actual !== derived.sha256) throw new Error(`${derived.path}: SHA-256 mismatch`);
 }
+
+// Phase 2 追加校验：manifest 中登记的 block_<id> 产物必须与 layout.json
+// 的 blockId 分组对应（未烘焙的区块允许缺席 manifest，但已登记的不能虚构）。
+const BLOCK_COUNT = 64;
+const layout = JSON.parse(await readFile('assets/environment/layout.json', 'utf8'));
+const placements = Array.isArray(layout) ? layout : layout?.placements;
+if (!Array.isArray(placements)) throw new Error('layout.json must contain placements');
+const layoutBlockIds = new Set(placements.map((entry) => entry.blockId ?? -1));
+for (const blockId of layoutBlockIds) {
+  if (!Number.isInteger(blockId) || blockId < -1 || blockId >= BLOCK_COUNT) {
+    throw new Error(`layout.json: blockId must be an integer in [-1, ${BLOCK_COUNT})`);
+  }
+}
+for (const derived of manifest.derivedAssets) {
+  const match = /^block_(\d+)$/.exec(derived.id ?? '');
+  if (!match) continue;
+  const blockId = Number(match[1]);
+  if (blockId >= BLOCK_COUNT) throw new Error(`${derived.id}: block id out of range`);
+  if (!derived.path.endsWith(`/environment/block_${blockId}.glb`)) {
+    throw new Error(`${derived.id}: path must be environment/block_${blockId}.glb`);
+  }
+  if (!layoutBlockIds.has(blockId)) {
+    throw new Error(`${derived.id}: no layout placement references this blockId`);
+  }
+}

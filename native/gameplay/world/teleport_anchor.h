@@ -35,6 +35,11 @@ class TeleportAnchorSystem {
   // 覆盖 ≥4 个世界分块，供流式加载与传送验收使用。
   static TeleportAnchorSystem defaultLayout();
 
+  // 开放世界布局（Phase 4）：defaultLayout 基础上追加
+  // WorldLayout::kAnchors 的 5 个锚点（id 8-12），共 12 个。
+  // defaultLayout 保持冻结供旧测试使用。
+  static TeleportAnchorSystem openWorldLayout();
+
   void addAnchor(TeleportAnchor anchor);
 
   // 查找交互半径内最近的锚点；无可用锚点返回 anchorId = -1。

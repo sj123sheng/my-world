@@ -268,8 +268,8 @@ int main() {
   assert(enemyEncounterLoop.snapshot().targetArchetype >= 0);
   assert(enemyEncounterLoop.snapshot().targetHpRatio > 0.0f);
   assert(enemyEncounterLoop.snapshot().targetHpRatio <= 1.0f);
-  assert(enemyEncounterLoop.encounter.snapshot().enemies.size() ==
-         EnemyAiConfig::kMaxEnemies);
+  // Mixed 模式固定 3 名敌人；容量上限 kMaxEnemies 已放开到 8。
+  assert(enemyEncounterLoop.encounter.snapshot().enemies.size() == 3);
   assert(enemyEncounterLoop.enqueueInput(InputAction::Attack, -1, 0.0f, 0.0f));
   for (int frame = 0; frame < 10; ++frame) enemyEncounterLoop.tickOnce(16);
   const auto damagedEnemy = std::find_if(

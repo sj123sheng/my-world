@@ -2,6 +2,7 @@
 
 #include "native/engine/math/vec2.h"
 
+#include <cstdint>
 #include <vector>
 
 // 环境布局放置项：与 assets/environment/layout.json 的条目一一对应
@@ -16,6 +17,11 @@ struct EnvironmentPlacement {
   float scale[3] = {1.0f, 1.0f, 1.0f};
   // 源网格包围盒（布局空间，源自 Poly Haven 网格统计）。
   float halfExtents[3] = {1.0f, 1.0f, 1.0f};
+  // 流式分组（Phase 2）：-1 为全局组（始终加载/渲染）；≥0 为所属
+  // 8×8 分块 id（id = y * 8 + x），随分块流式启停。
+  // 区块批次（blockId≥0）内所有条目统一按 OuterRing 世界适配参数
+  // 定位（世界中心锚点），与渲染层 environmentBlockWorldFitMatrix 一致。
+  int32_t blockId = -1;
 };
 
 // 环境布局数据（layout.json 镜像）。
@@ -61,16 +67,32 @@ struct BuildingContact {
 // 建筑碰撞集：从环境布局生成可碰撞盒（仅阻挡型区域参与：
 // 外圈城墙与背景塔楼；中心裂隙平台与装饰碎块不阻挡探索动线）。
 // 确定性构造，无随机状态，可被独立测试覆盖。
+//
+// 分桶策略（Phase 2）：盒子按 8×8 分块分桶。采用“跨界盒归入所有
+// 覆盖分块”方案：盒子的旋转包围盒（AABB）向外膨胀 kBucketMargin
+//（覆盖碰撞查询半径与迭代推出位移）后，落入其覆盖的全部分块桶；
+// 中心落在 [0,1] 世界之外的盒子（远景背景）钳制到最近边缘分块。
+// resolve/supportTopAt/standingTopAt 只收集目标点所在分块 + 8 邻块
+// 的候选盒（去重并按盒子下标升序，与全量遍历顺序一致），因此与
+// 全量遍历语义完全兼容；resolveBruteForce 保留为全量遍历参考实现。
 class BuildingCollision {
  public:
+  // 分桶网格与 assets/world/world.json 的 8×8 分块一致。
+  static constexpr int32_t kBucketCountX = 8;
+  static constexpr int32_t kBucketCountY = 8;
+  // AABB 膨胀余量：覆盖最大碰撞查询半径（主角 0.012）与推出迭代位移。
+  static constexpr float kBucketMargin = 0.02f;
+
   BuildingCollision() = default;
   explicit BuildingCollision(const std::vector<BuildingBox>& boxes)
-      : boxes_(boxes) {}
+      : boxes_(boxes) {
+    rebuildBuckets();
+  }
 
   // 从环境布局构建碰撞集。altarX/altarZ 为祭坛锚点世界坐标。
   static BuildingCollision fromEnvironmentLayout(float altarX, float altarZ);
 
-  // 滑动碰撞解算：把 (x, y) 从所有盒内推出（半径膨胀后的 OBB），
+  // 滑动碰撞解算：把 (x, y) 从候选盒内推出（半径膨胀后的 OBB），
   // 多盒逐个迭代推出，保留切向分量实现沿墙滑动。
   // height 高于盒顶时视为越过该盒（不阻挡），支持跳上墙头。
   BuildingContact resolve(float& x, float& y, float radius, float height) const;
@@ -85,8 +107,22 @@ class BuildingCollision {
   float standingTopAt(float x, float y, float radius, float currentHeight,
                       float tolerance) const;
 
+  // 全量遍历参考实现：与分桶查询结果严格一致，供回归对比。
+  BuildingContact resolveBruteForce(float& x, float& y, float radius,
+                                    float height) const;
+  float supportTopAtBruteForce(float x, float y, float radius) const;
+
   const std::vector<BuildingBox>& boxes() const { return boxes_; }
+  // 分桶表：buckets_[bucketY * kBucketCountX + bucketX] → 盒子下标（升序）。
+  const std::vector<std::vector<int32_t>>& buckets() const { return buckets_; }
+  // 世界点对应的分桶下标；越界坐标钳制到边缘分块。
+  static int32_t bucketIndexAt(float x, float y);
 
  private:
+  void rebuildBuckets();
+  // 目标点所在分块 + 8 邻块的候选盒下标（去重、升序）。
+  std::vector<int32_t> candidatesNear(float x, float y) const;
+
   std::vector<BuildingBox> boxes_;
+  std::vector<std::vector<int32_t>> buckets_;
 };

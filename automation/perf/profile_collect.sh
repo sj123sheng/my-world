@@ -7,8 +7,8 @@ PHASE=${PHASE:-normal}
 DURATION_SECONDS=${DURATION_SECONDS:-30}
 OUTPUT_CSV=${OUTPUT_CSV:-/tmp/my-world-profile-${PHASE}.csv}
 
-if [[ "$PHASE" != "normal" && "$PHASE" != "boss" ]]; then
-  echo "PHASE must be normal or boss" >&2
+if [[ "$PHASE" != "normal" && "$PHASE" != "boss" && "$PHASE" != "streaming" ]]; then
+  echo "PHASE must be normal, boss or streaming" >&2
   exit 2
 fi
 if [[ ! "$DURATION_SECONDS" =~ ^[0-9]+$ ]] || (( DURATION_SECONDS < 1 )); then
@@ -28,7 +28,9 @@ fi
 
 log_file=$(mktemp /tmp/my-world-profile-hilog.XXXXXX)
 trap 'rm -f "$log_file"' EXIT
-printf '%s\n' 'timestamp,pid,fps,perf_level,environment_ready,environment_draw_calls,environment_triangles,environment_texture_tier,encounter_mode' > "$OUTPUT_CSV"
+# CSV 表头：性能仪表扩展后追加 active_chunks/streaming_pending/wild_enemies 列，
+# 保持既有列顺序与字段名不变。
+printf '%s\n' 'timestamp,pid,fps,perf_level,environment_ready,environment_draw_calls,environment_triangles,environment_texture_tier,encounter_mode,active_chunks,streaming_pending,wild_enemies' > "$OUTPUT_CSV"
 
 $HDC_BIN shell hilog -r >/dev/null
 $HDC_BIN shell hilog > "$log_file" 2>&1 &
@@ -55,6 +57,7 @@ fi
 awk -v pid="$pid" '
   /PROFILE fps=/ {
     fps = perf = ready = calls = triangles = tier = mode = ""
+    chunks = pending = wild = ""
     for (i = 1; i <= NF; ++i) {
       split($i, pair, "=")
       if (pair[1] == "fps") fps = pair[2]
@@ -64,11 +67,15 @@ awk -v pid="$pid" '
       else if (pair[1] == "environment_triangles") triangles = pair[2]
       else if (pair[1] == "environment_texture_tier") tier = pair[2]
       else if (pair[1] == "encounter_mode") mode = pair[2]
+      else if (pair[1] == "active_chunks") chunks = pair[2]
+      else if (pair[1] == "streaming_pending") pending = pair[2]
+      else if (pair[1] == "wild_enemies") wild = pair[2]
     }
     if (fps != "" && perf != "" && ready != "" && calls != "" &&
-        triangles != "" && tier != "" && mode != "") {
+        triangles != "" && tier != "" && mode != "" &&
+        chunks != "" && pending != "" && wild != "") {
       timestamp = $1 "T" $2
-      print timestamp "," pid "," fps "," perf "," ready "," calls "," triangles "," tier "," mode
+      print timestamp "," pid "," fps "," perf "," ready "," calls "," triangles "," tier "," mode "," chunks "," pending "," wild
     }
   }
 ' "$log_file" >> "$OUTPUT_CSV"
@@ -79,6 +86,8 @@ if (( sample_count < DURATION_SECONDS - 2 )); then
   exit 1
 fi
 
+# 帧率阈值：normal/streaming 要求 ≥30fps，boss 放宽到 ≥24fps；
+# streaming 场景复用既有连续不达标逻辑（连续超过 2 秒低于阈值即失败）。
 threshold=30
 [[ "$PHASE" == "boss" ]] && threshold=24
 if awk -F, -v threshold="$threshold" '

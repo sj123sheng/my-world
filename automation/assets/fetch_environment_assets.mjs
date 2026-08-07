@@ -19,6 +19,10 @@ const JSON_CHUNK = 0x4e4f534a;
 const BIN_CHUNK = 0x004e4942;
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 const REGIONS = ['outerRing', 'centerRift', 'backdrop', 'decoration'];
+// Phase 2：layout.json placement 的 blockId 取值范围（-1 全局，0..63 为 8×8 分块）。
+export const BLOCK_COLUMNS = 8;
+export const BLOCK_ROWS = 8;
+export const BLOCK_COUNT = BLOCK_COLUMNS * BLOCK_ROWS;
 const COMPONENTS = {
   5120: { bytes: 1, read: 'getInt8', write: 'setInt8' },
   5121: { bytes: 1, read: 'getUint8', write: 'setUint8' },
@@ -191,6 +195,7 @@ export function partitionNodes(document, layout) {
   if (!Array.isArray(placements)) throw new Error('layout must be an array of placements');
   const nodesByName = new Map((document.json.nodes ?? []).map((node) => [node.name, node]));
   const ids = new Set();
+  const normalized = [];
   for (const placement of placements) {
     if (!REGIONS.includes(placement.region)) {
       throw new Error(`${placement.id ?? '<unnamed>'}: unknown region ${placement.region}`);
@@ -206,15 +211,18 @@ export function partitionNodes(document, layout) {
     validateVector(placement.translation, 3, `${placement.id}.translation`);
     validateVector(placement.rotation, 4, `${placement.id}.rotation`);
     validateVector(placement.scale, 3, `${placement.id}.scale`);
+    // blockId：缺省视为 -1（全局组，与旧布局兼容）；否则必须为 [0, BLOCK_COUNT) 整数。
+    const blockId = placement.blockId ?? -1;
+    if (!Number.isInteger(blockId) || blockId < -1 || blockId >= BLOCK_COUNT) {
+      throw new Error(`${placement.id}: blockId must be an integer in [-1, ${BLOCK_COUNT})`);
+    }
+    normalized.push({ ...placement, blockId });
   }
 
-  const result = {};
-  for (const region of REGIONS) {
-    const regionDocument = cloneDocument(document);
-    const regionPlacements = placements.filter((entry) => entry.region === region)
-      .sort((left, right) => left.id.localeCompare(right.id));
-    regionDocument.region = region;
-    regionDocument.json.nodes = regionPlacements.map((placement) => {
+  const buildDocument = (groupName, groupPlacements) => {
+    const groupDocument = cloneDocument(document);
+    groupDocument.region = groupName;
+    groupDocument.json.nodes = groupPlacements.map((placement) => {
       const source = nodesByName.get(placement.sourceNode);
       return {
         mesh: source.mesh,
@@ -224,12 +232,30 @@ export function partitionNodes(document, layout) {
         translation: [...placement.translation],
       };
     });
-    regionDocument.json.scene = 0;
-    regionDocument.json.scenes = [{
-      name: region,
-      nodes: regionDocument.json.nodes.map((_, index) => index),
+    groupDocument.json.scene = 0;
+    groupDocument.json.scenes = [{
+      name: groupName,
+      nodes: groupDocument.json.nodes.map((_, index) => index),
     }];
-    result[region] = regionDocument;
+    return groupDocument;
+  };
+
+  const result = {};
+  // 全局组：仅包含 blockId === -1 的条目，保证旧 4 个 region GLB 字节不变。
+  for (const region of REGIONS) {
+    const regionPlacements = normalized
+      .filter((entry) => entry.blockId === -1 && entry.region === region)
+      .sort((left, right) => left.id.localeCompare(right.id));
+    result[region] = buildDocument(region, regionPlacements);
+  }
+  // 区块组：blockId ≥ 0 的条目按分块烘焙为 block_<id>.glb。
+  const blockIds = [...new Set(normalized.filter((entry) => entry.blockId >= 0)
+    .map((entry) => entry.blockId))].sort((left, right) => left - right);
+  for (const blockId of blockIds) {
+    const blockPlacements = normalized
+      .filter((entry) => entry.blockId === blockId)
+      .sort((left, right) => left.id.localeCompare(right.id));
+    result[`block_${blockId}`] = buildDocument(`block_${blockId}`, blockPlacements);
   }
   return result;
 }
@@ -581,8 +607,7 @@ function imageMimeType(bytes) {
   throw new Error('diffuse texture must be PNG or JPEG');
 }
 
-export function embedTextureLevels(region, diffuse2k, diffuse1k) {
-  const full = Buffer.from(asBuffer(diffuse2k));
+export function embedTextureLevels(region, diffuse2k, diffuse1k, { halfOnly = false } = {}) {
   const half = Buffer.from(asBuffer(diffuse1k));
   const parts = [Buffer.from(asBuffer(region.bin))];
   let byteLength = parts[0].length;
@@ -598,11 +623,36 @@ export function embedTextureLevels(region, diffuse2k, diffuse1k) {
     byteLength += bytes.length;
     return { bufferView, mimeType: imageMimeType(bytes), name };
   };
+  region.json.samplers = [{ magFilter: 9729, minFilter: 9987, wrapS: 10497, wrapT: 10497 }];
+  if (halfOnly) {
+    // Phase 2 区块批次：仅嵌 Half 档（体积优先，运行时 static_model
+    // 允许 diffuse_half-only 材质并在 Full 档请求时自动回退到 Half）。
+    region.json.images = [appendImage(half, 'diffuse_half')];
+    region.json.textures = [{ name: 'diffuse_half', sampler: 0, source: 0 }];
+    region.json.materials = (region.json.materials ?? [{ name: 'stone' }])
+      .sort((left, right) => (left.name ?? '').localeCompare(right.name ?? ''))
+      .map((material) => ({
+        name: material.name ?? 'stone',
+        pbrMetallicRoughness: {
+          baseColorTexture: { index: 0 },
+          metallicFactor: 0,
+          roughnessFactor: 1,
+        },
+        extras: {
+          textureLevels: {
+            half: 0,
+          },
+        },
+      }));
+    region.bin = Buffer.concat(parts, byteLength);
+    region.json.buffers = [{ byteLength }];
+    return region;
+  }
+  const full = Buffer.from(asBuffer(diffuse2k));
   region.json.images = [
     appendImage(full, 'diffuse_full'),
     appendImage(half, 'diffuse_half'),
   ];
-  region.json.samplers = [{ magFilter: 9729, minFilter: 9987, wrapS: 10497, wrapT: 10497 }];
   region.json.textures = [
     { name: 'diffuse_full', sampler: 0, source: 0 },
     { name: 'diffuse_half', sampler: 0, source: 1 },
@@ -703,14 +753,16 @@ function rejectExternalUris(document) {
   }
 }
 
-async function generateHalfTexture(inputPath, outputPath) {
-  await execFileAsync('/usr/bin/sips', [
-    '--resampleHeightWidth', '1024', '1024',
-    '--setProperty', 'format', 'png',
-    '--setProperty', 'formatOptions', 'normal',
-    inputPath,
-    '--out', outputPath,
-  ]);
+async function generateHalfTexture(inputPath, outputPath, format = 'png') {
+  const args = ['--resampleHeightWidth', '1024', '1024',
+    '--setProperty', 'format', format];
+  if (format === 'jpeg') {
+    args.push('--setProperty', 'formatOptions', '70');
+  } else {
+    args.push('--setProperty', 'formatOptions', 'normal');
+  }
+  args.push(inputPath, '--out', outputPath);
+  await execFileAsync('/usr/bin/sips', args);
   return readFile(outputPath);
 }
 
@@ -744,6 +796,11 @@ async function main() {
     const diffuseHalf = await generateHalfTexture(
       diffuseEntry.localPath, join(temporary, 'rabdentse_ruins_wall_diff_1k.png'),
     );
+    // 区块批次专用半档：JPEG 1k，把单块 GLB 压到 1MB 以内。
+    const diffuseHalfBlock = await generateHalfTexture(
+      diffuseEntry.localPath, join(temporary, 'rabdentse_ruins_wall_diff_1k_block.jpg'),
+      'jpeg',
+    );
     await mkdir(outputDirectory, { recursive: true });
     const derivedAssets = [];
     const filenames = {
@@ -763,6 +820,31 @@ async function main() {
       await writeFile(join(root, relativePath), bytes);
       derivedAssets.push({
         id: regionName,
+        path: relativePath,
+        sha256: sha256(bytes),
+        sourceDependencies: ['modular_fort_01', 'rabdentse_ruins_wall'],
+      });
+    }
+    // Phase 2 区块组：layout 中 blockId ≥ 0 的条目逐块烘焙为 block_<id>.glb。
+    // 纹理默认 Half 档：仅嵌 JPEG 1k diffuse_half（运行时 static_model
+    // 支持 half-only 材质），把单块体积压到 1MB 以内；超出时告警。
+    const blockNames = Object.keys(regions)
+      .filter((name) => name.startsWith('block_'))
+      .sort((left, right) => Number(left.slice(6)) - Number(right.slice(6)));
+    for (const blockName of blockNames) {
+      const document = regions[blockName];
+      bakeNodeTransforms(document);
+      mergePrimitivesByMaterial(document);
+      embedTextureLevels(document, null, diffuseHalfBlock, { halfOnly: true });
+      rejectExternalUris(document);
+      const bytes = writeGlb(document);
+      const relativePath = `entry/src/main/resources/rawfile/environment/${blockName}.glb`;
+      await writeFile(join(root, relativePath), bytes);
+      if (bytes.length > 1024 * 1024) {
+        console.warn(`warning: ${blockName}.glb is ${(bytes.length / (1024 * 1024)).toFixed(2)}MB (>1MB target)`);
+      }
+      derivedAssets.push({
+        id: blockName,
         path: relativePath,
         sha256: sha256(bytes),
         sourceDependencies: ['modular_fort_01', 'rabdentse_ruins_wall'],

@@ -31,6 +31,16 @@ int32_t WorldGrid::chunkIndexAt(Vec2 position) const {
   return cy * config_.countX + cx;
 }
 
+int32_t WorldGrid::chunkXOf(int32_t chunkId) const {
+  const int32_t id = clampInt(chunkId, 0, chunkCount() - 1);
+  return id % config_.countX;
+}
+
+int32_t WorldGrid::chunkYOf(int32_t chunkId) const {
+  const int32_t id = clampInt(chunkId, 0, chunkCount() - 1);
+  return id / config_.countX;
+}
+
 bool WorldGrid::setStreamingRadius(int32_t radius) {
   const int32_t clamped = std::max(radius, 0);
   if (clamped == config_.streamingRadius) return false;

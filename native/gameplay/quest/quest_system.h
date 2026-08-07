@@ -56,6 +56,11 @@ class QuestSystem {
   // 首条主线（教学→探索→战斗→收集→远行），与默认世界布局对应。
   static QuestSystem mainline();
 
+  // 开放世界支线（Phase 4）：由 NPC 对话发布的独立任务，
+  // id 段 201+ 避开主线（1-5）；目标链为 TalkToNpc → KillEnemies → TalkToNpc。
+  // mainline 保持冻结供旧测试使用。
+  static QuestSystem openWorldQuests();
+
   explicit QuestSystem(std::vector<QuestDef> quests);
 
   // 接受 Available 状态的任务；返回是否成功。
@@ -78,6 +83,11 @@ class QuestSystem {
   // 存档恢复（主线线性链）：把前 completedCount 个任务标记完成，
   // 并接取 activeQuestId 指定的任务；非法输入保持现状。
   void restoreLinear(int32_t completedCount, int32_t activeQuestId);
+
+  // 存档恢复（并行支线，Phase 5 V8）：bit(i) 对应声明顺序第 i 个任务
+  // 完成，其余未完成任务置为可接取（Available），再接取 activeQuestId。
+  // 与 restoreLinear 的"前 N 个"语义互补，适用于无链条依赖的并行支线。
+  void restoreByMask(int32_t completedMask, int32_t activeQuestId);
 
  private:
   void applyEvent(ObjectiveKind kind, int32_t targetId, int32_t count);

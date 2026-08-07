@@ -2,10 +2,9 @@
 #include <fstream>
 bool Save::write(const SaveState& s, const char* path){
   std::ofstream tmp(std::string(path)+".tmp");
-  // v7 格式：版本标记 + 核心三字段 + 进度字段 + 养成字段 + 角色三元组
-  // + 支线掩码 + 重生倒计时 + 武器三元组（兼容）+ 冒险等级/掉落种子
-  // + 新物品计数 + 武器七元组 + 圣遗物六元组 + 已领等阶奖励。
-  tmp << "V7 " << s.campLevel << " " << s.relics << " " << s.regionProgress
+  // v8 格式：v7 全字段 + 开放世界支线完成掩码/接取任务 id（只追加
+  // 不重排，V1-V7 读入路径不受影响）。
+  tmp << "V8 " << s.campLevel << " " << s.relics << " " << s.regionProgress
       << " " << s.completedQuestCount << " " << s.activeQuestId << " "
       << s.unlockedAnchorMask << " " << s.consumedInteractableMask << " "
       << s.fateCount << " " << s.goldCount << " " << s.expCount << " "
@@ -36,6 +35,8 @@ bool Save::write(const SaveState& s, const char* path){
   for (int32_t value : s.claimedRanks) {
     tmp << " " << value;
   }
+  // V8 追加字段：开放世界支线进度。
+  tmp << " " << s.openWorldQuestMask << " " << s.openWorldQuestActiveId;
   tmp << "\n";
   tmp.flush();
   std::rename((std::string(path)+".tmp").c_str(), path); // 原子替换
@@ -175,6 +176,63 @@ bool Save::read(SaveState& o, const char* path){
     for (size_t i = 0; i < claimedCount; ++i) {
       f >> o.claimedRanks[i];
     }
+    return !f.fail();
+  }
+  if (first == "V8") {
+    f >> o.campLevel >> o.relics >> o.regionProgress >> o.completedQuestCount
+        >> o.activeQuestId >> o.unlockedAnchorMask >> o.consumedInteractableMask
+        >> o.fateCount >> o.goldCount >> o.expCount >> o.ascensionCount
+        >> o.gachaPity5 >> o.gachaPity4 >> o.gachaSeed;
+    if (f.fail()) return false;
+    size_t rosterValues = 0;
+    f >> rosterValues;
+    if (f.fail() || rosterValues > 1024) return false;
+    o.rosterTriples.assign(rosterValues, 0);
+    for (size_t i = 0; i < rosterValues; ++i) {
+      f >> o.rosterTriples[i];
+    }
+    f >> o.sideQuestMask >> o.collectRespawnMs;
+    if (f.fail()) return false;
+    size_t weaponValues = 0;
+    f >> weaponValues;
+    if (f.fail() || weaponValues > 1024) return false;
+    o.weaponTriples.assign(weaponValues, 0);
+    for (size_t i = 0; i < weaponValues; ++i) {
+      f >> o.weaponTriples[i];
+    }
+    uint32_t dropSeed = 0;
+    f >> o.adventureRank >> o.adventureExp >> dropSeed >> o.oreLowCount
+        >> o.oreMidCount >> o.oreHighCount >> o.expSmallCount
+        >> o.expMediumCount >> o.expLargeCount;
+    o.dropSeed = dropSeed;
+    if (f.fail()) return false;
+    size_t weaponRecords = 0;
+    f >> weaponRecords;
+    if (f.fail() || weaponRecords > 1024 || weaponRecords % 7 != 0) {
+      return false;
+    }
+    o.weaponRecords.assign(weaponRecords, 0);
+    for (size_t i = 0; i < weaponRecords; ++i) {
+      f >> o.weaponRecords[i];
+    }
+    size_t artifactRecords = 0;
+    f >> artifactRecords;
+    if (f.fail() || artifactRecords > 4096 || artifactRecords % 6 != 0) {
+      return false;
+    }
+    o.artifactRecords.assign(artifactRecords, 0);
+    for (size_t i = 0; i < artifactRecords; ++i) {
+      f >> o.artifactRecords[i];
+    }
+    size_t claimedCount = 0;
+    f >> claimedCount;
+    if (f.fail() || claimedCount > 128) return false;
+    o.claimedRanks.assign(claimedCount, 0);
+    for (size_t i = 0; i < claimedCount; ++i) {
+      f >> o.claimedRanks[i];
+    }
+    // V8 追加字段：开放世界支线完成掩码与接取任务 id。
+    f >> o.openWorldQuestMask >> o.openWorldQuestActiveId;
     return !f.fail();
   }
   // v1 兼容：首 token 即 campLevel，后续两个字段。

@@ -24,6 +24,8 @@ include_directories(
     ${NATIVE_ROOT}/gameplay/targeting
     ${NATIVE_ROOT}/gameplay/world
     ${NATIVE_ROOT}/platform/harmony
+    # 构建期代码生成产物（world_layout.gen.h，由 automation/assets/generate_world_layout.mjs 生成）
+    ${NATIVE_ROOT}/generated
 )
 
 # ---- source files ----
@@ -51,6 +53,7 @@ add_library(native_game SHARED
   ${NATIVE_ROOT}/engine/render/camera3d.cpp
    ${NATIVE_ROOT}/engine/render/mesh.cpp
    ${NATIVE_ROOT}/engine/render/terrain_mesh.cpp
+   ${NATIVE_ROOT}/engine/render/chunked_terrain.cpp
    ${NATIVE_ROOT}/engine/render/texture.cpp
     ${NATIVE_ROOT}/engine/render/shader_3d.cpp
     ${NATIVE_ROOT}/engine/render/skinned_model.cpp
@@ -77,6 +80,7 @@ add_library(native_game SHARED
     # engine world (开放世界探索基础)
     ${NATIVE_ROOT}/engine/world/world_grid.cpp
     ${NATIVE_ROOT}/engine/world/terrain_heightfield.cpp
+    ${NATIVE_ROOT}/engine/world/stream_scheduler.cpp
     ${NATIVE_ROOT}/engine/world/environment_collision.cpp
     ${NATIVE_ROOT}/engine/world/weather_system.cpp
 
@@ -112,6 +116,8 @@ add_library(native_game SHARED
     ${NATIVE_ROOT}/gameplay/flow/demo_director.cpp
     ${NATIVE_ROOT}/gameplay/flow/story_director.cpp
     ${NATIVE_ROOT}/gameplay/ai/encounter_controller.h
+    ${NATIVE_ROOT}/gameplay/ai/wild_spawn_system.cpp
+    ${NATIVE_ROOT}/gameplay/ai/wild_spawn_system.h
 
     # gameplay entities
     ${NATIVE_ROOT}/gameplay/entities/boss.cpp
@@ -125,6 +131,8 @@ add_library(native_game SHARED
     # gameplay world
     ${NATIVE_ROOT}/gameplay/world/teleport_anchor.cpp
     ${NATIVE_ROOT}/gameplay/world/interactable.cpp
+    ${NATIVE_ROOT}/gameplay/world/npc_agent.cpp
+    ${NATIVE_ROOT}/gameplay/world/npc_agent.h
 
     # gameplay quest (内容与任务系统)
     ${NATIVE_ROOT}/gameplay/quest/quest_system.cpp
@@ -154,6 +162,8 @@ add_library(native_game SHARED
     ${NATIVE_ROOT}/platform/harmony/fence_wait.cpp
 )
 
+# 工程根目录（${NATIVE_ROOT}/..）作为 include 根，使 "native/generated/world_layout.gen.h"
+# 与既有 "native/..." 风格 include 均可解析。
 target_include_directories(native_game PRIVATE ${NATIVE_ROOT}/..)
 
 target_compile_features(native_game PUBLIC cxx_std_17)

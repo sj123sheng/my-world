@@ -24,6 +24,8 @@ enum class ModelKind {
   Player,
   Enemy,
   Boss,
+  // NPC（Phase 4）：第一版复用 player.glb 占位，独立槽位供后续替换。
+  Npc,
 };
 
 struct ActorRenderState {

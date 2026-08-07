@@ -41,6 +41,8 @@ inline constexpr EGLContext EGL_NO_CONTEXT = nullptr;
 #include "native/engine/world/terrain_heightfield.h"
 #include <glm/vec3.hpp>
 
+class StreamScheduler;
+
 struct Particle {
   float x;
   float y;
@@ -91,7 +93,8 @@ struct Enemy3DRenderState {
   uint32_t id = 0;
   float x = 0.5f;
   float y = 0.5f;
-  // 0 = RiftClaw, 1 = Priest, 2 = Guard（与 EnemyArchetype 数值一致）。
+  // 0 = RiftClaw, 1 = Priest, 2 = Guard, 3 = Bruiser, 4 = Caster,
+  // 5 = Elite（与 EnemyArchetype 数值一致）。
   int archetype = 0;
   bool alive = false;
   // 处于攻击前摇：渲染层据此绘制脚下预警环。
@@ -104,6 +107,36 @@ struct Enemy3DRenderState {
   float deathSeconds = 0.0f;
   // 累计受击次数：按奇偶驱动受击/死亡动画变体轮换。
   uint32_t hitCount = 0;
+};
+
+// 野外敌人（WildSpawnSystem）的 3D 渲染状态：字段与 Enemy3DRenderState
+// 对齐（渲染层复用同一绘制路径），id 从 5000 起与遭遇敌人无冲突。
+struct WildEnemy3DRenderState {
+  uint32_t id = 0;
+  float x = 0.5f;
+  float y = 0.5f;
+  // 与 EnemyArchetype 数值一致（0-5）。
+  int archetype = 0;
+  bool alive = false;
+  bool windingUp = false;
+  bool attacking = false;
+  ActorRenderState animation;
+  float angle = 0.0f;
+  float deathSeconds = 0.0f;
+  uint32_t hitCount = 0;
+};
+
+// NPC（Phase 4）的 3D 渲染状态：字段最小化，仅 idle/walk 动画，
+// 无血条/受击/锁定逻辑；发布侧已按距玩家距离裁剪到同屏上限。
+struct Npc3DRenderState {
+  uint32_t id = 0;
+  float x = 0.5f;
+  float y = 0.5f;
+  float angle = 0.0f;
+  ActorRenderState animation;
+  bool visible = true;
+  // 0=Idle 1=Patrol（与 WorldLayout::NpcBehavior 数值一致）。
+  int behavior = 0;
 };
 
 struct Boss3DRenderState {
@@ -211,6 +244,11 @@ struct Surface {
   Mesh terrainMesh;
   Mesh waterMesh;
   Mesh skyMesh;
+  // 分块地形流式渲染：调度器由 Loop 注入（只读消费），
+  // terrainChunkMeshes 为已上传 GPU 的分块网格（chunk id → Mesh），
+  // 卸载路径沿用 abandonGpuResources/destroy 模式。
+  StreamScheduler* streamScheduler = nullptr;
+  std::unordered_map<int32_t, Mesh> terrainChunkMeshes;
   // 逻辑层高度场只读指针：由 Loop 注入，渲染层据此贴地采样。
   const TerrainHeightfield* terrain = nullptr;
   // 主角脚底 3D 高度：逻辑层每帧写入（motionState.height），
@@ -223,6 +261,10 @@ struct Surface {
   glm::vec3 lightColor{0.8f, 0.8f, 0.75f};
   glm::vec3 ambient{0.25f, 0.25f, 0.3f};
   std::vector<Enemy3DRenderState> enemies3d;
+  // 野外敌人渲染列表（Phase 3.2/3.3），与 enemies3d 共用绘制/状态表。
+  std::vector<WildEnemy3DRenderState> wildEnemies3d;
+  // NPC 渲染列表（Phase 4）：同屏 ≤6，超出按距玩家距离裁剪。
+  std::vector<Npc3DRenderState> npcs3d;
   Boss3DRenderState boss3d;
   ActorRenderState player3dAnimation;
   ActorRenderState trainingTarget3dAnimation;
@@ -252,11 +294,20 @@ struct Surface {
   PendingModelAsset playerModelAsset;
   PendingModelAsset enemyModelAsset;
   PendingModelAsset bossModelAsset;
+  // NPC 模型槽位（Phase 4）：第一版由应用层注入 player.glb 占位字节，
+  // 缺失时保持静态 Mesh 回退，不影响其余槽位。
+  PendingModelAsset npcModelAsset;
   std::array<PendingModelAsset, 4> environmentAssets;
   std::array<StaticModel, 4> environmentModels;
   std::array<EnvironmentBatchStatus, 4> environmentStatuses{
       EnvironmentBatchStatus::Empty, EnvironmentBatchStatus::Empty,
       EnvironmentBatchStatus::Empty, EnvironmentBatchStatus::Empty};
+  // Phase 2 区块环境批次（blockId → 待上传字节/模型/状态）：
+  // block_<id>.glb 由应用层按玩家所在分块懒注入，仅在对应分块
+  // 激活时绘制；缺失的区块 GLB 保持 Empty，不影响全局批次。
+  std::unordered_map<int32_t, PendingModelAsset> blockEnvironmentAssets;
+  std::unordered_map<int32_t, StaticModel> blockEnvironmentModels;
+  std::unordered_map<int32_t, EnvironmentBatchStatus> blockEnvironmentStatuses;
   EnvironmentController environmentController;
   EnvironmentComposition environmentComposition =
       EnvironmentController::defaultComposition();
@@ -273,10 +324,13 @@ struct Surface {
   SkinnedModel playerModel;
   SkinnedModel enemyModel;
   SkinnedModel bossModel;
+  SkinnedModel npcModel;
   SkinnedAnimationState playerAnimationState;
   SkinnedAnimationState trainingTargetAnimationState;
   SkinnedAnimationState bossAnimationState;
   std::unordered_map<uint32_t, SkinnedAnimationState> enemyAnimationStates;
+  // NPC 逐实体动画播放状态（共享 npcModel 网格/纹理，仅复制播放状态）。
+  std::unordered_map<uint32_t, SkinnedAnimationState> npcAnimationStates;
   // 受击闪白计时器：实体 id → 剩余秒数。由逻辑层从 Damage 事件写入，
   // 渲染层据此把模型配色向白色提亮，给出“打中了”的即时反馈。
   std::unordered_map<uint32_t, float> enemyHitFlash;
@@ -296,6 +350,7 @@ struct Surface {
   AssetProfile playerAssetProfile = AssetProfile::forModel(ModelKind::Player);
   AssetProfile enemyAssetProfile = AssetProfile::forModel(ModelKind::Enemy);
   AssetProfile bossAssetProfile = AssetProfile::forModel(ModelKind::Boss);
+  AssetProfile npcAssetProfile = AssetProfile::forModel(ModelKind::Npc);
   int32_t vfxFlags = 0;
   float vfxHitFlash = 0.0f;
   float vfxDodgeFlash = 0.0f;
@@ -326,6 +381,9 @@ struct Surface {
       case ModelKind::Boss:
         bossAssetProfile = profile;
         break;
+      case ModelKind::Npc:
+        npcAssetProfile = profile;
+        break;
     }
   }
 
@@ -336,15 +394,35 @@ struct Surface {
   void pruneEnemyAnimationStates() {
     for (auto state = enemyAnimationStates.begin();
          state != enemyAnimationStates.end();) {
-      const bool present = std::any_of(
-          enemies3d.begin(), enemies3d.end(),
-          [id = state->first](const Enemy3DRenderState& enemy) {
-            return enemy.id == id;
-          });
+      const bool present =
+          std::any_of(enemies3d.begin(), enemies3d.end(),
+                      [id = state->first](const Enemy3DRenderState& enemy) {
+                        return enemy.id == id;
+                      }) ||
+          std::any_of(wildEnemies3d.begin(), wildEnemies3d.end(),
+                      [id = state->first](const WildEnemy3DRenderState& enemy) {
+                        return enemy.id == id;
+                      });
       if (present) {
         ++state;
       } else {
         state = enemyAnimationStates.erase(state);
+      }
+    }
+  }
+
+  void pruneNpcAnimationStates() {
+    for (auto state = npcAnimationStates.begin();
+         state != npcAnimationStates.end();) {
+      const bool present = std::any_of(
+          npcs3d.begin(), npcs3d.end(),
+          [id = state->first](const Npc3DRenderState& npc) {
+            return npc.id == id;
+          });
+      if (present) {
+        ++state;
+      } else {
+        state = npcAnimationStates.erase(state);
       }
     }
   }
@@ -361,6 +439,9 @@ struct Surface {
       case ModelKind::Boss:
         bossModelAsset.replace(std::move(bytes));
         break;
+      case ModelKind::Npc:
+        npcModelAsset.replace(std::move(bytes));
+        break;
     }
   }
 
@@ -371,6 +452,15 @@ struct Surface {
       environmentAssets[slot].replace(std::move(bytes));
       environmentStatuses[slot] = EnvironmentBatchStatus::Pending;
     }
+  }
+
+  // 注入区块批次字节（blockId ∈ [0, kEnvironmentBlockCount)）；
+  // 解析与上传由 current GL context 下的渲染路径完成。
+  void setBlockEnvironmentAsset(int32_t blockId, std::vector<uint8_t> bytes) {
+    if (blockId < 0 || blockId >= kEnvironmentBlockCount) return;
+    std::lock_guard<std::mutex> lock(modelAssetMutex);
+    blockEnvironmentAssets[blockId].replace(std::move(bytes));
+    blockEnvironmentStatuses[blockId] = EnvironmentBatchStatus::Pending;
   }
 
   bool shouldDrawEnvironmentFallback() const {

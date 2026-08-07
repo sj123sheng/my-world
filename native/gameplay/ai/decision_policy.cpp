@@ -5,6 +5,7 @@
 namespace {
 
 constexpr float kMeleeAttackDistance = 0.25f;
+// 远程原型（Priest/Caster）共用保持距离参数。
 constexpr float kPriestRetreatDistance = 1.0f;
 constexpr float kPriestAttackDistance = 4.0f;
 constexpr float kPriestSupportDistance = 4.0f;
@@ -36,9 +37,12 @@ EnemyIntent DecisionPolicy::choose(const PerceptionSnapshot& facts,
   switch (archetype) {
     case EnemyArchetype::RiftClaw:
     case EnemyArchetype::Guard:
+    case EnemyArchetype::Bruiser:  // 重甲近战：与利爪/守卫同用近战追击逻辑
+    case EnemyArchetype::Elite:    // 精英：近战压制
       return facts.playerDistance <= kMeleeAttackDistance ? EnemyIntent::Attack
                                                           : EnemyIntent::Chase;
     case EnemyArchetype::Priest:
+    case EnemyArchetype::Caster:  // 远程：近身后拉开距离再施法
       if (facts.playerDistance <= kPriestRetreatDistance) return EnemyIntent::Retreat;
       return facts.playerDistance <= kPriestAttackDistance ? EnemyIntent::Attack
                                                             : EnemyIntent::Chase;

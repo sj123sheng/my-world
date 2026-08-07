@@ -106,3 +106,21 @@
   期间恒定，避免尸体在两个姿态间跳变。
 - 行为由 `test_render_animation`（候选链与回退）、`test_skinned_model`
   （Hit_B fixture 真正切换）与桥接契约的计数/发布断言锁定。
+
+## 2026-08-06：世界布局采用构建期代码生成，不引入运行时 JSON 解析
+
+- 世界布局（区块/锚点/NPC/刷怪区/宝箱/采集物）以 `assets/world/world.json`
+  为单一事实来源，由 `automation/assets/generate_world_layout.mjs` 在构建期
+  生成 `native/generated/world_layout.gen.h`（`namespace WorldLayout` 下的
+  constexpr 结构体与数组），运行时零 JSON 依赖。
+- 选择构建期代码生成而非运行时 JSON 解析：零新增依赖（生成脚本为手写
+  轻量校验器，不引入 npm/JSON 解析库）、确定性可测（同输入产物逐字节
+  一致，脚本幂等，重复运行不重写文件）、编译期即可捕获布局错误。
+- 布局约束由 `config/schema/world.schema.json`（draft-07 子集）定义，
+  生成脚本额外做语义校验：id 全局唯一（锚点≥8、NPC/宝箱/采集物≥32，
+  避开旧布局与存档 bitmask）、坐标落在 [0.02, 0.98]、district 分块
+  覆盖全 8×8 网格且互不重叠、实体必须落在其声明 district 的分块内。
+- `automation/hvigor/check_rules.js` 挂接 world.json 存在性与基础结构
+  校验，作为构建期第一道闸；完整校验与生成由生成脚本承担。
+- 数据自洽性由 `test_world_layout_gen` 对生成头的断言锁定（id 下限、
+  坐标界内、archetype 合法、district 不重叠）。

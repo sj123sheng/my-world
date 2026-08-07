@@ -3,10 +3,14 @@
 import { Haptics } from './Haptics';
 
 const TOAST_DURATION_MS: number = 900;
+// 任务接取提示停留更长，让玩家看清任务名（Phase 4）。
+const ACCEPT_TOAST_DURATION_MS: number = 2200;
 
 @Component
 export struct ActionToast {
   @Prop @Watch('onRejectChanged') lastRejectReason: number = 0;
+  // 任务接取提示（Phase 4）：非空且变化时复用弹层模式显示。
+  @Prop @Watch('onAcceptChanged') questAcceptMessage: string = '';
   @State label: string = '';
   @State visible: boolean = false;
   private hideTimer: number = -1;
@@ -33,6 +37,21 @@ export struct ActionToast {
       this.visible = false;
       this.hideTimer = -1;
     }, TOAST_DURATION_MS);
+  }
+
+  onAcceptChanged(): void {
+    if (this.questAcceptMessage.length === 0) {
+      return;
+    }
+    this.label = this.questAcceptMessage;
+    this.visible = true;
+    if (this.hideTimer !== -1) {
+      clearTimeout(this.hideTimer);
+    }
+    this.hideTimer = setTimeout((): void => {
+      this.visible = false;
+      this.hideTimer = -1;
+    }, ACCEPT_TOAST_DURATION_MS);
   }
 
   // 与 native ActionRejectReason 枚举一一对应。

@@ -108,14 +108,21 @@ void publish3DEncounterState(Surface& surface,
     surface.enemies3d.push_back(state);
   }
   // 清理已离开快照的敌人的淡出计时与受击计数，避免长期泄漏。
+  // 存在性同时检查野外敌人列表（共享同一批 id 状态表）。
+  const auto presentInAnyEnemyList = [&surface](uint32_t id) {
+    return std::any_of(surface.enemies3d.begin(), surface.enemies3d.end(),
+                       [id](const Enemy3DRenderState& enemy) {
+                         return enemy.id == id;
+                       }) ||
+           std::any_of(surface.wildEnemies3d.begin(),
+                       surface.wildEnemies3d.end(),
+                       [id](const WildEnemy3DRenderState& enemy) {
+                         return enemy.id == id;
+                       });
+  };
   for (auto death = surface.enemyDeathSeconds.begin();
        death != surface.enemyDeathSeconds.end();) {
-    const bool present = std::any_of(
-        surface.enemies3d.begin(), surface.enemies3d.end(),
-        [id = death->first](const Enemy3DRenderState& enemy) {
-          return enemy.id == id;
-        });
-    if (present) {
+    if (presentInAnyEnemyList(death->first)) {
       ++death;
     } else {
       surface.enemyHitCounts.erase(death->first);
@@ -125,12 +132,7 @@ void publish3DEncounterState(Surface& surface,
   // 受击计数独立清理：未被击杀过的敌人不会进入淡出计时表。
   for (auto count = surface.enemyHitCounts.begin();
        count != surface.enemyHitCounts.end();) {
-    const bool present = std::any_of(
-        surface.enemies3d.begin(), surface.enemies3d.end(),
-        [id = count->first](const Enemy3DRenderState& enemy) {
-          return enemy.id == id;
-        });
-    if (present) {
+    if (presentInAnyEnemyList(count->first)) {
       ++count;
     } else {
       count = surface.enemyHitCounts.erase(count);
@@ -184,6 +186,116 @@ void publish3DEncounterState(Surface& surface,
   }
 }
 
+// 野外敌人快照写入 Surface 3D 渲染字段（仿 enemies3d 模式，共享状态表）。
+void publishWildEnemies3d(Surface& surface, const WildSpawnSystem& wild,
+                          float dtSeconds) {
+  surface.wildEnemies3d.clear();
+  for (const WildEnemySnapshot& enemy : wild.snapshot()) {
+    WildEnemy3DRenderState state;
+    state.id = enemy.id;
+    state.x = enemy.position.x;
+    state.y = enemy.position.y;
+    state.archetype = enemy.archetype;
+    state.alive = enemy.alive;
+    state.animation.alive = enemy.alive;
+    state.animation.action = enemy.attacking ? RenderAnimation::Attack
+                                             : RenderAnimation::Idle;
+    state.animation.hit = enemy.hit;
+    state.animation.moving = enemy.moving;
+    state.windingUp = enemy.windingUp;
+    state.attacking = enemy.attacking;
+    state.angle = std::atan2(enemy.facing.x, enemy.facing.y);
+    if (!enemy.alive) {
+      state.deathSeconds = surface.enemyDeathSeconds[enemy.id] += dtSeconds;
+    } else {
+      surface.enemyDeathSeconds.erase(enemy.id);
+    }
+    const auto hitCount = surface.enemyHitCounts.find(enemy.id);
+    state.hitCount = hitCount != surface.enemyHitCounts.end() ? hitCount->second : 0u;
+    state.animation.variant =
+        enemy.alive ? static_cast<uint8_t>(state.hitCount & 1u)
+                    : static_cast<uint8_t>((state.hitCount + enemy.id) & 1u);
+    surface.wildEnemies3d.push_back(state);
+  }
+}
+
+// 流式半径性能联动（Phase 5）：按 PerformanceGuard 视距缩放决定半径——
+// 档位对应 viewDistanceScale：Full 1.0 / Light 0.9 / Medium 0.75 → 半径 2，
+// Heavy 0.6 / Critical 0.45 → 1；低画质预设（qualityPreset=1）强制取小。
+int32_t streamingRadiusForPerf(int32_t qualityPreset,
+                               const PerformanceGuard& guard) {
+  const int32_t radius = guard.viewDistanceScale() >= 0.7f ? 2 : 1;
+  return qualityPreset == 1 ? std::min(radius, 1) : radius;
+}
+
+// NPC 渲染上限性能联动（Phase 5）：按 lodLevel 收缩 6→4→3。
+// lodLevel 取 PerformanceGuard::lodLevel()（0=完整 1=中等 2=精简）。
+int32_t npcVisibleLimitForPerf(int32_t lodLevel) {
+  if (lodLevel >= 2) return 3;
+  if (lodLevel == 1) return 4;
+  return NpcAgency::kMaxVisible;
+}
+
+// NPC 渲染发布（Phase 4）：同屏 ≤6，超出按距玩家距离裁剪（常量）。
+// maxVisible 为性能联动后的上限（Phase 5），默认保持原行为。
+void publishNpcs3d(Surface& surface, const NpcAgency& agency,
+                   float playerX, float playerY,
+                   int32_t maxVisible = NpcAgency::kMaxVisible) {
+  surface.npcs3d.clear();
+  const std::vector<NpcAgentSnapshot>& agents = agency.agents();
+  if (agents.empty()) return;
+  std::vector<size_t> order(agents.size());
+  for (size_t index = 0; index < agents.size(); ++index) order[index] = index;
+  const auto distSq = [&agents, playerX, playerY](size_t index) {
+    const float dx = agents[index].x - playerX;
+    const float dy = agents[index].y - playerY;
+    return dx * dx + dy * dy;
+  };
+  std::sort(order.begin(), order.end(),
+            [&distSq](size_t a, size_t b) { return distSq(a) < distSq(b); });
+  const size_t visibleCount =
+      std::min<size_t>(order.size(),
+                       static_cast<size_t>(std::max(maxVisible, 0)));
+  surface.npcs3d.reserve(visibleCount);
+  for (size_t rank = 0; rank < visibleCount; ++rank) {
+    const NpcAgentSnapshot& npc = agents[order[rank]];
+    Npc3DRenderState state;
+    state.id = static_cast<uint32_t>(npc.id);
+    state.x = npc.x;
+    state.y = npc.y;
+    state.angle = npc.angle;
+    state.behavior = npc.behavior;
+    state.visible = true;
+    // NPC 仅 idle/walk：移动时低 moveRatio 使渲染侧选 Walking 片段。
+    state.animation.alive = true;
+    state.animation.action = RenderAnimation::Idle;
+    state.animation.moving = npc.moving;
+    state.animation.moveRatio = npc.moving ? 0.2f : 1.0f;
+    surface.npcs3d.push_back(state);
+  }
+}
+
+// 对话会话推进并在结束时处理任务发布（Phase 4）。
+// advance 前捕获 offeredQuestId（会话结束后 def_ 被置空）；accept 后
+// 立即补发 notifyNpcTalked，使发布对话本身计入首个 TalkToNpc 目标。
+void advanceDialogSession(Loop& loop) {
+  if (!loop.dialogSession.active()) return;
+  const int32_t offeredQuestId = loop.dialogSession.offeredQuestId();
+  const int32_t npcId = loop.npcAgency.talkingNpcId();
+  if (loop.dialogSession.advance()) return;
+  if (npcId >= 0) loop.npcAgency.endTalk(npcId);
+  if (offeredQuestId < 0) return;
+  if (!loop.openWorldQuests.accept(offeredQuestId)) return;
+  loop.openWorldQuests.notifyNpcTalked(npcId);
+  loop.npcOfferQuestId = offeredQuestId;
+  for (const QuestDef& quest : loop.openWorldQuests.quests()) {
+    if (quest.id == offeredQuestId) {
+      loop.npcOfferQuestTitle = quest.title;
+      break;
+    }
+  }
+}
+
 // 在 surface_draw 前更新 3D 透视相机。yaw/pitch/distance 来自现有 2D
 // ThirdPersonCamera，玩家 3D 目标位置取 (player.x, height+0.05, player.y)，
 // 0.05 为玩家立方体半高，使相机平视角色而非俯视地面；
@@ -198,10 +310,11 @@ void update3DCamera(Surface& surface, const ThirdPersonCamera& camera,
                           camera.distance());
 }
 
-// 按实体 ID 解析世界坐标，供伤害飘字定位。
+// 按实体 ID 解析世界坐标，供伤害飘字定位。wild 为野外敌人兜底。
 std::optional<Vec2> resolveEntityPosition(const Surface& surface,
                                           const EncounterSnapshot& encounter,
-                                          EntityId id) {
+                                          EntityId id,
+                                          const WildSpawnSystem* wild = nullptr) {
   if (id == CombatController::kPlayerId) {
     return Vec2{surface.player.x, surface.player.y};
   }
@@ -215,6 +328,10 @@ std::optional<Vec2> resolveEntityPosition(const Surface& surface,
     if (enemy.id == id) {
       return enemy.position;
     }
+  }
+  if (wild != nullptr) {
+    Vec2 position;
+    if (wild->positionOf(id, position)) return position;
   }
   return std::nullopt;
 }
@@ -289,7 +406,8 @@ void spawnAttackProjectiles(Surface& surface, Vec2 from, Vec2 to, int kind,
 // 开始时爆出更大规模的暗紫火花环并向主角齐射束流。
 void spawnEnemyReleaseVfx(Surface& surface) {
   const Vec2 playerPos{surface.player.x, surface.player.y};
-  for (const Enemy3DRenderState& enemy : surface.enemies3d) {
+  // 遭遇敌人与野外敌人字段布局一致，共用同一边沿检测模板。
+  const auto processEnemy = [&surface, playerPos](const auto& enemy) {
     const auto prevWindup = surface.enemyPrevWindingUp.find(enemy.id);
     const auto prevAttack = surface.enemyPrevAttacking.find(enemy.id);
     const bool wasWinding =
@@ -309,16 +427,28 @@ void spawnEnemyReleaseVfx(Surface& surface) {
     }
     surface.enemyPrevWindingUp[enemy.id] = enemy.windingUp;
     surface.enemyPrevAttacking[enemy.id] = enemy.attacking;
+  };
+  for (const Enemy3DRenderState& enemy : surface.enemies3d) {
+    processEnemy(enemy);
   }
-  // 清理已离开快照的敌人的边沿状态，避免长期泄漏。
+  for (const WildEnemy3DRenderState& enemy : surface.wildEnemies3d) {
+    processEnemy(enemy);
+  }
+  // 清理已离开快照的敌人的边沿状态，避免长期泄漏（两个列表同查）。
+  const auto presentInAny = [&surface](uint32_t id) {
+    return std::any_of(surface.enemies3d.begin(), surface.enemies3d.end(),
+                       [id](const Enemy3DRenderState& enemy) {
+                         return enemy.id == id;
+                       }) ||
+           std::any_of(surface.wildEnemies3d.begin(),
+                       surface.wildEnemies3d.end(),
+                       [id](const WildEnemy3DRenderState& enemy) {
+                         return enemy.id == id;
+                       });
+  };
   for (auto state = surface.enemyPrevWindingUp.begin();
        state != surface.enemyPrevWindingUp.end();) {
-    const bool present = std::any_of(
-        surface.enemies3d.begin(), surface.enemies3d.end(),
-        [id = state->first](const Enemy3DRenderState& enemy) {
-          return enemy.id == id;
-        });
-    if (present) {
+    if (presentInAny(state->first)) {
       ++state;
     } else {
       state = surface.enemyPrevWindingUp.erase(state);
@@ -326,12 +456,7 @@ void spawnEnemyReleaseVfx(Surface& surface) {
   }
   for (auto state = surface.enemyPrevAttacking.begin();
        state != surface.enemyPrevAttacking.end();) {
-    const bool present = std::any_of(
-        surface.enemies3d.begin(), surface.enemies3d.end(),
-        [id = state->first](const Enemy3DRenderState& enemy) {
-          return enemy.id == id;
-        });
-    if (present) {
+    if (presentInAny(state->first)) {
       ++state;
     } else {
       state = surface.enemyPrevAttacking.erase(state);
@@ -592,6 +717,9 @@ void ApplyGrowthSnapshot(GameSnapshot& output, const Loop& loop) {
   output.gachaPoolKind = loop.gachaPoolKind;
   output.weatherId = WeatherSystem::weatherAt(loop.timeOfDaySeconds).id;
   output.musicRegionId = loop.musicRegionId;
+  // NPC 任务发布（Phase 4）：快照尾部纯追加 2 字段。
+  output.npcOfferQuestId = loop.npcOfferQuestId;
+  output.npcOfferQuestTitle = loop.npcOfferQuestTitle;
 }
 }  // namespace
 
@@ -721,7 +849,7 @@ void Loop::toggleDebugHud() {
 void Loop::advanceDialog() {
   withLifecycle([this]() {
     if (dialogSession.active()) {
-      (void)dialogSession.advance();
+      advanceDialogSession(*this);
     } else if (storyDirector.active()) {
       // 开场剧情字幕（无会话）：“继续”按钮手动推进演出。
       storyDirector.advance(loopTimeMs);
@@ -808,6 +936,17 @@ bool Loop::saveProgress(const std::string& path) {
           static_cast<int32_t>(artifact.substatSeed));
     }
     state.claimedRanks = claimedRankRewards;
+    // V8：开放世界支线进度——并行支线用完成位掩码（bit i 对应声明顺序
+    // 第 i 个任务）+ 当前接取任务 id，restoreLinear 的"前 N 个"语义不适用。
+    int32_t openWorldMask = 0;
+    const std::vector<QuestDef>& openQuests = openWorldQuests.quests();
+    for (size_t i = 0; i < openQuests.size() && i < 31; ++i) {
+      if (openWorldQuests.isCompleted(openQuests[i].id)) {
+        openWorldMask |= (1 << static_cast<int32_t>(i));
+      }
+    }
+    state.openWorldQuestMask = openWorldMask;
+    state.openWorldQuestActiveId = openWorldQuests.activeQuestId();
     Save save;
     return save.write(state, path.c_str());
   });
@@ -1126,6 +1265,15 @@ bool Loop::teleportToAnchor(int32_t anchorId) {
       surface.player.y = anchor.y;
       motionState = explorationMotion.reset(
           terrain.heightAt(anchor.x, anchor.y));
+      // 传送：强制刷新流式集合同步准备目标分块一圈，配合黑屏转场。
+      worldGrid.updateStreaming({anchor.x, anchor.y});
+      chunkLoadCount += static_cast<int32_t>(worldGrid.pendingLoads().size());
+      streamScheduler.loadRingSync(
+          worldGrid.chunkIndexAt({anchor.x, anchor.y}),
+          worldGrid.config().streamingRadius, performanceGuard.lodLevel());
+      // 传送圈分块在 Ready 队列等待上传：黑屏窗口内临时放宽每帧
+      // 配额（25 块 / 4 块每帧 ≈ 7 帧 ≪ 1200ms 转场）。
+      streamScheduler.beginBurst(10, 4);
       teleportFlashMs = 1200;
       audioBridge.playUiSound(SoundEffect::Resonance);
       return true;
@@ -1142,6 +1290,10 @@ bool Loop::loadProgress(const std::string& path) {
       return false;
     }
     quests.restoreLinear(state.completedQuestCount, state.activeQuestId);
+    // V8：开放世界支线按完成掩码恢复（V1-V7 旧存档字段为默认值，
+    // restoreByMask(0,-1) 等价于初始全部可接取态）。
+    openWorldQuests.restoreByMask(state.openWorldQuestMask,
+                                  state.openWorldQuestActiveId);
     sideQuests.restoreMask(state.sideQuestMask);
     lastRewardedSideCount = sideQuests.completedCount();
     collectRespawnRemainingMs = state.collectRespawnMs;
@@ -1406,13 +1558,23 @@ void Loop::tickOnce(int64_t elapsedMs) {
     fps = tickCount * 1000.0f / (float)elapsed;
     tickCount = 0;
     lastFpsTime = now;
+    // 分块流式与野外敌人计数（性能仪表扩展）：打点处仅只读现有状态，
+    // wild_enemies 当前恒为 0，由后续 WildSpawnSystem 填充。
+    const int activeChunkCount =
+        static_cast<int>(worldGrid.activeChunks().size());
+    const int streamingPendingCount =
+        static_cast<int>(worldGrid.pendingLoads().size() +
+                         worldGrid.pendingUnloads().size());
     LOGI("PROFILE fps=%{public}.1f perf_level=%{public}d environment_ready=%{public}d "
          "environment_draw_calls=%{public}u environment_triangles=%{public}u "
-         "environment_texture_tier=%{public}s encounter_mode=%{public}d",
+         "environment_texture_tier=%{public}s encounter_mode=%{public}d "
+         "active_chunks=%{public}d streaming_pending=%{public}d "
+         "wild_enemies=%{public}d",
          fps, performanceGuard.level(), static_cast<int>(surface.environmentReady),
          surface.environmentDrawCalls, surface.environmentTriangles,
          performanceGuard.level() >= 4 ? "half" : "full",
-         static_cast<int>(encounter.snapshot().mode));
+         static_cast<int>(encounter.snapshot().mode),
+         activeChunkCount, streamingPendingCount, wildEnemyCount);
   }
   performanceGuard.sample(fixedStep.tick(), 16, fps);
 
@@ -1558,12 +1720,20 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       motionState.height);
 
   // ---- 开放世界探索（阶段一）----
-  // 性能降级联动视距：Heavy/Critical 或低画质预设缩小流式半径。
+  // 性能降级联动视距（Phase 5 接入 viewDistanceScale）：档位越低
+  // 视距越短，流式半径越小，减少激活分块与刷怪压力。
   worldGrid.setStreamingRadius(
-      qualityPreset == 1 || performanceGuard.level() >= 3 ? 1 : 2);
+      streamingRadiusForPerf(qualityPreset, performanceGuard));
+  streamScheduler.setKeepRadius(worldGrid.config().streamingRadius + 1);
   // 分块流式：按玩家位置维护激活分块集合，累计加载次数供验收。
   if (worldGrid.updateStreaming({surface.player.x, surface.player.y})) {
     chunkLoadCount += static_cast<int32_t>(worldGrid.pendingLoads().size());
+    // 转发流式调度器：驱动分块地形内容加载/卸载（滞后带由调度器评估）。
+    streamScheduler.requestLoads(
+        worldGrid.pendingLoads(),
+        worldGrid.chunkIndexAt({surface.player.x, surface.player.y}),
+        performanceGuard.lodLevel());
+    streamScheduler.requestUnloads(worldGrid.pendingUnloads());
   }
   // 垂直运动：跳跃/滑翔/攀爬/游泳与探索体力。
   {
@@ -1605,6 +1775,9 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   }
   storyDirector.tick(loopTimeMs);
 
+  // NPC 行为推进（Phase 4）：巡逻/驻守/对话朝向，只输出位置与朝向。
+  npcAgency.update(dtSeconds, {surface.player.x, surface.player.y});
+
   // 锚点与可交互物检测：交互键按距离就近选择目标。
   currentAnchorInteraction = anchors.nearestInteraction(
       {surface.player.x, surface.player.y}, 0.06f);
@@ -1614,7 +1787,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     interactQueued = false;
     if (dialogSession.active()) {
       // 对话进行中：交互键推进台词。
-      (void)dialogSession.advance();
+      advanceDialogSession(*this);
     } else if (storyDirector.active()) {
       // 开场字幕进行中：交互键推进演出，不触发世界交互。
       storyDirector.advance(loopTimeMs);
@@ -1650,6 +1823,10 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
             dialogSession.start(DialogLibrary::defaults().find(
                 interactables.dialogIdFor(currentInteractable.id)));
             quests.notifyNpcTalked(currentInteractable.id);
+            // NPC 进入 Talk 态：停步并朝向玩家；清除上一次的任务发布提示。
+            npcAgency.beginTalk(currentInteractable.id);
+            npcOfferQuestId = -1;
+            npcOfferQuestTitle.clear();
             audioBridge.playUiSound(SoundEffect::AuraApplied);
           } else if (kind == InteractableKind::Chest) {
             quests.notifyChestOpened(currentInteractable.id);
@@ -1790,7 +1967,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     if (currentTarget.has_value()) {
       releaseTarget = resolveEntityPosition(
           surface, encounter.snapshot(),
-          static_cast<EntityId>(currentTarget->id));
+          static_cast<EntityId>(currentTarget->id), &wildSpawn);
     }
     if (!releaseTarget.has_value() &&
         encounter.snapshot().mode == EncounterMode::Boss &&
@@ -1848,8 +2025,10 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     prevCorruptionCdMs = skillSnapshot.corruptionCooldownMs;
   }
 
-  const std::vector<TargetCandidate>& candidates =
-      encounter.snapshot().candidates;
+  // 软锁定候选合并：遭遇敌人 + 野外敌人（WildSpawnSystem）。
+  std::vector<TargetCandidate> candidates = encounter.snapshot().candidates;
+  const std::vector<TargetCandidate> wildCandidates = wildSpawn.candidates();
+  candidates.insert(candidates.end(), wildCandidates.begin(), wildCandidates.end());
   currentTarget = softTargeting.select(
       {surface.player.x, surface.player.y}, camera.yaw(), candidates,
       currentTarget ? std::optional<int32_t>{currentTarget->id} : std::nullopt);
@@ -1868,7 +2047,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   if (currentTarget.has_value()) {
     const std::optional<Vec2> markerPosition = resolveEntityPosition(
         surface, encounter.snapshot(),
-        static_cast<EntityId>(currentTarget->id));
+        static_cast<EntityId>(currentTarget->id), &wildSpawn);
     if (markerPosition.has_value()) {
       surface.targetMarker3d.x = markerPosition->x;
       surface.targetMarker3d.z = markerPosition->y;
@@ -1884,22 +2063,39 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   intent.actions.clear();
   const Tick combatTime = AdvanceCombatTime(combatTimeMs_.load(), dtMs);
   combatTimeMs_.store(combatTime);
+  // 敌人碰撞：遭遇敌人与野外敌人共用同一建筑碰撞集。
+  const auto enemyPositionResolver = [this](Vec2& position, float radius) {
+    const float ground = terrain.heightAt(position.x, position.y);
+    buildingCollision.resolve(position.x, position.y, radius, ground);
+  };
+  // 野外刷怪（Phase 3.2/3.3）：worldGrid 流式之后推进；生成/回收/重生/
+  // 巡逻/LOD 在此结算，敌方命中转发 combat 外部通道。
+  // 性能档位转发（Phase 5）：降级时活跃上限 8→6→4、感知半径收缩。
+  wildSpawn.setPerformanceLevel(performanceGuard.lodLevel());
+  wildSpawn.update({combatTime, dtMs, {surface.player.x, surface.player.y},
+                    combat.snapshot().playerHp > 0,
+                    &worldGrid.activeChunks(), enemyPositionResolver});
+  wildEnemyCount = wildSpawn.activeCount();
+  // 仅遭遇运行时转发：避免队列在非战斗态滞留。
+  if (encounter.snapshot().state == EncounterState::Running) {
+    for (const HitRequest& hit : wildSpawn.playerHits()) {
+      combat.enqueueExternalEnemyHit(hit);
+    }
+  }
+  // 绑定玩家锁定的野外目标：玩家攻击改道结算到它（非野外目标时空绑定）。
+  combat.setExternalTargetBinding(wildSpawn.combatBinding(
+      currentTarget ? static_cast<EntityId>(currentTarget->id) : 0,
+      {surface.player.x, surface.player.y}));
   encounter.update({combatTime, dtMs,
                     {surface.player.x, surface.player.y},
                     surface.player.moving,
                     currentTarget ? static_cast<EntityId>(currentTarget->id) : 0,
-                    // 敌人碰撞：移动积分后从建筑盒内推出并沿墙滑动，
-                    // 高度取地形采样，与主角共用同一碰撞集。
-                    [this](Vec2& position, float radius) {
-                      const float ground =
-                          terrain.heightAt(position.x, position.y);
-                      buildingCollision.resolve(position.x, position.y,
-                                                radius, ground);
-                    }});
+                    enemyPositionResolver});
   const EncounterSnapshot& encounterState = encounter.snapshot();
   DemoSignals demoSignals;
   demoSignals.introComplete = combatTime >= 1000;
   demoSignals.reachedCombatAnchor = surface.player.y >= 0.45f;
+  // Victory 门控：野外敌人走独立 WildSpawnSystem 通道，天然隔离。
   demoSignals.encounterComplete =
       encounterState.state == EncounterState::Victory;
   demoSignals.allSourcesActive = combat.snapshot().radianceAttached &&
@@ -1913,8 +2109,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       encounter.snapshot().mode == EncounterMode::Training &&
       combat.snapshot().targetAlive;
   if (currentTarget.has_value() &&
-      std::none_of(encounter.snapshot().candidates.begin(),
-                   encounter.snapshot().candidates.end(),
+      std::none_of(candidates.begin(), candidates.end(),
                    [this](const TargetCandidate& candidate) {
                      return candidate.id == currentTarget->id;
                    })) {
@@ -1953,8 +2148,9 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   vfxSystem.update(combatTime, dtMs);
   audioBridge.dispatch(frameCombatEvents_);
 
-  // 伤害飘字：仅从本步新增的 Damage 事件生成（避免同帧多步重复），
-  // 按目标实体定位；玩家受击红色、大额伤害金色、其余近白。
+  // 伤害飘字：仅从本步新增的 Damage 事件生成（避免同帧多步重复）；野外
+  // 击杀的 Death/Damage 事件由 CombatController 产出（target = 野外 id），
+  // 自动计入下方击杀/掉落/任务管线。
   int32_t killsThisStep = 0;
   for (std::size_t eventIndex = gameplayEventStart;
        eventIndex < frameCombatEvents_.gameplay.size(); ++eventIndex) {
@@ -2000,7 +2196,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
         }
       }
       const std::optional<Vec2> deathPos = resolveEntityPosition(
-          surface, encounter.snapshot(), event.target);
+          surface, encounter.snapshot(), event.target, &wildSpawn);
       if (deathPos.has_value()) {
         spawnHitSparks(surface, *deathPos, 2, 14, 1.8f, 1.4f,
                        actorVfxRatio(surface, event.target));
@@ -2015,7 +2211,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       surface.enemyHitCounts[static_cast<uint32_t>(event.target)] += 1u;
     }
     const std::optional<Vec2> position = resolveEntityPosition(
-        surface, encounter.snapshot(), event.target);
+        surface, encounter.snapshot(), event.target, &wildSpawn);
     if (!position.has_value()) continue;
     const float amount =
         static_cast<float>(event.value) / static_cast<float>(FP_ONE);
@@ -2041,6 +2237,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   // 击杀事件推进任务与秘境：仅统计敌人/首领死亡，排除玩家自身。
   if (killsThisStep > 0) {
     quests.notifyEnemiesKilled(killsThisStep);
+    openWorldQuests.notifyEnemiesKilled(killsThisStep);
     sideQuests.notifyEvent(SideQuestEvent::Kill, killsThisStep);
     dailyQuests.notifyEvent(DailyQuestKind::Kill, killsThisStep);
     if (dungeon.state() == DungeonState::Active) {
@@ -2123,16 +2320,14 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   constexpr float kTrailChasePerSec = 2.4f;  // 约 0.42 秒排空整条
   const float trailDtSeconds = static_cast<float>(dtMs) / 1000.0f;
   surface.enemyHpBars3d.clear();
-  for (const EncounterEnemySnapshot& enemy : encounter.snapshot().enemies) {
-    if (!enemy.alive || enemy.maxHp <= 0) {
-      enemyHpTrails.erase(enemy.id);
-      continue;
-    }
+  // 遭遇敌人与野外敌人共用同一滞后条逻辑（id 无冲突，共享 trail 表）。
+  const auto publishHpBar = [&](uint32_t id, Vec2 position, FixedPoint hp,
+                                FixedPoint maxHp) {
     EnemyHpBarRenderState bar;
-    bar.x = enemy.position.x;
-    bar.z = enemy.position.y;
-    bar.ratio = static_cast<float>(enemy.hp) / static_cast<float>(enemy.maxHp);
-    EnemyHpTrailState& trail = enemyHpTrails[enemy.id];
+    bar.x = position.x;
+    bar.z = position.y;
+    bar.ratio = static_cast<float>(hp) / static_cast<float>(maxHp);
+    EnemyHpTrailState& trail = enemyHpTrails[id];
     if (bar.ratio >= trail.trail) {
       // 回血或满血：立即贴合，不残留滞后条。
       trail.trail = bar.ratio;
@@ -2156,7 +2351,18 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     }
     bar.trailRatio = trail.trail;
     surface.enemyHpBars3d.push_back(bar);
-  }
+  };
+  const auto publishEnemyHpBars = [&](const auto& enemies) {
+    for (const auto& enemy : enemies) {
+      if (!enemy.alive || enemy.maxHp <= 0) {
+        enemyHpTrails.erase(enemy.id);
+        continue;
+      }
+      publishHpBar(enemy.id, enemy.position, enemy.hp, enemy.maxHp);
+    }
+  };
+  publishEnemyHpBars(encounter.snapshot().enemies);
+  publishEnemyHpBars(wildSpawn.snapshot());
 
   // 只从 gameplay 快照/事件投影动画意图，不反向写入战斗、AI 或玩家控制器。
   surface.playerHitAnimationSeconds = std::max(
@@ -2213,6 +2419,11 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   surface.player3dAnimation.moveRatio =
       std::clamp(intent.move.length(), 0.0f, 1.0f);
   surface.trainingTarget3dAnimation.alive = surface.trainingTarget.alive;
+  // 野外敌人先发布：publish3DEncounterState 的共享状态表清理依赖它已填充。
+  publishWildEnemies3d(surface, wildSpawn, dtSeconds);
+  // NPC 发布侧按 lodLevel 收缩同屏上限（Phase 5）：6→4→3。
+  publishNpcs3d(surface, npcAgency, surface.player.x, surface.player.y,
+                npcVisibleLimitForPerf(performanceGuard.lodLevel()));
   publish3DEncounterState(surface, encounter.snapshot(), dtSeconds);
   // 敌方释放动效：依赖 publish 后的 enemies3d/boss3d 状态做边沿检测。
   spawnEnemyReleaseVfx(surface);

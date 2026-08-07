@@ -35,6 +35,114 @@
         "modular_fort_01",
         "rabdentse_ruins_wall"
       ]
+    },
+    {
+      "id": "block_9",
+      "path": "entry/src/main/resources/rawfile/environment/block_9.glb",
+      "sha256": "ee6e67c8347217c3139e447b266b9c6f82283b28a8a03789b1b9ea0ffb02179f",
+      "sourceDependencies": [
+        "modular_fort_01",
+        "rabdentse_ruins_wall"
+      ]
+    },
+    {
+      "id": "block_11",
+      "path": "entry/src/main/resources/rawfile/environment/block_11.glb",
+      "sha256": "9d5143fadb014c2f9cbd1eef406845f385329123d1e43fd582c00bfc4749c96f",
+      "sourceDependencies": [
+        "modular_fort_01",
+        "rabdentse_ruins_wall"
+      ]
+    },
+    {
+      "id": "block_12",
+      "path": "entry/src/main/resources/rawfile/environment/block_12.glb",
+      "sha256": "b1461c5e95cadc5d0e0318589ac57c1326acc8dcb9d187550a24656ecea0161b",
+      "sourceDependencies": [
+        "modular_fort_01",
+        "rabdentse_ruins_wall"
+      ]
+    },
+    {
+      "id": "block_14",
+      "path": "entry/src/main/resources/rawfile/environment/block_14.glb",
+      "sha256": "e0da12ec86b77515d1b5aac0af06d77e8383ae4e0cab8c8c8f7f43c98ed41645",
+      "sourceDependencies": [
+        "modular_fort_01",
+        "rabdentse_ruins_wall"
+      ]
+    },
+    {
+      "id": "block_18",
+      "path": "entry/src/main/resources/rawfile/environment/block_18.glb",
+      "sha256": "ad608f5e242c27864d3bfb63f8c3e5175765b4dc29b647daa7ef005dca4615b8",
+      "sourceDependencies": [
+        "modular_fort_01",
+        "rabdentse_ruins_wall"
+      ]
+    },
+    {
+      "id": "block_19",
+      "path": "entry/src/main/resources/rawfile/environment/block_19.glb",
+      "sha256": "030db3e2b4ad530de2bedceebbb88a3911cada16319f4b15fc410089127ac970",
+      "sourceDependencies": [
+        "modular_fort_01",
+        "rabdentse_ruins_wall"
+      ]
+    },
+    {
+      "id": "block_21",
+      "path": "entry/src/main/resources/rawfile/environment/block_21.glb",
+      "sha256": "4927783f14d556a77b8588269be97f161672e0444a4b4b6ecb56b3e3fe307840",
+      "sourceDependencies": [
+        "modular_fort_01",
+        "rabdentse_ruins_wall"
+      ]
+    },
+    {
+      "id": "block_28",
+      "path": "entry/src/main/resources/rawfile/environment/block_28.glb",
+      "sha256": "183a1990db9e3a946a90d0816ada322b5787b909372fbc6113cc8ba360c2fdfe",
+      "sourceDependencies": [
+        "modular_fort_01",
+        "rabdentse_ruins_wall"
+      ]
+    },
+    {
+      "id": "block_34",
+      "path": "entry/src/main/resources/rawfile/environment/block_34.glb",
+      "sha256": "e3f9fb7ab8e4f7d8e1c5ebc779a553b00d8db2418d0d1790784f5bf7119928e3",
+      "sourceDependencies": [
+        "modular_fort_01",
+        "rabdentse_ruins_wall"
+      ]
+    },
+    {
+      "id": "block_41",
+      "path": "entry/src/main/resources/rawfile/environment/block_41.glb",
+      "sha256": "a9594f848b0957a39efde56bc52f047d6beae31b0ffe5aad4d48d3534b24173a",
+      "sourceDependencies": [
+        "modular_fort_01",
+        "rabdentse_ruins_wall"
+      ]
+    },
+    {
+      "id": "block_44",
+      "path": "entry/src/main/resources/rawfile/environment/block_44.glb",
+      "sha256": "58933354a777d2be5906a72a5daca1c7375e1858ecca6a6042dad7119e0c8e98",
+      "sourceDependencies": [
+        "modular_fort_01",
+        "rabdentse_ruins_wall"
+      ]
+    },
+    {
+      "id": "block_54",
+      "path": "entry/src/main/resources/rawfile/environment/block_54.glb",
+      "sha256": "bb539a321fadd926fa25a5875455926131551c79d3e5eb06f466d34da2449e82",
+      "sourceDependencies": [
+        "modular_fort_01",
+        "rabdentse_ruins_wall"
+      ]
     }
   ],
   "license": "CC0-1.0",
@@ -43,74 +151,74 @@
     {
       "author": "Rico Cilliers",
       "downloadUrl": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/modular_fort_01/modular_fort_01_2k.gltf",
-      "downloadedAt": "2026-07-24",
+      "downloadedAt": "2026-08-06",
       "id": "modular_fort_01",
       "name": "Modular Fort 01",
       "pageUrl": "https://polyhaven.com/a/modular_fort_01",
       "sha256": "7278a56aaa624ce71974ad2374bb7b1a5ac83c9296ebc5acc5893862a69cf59d",
       "sourceFiles": [
         {
-          "downloadedAt": "2026-07-24",
+          "downloadedAt": "2026-08-06",
           "path": "modular_fort_01.bin",
           "sha256": "de86e71af4cd5b37006914a8e7ae7de59b245b73364317f1886285a6aa797f57",
           "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/modular_fort_01/modular_fort_01.bin"
         },
         {
-          "downloadedAt": "2026-07-24",
+          "downloadedAt": "2026-08-06",
           "path": "modular_fort_01_2k.gltf",
           "sha256": "7278a56aaa624ce71974ad2374bb7b1a5ac83c9296ebc5acc5893862a69cf59d",
           "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/modular_fort_01/modular_fort_01_2k.gltf"
         },
         {
-          "downloadedAt": "2026-07-24",
+          "downloadedAt": "2026-08-06",
           "path": "textures/modular_fort_01_plaster_arm_2k.jpg",
           "sha256": "5f5b44b6e5122e9430378f07ef9369ddc1186e45a7709992e431e256741ca7ca",
           "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/modular_fort_01/modular_fort_01_plaster_arm_2k.jpg"
         },
         {
-          "downloadedAt": "2026-07-24",
+          "downloadedAt": "2026-08-06",
           "path": "textures/modular_fort_01_plaster_diff_2k.jpg",
           "sha256": "39546b3b0e4a8a32141e2559afab1c5d61ac1b378ab2e3c94887eaa8fb7f1e7e",
           "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/modular_fort_01/modular_fort_01_plaster_diff_2k.jpg"
         },
         {
-          "downloadedAt": "2026-07-24",
+          "downloadedAt": "2026-08-06",
           "path": "textures/modular_fort_01_plaster_nor_gl_2k.jpg",
           "sha256": "3b79bcbd0e294284ab933e1c2da7519443bdfb9db4441cf3c231b9c6a8265104",
           "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/modular_fort_01/modular_fort_01_plaster_nor_gl_2k.jpg"
         },
         {
-          "downloadedAt": "2026-07-24",
+          "downloadedAt": "2026-08-06",
           "path": "textures/modular_fort_01_trim_arm_2k.jpg",
           "sha256": "eca67b74bfc9ff3402380e8e88d21ce574b6aa28fdc245689175fe13f3920878",
           "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/modular_fort_01/modular_fort_01_trim_arm_2k.jpg"
         },
         {
-          "downloadedAt": "2026-07-24",
+          "downloadedAt": "2026-08-06",
           "path": "textures/modular_fort_01_trim_diff_2k.jpg",
           "sha256": "e582ffdad510dd23d5b8b7a5639286b81e149ad7f10502224eba0cf1391ca8ec",
           "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/modular_fort_01/modular_fort_01_trim_diff_2k.jpg"
         },
         {
-          "downloadedAt": "2026-07-24",
+          "downloadedAt": "2026-08-06",
           "path": "textures/modular_fort_01_trim_nor_gl_2k.jpg",
           "sha256": "61feff041ca671f9dfe9a38c0cf803847f0353521bd97a66b057a029959f604c",
           "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/modular_fort_01/modular_fort_01_trim_nor_gl_2k.jpg"
         },
         {
-          "downloadedAt": "2026-07-24",
+          "downloadedAt": "2026-08-06",
           "path": "textures/modular_fort_01_wall_arm_2k.jpg",
           "sha256": "41b149fc7f1668a4e98d2bcd508c4fff445b64dc6a2681a7e61b5bb6fd9239de",
           "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/modular_fort_01/modular_fort_01_wall_arm_2k.jpg"
         },
         {
-          "downloadedAt": "2026-07-24",
+          "downloadedAt": "2026-08-06",
           "path": "textures/modular_fort_01_wall_diff_2k.jpg",
           "sha256": "de442faf434b186b2008d55dbeaee9c5cb2c46c472e40e58c5e4907854462041",
           "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/modular_fort_01/modular_fort_01_wall_diff_2k.jpg"
         },
         {
-          "downloadedAt": "2026-07-24",
+          "downloadedAt": "2026-08-06",
           "path": "textures/modular_fort_01_wall_nor_gl_2k.jpg",
           "sha256": "86fbbf2cbac7dd3975860ed6a7805d6fcaddaa214de5336821e36f67b36bec0f",
           "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/modular_fort_01/modular_fort_01_wall_nor_gl_2k.jpg"
@@ -120,38 +228,38 @@
     {
       "author": "Amal Kumar",
       "downloadUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/gltf/2k/rabdentse_ruins_wall/rabdentse_ruins_wall_2k.gltf",
-      "downloadedAt": "2026-07-24",
+      "downloadedAt": "2026-08-06",
       "id": "rabdentse_ruins_wall",
       "name": "Rabdentse Ruins Wall",
       "pageUrl": "https://polyhaven.com/a/rabdentse_ruins_wall",
       "sha256": "4130d776f3ba785db672be9b101cbd4bfa0c2c330608cd52937528dea4514a4c",
       "sourceFiles": [
         {
-          "downloadedAt": "2026-07-24",
+          "downloadedAt": "2026-08-06",
           "path": "rabdentse_ruins_wall.bin",
           "sha256": "273542dd21f5480ab462db5c6af519b8c4c486012e16bac81b1e73122510003c",
           "url": "https://dl.polyhaven.org/file/ph-assets/Textures/gltf/8k/rabdentse_ruins_wall/rabdentse_ruins_wall.bin"
         },
         {
-          "downloadedAt": "2026-07-24",
+          "downloadedAt": "2026-08-06",
           "path": "rabdentse_ruins_wall_2k.gltf",
           "sha256": "4130d776f3ba785db672be9b101cbd4bfa0c2c330608cd52937528dea4514a4c",
           "url": "https://dl.polyhaven.org/file/ph-assets/Textures/gltf/2k/rabdentse_ruins_wall/rabdentse_ruins_wall_2k.gltf"
         },
         {
-          "downloadedAt": "2026-07-24",
+          "downloadedAt": "2026-08-06",
           "path": "textures/rabdentse_ruins_wall_arm_2k.jpg",
           "sha256": "99c4abf935a874fb16c436e17b5148fa762d9a58041954e11603c88da3c5bb6f",
           "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rabdentse_ruins_wall/rabdentse_ruins_wall_arm_2k.jpg"
         },
         {
-          "downloadedAt": "2026-07-24",
+          "downloadedAt": "2026-08-06",
           "path": "textures/rabdentse_ruins_wall_diff_2k.jpg",
           "sha256": "47d03e4fef1ac5c57a35cadfdf1c4ce00a09c000c9dfca6d9ae90c7cadcb17d0",
           "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rabdentse_ruins_wall/rabdentse_ruins_wall_diff_2k.jpg"
         },
         {
-          "downloadedAt": "2026-07-24",
+          "downloadedAt": "2026-08-06",
           "path": "textures/rabdentse_ruins_wall_nor_gl_2k.jpg",
           "sha256": "b13aead3e6c3d4e7e4ddc53d353139310dd60496a92e646b311553adfda6f5c8",
           "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/rabdentse_ruins_wall/rabdentse_ruins_wall_nor_gl_2k.jpg"

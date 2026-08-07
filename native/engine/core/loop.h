@@ -24,9 +24,11 @@
 #include "../../gameplay/targeting/soft_targeting.h"
 #include "../../gameplay/combat/combat_controller.h"
 #include "../../gameplay/ai/encounter_controller.h"
+#include "../../gameplay/ai/wild_spawn_system.h"
 #include "../../gameplay/flow/demo_director.h"
 #include "../../gameplay/world/teleport_anchor.h"
 #include "../../gameplay/world/interactable.h"
+#include "../../gameplay/world/npc_agent.h"
 #include "../../gameplay/quest/quest_system.h"
 #include "../../gameplay/quest/side_quests.h"
 #include "../../gameplay/quest/daily_quest.h"
@@ -41,6 +43,7 @@
 #include "../../gameplay/growth/artifact_system.h"
 #include "../world/world_grid.h"
 #include "../world/terrain_heightfield.h"
+#include "../world/stream_scheduler.h"
 #include "../world/environment_collision.h"
 #include "../world/weather_system.h"
 
@@ -54,6 +57,8 @@ struct Loop {
         terrain.heightAt(surface.player.x, surface.player.y));
     // 渲染层只读消费同一高度场：地形网格生成与角色/阴影贴地采样。
     surface.terrain = &terrain;
+    // 分块地形流式：渲染线程每帧从调度器取就绪分块上传/绘制。
+    surface.streamScheduler = &streamScheduler;
     // 建筑碰撞：与渲染批次共用世界适配参数，城墙/塔楼不再穿模。
     buildingCollision = BuildingCollision::fromEnvironmentLayout(
         composition.altarAnchor.x, composition.altarAnchor.z);
@@ -72,16 +77,21 @@ struct Loop {
   // 开放世界探索基础（阶段一）：分块流式、地形、垂直运动与锚点。
   WorldGrid worldGrid;
   TerrainHeightfield terrain;
+  // 分块地形流式调度器：消费 worldGrid 的加/卸载请求，后台生成
+  // 分块网格；渲染线程经 surface.streamScheduler 每帧取用。
+  StreamScheduler streamScheduler{terrain, worldGrid};
   // 建筑碰撞集（城墙/塔楼）：滑动阻挡 + 墙面攀爬 + 墙头支撑。
   BuildingCollision buildingCollision;
   // 主角碰撞半径（世界单位）：用于建筑 OBB 膨胀与支撑查询。
   static constexpr float playerCollisionRadius = 0.012f;
   ExplorationMotion explorationMotion;
   ExplorationMotionState motionState;
-  TeleportAnchorSystem anchors = TeleportAnchorSystem::defaultLayout();
+  TeleportAnchorSystem anchors = TeleportAnchorSystem::openWorldLayout();
   AnchorInteraction currentAnchorInteraction;
   // 内容系统（阶段二）：任务、可交互物与对话。
   QuestSystem quests = QuestSystem::mainline();
+  // 开放世界支线（Phase 4）：独立于主线，支持对话发布与并行接取。
+  QuestSystem openWorldQuests = QuestSystem::openWorldQuests();
   SideQuestSystem sideQuests = SideQuestSystem::defaults();
   // 每日委托（内容优化）：每个游戏日重置，全部完成发放一次性奖励。
   DailyQuestSystem dailyQuests;
@@ -91,9 +101,14 @@ struct Loop {
   int32_t gachaPoolKind = 0;
   DungeonSession dungeon;
   StoryDirector storyDirector = StoryDirector::opening();
-  InteractableRegistry interactables = InteractableRegistry::defaultLayout();
+  InteractableRegistry interactables = InteractableRegistry::openWorldLayout();
   InteractableTarget currentInteractable;
   DialogSession dialogSession;
+  // NPC 轻量状态机（Phase 4）：巡逻/驻守/对话朝向，只输出位置与朝向。
+  NpcAgency npcAgency = NpcAgency::fromWorldLayout();
+  // 对话结束时发布的支线（供快照/UI 接取提示）；新对话开始时清除。
+  int32_t npcOfferQuestId = -1;
+  std::string npcOfferQuestTitle;
   // 养成与抽卡（阶段三）。
   Inventory inventory = Inventory::defaultInventory();
   CharacterGrowth characters;
@@ -128,11 +143,17 @@ struct Loop {
   bool glideHeld = false;
   bool interactQueued = false;
   int32_t chunkLoadCount = 0;
+  // 野外敌人数量（性能仪表预留）：当前无野外敌人系统恒为 0，
+  // 由后续 WildSpawnSystem 写入，PROFILE 打点只读消费。
+  int32_t wildEnemyCount = 0;
   Tick teleportFlashMs = 0;
   ThirdPersonCamera camera;
   SoftTargeting softTargeting;
   CombatController combat{CombatConfig::defaults()};
   EncounterController encounter{combat};
+  // 野外刷怪系统（Phase 3.2）：分块激活区刷怪/重生/巡逻/仇恨，
+  // 战斗走 combat 外部通道，不进 EncounterController 状态机。
+  WildSpawnSystem wildSpawn;
   DemoDirector demoDirector;
   std::optional<TargetSelection> currentTarget;
   VfxSystem vfxSystem;

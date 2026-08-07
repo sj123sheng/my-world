@@ -16,6 +16,11 @@ AssetProfile AssetProfile::forModel(ModelKind kind) {
       // 模型局部 +Z 为前方，加 π 会让首领永远背对玩家。
       return {0.09f / 3.0f, 0.0f, {0.18f, 0.16f, 0.22f},
               {0.72f, 0.39f, 0.66f}, 0.65f, 3, 0.3f, 20.0f};
+    case ModelKind::Npc:
+      // NPC（Phase 4）：与主角同体型的类人轮廓，暖金勾边区分友好单位，
+      // 高光哑光避免与主角争夺视觉焦点。
+      return {0.05f / 3.0f, 0.0f, {0.27f, 0.25f, 0.22f},
+              {0.85f, 0.72f, 0.40f}, 0.4f, 0, 0.18f, 16.0f};
   }
   return {};
 }

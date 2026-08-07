@@ -14,6 +14,8 @@ struct DialogLine {
 struct DialogDef {
   int32_t id = 0;
   std::vector<DialogLine> lines;
+  // 对话结束时自动接取的支线任务 id；-1 表示无任务（Phase 4 纯追加字段）。
+  int32_t offeredQuestId = -1;
 };
 
 // 台词库：首条主线相关对话。
@@ -39,6 +41,11 @@ class DialogSession {
   const DialogLine* current() const;
   int32_t index() const { return index_; }
   int32_t lineCount() const;
+  // 当前会话所属对话 id 与其发布的任务 id；未激活返回 -1（Phase 4）。
+  int32_t dialogId() const { return def_ == nullptr ? -1 : def_->id; }
+  int32_t offeredQuestId() const {
+    return def_ == nullptr ? -1 : def_->offeredQuestId;
+  }
 
  private:
   const DialogDef* def_ = nullptr;

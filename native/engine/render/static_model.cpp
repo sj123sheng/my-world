@@ -325,8 +325,12 @@ bool parseStaticGlb(const std::vector<uint8_t> &bytes,
         }
       }
       const cgltf_image *image = baseColorImage(primitive);
-      if (image != nullptr && (image != fullImage || halfImage == nullptr ||
-                               fullTexture.empty() || halfTexture.empty())) {
+      // 双档材质要求 diffuse_full + diffuse_half 成对；Phase 2 区块批次
+      // 允许仅嵌 diffuse_half 的半档材质（体积优先）。
+      const bool usesFullLevels = image == fullImage && halfImage != nullptr &&
+                                  !fullTexture.empty() && !halfTexture.empty();
+      const bool usesHalfOnly = image == halfImage && !halfTexture.empty();
+      if (image != nullptr && !usesFullLevels && !usesHalfOnly) {
         return fail(
             assetName,
             "base-color texture requires diffuse_full and diffuse_half images",
@@ -425,9 +429,16 @@ bool StaticModel::tryInitialize(const std::vector<uint8_t> &bytes,
   fullTextureBytes_ = std::move(fullTexture);
   halfTextureBytes_ = std::move(halfTexture);
   stats_ = stats;
-  textureTier_ = StaticTextureTier::Full;
-  stats_.textureBytes = fullTextureBytes_.size();
-  textureDirty_ = !fullTextureBytes_.empty();
+  if (fullTextureBytes_.empty() && !halfTextureBytes_.empty()) {
+    // 仅嵌 Half 档的区块批次：直接以 Half 档启用纹理。
+    textureTier_ = StaticTextureTier::Half;
+    stats_.textureBytes = halfTextureBytes_.size();
+    textureDirty_ = true;
+  } else {
+    textureTier_ = StaticTextureTier::Full;
+    stats_.textureBytes = fullTextureBytes_.size();
+    textureDirty_ = !fullTextureBytes_.empty();
+  }
   ready_ = true;
   lastError_.clear();
   return true;
@@ -556,6 +567,10 @@ bool StaticModel::hasGpuResources() const {
 }
 
 const std::vector<uint8_t> &StaticModel::selectedTextureBytes() const {
-  return textureTier_ == StaticTextureTier::Full ? fullTextureBytes_
-                                                 : halfTextureBytes_;
+  // 目标档位缺失时回退到另一档（仅嵌 Half 的区块批次在 Full 档请求下
+  // 仍保持有纹理，而不是退化为无纹理绘制）。
+  if (textureTier_ == StaticTextureTier::Full) {
+    return fullTextureBytes_.empty() ? halfTextureBytes_ : fullTextureBytes_;
+  }
+  return halfTextureBytes_.empty() ? fullTextureBytes_ : halfTextureBytes_;
 }

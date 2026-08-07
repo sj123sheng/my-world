@@ -79,6 +79,18 @@ class CombatController {
   void applyEnemyHit(const HitRequest& hit);
   void reset();
 
+  // ---- 外部目标通道（WildSpawnSystem 专用，追加式）----
+  // 绑定玩家软锁定的野外敌人：当 targetId 匹配时，玩家伤害解算改道
+  // 到绑定的 TrainingTarget，不触碰 EncounterController 状态机。
+  void setExternalTargetBinding(const CombatTargetBinding& binding) {
+    externalBinding_ = binding;
+  }
+  // 外部敌人对玩家的命中入队：下次 update/updateEnemy 内部统一 drain
+  // 结算（走 applyEnemyHit，尊重闪避无敌帧），事件并入同一 events_ 批次。
+  void enqueueExternalEnemyHit(const HitRequest& hit) {
+    pendingExternalEnemyHits_.push_back(hit);
+  }
+
   const CombatSnapshot& snapshot() const { return snapshot_; }
   const CombatEventBatch& events() const { return events_; }
   // 战斗配置只读访问，供表现层推导血量比例等派生量。
@@ -115,4 +127,7 @@ class CombatController {
   PulseEventKind pulsePhase_ = PulseEventKind::None;
   std::optional<Tick> preciseDodgedPulseTick_;
   AbilityId lastAbility_ = 0;
+  // 外部目标通道状态（WildSpawnSystem）：绑定与待结算的敌方命中队列。
+  CombatTargetBinding externalBinding_;
+  std::vector<HitRequest> pendingExternalEnemyHits_;
 };

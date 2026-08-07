@@ -33,3 +33,17 @@ bool CopyAndCommitEnvironmentAssets(Copy&& copy,
   });
   return true;
 }
+
+// Phase 2 区块批次：单资产提交（blockId → 字节），复用同一
+// copy→withLifecycle→commit 模式；blockId 合法性由调用方校验。
+template <typename Copy, typename WithLifecycle, typename Commit>
+bool CopyAndCommitBlockEnvironmentAsset(int32_t blockId, Copy&& copy,
+                                        WithLifecycle&& withLifecycle,
+                                        Commit&& commit) {
+  std::vector<uint8_t> bytes;
+  if (!copy(bytes)) {
+    return false;
+  }
+  withLifecycle([&]() { commit(blockId, std::move(bytes)); });
+  return true;
+}

@@ -84,3 +84,55 @@ DirectionalDefenseProfile corrosionGuardDefense() {
   defense.minimumFrontDot = 0.0f;
   return defense;
 }
+
+EnemyAiConfig bruiserDefaults() {
+  EnemyAiConfig config = EnemyAiConfig::defaults();
+  // 重甲近战：约 2.6s 一次重压，前摇 0.62s 提供精确闪避窗口；
+  // 霸体（不可打断）+ 高韧性恢复，突出高威胁慢速重击定位。
+  EnemyAbility crush = attackAbility(enemy_ability_ids::kBruiserCrush,
+                                     "bruiser-crush", fp(1.6), 2600, 620, 120,
+                                     700, fp(1.0));
+  crush.telegraph = EnemyAbilityTelegraph::WarningYellow;
+  crush.cancelPolicy = EnemyAbilityCancelPolicy::Uninterruptible;
+  crush.interruptThreshold = 0;
+  config.abilities = {crush};
+  config.staggerRecoveryMs = 1600;
+  return config;
+}
+
+EnemyAiConfig casterDefaults() {
+  EnemyAiConfig config = EnemyAiConfig::defaults();
+  // 远程投射：约 2.0s 一枚奥术弹，射程比祭司更远，
+  // 决策层配合保持距离（见 DecisionPolicy 的 Caster 分支）。
+  EnemyAbility bolt = attackAbility(enemy_ability_ids::kCasterArcaneBolt,
+                                    "caster-arcane-bolt", fp(4.5), 2000, 520,
+                                    90, 380, fp(1.0));
+  bolt.telegraph = EnemyAbilityTelegraph::WarningYellow;
+  bolt.cancelPolicy = EnemyAbilityCancelPolicy::WindupOnly;
+  bolt.interruptThreshold = fp(8);
+  config.abilities = {bolt};
+  return config;
+}
+
+EnemyAiConfig eliteDefaults() {
+  EnemyAiConfig config = EnemyAiConfig::defaults();
+  // 精英双能力：近战横扫（霸体窗口）+ 远程冲击波（可打断预警技），
+  // 与高血量/高韧性配合形成战场核心威胁。
+  EnemyAbility cleave = attackAbility(enemy_ability_ids::kEliteCleave,
+                                      "elite-cleave", fp(1.8), 2400, 450, 110,
+                                      550, fp(2.0));
+  cleave.cancelPolicy = EnemyAbilityCancelPolicy::Uninterruptible;
+  cleave.interruptThreshold = 0;
+
+  EnemyAbility shockwave = attackAbility(enemy_ability_ids::kEliteShockwave,
+                                         "elite-shockwave", fp(2.6), 4200,
+                                         700, 160, 650, fp(1.0));
+  shockwave.effect = EnemyAbilityEffect::AreaDamage;
+  shockwave.telegraph = EnemyAbilityTelegraph::WarningYellow;
+  shockwave.cancelPolicy = EnemyAbilityCancelPolicy::WindupOnly;
+  shockwave.interruptThreshold = fp(12);
+
+  config.abilities = {cleave, shockwave};
+  config.staggerRecoveryMs = 2000;
+  return config;
+}

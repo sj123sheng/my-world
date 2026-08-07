@@ -3,6 +3,20 @@
 #include <glm/geometric.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <cmath>
+
+int32_t environmentBlockIdAt(float worldX, float worldZ) {
+  const float clampedX = std::min(1.0f, std::max(0.0f, worldX));
+  const float clampedZ = std::min(1.0f, std::max(0.0f, worldZ));
+  const int32_t bx = std::min(
+      kEnvironmentBlockColumns - 1,
+      static_cast<int32_t>(std::floor(clampedX * kEnvironmentBlockColumns)));
+  const int32_t by = std::min(
+      kEnvironmentBlockRows - 1,
+      static_cast<int32_t>(std::floor(clampedZ * kEnvironmentBlockRows)));
+  return by * kEnvironmentBlockColumns + bx;
+}
+
 EnvironmentComposition EnvironmentController::defaultComposition() {
   return {{0.50f, 0.0f, 0.12f},
           {0.34f, 0.0f, 0.26f},
@@ -43,4 +57,10 @@ glm::mat4 environmentWorldFitMatrix(
   return glm::translate(glm::mat4(1.0f),
                         glm::vec3(fit.centerX, fit.yBias, fit.centerZ)) *
          glm::scale(glm::mat4(1.0f), glm::vec3(fit.scale));
+}
+
+glm::mat4 environmentBlockWorldFitMatrix(
+    const EnvironmentComposition& composition) {
+  return environmentWorldFitMatrix(
+      static_cast<size_t>(EnvironmentBatchKind::OuterRing), composition);
 }

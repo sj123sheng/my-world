@@ -1,5 +1,7 @@
 #include "native/gameplay/world/teleport_anchor.h"
 
+#include "native/generated/world_layout.gen.h"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -15,6 +17,14 @@ TeleportAnchorSystem TeleportAnchorSystem::defaultLayout() {
   system.addAnchor({6, 0.18f, 0.82f, "雾谷入口"});
   system.addAnchor({7, 0.82f, 0.18f, "沉没湖岸"});
   system.unlockedIds_.push_back(1);
+  return system;
+}
+
+TeleportAnchorSystem TeleportAnchorSystem::openWorldLayout() {
+  TeleportAnchorSystem system = defaultLayout();
+  for (const WorldLayout::WorldAnchorDef& def : WorldLayout::kAnchors) {
+    system.addAnchor({def.id, def.x, def.y, std::string(def.label)});
+  }
   return system;
 }
 

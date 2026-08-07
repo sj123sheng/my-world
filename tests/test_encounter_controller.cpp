@@ -38,7 +38,8 @@ void testStartsAllModesWithStableEntities() {
 
   assert(encounter.start(EncounterMode::Mixed));
   const EncounterSnapshot mixed = encounter.snapshot();
-  assert(mixed.enemies.size() == EnemyAiConfig::kMaxEnemies);
+  // Mixed 模式固定 3 名敌人；容量上限 kMaxEnemies 已放开到 8。
+  assert(mixed.enemies.size() == 3);
   assert(std::is_sorted(
       mixed.enemies.begin(), mixed.enemies.end(),
       [](const EncounterEnemySnapshot& left,

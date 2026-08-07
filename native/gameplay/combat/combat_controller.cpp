@@ -28,6 +28,17 @@ ActionContext CombatController::contextFor(const CombatFrameInput& input,
 }
 
 void CombatController::update(const CombatFrameInput& input) {
+  // 外部目标改道（WildSpawnSystem）：玩家锁定野外敌人时，伤害解算
+  // 改走外部绑定的 TrainingTarget；训练脉冲等既有行为保持不变。
+  if (externalBinding_.id != 0 && externalBinding_.target != nullptr &&
+      input.targetId == externalBinding_.id) {
+    CombatFrameInput corrected = input;
+    corrected.targetAlive = externalBinding_.target->alive();
+    updateAgainst(corrected, externalBinding_.target, externalBinding_.id,
+                  true, externalBinding_.shield,
+                  externalBinding_.damageContext);
+    return;
+  }
   updateAgainst(input, &target_, kTrainingTargetId, true, nullptr, {});
 }
 
@@ -35,6 +46,18 @@ void CombatController::updateEnemy(const CombatFrameInput& input,
                                    const CombatTargetBinding& binding) {
   TrainingTarget* target =
       binding.id != 0 && binding.target != nullptr ? binding.target : nullptr;
+  // 外部目标兜底（WildSpawnSystem）：非训练模式下玩家锁定野外敌人时
+  // 遭遇侧无对应槽位（binding 为空），改道到外部绑定结算。
+  if (target == nullptr && externalBinding_.id != 0 &&
+      externalBinding_.target != nullptr &&
+      input.targetId == externalBinding_.id) {
+    CombatFrameInput corrected = input;
+    corrected.targetAlive = externalBinding_.target->alive();
+    updateAgainst(corrected, externalBinding_.target, externalBinding_.id,
+                  false, externalBinding_.shield,
+                  externalBinding_.damageContext);
+    return;
+  }
   updateAgainst(input, target, target != nullptr ? binding.id : 0, false,
                 target != nullptr ? binding.shield : nullptr,
                 binding.damageContext);
@@ -153,6 +176,13 @@ void CombatController::updateAgainst(
       actions_.addResonance(reaction->resonanceGain);
     }
   }
+
+  // 外部敌方命中 drain（WildSpawnSystem）：与首领 applyEnemyHit 同通道，
+  // 尊重闪避无敌帧；事件并入本步 events_ 批次，随既有管线分发。
+  for (const HitRequest& pending : pendingExternalEnemyHits_) {
+    applyEnemyHit(pending);
+  }
+  pendingExternalEnemyHits_.clear();
 
   refreshSnapshot(target, trainingEncounter);
   sortEvents();
@@ -290,6 +320,8 @@ void CombatController::reset() {
   pulsePhase_ = PulseEventKind::None;
   preciseDodgedPulseTick_.reset();
   lastAbility_ = 0;
+  externalBinding_ = {};
+  pendingExternalEnemyHits_.clear();
   refreshSnapshot(&target_, true);
 }
 

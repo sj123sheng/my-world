@@ -193,4 +193,8 @@ struct GameSnapshot {
   int32_t dailyQuestClaimed = 0;
   // 抽卡优化：当前结果所属卡池（0=角色 1=武器）。
   int32_t gachaPoolKind = 0;
+  // NPC 任务发布（Phase 4）：对话结束时接取的支线；-1 表示无。
+  // 快照尾部纯追加，UI 侧边沿检测触发接取提示。
+  int32_t npcOfferQuestId = -1;
+  std::string npcOfferQuestTitle;
 };

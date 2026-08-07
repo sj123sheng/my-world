@@ -35,4 +35,46 @@ int main() {
         ++failedCommits;
       }));
   assert(failedCommits == 0);
+
+  // Phase 2：区块批次单资产提交（copy→withLifecycle→commit 同模式）。
+  {
+    int blockLifecycleCalls = 0;
+    int32_t committedBlock = -2;
+    std::vector<uint8_t> committedBytes;
+    const bool blockOk = CopyAndCommitBlockEnvironmentAsset(
+        11,
+        [](std::vector<uint8_t>& out) {
+          out.assign(3, 7);
+          return true;
+        },
+        [&blockLifecycleCalls](auto operation) {
+          ++blockLifecycleCalls;
+          operation();
+        },
+        [&committedBlock, &committedBytes](int32_t blockId,
+                                           std::vector<uint8_t> bytes) {
+          committedBlock = blockId;
+          committedBytes = std::move(bytes);
+        });
+    assert(blockOk);
+    assert(blockLifecycleCalls == 1);
+    assert(committedBlock == 11);
+    assert(committedBytes.size() == 3);
+  }
+  {
+    // 拷贝失败：不进入 lifecycle，也不提交。
+    int blockLifecycleCalls = 0;
+    int blockCommits = 0;
+    const bool blockOk = CopyAndCommitBlockEnvironmentAsset(
+        9,
+        [](std::vector<uint8_t>&) { return false; },
+        [&blockLifecycleCalls](auto operation) {
+          ++blockLifecycleCalls;
+          operation();
+        },
+        [&blockCommits](int32_t, std::vector<uint8_t>) { ++blockCommits; });
+    assert(!blockOk);
+    assert(blockLifecycleCalls == 0);
+    assert(blockCommits == 0);
+  }
 }

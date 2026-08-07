@@ -49,9 +49,14 @@ struct SaveState {
   std::vector<int32_t> artifactRecords;
   // 已领取等阶奖励的等阶列表。
   std::vector<int32_t> claimedRanks;
+  // 开放世界支线进度（V8）：完成位掩码 bit(i) 对应 openWorldQuests
+  // 声明顺序第 i 个任务（并行支线，掩码比计数更精确）。
+  int32_t openWorldQuestMask = 0;
+  // 开放世界支线当前接取任务 id（-1 = 无）。
+  int32_t openWorldQuestActiveId = -1;
 };
 struct Save {
   bool write(const SaveState& s, const char* path);
-  // 兼容 v1-v6 与 v7（冒险等级/武器七元组/圣遗物）存档。
+  // 兼容 v1-v6、v7（冒险等级/武器七元组/圣遗物）与 v8（开放世界支线）存档。
   bool read(SaveState& out, const char* path);
 };

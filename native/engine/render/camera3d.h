@@ -3,6 +3,8 @@
 #include <glm/vec3.hpp>
 #include <glm/mat4x4.hpp>
 
+#include "native/engine/render/frustum_cull.h"
+
 // Camera3D: 3D 透视第三人称相机。
 //
 // 用球坐标在目标周围计算 position，输出 view/projection 矩阵供 3D 着色器使用。
@@ -34,4 +36,10 @@ class Camera3D {
 
   // 返回 projection * view。
   glm::mat4 viewProjection() const;
+
+  // 追加（Phase 5 视锥剔除）：从当前 VP 矩阵提取 6 个视锥平面，
+  // 供绘制层在绘制前做地形分块/环境件/角色的可见性测试。
+  FrustumPlanes frustumPlanes() const {
+    return FrustumPlanesFromViewProjection(viewProjection());
+  }
 };

@@ -530,8 +530,8 @@ for (const [code, label] of [[3, '技能冷却中'], [4, '体力不足'], [5, '�
 }
 assert.match(page, /import \{ ActionToast \} from ['"]\.\.\/ui\/ActionToast['"];/,
   'GamePage must import ActionToast');
-assert.match(page, /ActionToast\(\{ lastRejectReason: this\.lastRejectReason \}\)/,
-  'GamePage must mount ActionToast with lastRejectReason');
+assert.match(page, /ActionToast\(\{ lastRejectReason: this\.lastRejectReason,\s*questAcceptMessage: this\.questAcceptMessage \}\)/,
+  'GamePage must mount ActionToast with lastRejectReason and questAcceptMessage');
 
 // ---- Stage 10: lock-on target marker and combo counter ----
 const surfaceHeader = fs.readFileSync('native/engine/render/surface.h', 'utf8');
@@ -669,7 +669,7 @@ assert.match(surfaceImpl, /static glm::mat4 cameraBillboard\(const Surface& s\)/
   'surface must share a camera billboard helper');
 assert.match(loop, /surface\.enemyHpBars3d\.clear\(\);/,
   'loop must publish enemy hp bars');
-assert.match(loop, /static_cast<float>\(enemy\.hp\) \/ static_cast<float>\(enemy\.maxHp\)/,
+assert.match(loop, /bar\.ratio = static_cast<float>\(hp\) \/ static_cast<float>\(maxHp\);/,
   'loop must compute hp ratio from hp and maxHp');
 
 // ---- Stage 14: lock-on target focus frame ----
@@ -934,8 +934,14 @@ assert.match(loop, /sideQuests\.completedMask\(\)/,
 assert.match(loop, /sideQuests\.restoreMask\(state\.sideQuestMask\)/,
   'loadProgress must restore the side quest mask');
 const saveImpl = fs.readFileSync('native/engine/resource/save.cpp', 'utf8');
-assert.match(saveImpl, /"V7 "/,
-  'save format must be V7 with weapon seven-tuples and artifacts');
+assert.match(saveImpl, /"V8 "/,
+  'save format must be V8 with open world quest mask and active id');
+// V8 只追加不重排：写入追加 openWorldQuestMask/openWorldQuestActiveId，
+// 且保留 V7 读取分支兼容旧存档（Phase 5）。
+assert.match(saveImpl, /s\.openWorldQuestMask << " " << s\.openWorldQuestActiveId/,
+  'save V8 must append open world quest fields');
+assert.match(saveImpl, /if \(first == "V7"\)/,
+  'save reader must keep the V7 backward-compatible branch');
 assert.match(saveImpl, /if \(first == "V6"\)/,
   'V6 saves must remain readable');
 assert.match(saveImpl, /if \(first == "V5"\)/,
@@ -1222,3 +1228,41 @@ assert.match(cmake, /adventure_rank\.cpp/,
   'CMake must compile adventure_rank.cpp');
 assert.match(cmake, /artifact_system\.cpp/,
   'CMake must compile artifact_system.cpp');
+
+// ---- Phase 4：任务与互动 NPC（快照尾部 2 字段 + NPC 模型槽位）----
+const phase4LoopHeader = fs.readFileSync('native/engine/core/loop.h', 'utf8');
+assert.match(phase4LoopHeader, /QuestSystem openWorldQuests = QuestSystem::openWorldQuests\(\);/,
+  'Loop must hold the open-world side quest system');
+assert.match(phase4LoopHeader, /NpcAgency npcAgency = NpcAgency::fromWorldLayout\(\);/,
+  'Loop must hold the NPC agency');
+assert.match(loop, /advanceDialogSession\(\*this\);/,
+  'Loop must advance dialog through the quest-offer bridge');
+assert.match(loop, /openWorldQuests\.notifyEnemiesKilled\(killsThisStep\);/,
+  'wild kills must feed open-world side quests');
+// Phase 5：发布调用追加性能联动上限参数（原四参调用语义不变，默认值仍为 6）。
+assert.match(loop, /publishNpcs3d\(surface, npcAgency, surface\.player\.x, surface\.player\.y,\s*\n?\s*npcVisibleLimitForPerf\(performanceGuard\.lodLevel\(\)\)\);/,
+  'Loop must publish NPC 3D render states with perf-scaled visible limit');
+for (const field of ['npcOfferQuestId', 'npcOfferQuestTitle']) {
+  assert.match(gameSnapshot, new RegExp(`\\b${field}\\b`),
+    `GameSnapshot must expose ${field}`);
+  assert.match(nativeBridge, new RegExp(`"${field}"`),
+    `native bridge must marshal ${field}`);
+  assert.match(declarations, new RegExp(`${field}:`),
+    `Index.d.ts must declare ${field}`);
+  assert.match(bridge, new RegExp(`${field}:`),
+    `Bridge Snapshot interface must declare ${field}`);
+}
+assert.match(page, /this\.prevNpcOfferQuestId/,
+  'GamePage polling must edge-detect npcOfferQuestId');
+assert.match(page, /已接取任务：/,
+  'GamePage must show the quest accept toast text');
+assert.match(bridge, /export const nativeSetNpcAsset/,
+  'Bridge must export nativeSetNpcAsset');
+assert.match(declarations, /nativeSetNpcAsset: \(bytes: ArrayBuffer\) => boolean;/,
+  'Index.d.ts must declare nativeSetNpcAsset(bytes)');
+assert.match(nativeBridge, /"nativeSetNpcAsset", nullptr, NativeSetNpcAsset/,
+  'native bridge must export nativeSetNpcAsset');
+assert.match(page, /nativeSetNpcAsset/,
+  'GamePage must inject the NPC model asset');
+assert.match(cmake, /npc_agent\.cpp/,
+  'CMake must compile npc_agent.cpp');

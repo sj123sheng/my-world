@@ -1,0 +1,67 @@
+{ "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["schemaVersion", "grid", "districts", "anchors", "npcs", "spawnZones", "chests", "collectibles"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "grid": { "type": "object", "required": ["countX", "countY"], "properties": {
+      "countX": { "type": "integer", "minimum": 1 },
+      "countY": { "type": "integer", "minimum": 1 } } },
+    "districts": { "type": "array", "minItems": 1, "items": { "type": "object",
+      "required": ["districtId", "name", "chunkXRange", "chunkYRange", "description"], "properties": {
+        "districtId": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "name": { "type": "string", "minLength": 1 },
+        "chunkXRange": { "type": "array", "minItems": 2, "maxItems": 2,
+          "items": { "type": "integer", "minimum": 0, "maximum": 7 } },
+        "chunkYRange": { "type": "array", "minItems": 2, "maxItems": 2,
+          "items": { "type": "integer", "minimum": 0, "maximum": 7 } },
+        "description": { "type": "string" } } } },
+    "anchors": { "type": "array", "minItems": 1, "items": { "type": "object",
+      "required": ["id", "x", "y", "label", "districtId"], "properties": {
+        "id": { "type": "integer", "minimum": 8 },
+        "x": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
+        "y": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
+        "label": { "type": "string", "minLength": 1 },
+        "districtId": { "type": "string" } } } },
+    "npcs": { "type": "array", "minItems": 1, "items": { "type": "object",
+      "required": ["id", "x", "y", "facing", "dialogId", "behavior", "patrolPoints", "districtId", "label"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 32 },
+        "x": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
+        "y": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
+        "facing": { "type": "number" },
+        "dialogId": { "type": "integer", "minimum": 100 },
+        "behavior": { "type": "string", "enum": ["idle", "patrol"] },
+        "patrolPoints": { "type": "array", "minItems": 0, "maxItems": 4, "items": {
+          "type": "array", "minItems": 2, "maxItems": 2, "items": {
+            "type": "number", "minimum": 0.02, "maximum": 0.98 } } },
+        "districtId": { "type": "string" },
+        "label": { "type": "string", "minLength": 1 } } } },
+    "spawnZones": { "type": "array", "minItems": 1, "items": { "type": "object",
+      "required": ["zoneId", "districtId", "archetype", "count", "positions", "patrolCenter", "aggroGroup", "respawnMs"],
+      "properties": {
+        "zoneId": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "districtId": { "type": "string" },
+        "archetype": { "type": "string", "enum": ["RiftClaw", "Priest", "Guard", "Bruiser", "Caster", "Elite"] },
+        "count": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "positions": { "type": "array", "minItems": 1, "maxItems": 3, "items": {
+          "type": "array", "minItems": 2, "maxItems": 2, "items": {
+            "type": "number", "minimum": 0.02, "maximum": 0.98 } } },
+        "patrolCenter": { "type": "array", "minItems": 2, "maxItems": 2, "items": {
+          "type": "number", "minimum": 0.02, "maximum": 0.98 } },
+        "aggroGroup": { "type": "string", "minLength": 1 },
+        "respawnMs": { "type": "integer", "minimum": 30000, "maximum": 90000 } } } },
+    "chests": { "type": "array", "minItems": 1, "items": { "type": "object",
+      "required": ["id", "x", "y", "districtId", "label"], "properties": {
+        "id": { "type": "integer", "minimum": 32 },
+        "x": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
+        "y": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
+        "districtId": { "type": "string" },
+        "label": { "type": "string", "minLength": 1 } } } },
+    "collectibles": { "type": "array", "minItems": 1, "items": { "type": "object",
+      "required": ["id", "x", "y", "kind", "districtId", "label"], "properties": {
+        "id": { "type": "integer", "minimum": 32 },
+        "x": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
+        "y": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
+        "kind": { "type": "string", "minLength": 1 },
+        "districtId": { "type": "string" },
+        "label": { "type": "string", "minLength": 1 } } } } } }

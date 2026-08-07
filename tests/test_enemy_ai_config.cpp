@@ -38,8 +38,12 @@ int main() {
   assert(config.abilities.empty());
 
   assert(config.validated().has_value());
+  // 容量上限放开到 kMaxEnemies=8：上限值合法，超限才拒绝。
+  EnemyAiConfig atCapacity = config;
+  atCapacity.maxEnemies = EnemyAiConfig::kMaxEnemies;
+  assert(atCapacity.validated().has_value());
   EnemyAiConfig overCapacity = config;
-  overCapacity.maxEnemies = 4;
+  overCapacity.maxEnemies = EnemyAiConfig::kMaxEnemies + 1;
   assert(!overCapacity.validated().has_value());
 
   config.abilities.push_back(validSampleAbility());

@@ -1,6 +1,7 @@
 #include "surface.h"
 #include "native/engine/render/digit_atlas.h"
 #include "native/engine/render/terrain_mesh.h"
+#include "native/engine/world/stream_scheduler.h"
 #include "platform/harmony/fence_wait.h"
 #include <hilog/log.h>
 #include <unistd.h>
@@ -345,9 +346,29 @@ static glm::vec3 enemyColorByArchetype(int archetype) {
       return {0.70f, 0.60f, 0.30f};
     case 2:  // Guard
       return {0.40f, 0.42f, 0.52f};
+    case 3:  // Bruiser：暗红重装
+      return {0.52f, 0.24f, 0.24f};
+    case 4:  // Caster：青蓝法袍
+      return {0.30f, 0.46f, 0.62f};
+    case 5:  // Elite：紫黑精英
+      return {0.46f, 0.28f, 0.52f};
     case 0:  // RiftClaw
     default:
       return {0.60f, 0.30f, 0.20f};
+  }
+}
+
+// 野外敌人按原型缩放（第一版共用单 enemy.glb，体型差异靠缩放区分；
+// 色调已由 enemyColorByArchetype 覆盖 0-5，留待美术出独立模型）。
+static float enemyScaleByArchetype(int archetype) {
+  switch (archetype) {
+    case 3:  // Bruiser
+    case 5:  // Elite
+      return 1.3f;
+    case 4:  // Caster
+      return 0.95f;
+    default:
+      return 1.0f;
   }
 }
 
@@ -413,6 +434,14 @@ static void drawWindupWarnings(Surface& s, const glm::mat4& vp) {
       break;
     }
   }
+  if (!any) {
+    for (const WildEnemy3DRenderState& enemy : s.wildEnemies3d) {
+      if (enemy.alive && enemy.windingUp) {
+        any = true;
+        break;
+      }
+    }
+  }
   if (!any) return;
 
   glDepthMask(GL_FALSE);
@@ -447,6 +476,13 @@ static void drawWindupWarnings(Surface& s, const glm::mat4& vp) {
   for (const Enemy3DRenderState& enemy : s.enemies3d) {
     if (!enemy.alive || !enemy.windingUp) continue;
     drawRing(enemy.x, enemy.y, s.enemyAssetProfile.scale, 0.44f);
+  }
+  for (const WildEnemy3DRenderState& enemy : s.wildEnemies3d) {
+    if (!enemy.alive || !enemy.windingUp) continue;
+    // 预警环半径随原型缩放同步，覆盖大体型敌人受击范围。
+    drawRing(enemy.x, enemy.y,
+             s.enemyAssetProfile.scale * enemyScaleByArchetype(enemy.archetype),
+             0.44f);
   }
   if (s.boss3d.active && !s.boss3d.defeated && s.boss3d.windingUp) {
     // 首领体型更大，预警环半径系数略增，覆盖其受击范围。
@@ -691,6 +727,9 @@ static bool takePendingModelAsset(Surface& s, ModelKind kind,
     case ModelKind::Boss:
       asset = &s.bossModelAsset;
       break;
+    case ModelKind::Npc:
+      asset = &s.npcModelAsset;
+      break;
   }
   return asset != nullptr && asset->take(bytes);
 }
@@ -717,6 +756,7 @@ static void tryInitializePendingModelAssets(Surface& s) {
   tryInitializeModelAsset(s, ModelKind::Player, s.playerModel, "player.glb");
   tryInitializeModelAsset(s, ModelKind::Enemy, s.enemyModel, "enemy.glb");
   tryInitializeModelAsset(s, ModelKind::Boss, s.bossModel, "boss.glb");
+  tryInitializeModelAsset(s, ModelKind::Npc, s.npcModel, "npc.glb");
 }
 
 static const char* environmentAssetName(size_t index) {
@@ -749,6 +789,40 @@ static void tryInitializePendingEnvironmentAssets(Surface& s) {
   }
 }
 
+// Phase 2 区块批次上传：每帧最多消费一个待上传区块，避免一次性注入
+// 多个大 GLB 造成帧尖峰；解析失败仅把该区块置为 Failed（跳过绘制），
+// 不回退全局批次。
+static void tryInitializePendingBlockEnvironmentAssets(Surface& s) {
+  int32_t blockId = -1;
+  std::vector<uint8_t> bytes;
+  {
+    std::lock_guard<std::mutex> lock(s.modelAssetMutex);
+    for (auto& entry : s.blockEnvironmentAssets) {
+      if (entry.second.take(bytes)) {
+        blockId = entry.first;
+        break;
+      }
+    }
+  }
+  if (blockId < 0) return;
+  StaticModel& model = s.blockEnvironmentModels[blockId];
+  model.destroy();
+  if (bytes.empty()) {
+    s.blockEnvironmentStatuses[blockId] = EnvironmentBatchStatus::Empty;
+    return;
+  }
+  char assetName[32];
+  std::snprintf(assetName, sizeof(assetName), "block_%d.glb",
+                static_cast<int>(blockId));
+  if (model.tryInitialize(bytes, assetName)) {
+    s.blockEnvironmentStatuses[blockId] = EnvironmentBatchStatus::Ready;
+    LOGI("environment block ready: %{public}s", assetName);
+  } else {
+    s.blockEnvironmentStatuses[blockId] = EnvironmentBatchStatus::Failed;
+    LOGE("%{public}s; block batch skipped", model.lastError().c_str());
+  }
+}
+
 // 环境模型世界适配变换：layout.json 以米制描述布局（-34..+20），而世界为
 // [0,1] 归一化坐标；参数与碰撞层共用 environmentWorldFitForRegion，
 // 保证可见建筑与碰撞体严格对齐（见 environment.h）。
@@ -756,12 +830,72 @@ static glm::mat4 environmentWorldFit(const Surface& s, size_t index) {
   return environmentWorldFitMatrix(index, s.environmentComposition);
 }
 
+// ---- 视锥剔除（Phase 5）：环境批次绘制前可见性判断 ----
+// 单个布局条目的世界空间包围球：fit 相似变换作用于布局空间
+// translation 与 halfExtents，旋转不改变球半径，直接取保守球。
+static bool placementInFrustum(const EnvironmentPlacement& placement,
+                               const EnvironmentWorldFit& fit,
+                               const FrustumPlanes& frustum) {
+  const glm::vec3 center{
+      fit.centerX + fit.scale * placement.translation[0],
+      fit.yBias + fit.scale * placement.translation[1],
+      fit.centerZ + fit.scale * placement.translation[2]};
+  const float radius = fit.scale * glm::length(glm::vec3(
+      placement.scale[0] * placement.halfExtents[0],
+      placement.scale[1] * placement.halfExtents[1],
+      placement.scale[2] * placement.halfExtents[2]));
+  return FrustumContainsSphere(frustum, center, radius);
+}
+
+// 全局批次（blockId=-1 且 region=index）可见性：任一条目通过平面
+// 测试即保留；批次无布局条目时保守保留，避免误剔除。
+static bool environmentBatchInFrustum(const Surface& s, size_t index,
+                                      const FrustumPlanes& frustum) {
+  const EnvironmentWorldFit fit =
+      environmentWorldFitParams(index, s.environmentComposition);
+  bool anyPlacement = false;
+  const size_t count = environmentLayoutPlacementCount();
+  const EnvironmentPlacement* placements = environmentLayoutPlacements();
+  for (size_t i = 0; i < count; ++i) {
+    const EnvironmentPlacement& placement = placements[i];
+    if (placement.blockId != kEnvironmentGlobalBlockId ||
+        placement.region != static_cast<int>(index)) {
+      continue;
+    }
+    anyPlacement = true;
+    if (placementInFrustum(placement, fit, frustum)) return true;
+  }
+  return !anyPlacement;
+}
+
+// 区块批次（blockId≥0）可见性：与全局批次同理，fit 统一取 OuterRing
+// 参数（与 environmentBlockWorldFitMatrix 一致）。
+static bool environmentBlockInFrustum(const Surface& s, int32_t blockId,
+                                      const FrustumPlanes& frustum) {
+  const EnvironmentWorldFit fit = environmentWorldFitParams(
+      static_cast<size_t>(EnvironmentBatchKind::OuterRing),
+      s.environmentComposition);
+  bool anyPlacement = false;
+  const size_t count = environmentLayoutPlacementCount();
+  const EnvironmentPlacement* placements = environmentLayoutPlacements();
+  for (size_t i = 0; i < count; ++i) {
+    const EnvironmentPlacement& placement = placements[i];
+    if (placement.blockId != blockId) continue;
+    anyPlacement = true;
+    if (placementInFrustum(placement, fit, frustum)) return true;
+  }
+  return !anyPlacement;
+}
+
 static void drawEnvironmentModel(Surface& s, size_t index,
                                  const glm::mat4& vp,
+                                 const FrustumPlanes& frustum,
                                  const glm::vec3& tint, float tintStrength) {
   StaticModel& model = s.environmentModels[index];
   if (s.environmentStatuses[index] != EnvironmentBatchStatus::Ready ||
       !model.ready()) return;
+  // 视锥剔除（Phase 5）：布局条目全部在视锥外时跳过整个批次。
+  if (!environmentBatchInFrustum(s, index, frustum)) return;
   model.setTextureTier(s.environmentPlan.textureTier);
   const glm::mat4 fit = environmentWorldFit(s, index);
   s.shader3d.setMVP(vp * fit);
@@ -773,6 +907,37 @@ static void drawEnvironmentModel(Surface& s, size_t index,
   model.draw(s.shader3d);
   s.environmentDrawCalls += static_cast<uint32_t>(model.stats().primitiveCount);
   s.environmentTriangles += static_cast<uint32_t>(model.stats().triangleCount);
+}
+
+// 区块批次绘制：仅绘制 Ready 且所属分块在 environmentPlan.activeBlocks
+// 中的区块；fit 矩阵统一取 OuterRing 参数，与碰撞层一致。
+static void drawBlockEnvironmentModels(Surface& s, const glm::mat4& vp,
+                                       const FrustumPlanes& frustum) {
+  if (s.blockEnvironmentModels.empty()) return;
+  const glm::mat4 fit = environmentBlockWorldFitMatrix(s.environmentComposition);
+  for (auto& entry : s.blockEnvironmentModels) {
+    const int32_t blockId = entry.first;
+    const auto status = s.blockEnvironmentStatuses.find(blockId);
+    if (status == s.blockEnvironmentStatuses.end() ||
+        status->second != EnvironmentBatchStatus::Ready) continue;
+    if (!s.environmentPlan.blockActive(blockId)) continue;
+    // 视锥剔除（Phase 5）：区块内布局条目全部在视锥外时跳过。
+    if (!environmentBlockInFrustum(s, blockId, frustum)) continue;
+    StaticModel& model = entry.second;
+    if (!model.ready()) continue;
+    model.setTextureTier(s.environmentPlan.textureTier);
+    s.shader3d.setMVP(vp * fit);
+    s.shader3d.setModel(fit);
+    s.shader3d.setSkinned(false);
+    s.shader3d.setLight(glm::normalize(s.lightDir), {0.8f, 0.8f, 0.75f},
+                        {0.18f, 0.20f, 0.24f});
+    s.shader3d.setEnvironmentTint(glm::vec3(0.0f), 0.0f);
+    model.draw(s.shader3d);
+    s.environmentDrawCalls +=
+        static_cast<uint32_t>(model.stats().primitiveCount);
+    s.environmentTriangles +=
+        static_cast<uint32_t>(model.stats().triangleCount);
+  }
 }
 
 static void drawFallbackMesh(Surface& s, const Mesh& mesh,
@@ -1138,9 +1303,9 @@ static void drawSkyDome(Surface& s, const glm::mat4& vp) {
   glDepthMask(GL_TRUE);
 }
 
-// 地形网格：采样与逻辑层同一高度场，按高度/坡度混合沙地/草地/岩石色。
-// 高度场晚于 GL 初始化注入时在此惰性生成并上传。
-static void drawTerrain(Surface& s, const glm::mat4& vp) {
+// 整世界地形网格回退：分块尚未就绪时保证启动不黑屏。
+// 采样与逻辑层同一高度场，按高度/坡度混合沙地/草地/岩石色。
+static void drawTerrainFallback(Surface& s, const glm::mat4& vp) {
 #ifdef OHOS_PLATFORM
   if (s.terrainMesh.vbo == 0u && s.terrain != nullptr &&
       s.terrainMesh.vertices.empty()) {
@@ -1163,6 +1328,105 @@ static void drawTerrain(Surface& s, const glm::mat4& vp) {
                           glm::vec3(0.08f));
   s.shader3d.setEnvironmentTint(glm::vec3(0.0f), 0.0f);
   s.terrainMesh.draw();
+  s.shader3d.setSurfaceMode(SurfaceMode::Normal);
+}
+
+// 分块地形 AABB 高度范围估计（Phase 5 视锥剔除）：3×3 网格采样
+// 高度场取 min/max，再叠加全幅度保守余量（主起伏+褶皱+山脊
+// 总幅宽）覆盖采样间隙；下缘额外含侧裙深度。
+static void terrainChunkHeightRange(const Surface& s,
+                                    const TerrainChunkRect& rect,
+                                    float& outMin, float& outMax) {
+  // 高度场正弦组合总幅宽上限（amplitude+detail+ridge），边缘山脊
+  // 只抬升不下降，上缘余量同样覆盖。
+  constexpr float kAmplitudeMargin = 0.09f;
+  constexpr float kSkirtMargin = 0.06f;
+  float minHeight = 0.0f;
+  float maxHeight = 0.0f;
+  bool sampled = false;
+  for (int iy = 0; iy <= 2; ++iy) {
+    for (int ix = 0; ix <= 2; ++ix) {
+      const float x = rect.x0 +
+                      (rect.x1 - rect.x0) * static_cast<float>(ix) * 0.5f;
+      const float y = rect.y0 +
+                      (rect.y1 - rect.y0) * static_cast<float>(iy) * 0.5f;
+      const float height = s.terrain->heightAt(x, y);
+      if (!sampled) {
+        minHeight = height;
+        maxHeight = height;
+        sampled = true;
+      } else {
+        minHeight = std::min(minHeight, height);
+        maxHeight = std::max(maxHeight, height);
+      }
+    }
+  }
+  outMin = minHeight - kAmplitudeMargin - kSkirtMargin;
+  outMax = maxHeight + kAmplitudeMargin;
+}
+
+// 分块地形流式绘制：每帧先执行卸载回调（渲染线程释放退出滞后带
+// 分块的 GPU 资源），再从调度器取最多 1 个就绪分块上传（默认 2ms
+// 预算，超时推下帧），随后绘制全部已上传分块。无任何分块就绪时
+// 回退整世界网格，保证启动不黑屏。
+static void drawTerrainChunks(Surface& s, const glm::mat4& vp,
+                              const FrustumPlanes& frustum) {
+#ifdef OHOS_PLATFORM
+  if (s.streamScheduler != nullptr) {
+    for (const int32_t chunkId : s.streamScheduler->applyUnloads()) {
+      const auto found = s.terrainChunkMeshes.find(chunkId);
+      if (found != s.terrainChunkMeshes.end()) {
+        found->second.destroy();
+        s.terrainChunkMeshes.erase(found);
+      }
+    }
+    // 按配额上传就绪分块（正常每帧 1 块，传送 burst 窗口内放宽）。
+    for (const int32_t readyChunk : s.streamScheduler->drainReady()) {
+      if (s.terrainChunkMeshes.count(readyChunk) != 0) continue;
+      const TerrainChunkCpuMesh* cpuMesh =
+          s.streamScheduler->activeChunkMesh(readyChunk);
+      if (cpuMesh != nullptr && !cpuMesh->mesh.vertices.empty()) {
+        Mesh uploaded = cpuMesh->mesh;
+        uploaded.upload();
+        s.terrainChunkMeshes.emplace(readyChunk, std::move(uploaded));
+      }
+    }
+  }
+#endif
+  if (s.terrainChunkMeshes.empty()) {
+    drawTerrainFallback(s, vp);
+    return;
+  }
+  s.shader3d.setSurfaceMode(SurfaceMode::Terrain);
+  s.shader3d.setTerrainColors({0.72f, 0.64f, 0.46f}, {0.30f, 0.48f, 0.27f},
+                              {0.44f, 0.44f, 0.48f});
+  s.shader3d.setTerrainWaterLevel(-0.012f);
+  const glm::mat4 model(1.0f);
+  s.shader3d.setMVP(vp * model);
+  s.shader3d.setModel(model);
+  s.shader3d.setSkinned(false);
+  s.shader3d.setHasTexture(false);
+  s.shader3d.setLight(glm::normalize(s.lightDir), {0.8f, 0.8f, 0.75f},
+                      s.environmentPalette.ambient * 0.8f +
+                          glm::vec3(0.08f));
+  s.shader3d.setEnvironmentTint(glm::vec3(0.0f), 0.0f);
+  for (auto& entry : s.terrainChunkMeshes) {
+    // 视锥剔除（Phase 5）：按分块矩形 + 估计高度范围构造 AABB，
+    // 整体在视锥外时跳过绘制；无调度器（理论上不会发生）时全绘。
+    if (s.streamScheduler != nullptr && s.terrain != nullptr) {
+      const TerrainChunkRect rect =
+          s.streamScheduler->chunkedTerrain().chunkRect(entry.first);
+      float minHeight = 0.0f;
+      float maxHeight = 0.0f;
+      terrainChunkHeightRange(s, rect, minHeight, maxHeight);
+      if (!FrustumContainsAabb(frustum,
+                               glm::vec3(rect.x0, minHeight, rect.y0),
+                               glm::vec3(rect.x1, maxHeight, rect.y1))) {
+        continue;
+      }
+    }
+    entry.second.draw();
+  }
   s.shader3d.setSurfaceMode(SurfaceMode::Normal);
 }
 
@@ -1194,11 +1458,22 @@ static void drawWater(Surface& s, const glm::mat4& vp) {
   glDepthMask(GL_TRUE);
 }
 
+// 角色视锥剔除（Phase 5）：按模型缩放的保守包围球——模型局部
+// 高约 3 单位，球心取半高处、半径覆盖头脚，仅用于绘制前判断。
+static bool actorInFrustum(const FrustumPlanes& frustum, const glm::vec3& feet,
+                           float scale) {
+  const float radius = scale * 2.2f;
+  return FrustumContainsSphere(frustum,
+                               feet + glm::vec3(0.0f, scale * 1.5f, 0.0f),
+                               radius);
+}
+
 static void draw3DPhase(Surface& s) {
   // bridge 可能晚于 Surface 创建；surface_draw 已成功 makeCurrent，因此只在这里
   // 消费一次标脏字节，解析失败后保持静态 Mesh，不在每帧反复尝试。
   tryInitializePendingModelAssets(s);
   tryInitializePendingEnvironmentAssets(s);
+  tryInitializePendingBlockEnvironmentAssets(s);
   if (!s.shader3dReady || s.shader3d.program() == 0u) return;
 
   // 3D 阶段需要深度测试；2D 阶段未写深度，故在此单独清深度并开启深度测试，
@@ -1224,11 +1499,22 @@ static void draw3DPhase(Surface& s) {
   }
 
   const glm::mat4 vp = s.camera3d.projectionMatrix() * s.camera3d.viewMatrix();
+  // 视锥剔除平面（Phase 5）：地形分块/环境批次/角色绘制前统一消费。
+  const FrustumPlanes frustum = s.camera3d.frustumPlanes();
 
   s.environmentDrawCalls = 0;
   s.environmentTriangles = 0;
   s.environmentPlan = s.environmentController.evaluate(
       {s.player.x, s.player.y}, s.environmentPerfLevel);
+  // 区块批次启停：激活分块集合直接来自流式调度器（Loop 已在推进它），
+  // 无需在 loop.cpp 挂接任何回调；binary_search 要求升序。
+  if (s.streamScheduler != nullptr) {
+    s.environmentPlan.activeBlocks = s.streamScheduler->activeChunkIds();
+    std::sort(s.environmentPlan.activeBlocks.begin(),
+              s.environmentPlan.activeBlocks.end());
+  } else {
+    s.environmentPlan.activeBlocks.clear();
+  }
   if (s.environmentPlan.textureTier != s.loggedEnvironmentTextureTier) {
     s.loggedEnvironmentTextureTier = s.environmentPlan.textureTier;
     LOGI("environment texture tier: %{public}s",
@@ -1239,22 +1525,25 @@ static void draw3DPhase(Surface& s) {
   // 天空穹顶 → 地形网格 → 环境模型 → 水面：地形采样与逻辑层同一
   // 高度场，起伏/水域与贴地判定严格一致。
   drawSkyDome(s, vp);
-  drawTerrain(s, vp);
+  drawTerrainChunks(s, vp, frustum);
 
   if (s.environmentPlan.backdrop) {
-    drawEnvironmentModel(s, 2, vp, glm::vec3(0.0f), 0.0f);
+    drawEnvironmentModel(s, 2, vp, frustum, glm::vec3(0.0f), 0.0f);
   }
-  drawEnvironmentModel(s, 0, vp, glm::vec3(0.0f), 0.0f);
+  drawEnvironmentModel(s, 0, vp, frustum, glm::vec3(0.0f), 0.0f);
   if (s.environmentStatuses[0] != EnvironmentBatchStatus::Ready) {
     drawEnvironmentFallback(s, vp);
   }
   if (s.environmentPlan.decoration) {
-    drawEnvironmentModel(s, 3, vp, glm::vec3(0.0f), 0.0f);
+    drawEnvironmentModel(s, 3, vp, frustum, glm::vec3(0.0f), 0.0f);
   }
-  drawEnvironmentModel(s, 1, vp, s.environmentPalette.fogColor, 0.22f);
+  drawEnvironmentModel(s, 1, vp, frustum, s.environmentPalette.fogColor,
+                       0.22f);
   if (s.environmentStatuses[1] != EnvironmentBatchStatus::Ready) {
     drawCenterFallback(s, vp);
   }
+  // Phase 2 区块批次：仅激活分块的 block_<id>.glb 参与绘制。
+  drawBlockEnvironmentModels(s, vp, frustum);
   const float altarGround =
       groundYAt(s, s.environmentComposition.altarAnchor.x,
                 s.environmentComposition.altarAnchor.z);
@@ -1299,6 +1588,17 @@ static void draw3DPhase(Surface& s) {
     drawContactShadow(s, vp, enemy.x, enemy.y,
                       s.enemyAssetProfile.scale * 0.36f);
   }
+  for (const WildEnemy3DRenderState& enemy : s.wildEnemies3d) {
+    if (!enemy.alive) continue;
+    drawContactShadow(s, vp, enemy.x, enemy.y,
+                      s.enemyAssetProfile.scale *
+                          enemyScaleByArchetype(enemy.archetype) * 0.36f);
+  }
+  for (const Npc3DRenderState& npc : s.npcs3d) {
+    if (!npc.visible) continue;
+    drawContactShadow(s, vp, npc.x, npc.y,
+                      s.npcAssetProfile.scale * 0.36f);
+  }
   if (s.boss3d.active && !s.boss3d.defeated) {
     drawContactShadow(s, vp, s.boss3d.x, s.boss3d.y,
                       s.bossAssetProfile.scale * 0.36f);
@@ -1318,60 +1618,116 @@ static void draw3DPhase(Surface& s) {
 
   // 玩家：模型可用时走蒙皮，否则保留 M3-1 立方体。
   // 闪避无敌帧：半透明化给出清晰的免伤窗口反馈。
-  if (s.playerInvulnerable) {
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    s.shader3d.setAlpha(0.55f);
-  }
-  drawActor(s, s.playerModel, s.playerMesh, s.playerAnimationState,
-            s.player3dAnimation,
-            actorModelMatrix(glm::vec3(s.player.x,
-                                       s.playerGroundHeight + 0.012f,
-                                       s.player.y),
-                             s.playerAssetProfile.scale,
-                             s.player.angle + s.playerAssetProfile.yawOffsetRadians),
-            vp, hitFlashTint(s.playerAssetProfile.materialTint,
-                             s.playerHitAnimationSeconds),
-            s.playerAssetProfile, s.playerHitAnimationSeconds,
-            false, 1.0f, 1.0f, "player");
-  if (s.playerInvulnerable) {
-    s.shader3d.setAlpha(1.0f);
-    glDisable(GL_BLEND);
+  const glm::vec3 playerFeet{s.player.x, s.playerGroundHeight + 0.012f,
+                             s.player.y};
+  if (actorInFrustum(frustum, playerFeet, s.playerAssetProfile.scale)) {
+    if (s.playerInvulnerable) {
+      glEnable(GL_BLEND);
+      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+      s.shader3d.setAlpha(0.55f);
+    }
+    drawActor(s, s.playerModel, s.playerMesh, s.playerAnimationState,
+              s.player3dAnimation,
+              actorModelMatrix(playerFeet,
+                               s.playerAssetProfile.scale,
+                               s.player.angle +
+                                   s.playerAssetProfile.yawOffsetRadians),
+              vp, hitFlashTint(s.playerAssetProfile.materialTint,
+                               s.playerHitAnimationSeconds),
+              s.playerAssetProfile, s.playerHitAnimationSeconds,
+              false, 1.0f, 1.0f, "player");
+    if (s.playerInvulnerable) {
+      s.shader3d.setAlpha(1.0f);
+      glDisable(GL_BLEND);
+    }
   }
 
   // 训练假人立方体（按 alive 跳过）。
-  drawActor(s, s.enemyModel, s.enemyMesh, s.trainingTargetAnimationState,
-            s.trainingTarget3dAnimation,
-            actorModelMatrix(
-                glm::vec3(s.trainingTarget.x,
-                          groundYAt(s, s.trainingTarget.x, s.trainingTarget.y) +
-                              0.011f,
-                          s.trainingTarget.y),
-                s.enemyAssetProfile.scale,
-                s.enemyAssetProfile.yawOffsetRadians),
-            vp, hitFlashTint(s.enemyAssetProfile.materialTint,
-                             hitFlashRemaining(s, s.trainingTarget.id)),
-            s.enemyAssetProfile, hitFlashRemaining(s, s.trainingTarget.id),
-            false, 1.0f, 1.0f, "training-target");
+  {
+    const glm::vec3 dummyFeet{
+        s.trainingTarget.x,
+        groundYAt(s, s.trainingTarget.x, s.trainingTarget.y) + 0.011f,
+        s.trainingTarget.y};
+    if (actorInFrustum(frustum, dummyFeet, s.enemyAssetProfile.scale)) {
+      drawActor(s, s.enemyModel, s.enemyMesh, s.trainingTargetAnimationState,
+                s.trainingTarget3dAnimation,
+                actorModelMatrix(dummyFeet,
+                                 s.enemyAssetProfile.scale,
+                                 s.enemyAssetProfile.yawOffsetRadians),
+                vp, hitFlashTint(s.enemyAssetProfile.materialTint,
+                                 hitFlashRemaining(s, s.trainingTarget.id)),
+                s.enemyAssetProfile, hitFlashRemaining(s, s.trainingTarget.id),
+                false, 1.0f, 1.0f, "training-target");
+    }
+  }
 
   // 敌人立方体（按存活状态跳过）。
   s.pruneEnemyAnimationStates();
   for (const Enemy3DRenderState& enemy : s.enemies3d) {
     SkinnedAnimationState& animationState = s.enemyAnimationStates[enemy.id];
     const glm::vec2 knock = hitKnockback(s, enemy.id, enemy.angle);
+    const glm::vec3 enemyFeet{enemy.x + knock.x,
+                              groundYAt(s, enemy.x, enemy.y) + 0.011f,
+                              enemy.y + knock.y};
+    // 视锥剔除（Phase 5）：视锥外敌人跳过绘制（动画状态表不受影响）。
+    if (!actorInFrustum(frustum, enemyFeet, s.enemyAssetProfile.scale)) {
+      continue;
+    }
     drawActor(s, s.enemyModel, s.enemyMesh, animationState, enemy.animation,
-              actorModelMatrix(
-                  glm::vec3(enemy.x + knock.x,
-                            groundYAt(s, enemy.x, enemy.y) + 0.011f,
-                            enemy.y + knock.y),
-                  s.enemyAssetProfile.scale,
-                  enemy.angle + s.enemyAssetProfile.yawOffsetRadians),
+              actorModelMatrix(enemyFeet,
+                               s.enemyAssetProfile.scale,
+                               enemy.angle +
+                                   s.enemyAssetProfile.yawOffsetRadians),
               vp, hitFlashTint(enemyColorByArchetype(enemy.archetype),
                                hitFlashRemaining(s, enemy.id)),
               s.enemyAssetProfile, hitFlashRemaining(s, enemy.id),
               enemy.id == s.targetMarker3d.targetId,
               DeathFadeAlpha(enemy.deathSeconds), 1.0f,
               "enemy");
+  }
+  // 野外敌人（Phase 3.2/3.3）：复用同一 drawActor 路径与动画状态表
+  // （id 从 5000 起无冲突），按原型缩放与色调区分。
+  for (const WildEnemy3DRenderState& enemy : s.wildEnemies3d) {
+    SkinnedAnimationState& animationState = s.enemyAnimationStates[enemy.id];
+    const glm::vec2 knock = hitKnockback(s, enemy.id, enemy.angle);
+    const float archetypeScale = enemyScaleByArchetype(enemy.archetype);
+    const glm::vec3 enemyFeet{enemy.x + knock.x,
+                              groundYAt(s, enemy.x, enemy.y) + 0.011f,
+                              enemy.y + knock.y};
+    // 视锥剔除（Phase 5）：按原型缩放后的保守包围球测试。
+    if (!actorInFrustum(frustum, enemyFeet,
+                        s.enemyAssetProfile.scale * archetypeScale)) {
+      continue;
+    }
+    drawActor(s, s.enemyModel, s.enemyMesh, animationState, enemy.animation,
+              actorModelMatrix(enemyFeet,
+                               s.enemyAssetProfile.scale * archetypeScale,
+                               enemy.angle +
+                                   s.enemyAssetProfile.yawOffsetRadians),
+              vp, hitFlashTint(enemyColorByArchetype(enemy.archetype),
+                               hitFlashRemaining(s, enemy.id)),
+              s.enemyAssetProfile, hitFlashRemaining(s, enemy.id),
+              enemy.id == s.targetMarker3d.targetId,
+              DeathFadeAlpha(enemy.deathSeconds), 1.0f,
+              "enemy");
+  }
+
+  // NPC（Phase 4）：复用骨骼角色绘制路径，仅 idle/walk 动画，无血条。
+  // 第一版模型复用 player.glb 占位，未注入时回退玩家静态 Mesh。
+  s.pruneNpcAnimationStates();
+  for (const Npc3DRenderState& npc : s.npcs3d) {
+    if (!npc.visible) continue;
+    SkinnedAnimationState& animationState = s.npcAnimationStates[npc.id];
+    const glm::vec3 npcFeet{npc.x, groundYAt(s, npc.x, npc.y) + 0.011f,
+                            npc.y};
+    // 视锥剔除（Phase 5）：视锥外 NPC 跳过绘制。
+    if (!actorInFrustum(frustum, npcFeet, s.npcAssetProfile.scale)) continue;
+    drawActor(s, s.npcModel, s.playerMesh, animationState, npc.animation,
+              actorModelMatrix(npcFeet,
+                               s.npcAssetProfile.scale,
+                               npc.angle + s.npcAssetProfile.yawOffsetRadians),
+              vp, hitFlashTint(s.npcAssetProfile.materialTint, 0.0f),
+              s.npcAssetProfile, 0.0f, false, 1.0f, 1.0f, "npc");
   }
 
   // 首领立方体（按阶段配色，击败后跳过）。
@@ -1385,19 +1741,24 @@ static void draw3DPhase(Surface& s) {
       bossKnock = glm::vec2(-std::sin(s.boss3d.angle) * amount,
                             -std::cos(s.boss3d.angle) * amount);
     }
-    drawActor(s, s.bossModel, s.bossMesh, s.bossAnimationState,
-              s.boss3d.animation,
-              actorModelMatrix(
-                  glm::vec3(s.boss3d.x + bossKnock.x,
-                            groundYAt(s, s.boss3d.x, s.boss3d.y) + 0.02f,
-                            s.boss3d.y + bossKnock.y),
-                  s.bossAssetProfile.scale,
-                  s.boss3d.angle + s.bossAssetProfile.yawOffsetRadians),
-             vp, hitFlashTint(bossColorByPhase(s.boss3d.phase),
-                              s.boss3d.hitAnimationSeconds),
-             s.bossAssetProfile, s.boss3d.hitAnimationSeconds,
-             s.boss3d.targeted, 1.0f,
-             BossEntranceReveal(s.boss3d.entranceSeconds), "boss");
+    const glm::vec3 bossFeet{s.boss3d.x + bossKnock.x,
+                             groundYAt(s, s.boss3d.x, s.boss3d.y) + 0.02f,
+                             s.boss3d.y + bossKnock.y};
+    // 视锥剔除（Phase 5）：仅剔除首领本体绘制；出场演出几何
+    // （cinematic 期间）保持无条件绘制，避免关键演出被误剔除。
+    if (actorInFrustum(frustum, bossFeet, s.bossAssetProfile.scale)) {
+      drawActor(s, s.bossModel, s.bossMesh, s.bossAnimationState,
+                s.boss3d.animation,
+                actorModelMatrix(bossFeet,
+                                 s.bossAssetProfile.scale,
+                                 s.boss3d.angle +
+                                     s.bossAssetProfile.yawOffsetRadians),
+               vp, hitFlashTint(bossColorByPhase(s.boss3d.phase),
+                                s.boss3d.hitAnimationSeconds),
+               s.bossAssetProfile, s.boss3d.hitAnimationSeconds,
+               s.boss3d.targeted, 1.0f,
+               BossEntranceReveal(s.boss3d.entranceSeconds), "boss");
+    }
     drawBossCinematicGeometry(s, vp);
   }
 
@@ -1835,6 +2196,7 @@ static void init3DResources(Surface& s) {
   }
   tryInitializePendingModelAssets(s);
   tryInitializePendingEnvironmentAssets(s);
+  tryInitializePendingBlockEnvironmentAssets(s);
 #else
   (void)s;
 #endif
@@ -1849,9 +2211,11 @@ static void destroy3DResource(Surface& s, SurfaceGlResource resource) {
       s.playerModel.destroy();
       s.enemyModel.destroy();
       s.bossModel.destroy();
+      s.npcModel.destroy();
       break;
     case SurfaceGlResource::StaticEnvironmentModels:
       for (StaticModel& model : s.environmentModels) model.destroy();
+      for (auto& entry : s.blockEnvironmentModels) entry.second.destroy();
       break;
     case SurfaceGlResource::StaticMeshes:
       s.playerMesh.destroy();
@@ -1865,6 +2229,8 @@ static void destroy3DResource(Surface& s, SurfaceGlResource resource) {
       s.terrainMesh.destroy();
       s.waterMesh.destroy();
       s.skyMesh.destroy();
+      for (auto& entry : s.terrainChunkMeshes) entry.second.destroy();
+      s.terrainChunkMeshes.clear();
       break;
     case SurfaceGlResource::Shader3D:
       s.shader3d.destroy();
@@ -1875,8 +2241,12 @@ static void destroy3DResource(Surface& s, SurfaceGlResource resource) {
         s.playerModelAsset.markDirtyForContextRebuild();
         s.enemyModelAsset.markDirtyForContextRebuild();
         s.bossModelAsset.markDirtyForContextRebuild();
+        s.npcModelAsset.markDirtyForContextRebuild();
         for (PendingModelAsset& asset : s.environmentAssets) {
           asset.markDirtyForContextRebuild();
+        }
+        for (auto& entry : s.blockEnvironmentAssets) {
+          entry.second.markDirtyForContextRebuild();
         }
       }
       break;
@@ -1897,7 +2267,11 @@ static void abandon3DResources(Surface& s) {
   s.playerModel.abandonGpuResources();
   s.enemyModel.abandonGpuResources();
   s.bossModel.abandonGpuResources();
+  s.npcModel.abandonGpuResources();
   for (StaticModel& model : s.environmentModels) model.abandonGpuResources();
+  for (auto& entry : s.blockEnvironmentModels) {
+    entry.second.abandonGpuResources();
+  }
   s.playerMesh.abandonGpuResources();
   s.groundMesh.abandonGpuResources();
   s.enemyMesh.abandonGpuResources();
@@ -1911,6 +2285,8 @@ static void abandon3DResources(Surface& s) {
   s.terrainMesh.abandonGpuResources();
   s.waterMesh.abandonGpuResources();
   s.skyMesh.abandonGpuResources();
+  for (auto& entry : s.terrainChunkMeshes) entry.second.abandonGpuResources();
+  s.terrainChunkMeshes.clear();
   for (Mesh& digitMesh : s.digitMeshes) digitMesh.abandonGpuResources();
   s.digitAtlasTexture = 0;
   s.digitAssetsReady = false;
@@ -1921,8 +2297,12 @@ static void abandon3DResources(Surface& s) {
     s.playerModelAsset.markDirtyForContextRebuild();
     s.enemyModelAsset.markDirtyForContextRebuild();
     s.bossModelAsset.markDirtyForContextRebuild();
+    s.npcModelAsset.markDirtyForContextRebuild();
     for (PendingModelAsset& asset : s.environmentAssets) {
       asset.markDirtyForContextRebuild();
+    }
+    for (auto& entry : s.blockEnvironmentAssets) {
+      entry.second.markDirtyForContextRebuild();
     }
   }
 #else
@@ -1935,6 +2315,7 @@ static void clearModelAssets(Surface& s) {
   s.playerModelAsset.clear();
   s.enemyModelAsset.clear();
   s.bossModelAsset.clear();
+  s.npcModelAsset.clear();
   for (size_t index = 0; index < s.environmentAssets.size(); ++index) {
     s.environmentAssets[index].clear();
     s.environmentStatuses[index] = EnvironmentBatchStatus::Empty;
@@ -2214,7 +2595,10 @@ void surface_destroy(Surface& s) {
   s.props.clear();
   s.particles.clear();
   s.enemies3d.clear();
+  s.wildEnemies3d.clear();
   s.enemyAnimationStates.clear();
+  s.npcs3d.clear();
+  s.npcAnimationStates.clear();
   s.playerAnimationState.reset();
   s.trainingTargetAnimationState.reset();
   s.bossAnimationState.reset();

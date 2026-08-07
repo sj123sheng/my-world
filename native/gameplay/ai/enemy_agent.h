@@ -61,6 +61,14 @@ class EnemyAgent {
   void releaseStagger();
   void reset();
 
+  // AI 距离 LOD（WildSpawnSystem）：按玩家距离动态调整决策周期，
+  // 中距敌人拉长周期降频；非法值（<=0）被忽略。
+  void setDecisionPeriodMs(Tick periodMs) {
+    if (periodMs > 0) tuning_.decisionPeriodMs = periodMs;
+  }
+  // 当前决策周期（测试辅助：验证距离 LOD 降频）。
+  Tick decisionPeriodMs() const { return tuning_.decisionPeriodMs; }
+
   EnemyEscapeState escapeState() const noexcept { return escapeState_; }
 
  private:
