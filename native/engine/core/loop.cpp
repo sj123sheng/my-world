@@ -2828,6 +2828,8 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
         hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + 72, 96);
         surface.fovPunchMaxOffset = FovPunchMaxOffsetFor(2);
         surface.resonanceFovSeconds = 0.0f;
+        // 破韧相机震动：韧性破碎瞬间的轻震，与卡肉/FOV 同节奏。
+        vfxSystem.triggerCameraShake(FP_ONE);
       }
       continue;
     }
@@ -2840,6 +2842,9 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       surface.fovPunchMaxOffset = FovPunchMaxOffsetFor(2);
       surface.resonanceFovSeconds = 0.0f;
       hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + 60, 96);
+      // 元素反应相机震动：反应是战斗里最高光时刻，幅度与首领
+      // 砸地同级（2×受击），与光柱/冲击波/卡肉同步落地。
+      vfxSystem.triggerCameraShake(2 * FP_ONE);
       const std::optional<Vec2> reactionPos = resolveEntityPosition(
           surface, encounter.snapshot(), event.target, &wildSpawn);
       if (reactionPos.has_value()) {
