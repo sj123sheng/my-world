@@ -107,6 +107,9 @@ struct Enemy3DRenderState {
   float deathSeconds = 0.0f;
   // 累计受击次数：按奇偶驱动受击/死亡动画变体轮换。
   uint32_t hitCount = 0;
+  // 元素附着位掩码：bit0=辉印 bit1=脉流 bit2=蚀质（SourceType 位序）。
+  // 渲染层据此在脚下绘制对应元素色的呼吸光环（原神式附着指示）。
+  int auraMask = 0;
 };
 
 // 野外敌人（WildSpawnSystem）的 3D 渲染状态：字段与 Enemy3DRenderState
@@ -359,6 +362,15 @@ struct Surface {
   float vfxCameraShakeY = 0.0f;
   // 预警环脉冲时钟（秒），由逻辑层逐帧累加，供渲染层做呼吸动画。
   float windupPulseSeconds = 0.0f;
+  // 元素附着光环呼吸时钟（秒）：按 AuraRingPeriod() 回绕，
+  // 驱动附着光环的半径/透明度脉动。
+  float auraPulseSeconds = 0.0f;
+  // 附着粒子发射累加器（秒）：超过 AuraParticleInterval() 时为
+  // 每个附着源质发射一颗上升粒子并回绕。
+  float auraEmitSeconds = 0.0f;
+  // 训练假人的元素附着掩码（bit0=辉印 bit1=脉流 bit2=蚀质）：
+  // 训练模式下取自战斗快照附着位，其余模式恒 0。
+  int trainingTargetAuraMask = 0;
 
   // ---- 命中火花字段 ----
   std::vector<HitSpark3D> hitSparks3d;

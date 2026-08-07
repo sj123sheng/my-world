@@ -191,6 +191,66 @@ void testReactionVfxDistinctPerResonanceType() {
   assert(unknown.sparkKind == refraction.sparkKind);
 }
 
+void testAuraColorAndSparkKindPerSource() {
+  const glm::vec3 radiance = AuraColorFor(0);
+  const glm::vec3 current = AuraColorFor(1);
+  const glm::vec3 corruption = AuraColorFor(2);
+  // 三种源质颜色互不相同，且与元素反应同色系语义一致。
+  assert(radiance != current);
+  assert(current != corruption);
+  assert(radiance != corruption);
+  // 辉印金白（r>b）、脉流青蓝（b>r）、蚀质暗紫（r>g）。
+  assert(radiance.r > radiance.b);
+  assert(current.b > current.r);
+  assert(corruption.r > corruption.g);
+  // 火花 kind 映射到既有元素配色表 4/5/6。
+  assert(AuraSparkKindFor(0) == 4);
+  assert(AuraSparkKindFor(1) == 5);
+  assert(AuraSparkKindFor(2) == 6);
+  // 未知源质回退辉印配色，不产生黑环/黑粒子。
+  assert(AuraColorFor(99) == radiance);
+  assert(AuraSparkKindFor(99) == 4);
+}
+
+void testAuraRingPoseBreathesWithinBounds() {
+  // 呼吸 pose 始终可见：半径/透明度落在设计区间内。
+  for (int i = 0; i < 64; ++i) {
+    const float seconds = static_cast<float>(i) * 0.05f;
+    const AuraRingPose pose = AuraRingPoseAt(seconds, 0);
+    assert(pose.radiusScale >= 0.92f && pose.radiusScale <= 1.02f);
+    assert(pose.alpha >= 0.38f && pose.alpha <= 0.68f);
+  }
+  // 周期性：整周期后 pose 复原（浮点容差）。
+  const AuraRingPose start = AuraRingPoseAt(0.0f, 0);
+  const AuraRingPose loop = AuraRingPoseAt(AuraRingPeriod(), 0);
+  assert(std::abs(start.radiusScale - loop.radiusScale) < 1e-3f);
+  assert(std::abs(start.alpha - loop.alpha) < 1e-3f);
+  // 多源质附着环相位错开：同一时刻不同 ringIndex 的 pose 不同。
+  const AuraRingPose ring0 = AuraRingPoseAt(0.3f, 0);
+  const AuraRingPose ring1 = AuraRingPoseAt(0.3f, 1);
+  const AuraRingPose ring2 = AuraRingPoseAt(0.3f, 2);
+  assert(std::abs(ring0.alpha - ring1.alpha) > 1e-3f);
+  assert(std::abs(ring1.alpha - ring2.alpha) > 1e-3f);
+}
+
+void testAuraParticleVelocityRisesAndDrifts() {
+  float vx = 0.0f, vy = 0.0f, vz = 0.0f;
+  AuraParticleVelocity(0.0f, 0.01f, 0.06f, vx, vy, vz);
+  // 角度 0：沿 +X 外飘，无 Z 分量，上升速度原样保留。
+  assert(nearlyEqual(vx, 0.01f));
+  assert(nearlyEqual(vz, 0.0f));
+  assert(nearlyEqual(vy, 0.06f));
+  AuraParticleVelocity(3.14159265f * 0.5f, 0.02f, 0.05f, vx, vy, vz);
+  // 角度 π/2：沿 +Z 外飘。
+  assert(std::abs(vx) < 1e-4f);
+  assert(nearlyEqual(vz, 0.02f));
+  assert(nearlyEqual(vy, 0.05f));
+  // 水平漂移模长恒等于 drift（任意角度）。
+  AuraParticleVelocity(1.3f, 0.015f, 0.04f, vx, vy, vz);
+  const float horizontal = std::sqrt(vx * vx + vz * vz);
+  assert(std::abs(horizontal - 0.015f) < 1e-5f);
+}
+
 }  // namespace
 
 int main() {
@@ -206,5 +266,8 @@ int main() {
   testImpactDecalExpandsFastThenFades();
   testDirectionalSparkVelocityFollowsAttackDirection();
   testReactionVfxDistinctPerResonanceType();
+  testAuraColorAndSparkKindPerSource();
+  testAuraRingPoseBreathesWithinBounds();
+  testAuraParticleVelocityRisesAndDrifts();
   return 0;
 }

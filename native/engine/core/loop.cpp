@@ -91,6 +91,10 @@ void publish3DEncounterState(Surface& surface,
     state.attacking = enemy.attacking;
     // 模型局部 +Z 为前方，逻辑 (x, y) 映射到 3D (x, z)。
     state.angle = std::atan2(enemy.facing.x, enemy.facing.y);
+    // 元素附着位掩码：渲染层据此绘制脚下元素光环（原神式附着指示）。
+    state.auraMask = AuraMaskFromFlags(enemy.radianceAttached,
+                                       enemy.currentAttached,
+                                       enemy.corruptionAttached);
     // 尸体淡出计时：死亡期间持续累加，复活则归零；
     // 渲染层按 DeathFadeAlpha 把尸体线性淡出到完全移除。
     if (!enemy.alive) {
@@ -947,6 +951,8 @@ bool Loop::startEncounter(EncounterMode mode) {
     const bool started = encounter.start(mode);
     surface.trainingTarget.alive =
         started && mode == EncounterMode::Training;
+    // 新遭遇清空附着表现：光环掩码归零，updateFixed 会按需重建。
+    surface.trainingTargetAuraMask = 0;
     return started;
   });
 }
@@ -1659,6 +1665,7 @@ void Loop::tickOnce(int64_t elapsedMs) {
     combat.reset();
     combatTimeMs_ = 0;
     surface.trainingTarget.alive = true;
+    surface.trainingTargetAuraMask = 0;
     publishRendererStopped();
     return;
   }
@@ -2350,6 +2357,15 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   surface.trainingTarget.alive =
       encounter.snapshot().mode == EncounterMode::Training &&
       combat.snapshot().targetAlive;
+  // 训练假人元素附着掩码：仅训练模式取自战斗快照附着位（此时
+  // 快照附着位即假人身上源质）；其余模式锁定目标的附着已由
+  // EncounterEnemySnapshot 逐敌人发布，避免重复绘制。
+  surface.trainingTargetAuraMask =
+      encounter.snapshot().mode == EncounterMode::Training
+          ? AuraMaskFromFlags(combat.snapshot().radianceAttached,
+                              combat.snapshot().currentAttached,
+                              combat.snapshot().corruptionAttached)
+          : 0;
   if (currentTarget.has_value() &&
       std::none_of(candidates.begin(), candidates.end(),
                    [this](const TargetCandidate& candidate) {
@@ -2660,6 +2676,54 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   // 预警环脉冲时钟：按 0.8s 周期回绕，避免浮点长时间累加精度退化。
   surface.windupPulseSeconds += dtSeconds;
   if (surface.windupPulseSeconds >= 0.8f) surface.windupPulseSeconds -= 0.8f;
+  // 元素附着光环时钟：呼吸周期回绕 + 附着粒子发射节奏累加。
+  surface.auraPulseSeconds += dtSeconds;
+  if (surface.auraPulseSeconds >= AuraRingPeriod()) {
+    surface.auraPulseSeconds -= AuraRingPeriod();
+  }
+  surface.auraEmitSeconds += dtSeconds;
+  if (surface.auraEmitSeconds >= AuraParticleInterval()) {
+    surface.auraEmitSeconds -= AuraParticleInterval();
+    // 为每个附着源质的存活目标各发射一颗上升元素粒子：从脚下环带
+    // 外飘上升，形成"元素能量上涌"的附着指示（kind>=4 不受重力）。
+    const float enemyRatio =
+        VfxSizeRatio(surface.enemyAssetProfile, ModelKind::Enemy);
+    const auto emitAuraParticles = [&](Vec2 position, int auraMask) {
+      if (auraMask == 0 || surface.hitSparks3d.size() > 128) return;
+      for (int source = 0; source < 3; ++source) {
+        if ((auraMask & (1 << source)) == 0) continue;
+        surface.hitSparkSeed = surface.hitSparkSeed * 1664525u + 1013904223u;
+        const float r0 =
+            static_cast<float>((surface.hitSparkSeed >> 8) & 0xFFFFu) /
+            65535.0f;
+        surface.hitSparkSeed = surface.hitSparkSeed * 1664525u + 1013904223u;
+        const float r1 =
+            static_cast<float>((surface.hitSparkSeed >> 8) & 0xFFFFu) /
+            65535.0f;
+        const float angle = r0 * 6.2831853f;
+        float vx = 0.0f, vy = 0.0f, vz = 0.0f;
+        AuraParticleVelocity(angle, 0.0025f * enemyRatio,
+                             (0.028f + 0.012f * r1) * enemyRatio, vx, vy, vz);
+        const float life = 0.5f + 0.25f * r0;
+        const float spawnRadius = 0.003f * enemyRatio;
+        surface.hitSparks3d.push_back(
+            {position.x + std::cos(angle) * spawnRadius, 0.002f,
+             position.y + std::sin(angle) * spawnRadius, vx, vy, vz, life,
+             life, AuraSparkKindFor(source), enemyRatio});
+      }
+    };
+    for (const EncounterEnemySnapshot& enemy : encounter.snapshot().enemies) {
+      if (!enemy.alive) continue;
+      emitAuraParticles(enemy.position,
+                        AuraMaskFromFlags(enemy.radianceAttached,
+                                          enemy.currentAttached,
+                                          enemy.corruptionAttached));
+    }
+    if (surface.trainingTarget.alive) {
+      emitAuraParticles({surface.trainingTarget.x, surface.trainingTarget.y},
+                        surface.trainingTargetAuraMask);
+    }
+  }
   // 命中火花：速度积分 + 重力回落，寿命到期或落地后清理；
   // 尾迹与技能粒子（kind>=3）不受重力，保持上扬消散。
   constexpr float kSparkGravity = 0.35f;
@@ -2822,6 +2886,7 @@ void Loop::publishRendererStopped() {
     frameCombatEvents_ = {};
   }
   surface.trainingTarget.alive = true;
+  surface.trainingTargetAuraMask = 0;
   GameSnapshot stopped = RendererStoppedSnapshot(snapshots.read());
   ApplyCombatSnapshot(stopped, combat.snapshot());
   snapshots.publish(stopped);

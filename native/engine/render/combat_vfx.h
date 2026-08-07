@@ -180,3 +180,69 @@ inline ReactionVfx ReactionVfxFor(int resonanceType) {
       return {{1.0f, 0.92f, 0.55f}, 4};
   }
 }
+
+// 元素附着光环（原神式元素附着指示）：目标身上附着源质时，
+// 脚下浮现对应元素色的呼吸光环 + 周身上升元素粒子。
+// SourceType 数值：0=辉印(Radiance) 1=脉流(Current) 2=蚀质(Corruption)。
+// 光环掩码：bit0=辉印 bit1=脉流 bit2=蚀质，多源质可同时附着。
+inline int AuraMaskFromFlags(bool radiance, bool current, bool corruption) {
+  return (radiance ? 1 : 0) | (current ? 2 : 0) | (corruption ? 4 : 0);
+}
+
+inline glm::vec3 AuraColorFor(int sourceType) {
+  switch (sourceType) {
+    case 0:  // 辉印：金白
+      return {1.0f, 0.92f, 0.55f};
+    case 1:  // 脉流：青蓝
+      return {0.45f, 0.85f, 1.0f};
+    case 2:  // 蚀质：暗紫
+      return {0.75f, 0.42f, 0.95f};
+    default:  // 未知源质回退辉印配色，不产生黑环。
+      return {1.0f, 0.92f, 0.55f};
+  }
+}
+
+// 附着光环上升粒子复用的火花 kind（与火花配色表一致）。
+inline int AuraSparkKindFor(int sourceType) {
+  switch (sourceType) {
+    case 0:
+      return 4;  // 辉印金白
+    case 1:
+      return 5;  // 脉流青蓝
+    case 2:
+      return 6;  // 蚀质暗紫
+    default:
+      return 4;
+  }
+}
+
+struct AuraRingPose {
+  float radiusScale = 1.0f;  // 环呼吸缩放（0.92..1.02）
+  float alpha = 0.0f;        // 环透明度（0.38..0.68）
+};
+
+// 附着光环呼吸周期（秒）：比预警环（0.8s）更缓，传达"持续附着"
+// 而非"即将攻击"的语义。
+inline float AuraRingPeriod() { return 1.6f; }
+
+// 附着光环脉动 pose：半径与透明度同相位正弦呼吸；ringIndex 为
+// 同目标多源质附着的环序号，相位错开 1/3 周期，多环错峰脉动。
+inline AuraRingPose AuraRingPoseAt(float seconds, int ringIndex) {
+  constexpr float kTau = 6.2831853f;
+  const float phase = seconds / AuraRingPeriod() * kTau +
+                      static_cast<float>(ringIndex) * (kTau / 3.0f);
+  const float wave = 0.5f + 0.5f * std::sin(phase);
+  return {0.92f + 0.10f * wave, 0.38f + 0.30f * wave};
+}
+
+// 附着粒子发射节奏（秒）：每个附着源质按此间隔各升起一颗粒子。
+inline float AuraParticleInterval() { return 0.16f; }
+
+// 附着粒子速度：径向外飘 + 稳定上升，形成"元素能量上涌"；
+// kind>=4 的火花不受重力，粒子上升至寿命耗尽自然消散。
+inline void AuraParticleVelocity(float angleRadians, float drift, float rise,
+                                 float& vx, float& vy, float& vz) {
+  vx = std::cos(angleRadians) * drift;
+  vz = std::sin(angleRadians) * drift;
+  vy = rise;
+}

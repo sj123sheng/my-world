@@ -487,6 +487,79 @@ static void drawWindupWarnings(Surface& s, const glm::mat4& vp) {
   glDepthMask(GL_TRUE);
 }
 
+// 元素附着光环：附着源质的目标脚下元素色呼吸光环（加法混合，
+// 每个附着源质一环、多环同心错峰），原神式元素附着指示；
+// 半径随模型缩放同步，绘制结束恢复中性状态。
+static void drawAuraRings(Surface& s, const glm::mat4& vp) {
+  if (s.targetRingMesh.vbo == 0u) return;
+  bool any = s.trainingTarget.alive && s.trainingTargetAuraMask != 0;
+  for (const Enemy3DRenderState& enemy : s.enemies3d) {
+    if (enemy.alive && enemy.auraMask != 0) {
+      any = true;
+      break;
+    }
+  }
+  if (!any) return;
+
+  glDepthMask(GL_FALSE);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE);  // 加法混合：元素光晕在暗处更醒目
+  glDisable(GL_CULL_FACE);
+  s.shader3d.setSkinned(false);
+  s.shader3d.setHasTexture(false);
+  s.shader3d.setToonShading(false, glm::vec3(0.7f), 0.1f, 0.08f);
+  s.shader3d.setOutlinePass(0.0f, glm::vec3(0.0f));
+  s.shader3d.setRim(glm::vec3(0.0f), 0.0f);
+  s.shader3d.setSpecular(0.0f, 1.0f);
+  s.shader3d.setEnvironmentTint(glm::vec3(0.0f), 0.0f);
+
+  // 单位环外半径 0.082（createRing(0.075, 0.014, 40)），与预警环一致。
+  constexpr float kRingOuterRadius = 0.082f;
+  const auto drawAura = [&](float x, float z, float profileScale,
+                            int auraMask) {
+    int ringIndex = 0;
+    for (int source = 0; source < 3; ++source) {
+      if ((auraMask & (1 << source)) == 0) continue;
+      const AuraRingPose pose = AuraRingPoseAt(s.auraPulseSeconds, ringIndex);
+      // 多源质同心分层：每多一环外扩一档，避免同半径重叠。
+      const float radius =
+          profileScale * (0.46f + 0.08f * static_cast<float>(ringIndex)) *
+          pose.radiusScale;
+      const glm::vec3 color = AuraColorFor(source);
+      const glm::mat4 model =
+          glm::translate(glm::mat4(1.0f),
+                         glm::vec3(x, groundYAt(s, x, z) + 0.008f, z)) *
+          glm::scale(glm::mat4(1.0f),
+                     glm::vec3(radius / kRingOuterRadius));
+      s.shader3d.setLight(glm::vec3(0.0f, 1.0f, 0.0f), color * 0.8f,
+                          color * 0.6f);
+      s.shader3d.setAlpha(pose.alpha);
+      s.shader3d.setMVP(vp * model);
+      s.shader3d.setModel(model);
+      s.targetRingMesh.draw();
+      ++ringIndex;
+    }
+  };
+
+  for (const Enemy3DRenderState& enemy : s.enemies3d) {
+    if (!enemy.alive || enemy.auraMask == 0) continue;
+    drawAura(enemy.x, enemy.y, s.enemyAssetProfile.scale, enemy.auraMask);
+  }
+  if (s.trainingTarget.alive && s.trainingTargetAuraMask != 0) {
+    drawAura(s.trainingTarget.x, s.trainingTarget.y,
+             s.enemyAssetProfile.scale, s.trainingTargetAuraMask);
+  }
+
+  s.shader3d.setAlpha(1.0f);
+  glDisable(GL_BLEND);
+  glDepthMask(GL_TRUE);
+  glEnable(GL_CULL_FACE);
+  glCullFace(GL_BACK);
+  // 中性轮廓光/高光字面量与 kNeutral* 常量一致（常量定义在本函数之后）。
+  s.shader3d.setRim({0.62f, 0.72f, 0.85f}, 0.45f);
+  s.shader3d.setSpecular(0.28f, 24.0f);
+}
+
 // 审判光束轨迹预演：吟唱期间在地面铺设从首领指向玩家的脉冲红条，
 // 提前暴露光束路径，让闪避躲避有明确的空间参考。
 static void drawJudgmentBeam(Surface& s, const glm::mat4& vp) {
@@ -1887,6 +1960,8 @@ static void draw3DPhase(Surface& s) {
   drawWindupWarnings(s, vp);
   // 审判光束地面轨迹预演：同样先于角色，结束后恢复状态。
   drawJudgmentBeam(s, vp);
+  // 元素附着光环：附着源质的目标脚下持续元素色环，与预警环同层。
+  drawAuraRings(s, vp);
   s.shader3d.setRim({0.62f, 0.72f, 0.85f}, 0.45f);
   s.shader3d.setSpecular(0.28f, 24.0f);
   // 技能释放冲击波：地面层光环，先于角色绘制，结束后恢复状态。
