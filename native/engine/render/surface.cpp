@@ -446,13 +446,13 @@ static void drawWindupWarnings(Surface& s, const glm::mat4& vp) {
   // 0.8s 呼吸周期：环体缩放与透明度同步脉冲，营造紧迫感。
   const float phase = s.windupPulseSeconds / 0.8f * 6.2831853f;
   const float pulse = 0.5f + 0.5f * std::sin(phase);
-  const glm::vec3 warnColor{1.0f, 0.32f, 0.22f};
-  s.shader3d.setLight(s.lightDir, warnColor * 0.7f, warnColor * 0.5f);
   s.shader3d.setAlpha(0.35f + 0.4f * pulse);
 
   // 环半径略大于接地阴影（scale*0.36）；单位环外半径 0.075+0.014/2=0.082。
   const auto drawRing = [&](float x, float z, float profileScale,
-                            float radiusFactor) {
+                            float radiusFactor, const glm::vec3& color) {
+    // 预警环按原型元素染色（物理红 / 元素混合色），危险语义不变。
+    s.shader3d.setLight(s.lightDir, color * 0.7f, color * 0.5f);
     const float ringScale = profileScale * radiusFactor / 0.082f *
                             (1.0f + 0.08f * pulse);
     const glm::mat4 model =
@@ -468,18 +468,20 @@ static void drawWindupWarnings(Surface& s, const glm::mat4& vp) {
 
   for (const Enemy3DRenderState& enemy : s.enemies3d) {
     if (!enemy.alive || !enemy.windingUp) continue;
-    drawRing(enemy.x, enemy.y, s.enemyAssetProfile.scale, 0.44f);
+    drawRing(enemy.x, enemy.y, s.enemyAssetProfile.scale, 0.44f,
+             WindupWarningColorFor(enemy.archetype));
   }
   for (const WildEnemy3DRenderState& enemy : s.wildEnemies3d) {
     if (!enemy.alive || !enemy.windingUp) continue;
     // 预警环半径随原型缩放同步，覆盖大体型敌人受击范围。
     drawRing(enemy.x, enemy.y,
              s.enemyAssetProfile.scale * enemyScaleByArchetype(enemy.archetype),
-             0.44f);
+             0.44f, WindupWarningColorFor(enemy.archetype));
   }
   if (s.boss3d.active && !s.boss3d.defeated && s.boss3d.windingUp) {
     // 首领体型更大，预警环半径系数略增，覆盖其受击范围。
-    drawRing(s.boss3d.x, s.boss3d.y, s.bossAssetProfile.scale, 0.5f);
+    drawRing(s.boss3d.x, s.boss3d.y, s.bossAssetProfile.scale, 0.5f,
+             BossWindupWarningColorFor(s.boss3d.phase));
   }
 
   s.shader3d.setAlpha(1.0f);

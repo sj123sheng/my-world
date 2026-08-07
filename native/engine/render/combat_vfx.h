@@ -445,3 +445,20 @@ inline BossPhaseVfx BossPhaseVfxFor(int phase) {
       return {{1.0f, 0.92f, 0.55f}, 4, 1.0f};
   }
 }
+
+// 前摇预警环配色（元素可读性 + 危险语义）：物理原型保持警示红，
+// 元素原型按 60% 元素色 + 40% 警示红混合——保留"快闪避"的危险
+// 语义，同时让玩家读出攻击携带的元素系别。
+inline glm::vec3 WindupWarningColorFor(int archetype) {
+  constexpr glm::vec3 kDanger{1.0f, 0.32f, 0.22f};
+  const int element = EnemyElementFor(archetype);
+  if (element < 0) return kDanger;
+  return AuraColorFor(element) * 0.6f + kDanger * 0.4f;
+}
+
+// 首领吟唱预警环配色：随当前阶段主导源质着色（同混合规则），
+// 转阶段后预警环颜色随之切换，强化阶段语言。
+inline glm::vec3 BossWindupWarningColorFor(int phase) {
+  constexpr glm::vec3 kDanger{1.0f, 0.32f, 0.22f};
+  return BossPhaseVfxFor(phase).color * 0.6f + kDanger * 0.4f;
+}

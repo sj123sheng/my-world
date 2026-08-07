@@ -484,6 +484,33 @@ void testWeaponInfusionTintFollowsSource() {
   assert(std::max(current.r, std::max(current.g, current.b)) > bladeMax);
 }
 
+void testWindupWarningColorKeepsDangerAndElement() {
+  const glm::vec3 danger{1.0f, 0.32f, 0.22f};
+  // 物理原型保持警示红。
+  assert(WindupWarningColorFor(0) == danger);
+  assert(WindupWarningColorFor(2) == danger);
+  assert(WindupWarningColorFor(3) == danger);
+  assert(WindupWarningColorFor(99) == danger);
+  // 元素原型混入元素色：与纯红不同，且保留红色危险分量（红通道仍高）。
+  const glm::vec3 priest = WindupWarningColorFor(1);
+  const glm::vec3 caster = WindupWarningColorFor(4);
+  const glm::vec3 elite = WindupWarningColorFor(5);
+  assert(priest != danger);
+  assert(caster != danger);
+  assert(elite != danger);
+  assert(priest != caster);
+  assert(caster != elite);
+  assert(priest.r > 0.5f && caster.r > 0.5f && elite.r > 0.5f);
+  // 首领预警环随阶段着色：三阶段互不相同，红通道保留危险语义。
+  const glm::vec3 bossP1 = BossWindupWarningColorFor(1);
+  const glm::vec3 bossP2 = BossWindupWarningColorFor(2);
+  const glm::vec3 bossP3 = BossWindupWarningColorFor(3);
+  assert(bossP1 != bossP2);
+  assert(bossP2 != bossP3);
+  assert(bossP1 != bossP3);
+  assert(bossP1.r > 0.5f && bossP2.r > 0.5f && bossP3.r > 0.5f);
+}
+
 }  // namespace
 
 int main() {
@@ -512,5 +539,6 @@ int main() {
   testBossPhaseVfxDistinctAndEscalating();
   testEnemySkillElementPerArchetype();
   testWeaponInfusionTintFollowsSource();
+  testWindupWarningColorKeepsDangerAndElement();
   return 0;
 }
