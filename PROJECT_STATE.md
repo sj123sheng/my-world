@@ -176,6 +176,10 @@
   飘字按源质色着色（DamageNumberKind 扩展 Radiance/Current/
   Corruption 三系 kind，元素色优先于大额金色），渲染层 tint 与
   AuraColorFor 全链路同源，对齐原神元素伤害数字语言。
+- 终锻打断爆发：三阶段终锻吟唱中被共鸣终结技打断瞬间
+  （prevFinalForgeCasting 边沿：吟唱中→机制 None 且非超时失败）
+  亮金碎裂爆发（24 颗火花+冲击波+光柱+符阵+80ms 卡肉+重档 FOV+
+  2×FP_ONE 震动），与首领仪式时刻同规格；超时失败不触发。
 
 ## 验证状态
 

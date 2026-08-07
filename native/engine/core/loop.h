@@ -211,6 +211,9 @@ struct Loop {
   int prevComboSegmentForVfx = 0;
   // 上一帧动作状态（特效专用）：检测终结技吟唱上升沿释放大招动效。
   uint8_t prevActionForVfx = 0;
+  // 上一帧终锻机制吟唱中（特效专用）：吟唱中被共鸣终结技打断时
+  // 触发吟唱条碎裂爆发（边沿检测，超时失败不触发）。
+  bool prevFinalForgeCasting = false;
   // 逐实体元素附着掩码（特效专用）：实体 id → 上一步附着掩码，
   // 掩码差分检测新附着位，触发元素施加爆发。
   std::unordered_map<uint32_t, int> prevAuraMasks;

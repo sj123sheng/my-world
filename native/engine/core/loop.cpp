@@ -1786,6 +1786,7 @@ void Loop::resetInput() {
   surface.bossPrevPhase = 0;
   surface.bossPrevActive = false;
   surface.bossPrevDefeated = false;
+  prevFinalForgeCasting = false;
   surface.hitSparks3d.clear();
   surface.playerSlashSeconds = -1.0f;
   surface.playerSlashCombo = 0;
@@ -3324,6 +3325,34 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   if (releaseVfx.bossSlamLanded) {
     vfxSystem.triggerCameraShake(2 * FP_ONE);
   }
+  // 终锻打断边沿：吟唱中被共鸣终结技打断（机制→None 且非超时
+  // 失败）时爆发吟唱条碎裂高光——亮金火花 + 冲击波 + 光柱 + 符阵
+  // + 重镜头反馈，给玩家"成功打断"操作一个高光时刻；超时失败
+  // （failedMechanic）不触发。
+  const BossSnapshot& bossInterruptSnap = encounter.snapshot().boss;
+  const bool finalForgeCasting =
+      bossInterruptSnap.mechanic == BossMechanic::FinalForge &&
+      bossInterruptSnap.castRemainingMs > 0;
+  if (prevFinalForgeCasting && !finalForgeCasting &&
+      bossInterruptSnap.mechanic == BossMechanic::None &&
+      !bossInterruptSnap.failedMechanic && !bossInterruptSnap.defeated) {
+    const float interruptRatio =
+        VfxSizeRatio(surface.bossAssetProfile, ModelKind::Boss);
+    const Vec2 interruptPos{surface.boss3d.x, surface.boss3d.y};
+    spawnHitSparks(surface, interruptPos, 2, 24, 2.2f, 1.6f,
+                   interruptRatio * 1.2f);
+    spawnShockwave(surface, interruptPos, glm::vec3{1.0f, 0.92f, 0.62f},
+                   0.20f * interruptRatio);
+    spawnLightPillar(surface, interruptPos, glm::vec3{1.0f, 0.92f, 0.62f},
+                     0.16f * interruptRatio);
+    spawnSkillRune(surface, interruptPos, glm::vec3{1.0f, 0.92f, 0.62f},
+                   0.12f * interruptRatio);
+    hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + 80, 96);
+    surface.fovPunchMaxOffset = FovPunchMaxOffsetFor(2);
+    surface.resonanceFovSeconds = 0.0f;
+    vfxSystem.triggerCameraShake(2 * FP_ONE);
+  }
+  prevFinalForgeCasting = finalForgeCasting;
 
   GameSnapshot updated = snapshots.read();
   ApplyCombatSnapshot(updated, combat.snapshot());
