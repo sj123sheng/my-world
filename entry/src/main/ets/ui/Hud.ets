@@ -124,6 +124,19 @@ export struct Hud {
             .color('#AA4F86')
             .backgroundColor('rgba(20, 10, 18, 0.6)')
             .animation({ duration: 120, curve: Curve.EaseOut })
+          // 机制吟唱条：首领吟唱审判光束等机制时显示金色进度，
+          // 给玩家明确的打断/闪避时机窗口（此前 bossCastRatio 未渲染）。
+          if (this.bossCastRatio > 0) {
+            Text('机制吟唱')
+              .fontColor('#E8C98A').fontSize(10).letterSpacing(2)
+              .textShadow({ radius: 6, color: '#80AA4F86', offsetX: 0, offsetY: 1 })
+              .margin({ top: 6, bottom: 3 })
+            Progress({ value: this.bossCastRatio * 100, total: 100, type: ProgressType.Linear })
+              .width('40%').height(5)
+              .color('#E8B84B')
+              .backgroundColor('rgba(30, 20, 10, 0.6)')
+              .animation({ duration: 80, curve: Curve.Linear })
+          }
         }
         .alignItems(HorizontalAlign.Center)
         .width('100%')
