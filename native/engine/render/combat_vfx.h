@@ -281,3 +281,29 @@ inline LightPillarPose LightPillarPoseAt(float seconds) {
   pose.alpha = fadeIn * (1.0f - t);
   return pose;
 }
+
+// 武器挥舞粒子拖尾：普攻窗口内发射点沿刀光扫掠角移动（与
+// SlashArcPoseAt 同源），形成原神式武器拖尾。发射位置 =
+// 角色位置 + 极坐标（朝向+angleRadians, radiusFactor×模型缩放）。
+struct WeaponTrailPose {
+  float angleRadians = 0.0f;  // 相对角色朝向的极角（与刀光扫掠角一致）
+  float radiusFactor = 0.0f;  // 拖尾半径（角色模型缩放倍数）
+  float heightFactor = 0.0f;  // 拖尾高度（角色模型缩放倍数）
+  bool active = false;
+};
+
+inline WeaponTrailPose WeaponTrailPoseAt(float seconds, int comboSegment) {
+  const SlashArcPose slash = SlashArcPoseAt(seconds, comboSegment);
+  if (!slash.visible) return {};
+  // 拖尾贴武器轨迹：半径略小于刀光（刀光 2.4），终结段随刀光同步放大。
+  return {slash.sweepRadians, 1.9f * slash.scale, 1.05f, true};
+}
+
+// 拖尾粒子速度：沿扫掠切向（随极角增大方向）+ 轻微上扬；
+// kind>=3 不受重力，拖尾悬浮在挥击轨迹上消散。
+inline void WeaponTrailVelocity(float polarAngle, float tangentSpeed,
+                                float& vx, float& vy, float& vz) {
+  vx = std::cos(polarAngle) * tangentSpeed;
+  vz = -std::sin(polarAngle) * tangentSpeed;
+  vy = 0.006f;
+}

@@ -1497,12 +1497,20 @@ static void drawHitSparks(Surface& s, const glm::mat4& vp) {
       color = {0.45f, 0.85f, 1.0f};            // 5 = 脉流青蓝
     } else if (spark.kind == 6) {
       color = {0.72f, 0.45f, 0.95f};           // 6 = 蚀质暗紫
+    } else if (spark.kind == 7) {
+      color = {1.0f, 0.94f, 0.66f};            // 7 = 主角武器拖尾金白
+    } else if (spark.kind == 8) {
+      color = {1.0f, 0.45f, 0.38f};            // 8 = 敌方武器拖尾红
     }
     s.shader3d.setLight(billboardNormal, color * 0.8f, color * 0.6f);
     // 尾迹粒子低透明度小尺寸，不与战斗火花争夺注意力。
-    s.shader3d.setAlpha(spark.kind == 3 ? t * 0.45f : t);
+    const float alpha = spark.kind == 3    ? t * 0.45f
+                        : spark.kind >= 7 ? t * 0.55f
+                                          : t;
+    s.shader3d.setAlpha(alpha);
     const float baseSize = spark.kind == 2  ? 0.005f
                            : spark.kind == 3 ? 0.0022f
+                           : spark.kind >= 7 ? 0.003f
                            : spark.kind >= 4 ? 0.0042f
                                              : 0.0035f;
     // sizeScale 随归属实体的模型缩放同步，模型放大后特效等大跟随。

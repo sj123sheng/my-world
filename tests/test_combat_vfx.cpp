@@ -283,6 +283,43 @@ void testLightPillarRisesHoldsThenFades() {
   assert(LightPillarPoseAt(LightPillarDuration() - 0.001f).alpha < 0.05f);
 }
 
+void testWeaponTrailFollowsSlashArcWindow() {
+  // 与刀光同窗口：窗口外不发射。
+  assert(!WeaponTrailPoseAt(-0.01f, 1).active);
+  assert(!WeaponTrailPoseAt(SlashArcDuration(), 1).active);
+  assert(!WeaponTrailPoseAt(SlashArcDuration() + 0.1f, 1).active);
+  // 窗口内逐帧：扫掠角与刀光同源，半径为 1.9×刀光缩放。
+  for (int i = 0; i <= 8; ++i) {
+    const float seconds =
+        SlashArcDuration() * static_cast<float>(i) / 8.0f * 0.999f;
+    const WeaponTrailPose trail = WeaponTrailPoseAt(seconds, 1);
+    const SlashArcPose slash = SlashArcPoseAt(seconds, 1);
+    assert(trail.active && slash.visible);
+    assert(nearlyEqual(trail.angleRadians, slash.sweepRadians));
+    assert(nearlyEqual(trail.radiusFactor, 1.9f * slash.scale));
+    assert(trail.heightFactor > 0.0f);
+  }
+  // 终结段刀光放大时拖尾半径同步放大。
+  const WeaponTrailPose finisher =
+      WeaponTrailPoseAt(0.1f, 4);
+  const WeaponTrailPose normal = WeaponTrailPoseAt(0.1f, 1);
+  assert(finisher.radiusFactor > normal.radiusFactor);
+}
+
+void testWeaponTrailVelocityTangential() {
+  float vx = 0.0f, vy = 0.0f, vz = 0.0f;
+  for (const float phi : {0.0f, 0.7f, 1.9f, -1.2f}) {
+    WeaponTrailVelocity(phi, 0.03f, vx, vy, vz);
+    // 切向与径向（sinφ, cosφ）垂直：点积为 0。
+    const float dot = std::sin(phi) * vx + std::cos(phi) * vz;
+    assert(std::abs(dot) < 1e-6f);
+    // 水平速度模长等于切向速度参数，且固定轻微上扬。
+    const float horizontal = std::sqrt(vx * vx + vz * vz);
+    assert(nearlyEqual(horizontal, 0.03f));
+    assert(nearlyEqual(vy, 0.006f));
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -302,5 +339,7 @@ int main() {
   testAuraRingPoseBreathesWithinBounds();
   testAuraParticleVelocityRisesAndDrifts();
   testLightPillarRisesHoldsThenFades();
+  testWeaponTrailFollowsSlashArcWindow();
+  testWeaponTrailVelocityTangential();
   return 0;
 }

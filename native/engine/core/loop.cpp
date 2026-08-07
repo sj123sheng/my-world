@@ -2758,12 +2758,41 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       surface.hitSparks3d.end());
   // 普攻刀光/技能冲击波计时推进与过期清理（时长由纯函数统一决定）。
   if (surface.playerSlashSeconds >= 0.0f) {
+    // 主角武器拖尾：挥击窗口内沿刀光扫掠角每帧发射一颗金白尾迹
+    // 粒子（kind=7 不受重力），形成原神式武器挥舞流光。
+    const WeaponTrailPose playerTrail = WeaponTrailPoseAt(
+        surface.playerSlashSeconds, surface.playerSlashCombo);
+    if (playerTrail.active && surface.hitSparks3d.size() <= 128) {
+      const float scale = surface.playerAssetProfile.scale;
+      const float phi = surface.playerSlashYaw + playerTrail.angleRadians;
+      const float radius = playerTrail.radiusFactor * scale;
+      float vx = 0.0f, vy = 0.0f, vz = 0.0f;
+      WeaponTrailVelocity(phi, radius * 2.5f, vx, vy, vz);
+      surface.hitSparks3d.push_back(
+          {surface.player.x + std::sin(phi) * radius,
+           surface.playerGroundHeight + playerTrail.heightFactor * scale,
+           surface.player.y + std::cos(phi) * radius, vx, vy, vz, 0.2f, 0.2f,
+           7, 1.0f});
+    }
     surface.playerSlashSeconds += dtSeconds;
     if (surface.playerSlashSeconds >= SlashArcDuration()) {
       surface.playerSlashSeconds = -1.0f;
     }
   }
   for (Surface::EnemySlashArc& arc : surface.enemySlashArcs) {
+    // 敌方武器拖尾：每条激活刀光每帧发射一颗红色尾迹粒子（kind=8）。
+    const WeaponTrailPose enemyTrail = WeaponTrailPoseAt(arc.seconds, 0);
+    if (enemyTrail.active && surface.hitSparks3d.size() <= 128) {
+      const float scale = surface.enemyAssetProfile.scale * arc.scale;
+      const float phi = arc.yaw + enemyTrail.angleRadians;
+      const float radius = enemyTrail.radiusFactor * scale;
+      float vx = 0.0f, vy = 0.0f, vz = 0.0f;
+      WeaponTrailVelocity(phi, radius * 2.5f, vx, vy, vz);
+      surface.hitSparks3d.push_back(
+          {arc.x + std::sin(phi) * radius,
+           0.02f + enemyTrail.heightFactor * scale,
+           arc.y + std::cos(phi) * radius, vx, vy, vz, 0.2f, 0.2f, 8, 1.0f});
+    }
     arc.seconds += dtSeconds;
   }
   surface.enemySlashArcs.erase(
