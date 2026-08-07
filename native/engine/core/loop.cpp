@@ -2423,7 +2423,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     if (actionNow == static_cast<uint8_t>(ActionState::Dodging) &&
         prevActionForVfx != static_cast<uint8_t>(ActionState::Dodging)) {
       spawnHitSparks(surface, playerPos, 3, 10, 1.1f, 1.0f, playerRatio);
-      spawnImpactDecal(surface, playerPos, glm::vec3{0.55f, 0.78f, 0.95f},
+      spawnImpactDecal(surface, playerPos, DodgeDustColor(),
                        0.04f * playerRatio);
     }
     prevActionForVfx = actionNow;
@@ -2735,6 +2735,22 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
           spawnHitSparks(surface, *deathPos, 2, 14, 1.8f, 1.4f, deathRatio);
         }
       }
+      continue;
+    }
+    // 完美闪避（原神完美闪避）：无敌帧内闪过敌人攻击瞬间主角周身
+    // 爆出淡蓝火花 + 冲击波，配合中档 FOV 冲击 + 56ms 卡肉替代原版
+    // 慢镜感；蓝闪与闪避音效来自既有 DodgeFlash/音频通道。
+    if (event.type == GameplayEventType::Dodge) {
+      const PerfectDodgeVfx dodgeVfx = PerfectDodgeVfxFor();
+      const Vec2 dodgePos{surface.player.x, surface.player.y};
+      const float dodgeRatio =
+          VfxSizeRatio(surface.playerAssetProfile, ModelKind::Player);
+      spawnHitSparks(surface, dodgePos, dodgeVfx.sparkKind, 14, 1.4f, 1.2f,
+                     dodgeRatio);
+      spawnShockwave(surface, dodgePos, dodgeVfx.color, 0.09f * dodgeRatio);
+      surface.fovPunchMaxOffset = FovPunchMaxOffsetFor(1);
+      surface.resonanceFovSeconds = 0.0f;
+      hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + 56, 96);
       continue;
     }
     // 破韧爆发（原神式破韧）：敌人韧性击碎瞬间在其位置爆发亮金

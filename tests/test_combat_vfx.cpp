@@ -569,6 +569,17 @@ void testSkillCastAccentPerSource() {
   assert(SkillCastAccentFor(99) == SkillCastAccent::None);
 }
 
+void testPerfectDodgeVfxSharesDodgeLanguage() {
+  // 完美闪避与冲刺尘土同淡蓝闪避语言，火花复用移动尾迹 kind。
+  const PerfectDodgeVfx dodge = PerfectDodgeVfxFor();
+  assert(dodge.color == DodgeDustColor());
+  assert(dodge.sparkKind == 3);
+  // 闪避语言色与三系元素色区分，避免与元素反馈混淆。
+  assert(dodge.color != AuraColorFor(0));
+  assert(dodge.color != AuraColorFor(1));
+  assert(dodge.color != AuraColorFor(2));
+}
+
 }  // namespace
 
 int main() {
@@ -602,5 +613,6 @@ int main() {
   testCharacterSwitchVfxFollowsElement();
   testFovPunchTierAmplitudes();
   testSkillCastAccentPerSource();
+  testPerfectDodgeVfxSharesDodgeLanguage();
   return 0;
 }

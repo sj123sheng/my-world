@@ -525,3 +525,18 @@ inline SkillCastAccent SkillCastAccentFor(int source) {
       return SkillCastAccent::None;
   }
 }
+
+// 闪避语言色（原神淡蓝闪避）：冲刺尘土与完美闪避爆发共用，
+// 与全屏蓝闪（DodgeFlash）同族，闪避系反馈一眼可辨。
+inline glm::vec3 DodgeDustColor() { return {0.55f, 0.78f, 0.95f}; }
+
+// 完美闪避 VFX（原神完美闪避语言）：无敌帧内闪过敌人攻击瞬间
+// 主角周身淡蓝火花 + 冲击波；火花复用移动尾迹淡蓝 kind。
+struct PerfectDodgeVfx {
+  glm::vec3 color{0.55f, 0.78f, 0.95f};
+  int sparkKind = 3;
+};
+
+inline PerfectDodgeVfx PerfectDodgeVfxFor() {
+  return {DodgeDustColor(), 3};
+}
