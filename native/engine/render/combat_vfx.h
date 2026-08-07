@@ -480,17 +480,25 @@ struct CharacterSwitchVfx {
   int sparkKind = 0;      // 出场火花 kind（复用既有配色表）
 };
 
-inline CharacterSwitchVfx CharacterSwitchVfxFor(int characterId) {
+// 角色源质归属（原神角色元素语言）：1=辉印 2=脉流 3=蚀质，
+// 其余角色为物理（-1，无元素）。出场/终结技/附魔重置同源消费。
+inline int CharacterSourceFor(int characterId) {
   switch (characterId) {
-    case 1:  // 辉印
-      return {AuraColorFor(0), AuraSparkKindFor(0)};
-    case 2:  // 脉流
-      return {AuraColorFor(1), AuraSparkKindFor(1)};
-    case 3:  // 蚀质
-      return {AuraColorFor(2), AuraSparkKindFor(2)};
-    default:  // 物理/未知：通用金橙
-      return {{1.0f, 0.78f, 0.32f}, 0};
+    case 1:
+      return 0;
+    case 2:
+      return 1;
+    case 3:
+      return 2;
+    default:
+      return -1;
   }
+}
+
+inline CharacterSwitchVfx CharacterSwitchVfxFor(int characterId) {
+  const int source = CharacterSourceFor(characterId);
+  if (source < 0) return {{1.0f, 0.78f, 0.32f}, 0};  // 物理：通用金橙
+  return {AuraColorFor(source), AuraSparkKindFor(source)};
 }
 
 // FOV 冲击幅度分档（镜头重量层级，原神技能分量语言）：
@@ -569,14 +577,7 @@ struct UltimateVfx {
 };
 
 inline UltimateVfx UltimateVfxFor(int characterId) {
-  switch (characterId) {
-    case 1:
-      return {AuraColorFor(0), AuraSparkKindFor(0)};
-    case 2:
-      return {AuraColorFor(1), AuraSparkKindFor(1)};
-    case 3:
-      return {AuraColorFor(2), AuraSparkKindFor(2)};
-    default:
-      return {{1.0f, 0.90f, 0.50f}, 4};
-  }
+  const int source = CharacterSourceFor(characterId);
+  if (source < 0) return {{1.0f, 0.90f, 0.50f}, 4};  // 物理：通用亮金
+  return {AuraColorFor(source), AuraSparkKindFor(source)};
 }

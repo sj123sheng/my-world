@@ -614,6 +614,15 @@ void testUltimateVfxFollowsCharacterElement() {
   assert(UltimateVfxFor(99).sparkKind == 4);
 }
 
+void testCharacterSourceMapping() {
+  // 角色源质归属：三系角色各归其源，其余物理（-1 无元素）。
+  assert(CharacterSourceFor(1) == 0);
+  assert(CharacterSourceFor(2) == 1);
+  assert(CharacterSourceFor(3) == 2);
+  assert(CharacterSourceFor(0) == -1);
+  assert(CharacterSourceFor(99) == -1);
+}
+
 }  // namespace
 
 int main() {
@@ -650,5 +659,6 @@ int main() {
   testPerfectDodgeVfxSharesDodgeLanguage();
   testConvergingSparkMotionArrivesAtCenter();
   testUltimateVfxFollowsCharacterElement();
+  testCharacterSourceMapping();
   return 0;
 }

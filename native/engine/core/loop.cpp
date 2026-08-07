@@ -1519,6 +1519,10 @@ bool Loop::switchCharacter() {
     const size_t nextIndex =
         currentIndex >= owned.size() ? 0 : (currentIndex + 1) % owned.size();
     activeCharacterId = owned[nextIndex].characterId;
+    // 附魔重置：新角色出场时武器附魔切到该角色自身源质（原神切人
+    // 语言：附魔跟随角色而非全局状态）；物理角色无附魔，刀光/
+    // 拖尾/附魔光环随之回到中性。
+    surface.playerSlashSource = CharacterSourceFor(activeCharacterId);
     // 出场动效（原神切人仪式）：按角色所属源质释放对应色火花 +
     // 冲击波 + 光柱 + 符阵（1辉印 2脉流 3蚀质，其余角色通用金橙），
     // 配合轻微 FOV 冲击与卡肉，把"换人"从静默切换拎成一次出场。
