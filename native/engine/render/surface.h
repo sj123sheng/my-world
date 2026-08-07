@@ -281,6 +281,10 @@ struct Surface {
   ActorRenderState player3dAnimation;
   ActorRenderState trainingTarget3dAnimation;
   float playerHitAnimationSeconds = 0.0f;
+  // 主角空中/落地动画计时：空中时长驱动起跳/空中 clip 选取
+  //（PlayerJumpClipFor），落地倒计时播放 Jump_Land。
+  float playerAirSeconds = 0.0f;
+  float playerLandSeconds = 0.0f;
 
   // ---- 伤害飘字字段 ----
   std::vector<DamageNumberRenderState> damageNumbers3d;

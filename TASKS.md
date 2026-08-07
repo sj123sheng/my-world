@@ -167,6 +167,10 @@
       攻击元素着色（InfusedHitSparkKindFor/InfusedHitDecalColorFor
       纯函数，与三系光环同源），攻击元素优先于目标元素，附魔链
       补全到命中点。
+- [x] 主角跳跃/落地/滑翔动画：空中 Jump_Start（前 0.18s）→
+      Jump_Idle，滑翔复用空中姿态，落地 0.25s Jump_Land + 脚下轻尘
+      （PlayerJumpClipFor 纯函数，ResolveClip 偏好链扩展到 Jump，
+      资产缺失逐级回退），补全角色离地运动语言。
 
 ## 下一阶段优先级
 

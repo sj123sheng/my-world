@@ -224,6 +224,12 @@
   纯函数锁定，与 AuraSparkKindFor/AuraColorFor 同源），挥击火花/
   普攻投射物同步染色；攻击元素优先于目标自身元素，无附魔行为
   与升级前完全一致，附魔链（刀光/拖尾/飘字/火花）全链路同色。
+- 主角跳跃/落地/滑翔动画：空中播放 Jump_Start（前 0.18s 蹬地）→
+  Jump_Idle（PlayerJumpClipFor 纯函数锁定），滑翔复用空中姿态，
+  落地边沿播放 0.25s Jump_Land + 脚下淡蓝轻尘（移动语言同源）；
+  RenderAnimation 扩展 Jump/Land，ResolveClip 偏好链扩展到 Jump
+  （缺失资产按 Jump_Full_Short/idle 逐级回退），playerAirSeconds/
+  playerLandSeconds 遭遇重置归零。
 
 ## 验证状态
 

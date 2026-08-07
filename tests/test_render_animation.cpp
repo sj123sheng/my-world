@@ -459,6 +459,32 @@ void testEnemyWeaponKindMatchesAttackLanguage() {
   assert(EnemyWeaponKindFor(99) == 1); // 未知原型回退法杖
 }
 
+void testJumpAndLandAnimationClips() {
+  // 动画意图名：空中 Jump_Idle、落地 Jump_Land。
+  assert(std::string(RenderAnimationName(RenderAnimation::Jump)) ==
+         "Jump_Idle");
+  assert(std::string(RenderAnimationName(RenderAnimation::Land)) ==
+         "Jump_Land");
+  // 起跳 clip 选取：前 0.18s Jump_Start，之后空中 Jump_Idle。
+  assert(std::string(PlayerJumpClipFor(0.0f)) == "Jump_Start");
+  assert(std::string(PlayerJumpClipFor(0.17f)) == "Jump_Start");
+  assert(std::string(PlayerJumpClipFor(0.18f)) == "Jump_Idle");
+  assert(std::string(PlayerJumpClipFor(5.0f)) == "Jump_Idle");
+  // ResolveClip：偏好起跳 clip 存在时优先；缺失按空中/完整跳/
+  // 待机顺序回退。
+  const std::vector<std::string> full{"idle",        "run",
+                                      "Jump_Start",  "Jump_Idle",
+                                      "Jump_Land",   "Jump_Full_Short"};
+  assert(ResolveClip(full, RenderAnimation::Jump, 0, 1.0f, "Jump_Start") ==
+         "Jump_Start");
+  assert(ResolveClip(full, RenderAnimation::Jump, 0, 1.0f) == "Jump_Idle");
+  assert(ResolveClip(full, RenderAnimation::Land, 0, 1.0f) == "Jump_Land");
+  const std::vector<std::string> partial{"idle", "run", "Jump_Full_Short"};
+  assert(ResolveClip(partial, RenderAnimation::Jump, 0, 1.0f) ==
+         "Jump_Full_Short");
+  assert(ResolveClip(partial, RenderAnimation::Land, 0, 1.0f) == "idle");
+}
+
 }  // namespace
 
 int main() {
@@ -477,6 +503,7 @@ int main() {
   testLowSpeedLocomotionPrefersWalkClip();
   testAttackClipDifferentiationBySegmentArchetypeVariant();
   testEnemyWeaponKindMatchesAttackLanguage();
+  testJumpAndLandAnimationClips();
   testAnimationLogOnlyReportsIntentOrResolvedClipChanges();
   testUnavailableRuntimeModelStaysOnFallbackPath();
   testSurfaceStoresLateModelAssetsForContextBoundInitialization();

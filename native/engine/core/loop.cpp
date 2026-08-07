@@ -1778,6 +1778,8 @@ void Loop::resetInput() {
   glideHeld = false;
   surface.player.moving = false;
   surface.playerHitAnimationSeconds = 0.0f;
+  surface.playerAirSeconds = 0.0f;
+  surface.playerLandSeconds = 0.0f;
   surface.enemyHitFlash.clear();
   surface.enemyPrevWindingUp.clear();
   surface.enemyPrevAttacking.clear();
@@ -3367,6 +3369,33 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   surface.player3dAnimation.attackClip = PlayerAttackClipFor(
       PlayerComboSegmentFor(
           static_cast<ActionState>(combatSnapshot.currentAction)));
+  // 跳跃/落地/滑翔动画（KayKit 跳跃语言）：空中播放 Jump_Start
+  //（前 0.18s）/Jump_Idle，滑翔复用空中姿态，落地播放 0.25s
+  // Jump_Land + 脚下轻尘，补全角色离地运动语言。
+  const bool playerAirborneNow =
+      motionState.state == MotionState::Airborne ||
+      motionState.state == MotionState::Gliding;
+  if (playerAirborneNow) {
+    surface.playerAirSeconds += dtSeconds;
+    surface.playerLandSeconds = 0.0f;
+    surface.player3dAnimation.action = RenderAnimation::Jump;
+    surface.player3dAnimation.attackClip =
+        PlayerJumpClipFor(surface.playerAirSeconds);
+  } else {
+    if (surface.playerAirSeconds > 0.0f) {
+      // 落地边沿：启动落地动画 + 脚下淡蓝轻尘（移动语言同源）。
+      surface.playerLandSeconds = 0.25f;
+      spawnHitSparks(surface, {surface.player.x, surface.player.y}, 3, 4,
+                     0.6f, 0.8f, 0.7f);
+    }
+    surface.playerAirSeconds = 0.0f;
+    surface.playerLandSeconds =
+        std::max(0.0f, surface.playerLandSeconds - dtSeconds);
+    if (surface.playerLandSeconds > 0.0f) {
+      surface.player3dAnimation.action = RenderAnimation::Land;
+      surface.player3dAnimation.attackClip.clear();
+    }
+  }
   // 终结技暗场聚焦：吟唱中累加（0.3 封顶），结束后双倍速回落，
   // 渲染层按 UltimateDimAlphaFor 压暗全屏突出爆发（原神爆发演出）。
   if (combatSnapshot.currentAction ==

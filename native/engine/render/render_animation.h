@@ -18,6 +18,8 @@ enum class RenderAnimation {
   Ultimate,
   Hit,
   Death,
+  Jump,
+  Land,
 };
 
 enum class ModelKind {
@@ -147,6 +149,10 @@ inline const char* RenderAnimationName(RenderAnimation animation) {
       return "hit";
     case RenderAnimation::Death:
       return "death";
+    case RenderAnimation::Jump:
+      return "Jump_Idle";
+    case RenderAnimation::Land:
+      return "Jump_Land";
     case RenderAnimation::Idle:
     default:
       return "idle";
@@ -169,6 +175,13 @@ inline const char* PlayerAttackClipFor(int comboSegment) {
     default:
       return "attack";
   }
+}
+
+// 主角跳跃 clip 选取（KayKit 跳跃语言）：离地前 0.18s 播放
+// Jump_Start（蹬地起身动量），之后空中 Jump_Idle；滑翔无专属
+// clip，复用空中姿态（优于空中播放跑动）。
+inline const char* PlayerJumpClipFor(float airSeconds) {
+  return airSeconds < 0.18f ? "Jump_Start" : "Jump_Idle";
 }
 
 // 敌人原型攻击 clip（原型动作语言差异化）：0=RiftClaw 徒手爪击、
@@ -231,8 +244,11 @@ inline std::string ResolveClip(const std::vector<std::string>& clips,
                                const std::string& preferredAttackClip = {}) {
   std::vector<std::string> candidates{RenderAnimationName(animation)};
   // 攻击 clip 差异化：发布侧写入的段数/原型/变体 clip 优先，
-  // 资产缺失时自动回退通用 attack（候选链后段）。
-  if (animation == RenderAnimation::Attack && !preferredAttackClip.empty()) {
+  // 资产缺失时自动回退通用 attack（候选链后段）；跳跃同机制偏好
+  // 起跳/空中 clip（Jump_Start/Jump_Idle）。
+  if ((animation == RenderAnimation::Attack ||
+       animation == RenderAnimation::Jump) &&
+      !preferredAttackClip.empty()) {
     candidates.insert(candidates.begin(), preferredAttackClip);
   }
   // 低速步态分层：低幅度输入优先行走 clip（Walking_B），缺失时
@@ -246,6 +262,13 @@ inline std::string ResolveClip(const std::vector<std::string>& clips,
     candidates.insert(candidates.begin(), "Hit_B");
   } else if (animation == RenderAnimation::Death && (variant & 1) == 1) {
     candidates.insert(candidates.begin(), "Death_B");
+  }
+  // 跳跃/落地回退链：空中缺 Jump_Idle 时回退完整跳，落地缺
+  // Jump_Land 时回退待机；资产无跳跃 clip 时行为与升级前一致。
+  if (animation == RenderAnimation::Jump) {
+    candidates.push_back("Jump_Full_Short");
+  } else if (animation == RenderAnimation::Land) {
+    candidates.push_back("idle");
   }
   if (animation == RenderAnimation::Dodge) {
     candidates.push_back("run");
