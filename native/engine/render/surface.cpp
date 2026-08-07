@@ -1766,6 +1766,10 @@ static void drawDamageNumbers(Surface& s, const glm::mat4& vp) {
       tint = {1.0f, 0.84f, 0.40f};        // Heavy：金色
     } else if (number.kind == 2) {
       tint = {1.0f, 0.45f, 0.40f};        // PlayerHit：红色
+    } else if (number.kind >= 3 && number.kind <= 5) {
+      // 元素附魔伤害：按源质色着色（辉印金白/脉流青蓝/蚀质暗紫），
+      // 与附着/技能/刀光全链路同元素语言。
+      tint = AuraColorFor(number.kind - 3);
     }
     s.shader3d.setLight(billboardNormal, tint * 0.7f, tint * 0.3f);
     s.shader3d.setAlpha(number.alpha);

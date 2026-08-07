@@ -106,5 +106,14 @@ int main() {
   paused.update(0);
   paused.update(-16);
   assert(paused.active()[0].elapsedMs == 0);
+
+  // 元素附魔飘字 kind 原样保留（渲染层据此染源质色）。
+  DamageNumberSystem elemental;
+  elemental.spawn({0.5f, 0.5f}, 10.0f, DamageNumberKind::Radiance);
+  elemental.spawn({0.5f, 0.5f}, 10.0f, DamageNumberKind::Current);
+  elemental.spawn({0.5f, 0.5f}, 10.0f, DamageNumberKind::Corruption);
+  assert(elemental.active()[0].kind == DamageNumberKind::Radiance);
+  assert(elemental.active()[1].kind == DamageNumberKind::Current);
+  assert(elemental.active()[2].kind == DamageNumberKind::Corruption);
   return 0;
 }

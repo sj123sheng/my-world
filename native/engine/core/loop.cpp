@@ -2888,6 +2888,13 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     DamageNumberKind kind = DamageNumberKind::Normal;
     if (event.target == CombatController::kPlayerId) {
       kind = DamageNumberKind::PlayerHit;
+    } else if (event.source == CombatController::kPlayerId &&
+               surface.playerSlashSource >= 0) {
+      // 附魔期间主角伤害按源质着色（原神元素伤害飘字语言）：
+      // 元素色优先于大额金色，与刀光/拖尾染色同状态。
+      kind = static_cast<DamageNumberKind>(
+          static_cast<int>(DamageNumberKind::Radiance) +
+          surface.playerSlashSource);
     } else if (amount >= 15.0f) {
       kind = DamageNumberKind::Heavy;
     }

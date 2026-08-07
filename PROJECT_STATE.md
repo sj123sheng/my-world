@@ -172,6 +172,10 @@
 - 首领仪式时刻相机震动：出场/转阶段/死亡爆发（bossCameraFeedback
   消费点）统一追加 2×FP_ONE 震动，震动矩阵补全（受击/终结段/
   反应/破韧/首领砸地/首领仪式）。
+- 伤害飘字元素着色：主角附魔期间（playerSlashSource>=0）对敌伤害
+  飘字按源质色着色（DamageNumberKind 扩展 Radiance/Current/
+  Corruption 三系 kind，元素色优先于大额金色），渲染层 tint 与
+  AuraColorFor 全链路同源，对齐原神元素伤害数字语言。
 
 ## 验证状态
 

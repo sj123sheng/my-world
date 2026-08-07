@@ -11,6 +11,9 @@ enum class DamageNumberKind : uint8_t {
   Normal,    // 普通伤害（白色）
   Heavy,     // 大额伤害（金色）
   PlayerHit, // 玩家受击（红色）
+  Radiance,    // 辉印附魔伤害（金白，元素飘字语言）
+  Current,     // 脉流附魔伤害（青蓝）
+  Corruption,  // 蚀质附魔伤害（暗紫）
 };
 
 struct DamageNumber {
