@@ -2712,17 +2712,27 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + stopMs, 80);
     }
     damageNumbers.spawn(*position, amount, kind);
-    // 命中火花：与飘字同源，玩家受击用红色火花，其余金橙；
-    // 尺寸按受击实体的模型缩放同步，大体型目标火花更大。
+    // 命中火花：与飘字同源，玩家受击红色、物理命中金橙；命中元素
+    // 敌人时火花按目标元素色爆散（与附着/死亡语言同源），尺寸按
+    // 受击实体的模型缩放同步，大体型目标火花更大。
     const bool playerHit = event.target == CombatController::kPlayerId;
-    spawnHitSparks(surface, *position, playerHit ? 1 : 0, 6, 1.0f, 1.0f,
+    int hitKind = playerHit ? 1 : 0;
+    glm::vec3 decalColor = playerHit ? glm::vec3{1.0f, 0.35f, 0.30f}
+                                     : glm::vec3{1.0f, 0.78f, 0.32f};
+    if (!playerHit) {
+      const std::optional<int> hitElement = resolveEnemyElement(
+          encounter.snapshot(), event.target, &wildSpawn);
+      if (hitElement.has_value()) {
+        hitKind = AuraSparkKindFor(*hitElement);
+        decalColor = AuraColorFor(*hitElement);
+      }
+    }
+    spawnHitSparks(surface, *position, hitKind, 6, 1.0f, 1.0f,
                    actorVfxRatio(surface, event.target));
-    // 命中贴地冲击贴花：玩家受击红色、命中敌方金橙，重击半径更大，
-    // 与火花/飘字共同构成“打中了”的地面反馈。
+    // 命中贴地冲击贴花：玩家受击红色、物理命中金橙、元素命中元素色，
+    // 重击半径更大，与火花/飘字共同构成“打中了”的地面反馈。
     const float decalRatio = actorVfxRatio(surface, event.target);
-    spawnImpactDecal(surface, *position,
-                     playerHit ? glm::vec3{1.0f, 0.35f, 0.30f}
-                               : glm::vec3{1.0f, 0.78f, 0.32f},
+    spawnImpactDecal(surface, *position, decalColor,
                      (amount >= 15.0f ? 0.045f : 0.03f) * decalRatio);
     // 受击方向性粒子：沿攻击方向（攻击者→受击者）喷射，强化打击
     // 方向感；攻击者位置不可解析（环境伤害等）时跳过。
@@ -2732,7 +2742,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       const Vec2 hitDirection = *position - *sourcePosition;
       if (hitDirection.length() > 0.001f) {
         spawnDirectionalSparks(surface, *position, hitDirection,
-                               playerHit ? 1 : 0, 4, 1.0f, decalRatio);
+                               hitKind, 4, 1.0f, decalRatio);
       }
     }
   }

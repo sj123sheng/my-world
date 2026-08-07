@@ -62,6 +62,9 @@
       （WindupWarningColorFor/BossWindupWarningColorFor 纯函数）。
 - [x] 闪避冲刺动效：进入闪避状态瞬间主角脚下爆出淡蓝冲刺尘土 +
       小型贴地贴花（原神冲刺语言，与既有全屏蓝闪呼应）。
+- [x] 命中反馈元素色化：命中元素敌人时火花/贴花/方向粒子按目标
+      元素色爆散（resolveEnemyElement 同源），玩家受击保持红、
+      物理命中保持金橙。
 
 ## 下一阶段优先级
 
