@@ -364,6 +364,8 @@ struct Surface {
   // 首领激活边沿状态：未激活→激活触发出场元素爆发（原神首领
   // 出场仪式），与出场渐入轮廓光同帧叠加。
   bool bossPrevActive = false;
+  // 首领死亡边沿检测（存活→击败）：死亡爆发只触发一次。
+  bool bossPrevDefeated = false;
   bool shader3dReady = false;
   // ---- bloom 后处理资源（原神式技能发光）----
   // 逻辑侧按画质档位写入（高画质 true）；渲染侧据此决定场景是否

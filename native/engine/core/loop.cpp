@@ -610,6 +610,26 @@ EnemyReleaseVfxResult spawnEnemyReleaseVfx(Surface& surface) {
       state = surface.enemyPrevAttacking.erase(state);
     }
   }
+  // 击败边沿（存活→击败）：首领死亡爆发（出场仪式的收尾呼应）——
+  // 击败瞬间周身爆发阶段元素色大火花 + 冲击波 + 光柱 + 符阵，
+  // 镜头反馈与转阶段同源，把击杀拎成高光时刻。
+  if (surface.boss3d.active && surface.boss3d.defeated &&
+      !surface.bossPrevDefeated) {
+    const float deathRatio =
+        actorVfxRatio(surface, EncounterController::kBossId);
+    const Vec2 deathPos{surface.boss3d.x, surface.boss3d.y};
+    const BossPhaseVfx deathVfx = BossPhaseVfxFor(surface.boss3d.phase);
+    spawnHitSparks(surface, deathPos, deathVfx.sparkKind, 32, 2.4f, 1.7f,
+                   deathRatio * deathVfx.scale * 1.3f);
+    spawnShockwave(surface, deathPos, deathVfx.color,
+                   0.24f * deathRatio * deathVfx.scale);
+    spawnLightPillar(surface, deathPos, deathVfx.color,
+                     0.20f * deathRatio * deathVfx.scale);
+    spawnSkillRune(surface, deathPos, deathVfx.color,
+                   0.14f * deathRatio * deathVfx.scale);
+    result.bossCameraFeedback = true;
+  }
+  surface.bossPrevDefeated = surface.boss3d.defeated;
   // 首领：机制吟唱与普攻分别做边沿检测，释放差异化动效。
   if (surface.boss3d.active && !surface.boss3d.defeated) {
     const float bossRatio =
@@ -1761,6 +1781,7 @@ void Loop::resetInput() {
   surface.bossPrevBasicAttacking = false;
   surface.bossPrevPhase = 0;
   surface.bossPrevActive = false;
+  surface.bossPrevDefeated = false;
   surface.hitSparks3d.clear();
   surface.playerSlashSeconds = -1.0f;
   surface.playerSlashCombo = 0;
