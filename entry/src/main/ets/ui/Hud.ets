@@ -121,7 +121,10 @@ export struct Hud {
             .margin({ bottom: 4 })
           Progress({ value: this.bossHpRatio * 100, total: 100, type: ProgressType.Linear })
             .width('54%').height(7)
-            .color('#AA4F86')
+            // 血条随阶段元素着色（原神首领阶段语言）：1=辉印金白、
+            // 2=脉流青蓝、3=蚀质暗紫，与 3D 转阶段 VFX 同色。
+            .color(this.bossPhase == 2 ? '#5FB8E8' :
+              (this.bossPhase == 3 ? '#9A5CC8' : '#E8C98A'))
             .backgroundColor('rgba(20, 10, 18, 0.6)')
             .animation({ duration: 120, curve: Curve.EaseOut })
           // 机制吟唱条：首领吟唱审判光束等机制时显示金色进度，
