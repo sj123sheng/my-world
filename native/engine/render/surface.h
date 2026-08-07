@@ -438,6 +438,15 @@ struct Surface {
     glm::vec3 color{1.0f};
   };
   std::vector<ImpactDecal> impactDecals;
+  // 共鸣爆发光柱：元素反应触发瞬间从受击点升起的垂直光柱。
+  struct LightPillar {
+    float x = 0.0f;
+    float z = 0.0f;
+    float seconds = 0.0f;
+    float maxHeight = 0.0f;
+    glm::vec3 color{1.0f};
+  };
+  std::vector<LightPillar> lightPillars;
 
   // 玩家当前血量比例（0..1）：低于阈值时渲染层绘制边缘脉冲警示。
   float playerHpRatio = 1.0f;

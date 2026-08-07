@@ -448,6 +448,15 @@ void spawnImpactDecal(Surface& surface, Vec2 position, glm::vec3 color,
       {position.x, position.y, 0.0f, maxRadius, color});
 }
 
+// 共鸣爆发光柱：受击点升起垂直元素光柱（上限防溢出），
+// 高度已含实体缩放与反应类型档位。
+void spawnLightPillar(Surface& surface, Vec2 position, glm::vec3 color,
+                      float maxHeight) {
+  if (surface.lightPillars.size() > 16) return;
+  surface.lightPillars.push_back(
+      {position.x, position.y, 0.0f, maxHeight, color});
+}
+
 // 敌方普攻刀光：挥击上升沿生成红色新月弧线，尺寸随原型缩放。
 void spawnEnemySlashArc(Surface& surface, uint32_t id, Vec2 position,
                         float yaw, int archetype) {
@@ -2479,6 +2488,11 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                        0.11f * ratio);
         spawnImpactDecal(surface, *reactionPos, reactionVfx.color,
                          0.05f * ratio);
+        // 共鸣爆发（3）光柱加高 60%，其余反应标准高度。
+        const float pillarBoost =
+            combat.snapshot().currentReaction == 3 ? 1.6f : 1.0f;
+        spawnLightPillar(surface, *reactionPos, reactionVfx.color,
+                         0.13f * ratio * pillarBoost);
       }
       continue;
     }
@@ -2779,6 +2793,16 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                        return decal.seconds >= ImpactDecalDuration();
                      }),
       surface.impactDecals.end());
+  for (Surface::LightPillar& pillar : surface.lightPillars) {
+    pillar.seconds += dtSeconds;
+  }
+  surface.lightPillars.erase(
+      std::remove_if(surface.lightPillars.begin(),
+                     surface.lightPillars.end(),
+                     [](const Surface::LightPillar& pillar) {
+                       return pillar.seconds >= LightPillarDuration();
+                     }),
+      surface.lightPillars.end());
   const CombatSnapshot& combatSnapshot = combat.snapshot();
   surface.player3dAnimation.alive = combatSnapshot.playerHp > 0;
   // 玩家血量比例：供低血量边缘脉冲警示推导强度。

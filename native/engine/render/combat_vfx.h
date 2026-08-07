@@ -246,3 +246,38 @@ inline void AuraParticleVelocity(float angleRadians, float drift, float rise,
   vz = std::sin(angleRadians) * drift;
   vy = rise;
 }
+
+// 共鸣爆发光柱：元素反应触发瞬间从受击点升起的垂直光柱
+// （原神元素爆发语言）。时长 0.55s：0~0.12s 缓出上升到满高，
+// 0.12~0.22s 保持，随后线性衰减归零；透明度前 0.05s 快速淡入
+// 后随全程线性淡出，宽度随高度略膨胀收缩。
+inline float LightPillarDuration() { return 0.55f; }
+
+struct LightPillarPose {
+  float heightScale = 0.0f;  // 光柱高度进度（0..1）
+  float widthScale = 0.7f;   // 宽度系数（随高度 0.7..1.0）
+  float alpha = 0.0f;        // 整体透明度（0..1）
+  bool visible = false;
+};
+
+inline LightPillarPose LightPillarPoseAt(float seconds) {
+  LightPillarPose pose;
+  const float duration = LightPillarDuration();
+  if (seconds < 0.0f || seconds >= duration) return pose;
+  pose.visible = true;
+  const float t = seconds / duration;
+  if (seconds < 0.12f) {
+    // 缓出二次方：升起快、到位柔。
+    const float rise = seconds / 0.12f;
+    pose.heightScale = 1.0f - (1.0f - rise) * (1.0f - rise);
+  } else {
+    // 0.12~0.22s 保持满高，之后线性衰减归零。
+    const float decay =
+        std::clamp((seconds - 0.22f) / (duration - 0.22f), 0.0f, 1.0f);
+    pose.heightScale = 1.0f - decay;
+  }
+  pose.widthScale = 0.7f + 0.3f * pose.heightScale;
+  const float fadeIn = std::clamp(seconds / 0.05f, 0.0f, 1.0f);
+  pose.alpha = fadeIn * (1.0f - t);
+  return pose;
+}

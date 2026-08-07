@@ -1335,6 +1335,59 @@ static void drawImpactDecals(Surface& s, const glm::mat4& vp) {
   s.shader3d.setSpecular(kNeutralSpecularStrength, kNeutralSpecularShininess);
 }
 
+// 共鸣爆发光柱：元素反应触发点的垂直元素光柱（加法混合，双层
+// 外柔晕 + 内亮芯），绕 Y 轴 billboard 始终面向相机；画在角色
+// 层之上让光柱包裹受击实体，深度只读不写。结束后恢复状态。
+static void drawLightPillars(Surface& s, const glm::mat4& vp) {
+  if (s.lightPillars.empty() || s.hpBarQuadMesh.vbo == 0u) return;
+  glDepthMask(GL_FALSE);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+  glDisable(GL_CULL_FACE);
+  s.shader3d.setSkinned(false);
+  s.shader3d.setHasTexture(false);
+  s.shader3d.setToonShading(false, glm::vec3(0.7f), 0.1f, 0.08f);
+  s.shader3d.setOutlinePass(0.0f, glm::vec3(0.0f));
+  s.shader3d.setRim(glm::vec3(0.0f), 0.0f);
+  s.shader3d.setSpecular(0.0f, 1.0f);
+  s.shader3d.setEnvironmentTint(glm::vec3(0.0f), 0.0f);
+  // 绕 Y 轴 billboard：只取相机 yaw，光柱保持垂直不随俯仰倾倒。
+  const float yaw = s.cameraRenderState.yaw();
+  for (const Surface::LightPillar& pillar : s.lightPillars) {
+    const LightPillarPose pose = LightPillarPoseAt(pillar.seconds);
+    if (!pose.visible) continue;
+    const float height = pillar.maxHeight * pose.heightScale;
+    if (height <= 0.0f) continue;
+    const float groundY = groundYAt(s, pillar.x, pillar.z);
+    for (int layer = 0; layer < 2; ++layer) {
+      // 外层柔晕宽而暗、内层亮芯窄而亮，宽度随高度联动。
+      const float width =
+          height * (layer == 0 ? 0.22f : 0.10f) * pose.widthScale;
+      const float layerAlpha =
+          layer == 0 ? pose.alpha * 0.35f : pose.alpha * 0.8f;
+      const glm::mat4 model =
+          glm::translate(glm::mat4(1.0f),
+                         glm::vec3(pillar.x, groundY + height * 0.5f,
+                                   pillar.z)) *
+          glm::rotate(glm::mat4(1.0f), yaw, glm::vec3(0.0f, 1.0f, 0.0f)) *
+          glm::scale(glm::mat4(1.0f), glm::vec3(width, height, 1.0f));
+      s.shader3d.setLight(glm::vec3(0.0f, 1.0f, 0.0f), pillar.color * 0.8f,
+                          pillar.color * 0.6f);
+      s.shader3d.setAlpha(layerAlpha);
+      s.shader3d.setMVP(vp * model);
+      s.shader3d.setModel(model);
+      s.hpBarQuadMesh.draw();
+    }
+  }
+  s.shader3d.setAlpha(1.0f);
+  glDisable(GL_BLEND);
+  glDepthMask(GL_TRUE);
+  glEnable(GL_CULL_FACE);
+  glCullFace(GL_BACK);
+  s.shader3d.setRim(kNeutralRimColor, kNeutralRimStrength);
+  s.shader3d.setSpecular(kNeutralSpecularStrength, kNeutralSpecularShininess);
+}
+
 // 普攻刀光：加法混合的新月弧线，双层叠加（外层柔晕 + 内层亮芯）
 // 模拟渐变刀光；双面可见，深度只读不写。主角为金白刀光、终结段
 // 更亮更大；敌人为红色刀光，尺寸随原型缩放。结束后恢复状态。
@@ -2356,6 +2409,8 @@ static void draw3DPhase(Surface& s) {
   }
 
   // 普攻刀光：角色层之上、锁定环之下，结束后恢复状态。
+  // 共鸣爆发光柱：先于刀光绘制，光柱包裹受击实体。
+  drawLightPillars(s, vp);
   drawSlashArcs(s, vp);
 
   // 锁定目标指示器：绘制在飘字之下、实体之上。

@@ -251,6 +251,38 @@ void testAuraParticleVelocityRisesAndDrifts() {
   assert(std::abs(horizontal - 0.015f) < 1e-5f);
 }
 
+void testLightPillarRisesHoldsThenFades() {
+  // 窗口外不可见。
+  assert(!LightPillarPoseAt(-0.01f).visible);
+  assert(!LightPillarPoseAt(LightPillarDuration()).visible);
+  assert(!LightPillarPoseAt(LightPillarDuration() + 0.1f).visible);
+  // 上升段单调递增，0.12s 到位。
+  float previous = -1.0f;
+  for (int i = 0; i <= 6; ++i) {
+    const LightPillarPose pose =
+        LightPillarPoseAt(0.12f * static_cast<float>(i) / 6.0f);
+    assert(pose.visible);
+    assert(pose.heightScale >= previous);
+    previous = pose.heightScale;
+  }
+  assert(nearlyEqual(LightPillarPoseAt(0.12f).heightScale, 1.0f));
+  // 保持段（0.12~0.22s）维持满高。
+  assert(nearlyEqual(LightPillarPoseAt(0.17f).heightScale, 1.0f));
+  // 衰减段单调递减，终点归零。
+  const LightPillarPose mid = LightPillarPoseAt(0.38f);
+  const LightPillarPose late = LightPillarPoseAt(0.52f);
+  assert(mid.heightScale < 1.0f && mid.heightScale > 0.0f);
+  assert(late.heightScale < mid.heightScale);
+  // 宽度随高度联动（0.7..1.0），透明度全程不超过 1 且终点趋零。
+  for (int i = 0; i < 11; ++i) {
+    const LightPillarPose pose = LightPillarPoseAt(
+        LightPillarDuration() * static_cast<float>(i) / 11.0f);
+    assert(pose.widthScale >= 0.7f && pose.widthScale <= 1.0f + 1e-4f);
+    assert(pose.alpha >= 0.0f && pose.alpha <= 1.0f);
+  }
+  assert(LightPillarPoseAt(LightPillarDuration() - 0.001f).alpha < 0.05f);
+}
+
 }  // namespace
 
 int main() {
@@ -269,5 +301,6 @@ int main() {
   testAuraColorAndSparkKindPerSource();
   testAuraRingPoseBreathesWithinBounds();
   testAuraParticleVelocityRisesAndDrifts();
+  testLightPillarRisesHoldsThenFades();
   return 0;
 }
