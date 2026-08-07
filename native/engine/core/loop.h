@@ -29,6 +29,7 @@
 #include "../../gameplay/world/teleport_anchor.h"
 #include "../../gameplay/world/interactable.h"
 #include "../../gameplay/world/exploration_content.h"
+#include "../../gameplay/world/exploration_gate_collision.h"
 #include "../../gameplay/world/npc_agent.h"
 #include "../../gameplay/quest/quest_system.h"
 #include "../../gameplay/quest/side_quests.h"
@@ -104,6 +105,8 @@ struct Loop {
   StoryDirector storyDirector = StoryDirector::opening();
   InteractableRegistry interactables = InteractableRegistry::openWorldLayout();
   ExplorationContent explorationContent = ExplorationContent::verticalSlice();
+  ExplorationGateCollision explorationGateCollision =
+      ExplorationGateCollision::fromContent(explorationContent);
   InteractableTarget currentInteractable;
   DialogSession dialogSession;
   // NPC 轻量状态机（Phase 4）：巡逻/驻守/对话朝向，只输出位置与朝向。
@@ -145,6 +148,10 @@ struct Loop {
   bool glideHeld = false;
   bool interactQueued = false;
   int32_t chunkLoadCount = 0;
+
+  void refreshExplorationGateCollision();
+  BuildingContact resolvePlayerWorldCollision(float& x, float& y,
+                                              float radius, float height);
   // 野外敌人数量（性能仪表预留）：当前无野外敌人系统恒为 0，
   // 由后续 WildSpawnSystem 写入，PROFILE 打点只读消费。
   int32_t wildEnemyCount = 0;

@@ -1423,6 +1423,23 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
                           explorationCurrentTargetLabelVal);
   napi_set_named_property(env, result, "explorationCurrentTargetDistrict",
                           explorationCurrentTargetDistrictVal);
+  napi_value explorationBlockedGateIdVal, explorationBlockedGateLabelVal,
+      explorationBlockedByPuzzleLabelVal;
+  napi_create_int32(env, snapshot.explorationBlockedGateId,
+                    &explorationBlockedGateIdVal);
+  napi_create_string_utf8(env, snapshot.explorationBlockedGateLabel.c_str(),
+                          snapshot.explorationBlockedGateLabel.size(),
+                          &explorationBlockedGateLabelVal);
+  napi_create_string_utf8(
+      env, snapshot.explorationBlockedByPuzzleLabel.c_str(),
+      snapshot.explorationBlockedByPuzzleLabel.size(),
+      &explorationBlockedByPuzzleLabelVal);
+  napi_set_named_property(env, result, "explorationBlockedGateId",
+                          explorationBlockedGateIdVal);
+  napi_set_named_property(env, result, "explorationBlockedGateLabel",
+                          explorationBlockedGateLabelVal);
+  napi_set_named_property(env, result, "explorationBlockedByPuzzleLabel",
+                          explorationBlockedByPuzzleLabelVal);
   return result;
 }
 

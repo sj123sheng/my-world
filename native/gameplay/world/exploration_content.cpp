@@ -39,7 +39,9 @@ ExplorationContent ExplorationContent::verticalSlice() {
   for (const WorldLayout::WorldTraversalGateDef& gate :
        WorldLayout::kTraversalGates) {
     gates.push_back({gate.id, gate.x, gate.y, std::string(gate.label),
-                     toMotionState(gate.requiredMotion)});
+                     toMotionState(gate.requiredMotion),
+                     {gate.halfExtents[0], gate.halfExtents[1]}, gate.yaw,
+                     gate.top});
   }
   std::vector<ExplorationReward> rewards;
   rewards.reserve(WorldLayout::kExplorationRewardCount);
@@ -191,6 +193,20 @@ bool ExplorationContent::isGateOpen(int32_t id) const {
     if (gates_[i].id == id) return openGates_[i];
   }
   return false;
+}
+
+const TraversalGate* ExplorationContent::gateById(int32_t id) const {
+  for (const TraversalGate& gate : gates_) {
+    if (gate.id == id) return &gate;
+  }
+  return nullptr;
+}
+
+const PuzzleNode* ExplorationContent::puzzleById(int32_t id) const {
+  for (const PuzzleNode& puzzle : puzzles_) {
+    if (puzzle.id == id) return &puzzle;
+  }
+  return nullptr;
 }
 
 bool ExplorationContent::isRewardClaimed(int32_t id) const {

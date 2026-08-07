@@ -5,6 +5,8 @@
 #include "native/gameplay/ai/encounter_controller.h"
 
 #include "native/engine/world/environment_collision.h"
+#include "native/gameplay/world/exploration_content.h"
+#include "native/gameplay/world/exploration_gate_collision.h"
 
 #include <cassert>
 #include <cmath>
@@ -111,6 +113,29 @@ int main() {
     }
     assert(encounter.snapshot().state == EncounterState::Running ||
            encounter.snapshot().state == EncounterState::Defeat);
+  }
+
+  // ---- 动态路径门：同一 resolver 同时阻挡敌人与首领 ----
+  {
+    ExplorationContent content = ExplorationContent::verticalSlice();
+    const ExplorationGateCollision gates =
+        ExplorationGateCollision::fromContent(content);
+    int gateCalls = 0;
+    const std::function<void(Vec2&, float)> resolver =
+        [&gates, &gateCalls](Vec2& position, float radius) {
+          ++gateCalls;
+          gates.resolve(position.x, position.y, radius, 0.0f);
+        };
+
+    Vec2 enemyProbe{0.78f, 0.28f};
+    resolver(enemyProbe, EncounterController::kEnemyCollisionRadius);
+    assert(std::abs(enemyProbe.x - 0.78f) > 1e-5f ||
+           std::abs(enemyProbe.y - 0.28f) > 1e-5f);
+    Vec2 bossProbe{0.78f, 0.28f};
+    resolver(bossProbe, BossController::kBossCollisionRadius);
+    assert(std::abs(bossProbe.x - 0.78f) > 1e-5f ||
+           std::abs(bossProbe.y - 0.28f) > 1e-5f);
+    assert(gateCalls == 2);
   }
 
   return 0;

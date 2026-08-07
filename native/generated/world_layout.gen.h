@@ -111,6 +111,7 @@ struct WorldPuzzleNodeDef {
 
 struct WorldTraversalGateDef {
   int32_t id; float x; float y; std::string_view label; TraversalMotion requiredMotion;
+  float halfExtents[2]; float yaw; float top;
 };
 
 struct WorldExplorationRewardDef {
@@ -355,10 +356,10 @@ constexpr std::array<WorldPuzzleNodeDef, kPuzzleNodeCount> kPuzzleNodes{{
 
 constexpr std::size_t kTraversalGateCount = 4;
 constexpr std::array<WorldTraversalGateDef, kTraversalGateCount> kTraversalGates{{
-    {80, 0.28f, 0.31f, "通往低地的风门"sv, TraversalMotion::Grounded},
-    {81, 0.78f, 0.28f, "湖心浮桥"sv, TraversalMotion::Swimming},
-    {82, 0.88f, 0.09f, "残塔隐藏路径"sv, TraversalMotion::Gliding},
-    {83, 0.52f, 0.4f, "回廊升降台"sv, TraversalMotion::Climbing},
+    {80, 0.28f, 0.31f, "通往低地的风门"sv, TraversalMotion::Grounded, {0.035f, 0.008f}, 0.0f, 0.12f},
+    {81, 0.78f, 0.28f, "湖心浮桥"sv, TraversalMotion::Swimming, {0.035f, 0.008f}, 1.570796f, 0.12f},
+    {82, 0.88f, 0.09f, "残塔隐藏路径"sv, TraversalMotion::Gliding, {0.035f, 0.008f}, 0.785398f, 0.12f},
+    {83, 0.52f, 0.4f, "回廊升降台"sv, TraversalMotion::Climbing, {0.035f, 0.008f}, 0.0f, 0.12f},
 }};
 
 constexpr std::size_t kExplorationRewardCount = 4;

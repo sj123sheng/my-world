@@ -34,6 +34,9 @@ struct TraversalGate {
   float y = 0.0f;
   std::string label;
   MotionState requiredMotion = MotionState::Grounded;
+  float halfExtents[2] = {0.0f, 0.0f};
+  float yaw = 0.0f;
+  float top = 0.0f;
 };
 
 struct ExplorationReward {
@@ -91,6 +94,8 @@ class ExplorationContent {
   bool isPointDiscovered(int32_t poiId) const;
   bool isPuzzleActivated(int32_t puzzleId) const;
   bool isGateOpen(int32_t gateId) const;
+  const TraversalGate* gateById(int32_t gateId) const;
+  const PuzzleNode* puzzleById(int32_t puzzleId) const;
   bool isRewardClaimed(int32_t rewardId) const;
   bool traversalUsed(TraversalAbility ability) const;
   ExplorationProgress progress() const;

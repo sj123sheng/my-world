@@ -207,4 +207,8 @@ struct GameSnapshot {
   int32_t explorationCurrentPoiId = -1;
   std::string explorationCurrentTargetLabel;
   std::string explorationCurrentTargetDistrict;
+  // 玩家接近关闭的路径门时发布阻挡原因；离开或开门后恢复默认值。
+  int32_t explorationBlockedGateId = -1;
+  std::string explorationBlockedGateLabel;
+  std::string explorationBlockedByPuzzleLabel;
 };

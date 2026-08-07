@@ -39,6 +39,9 @@ for (const [label, type] of buttonActions) {
 // 探索动作 7（交互）由 ExplorationHud 发出，8/9（滑翔按下/松开）由 CombatControls 发出。
 const explorationHud = fs.existsSync('entry/src/main/ets/ui/ExplorationHud.ets')
   ? fs.readFileSync('entry/src/main/ets/ui/ExplorationHud.ets', 'utf8') : '';
+assert.match(loop,
+  /const auto enemyPositionResolver[\s\S]*buildingCollision\.resolve[\s\S]*explorationGateCollision\.resolve/,
+  'enemy and boss resolver must apply static buildings before dynamic gates');
 assert.match(explorationHud, /pushAction\(7\);/,
   'ExplorationHud must issue the interact action');
 assert.match(controls, /pushAction\(8\);/,
@@ -724,6 +727,27 @@ assert.match(loop, /anchors\.nearestInteraction/,
   'loop must resolve the nearest teleport anchor interaction');
 assert.match(loop, /camera\.setExploration\(!currentTarget\.has_value\(\)\);/,
   'camera must switch exploration mode without a locked target');
+
+// ---- Stage 16b: closed traversal gate blocking feedback ----
+for (const field of ['explorationBlockedGateId', 'explorationBlockedGateLabel',
+  'explorationBlockedByPuzzleLabel']) {
+  assert.match(gameSnapshot, new RegExp(`\\b${field}\\b`),
+    `GameSnapshot must expose ${field}`);
+  assert.match(nativeBridge, new RegExp(`"${field}"`),
+    `native bridge must marshal ${field}`);
+  assert.match(bridge, new RegExp(`${field}: (?:number|string);`),
+    `Bridge Snapshot must declare ${field}`);
+  assert.match(declarations, new RegExp(`${field}: (?:number|string),`),
+    `Index.d.ts must declare ${field}`);
+  assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
+    `GamePage polling must assign ${field}`);
+}
+assert.match(loop, /explorationContent\.nearestTarget\(\s*\{loop\.surface\.player\.x, loop\.surface\.player\.y\}/,
+  'loop must resolve nearby exploration targets for gate feedback');
+assert.match(explorationHud, /explorationBlockedGateLabel/,
+  'ExplorationHud must render blocked gate feedback');
+assert.match(explorationHud, /路径受阻/,
+  'ExplorationHud must identify a blocked traversal gate');
 
 // ---- Stage 17: content systems (quests, dialog, interactables, save) ----
 for (const field of ['questId', 'questStatus', 'questTitle',

@@ -529,6 +529,22 @@ void ApplyExplorationSnapshot(GameSnapshot& output, const Loop& loop) {
   output.explorationCurrentPoiId = -1;
   output.explorationCurrentTargetLabel.clear();
   output.explorationCurrentTargetDistrict.clear();
+  output.explorationBlockedGateId = -1;
+  output.explorationBlockedGateLabel.clear();
+  output.explorationBlockedByPuzzleLabel.clear();
+  const ExplorationTarget nearbyTarget = loop.explorationContent.nearestTarget(
+      {loop.surface.player.x, loop.surface.player.y}, 0.045f);
+  if (nearbyTarget.kind == ExplorationTargetKind::TraversalGate &&
+      !loop.explorationContent.isGateOpen(nearbyTarget.id)) {
+    output.explorationBlockedGateId = nearbyTarget.id;
+    output.explorationBlockedGateLabel = nearbyTarget.label;
+    for (const PuzzleNode& puzzle : loop.explorationContent.puzzles()) {
+      if (puzzle.opensGateId == nearbyTarget.id) {
+        output.explorationBlockedByPuzzleLabel = puzzle.label;
+        break;
+      }
+    }
+  }
   for (const PointOfInterest& poi : loop.explorationContent.pointsOfInterest()) {
     if (!loop.explorationContent.isPointDiscovered(poi.id) && poi.mainRoute) {
       output.explorationCurrentPoiId = poi.id;
@@ -739,6 +755,22 @@ void ApplyGrowthSnapshot(GameSnapshot& output, const Loop& loop) {
   output.npcOfferQuestTitle = loop.npcOfferQuestTitle;
 }
 }  // namespace
+
+void Loop::refreshExplorationGateCollision() {
+  explorationGateCollision =
+      ExplorationGateCollision::fromContent(explorationContent);
+}
+
+BuildingContact Loop::resolvePlayerWorldCollision(float& x, float& y,
+                                                  float radius, float height) {
+  BuildingContact contact = buildingCollision.resolve(x, y, radius, height);
+  const BuildingContact gateContact =
+      explorationGateCollision.resolve(x, y, radius, height);
+  contact.touching = contact.touching || gateContact.touching;
+  contact.normal = gateContact.touching ? gateContact.normal : contact.normal;
+  contact.highestTop = std::max(contact.highestTop, gateContact.highestTop);
+  return contact;
+}
 
 void Loop::start() {
   withLifecycle([this]() {
@@ -1741,7 +1773,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
 
   // 建筑碰撞：把主角从城墙/塔楼盒内推出并沿墙滑动，不再穿模；
   // 接触信息驱动墙面攀爬判定（高度越过盒顶时不再阻挡，可翻上墙头）。
-  const BuildingContact wallContact = buildingCollision.resolve(
+  const BuildingContact wallContact = resolvePlayerWorldCollision(
       surface.player.x, surface.player.y, playerCollisionRadius,
       motionState.height);
 
@@ -1871,6 +1903,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
         if (explorationContent.activatePuzzle(explorationTarget.id,
                                               motionState.state)) {
           quests.notifyPuzzleActivated(explorationTarget.id);
+          refreshExplorationGateCollision();
           teleportFlashMs = 700;
           audioBridge.playUiSound(SoundEffect::Resonance);
         }
@@ -2156,6 +2189,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   const auto enemyPositionResolver = [this](Vec2& position, float radius) {
     const float ground = terrain.heightAt(position.x, position.y);
     buildingCollision.resolve(position.x, position.y, radius, ground);
+    explorationGateCollision.resolve(position.x, position.y, radius, ground);
   };
   // 野外刷怪（Phase 3.2/3.3）：worldGrid 流式之后推进；生成/回收/重生/
   // 巡逻/LOD 在此结算，敌方命中转发 combat 外部通道。

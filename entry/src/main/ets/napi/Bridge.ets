@@ -175,6 +175,9 @@ export interface Snapshot {
   explorationCurrentPoiId: number;
   explorationCurrentTargetLabel: string;
   explorationCurrentTargetDistrict: string;
+  explorationBlockedGateId: number;
+  explorationBlockedGateLabel: string;
+  explorationBlockedByPuzzleLabel: string;
 }
 
 export const nativeStart = (): void => native.nativeStart();

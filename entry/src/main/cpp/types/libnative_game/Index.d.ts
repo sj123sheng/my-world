@@ -195,5 +195,8 @@ export const pullSnapshot: () => {
   explorationTraversalMask: number,
   explorationCurrentPoiId: number,
   explorationCurrentTargetLabel: string,
-  explorationCurrentTargetDistrict: string
+  explorationCurrentTargetDistrict: string,
+  explorationBlockedGateId: number,
+  explorationBlockedGateLabel: string,
+  explorationBlockedByPuzzleLabel: string,
 };

@@ -174,6 +174,10 @@ int main() {
     assert(gate.id >= 80);
     assert(explorationIds.insert(gate.id).second);
     assert(InBounds(gate.x) && InBounds(gate.y));
+    assert(gate.halfExtents[0] > 0.0f && gate.halfExtents[0] < 0.15f);
+    assert(gate.halfExtents[1] > 0.0f && gate.halfExtents[1] < 0.15f);
+    assert(std::isfinite(gate.yaw));
+    assert(gate.top > 0.0f && gate.top < 0.5f);
   }
   for (const auto& reward : WL::kExplorationRewards) {
     assert(reward.id >= 90);

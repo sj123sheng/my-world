@@ -249,6 +249,16 @@ export function validateWorldLayout(world, schema) {
     if (!motionStates.has(gate.requiredMotion)) {
       errors.push(`traversalGate ${gate.id}: unknown requiredMotion ${gate.requiredMotion}`);
     }
+    if (!Array.isArray(gate.halfExtents) || gate.halfExtents.length !== 2 ||
+        gate.halfExtents.some((value) => !Number.isFinite(value) || value <= 0 || value > 0.15)) {
+      errors.push(`traversalGate ${gate.id}: halfExtents must contain two finite values in (0, 0.15]`);
+    }
+    if (!Number.isFinite(gate.yaw)) {
+      errors.push(`traversalGate ${gate.id}: yaw must be finite`);
+    }
+    if (!Number.isFinite(gate.top) || gate.top <= 0 || gate.top > 0.5) {
+      errors.push(`traversalGate ${gate.id}: top must be finite and in (0, 0.5]`);
+    }
   }
   for (const reward of world.explorationRewards) {
     claimExplorationId('explorationReward', reward.id);
@@ -408,6 +418,7 @@ export function generateWorldLayoutHeader(world) {
   emit();
   emit('struct WorldTraversalGateDef {');
   emit('  int32_t id; float x; float y; std::string_view label; TraversalMotion requiredMotion;');
+  emit('  float halfExtents[2]; float yaw; float top;');
   emit('};');
   emit();
   emit('struct WorldExplorationRewardDef {');
@@ -507,7 +518,7 @@ export function generateWorldLayoutHeader(world) {
   emit(`constexpr std::size_t kTraversalGateCount = ${world.traversalGates.length};`);
   emit('constexpr std::array<WorldTraversalGateDef, kTraversalGateCount> kTraversalGates{{');
   for (const gate of world.traversalGates) {
-    emit(`    {${gate.id}, ${floatLiteral(gate.x)}, ${floatLiteral(gate.y)}, ${cxxStringLiteral(gate.label)}, ${motionLiteral(gate.requiredMotion)}},`);
+    emit(`    {${gate.id}, ${floatLiteral(gate.x)}, ${floatLiteral(gate.y)}, ${cxxStringLiteral(gate.label)}, ${motionLiteral(gate.requiredMotion)}, {${floatLiteral(gate.halfExtents[0])}, ${floatLiteral(gate.halfExtents[1])}}, ${floatLiteral(gate.yaw)}, ${floatLiteral(gate.top)}},`);
   }
   emit('}};');
   emit();

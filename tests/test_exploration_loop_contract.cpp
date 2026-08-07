@@ -1,5 +1,6 @@
 #include "native/engine/core/game_snapshot.h"
 #include "native/gameplay/world/exploration_content.h"
+#include "native/gameplay/world/exploration_gate_collision.h"
 
 #include <cassert>
 #include <string>
@@ -33,5 +34,17 @@ int main() {
   assert(snapshot.explorationTraversalMask == (1 << 4));
   assert(snapshot.explorationCurrentPoiId == 62);
   assert(snapshot.explorationCurrentTargetLabel == "辉光湖畔渡口");
+
+  ExplorationContent gateContent = ExplorationContent::verticalSlice();
+  ExplorationGateCollision gates =
+      ExplorationGateCollision::fromContent(gateContent);
+  float gateX = 0.78f;
+  float gateY = 0.28f;
+  assert(gates.resolve(gateX, gateY, 0.012f, 0.0f).touching);
+  assert(gateContent.activatePuzzle(71, MotionState::Swimming));
+  gates = ExplorationGateCollision::fromContent(gateContent);
+  gateX = 0.78f;
+  gateY = 0.28f;
+  assert(!gates.resolve(gateX, gateY, 0.012f, 0.0f).touching);
   return 0;
 }

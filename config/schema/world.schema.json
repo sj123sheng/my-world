@@ -83,12 +83,15 @@
         "opensGateId": { "type": "integer", "minimum": 80 },
         "rewardId": { "type": "integer", "minimum": 90 } } } },
     "traversalGates": { "type": "array", "minItems": 2, "maxItems": 5, "items": { "type": "object",
-      "required": ["id", "x", "y", "label", "requiredMotion"], "properties": {
+      "required": ["id", "x", "y", "label", "requiredMotion", "halfExtents", "yaw", "top"], "properties": {
         "id": { "type": "integer", "minimum": 80 },
         "x": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
         "y": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
         "label": { "type": "string", "minLength": 1 },
-        "requiredMotion": { "type": "string", "enum": ["Grounded", "Airborne", "Gliding", "Climbing", "Swimming"] } } } },
+        "requiredMotion": { "type": "string", "enum": ["Grounded", "Airborne", "Gliding", "Climbing", "Swimming"] },
+        "halfExtents": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "number", "exclusiveMinimum": 0, "maximum": 0.15 } },
+        "yaw": { "type": "number" },
+        "top": { "type": "number", "exclusiveMinimum": 0, "maximum": 0.5 } } } },
     "explorationRewards": { "type": "array", "minItems": 4, "maxItems": 6, "items": { "type": "object",
       "required": ["id", "label", "sourceTraces", "gold", "fate", "itemId", "itemCount"], "properties": {
         "id": { "type": "integer", "minimum": 90 },

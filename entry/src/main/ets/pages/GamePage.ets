@@ -82,7 +82,9 @@ struct GamePage {
     explorationPoiCount: 0, explorationPuzzleCount: 0,
     explorationRewardCount: 0, explorationGateCount: 0,
     explorationTraversalMask: 0, explorationCurrentPoiId: -1,
-    explorationCurrentTargetLabel: '', explorationCurrentTargetDistrict: ''
+    explorationCurrentTargetLabel: '', explorationCurrentTargetDistrict: '',
+    explorationBlockedGateId: -1, explorationBlockedGateLabel: '',
+    explorationBlockedByPuzzleLabel: ''
   };
   @State tick: number = 0;
   @State hp: number = 100;
@@ -190,6 +192,9 @@ struct GamePage {
   @State explorationCurrentPoiId: number = -1;
   @State explorationCurrentTargetLabel: string = '';
   @State explorationCurrentTargetDistrict: string = '';
+  @State explorationBlockedGateId: number = -1;
+  @State explorationBlockedGateLabel: string = '';
+  @State explorationBlockedByPuzzleLabel: string = '';
   // 养成与抽卡状态（阶段三）。
   @State fateCount: number = 0;
   @State goldCount: number = 0;
@@ -568,6 +573,9 @@ struct GamePage {
         explorationTraversalMask: this.explorationTraversalMask,
         explorationCurrentTargetLabel: this.explorationCurrentTargetLabel,
         explorationCurrentTargetDistrict: this.explorationCurrentTargetDistrict,
+        explorationBlockedGateId: this.explorationBlockedGateId,
+        explorationBlockedGateLabel: this.explorationBlockedGateLabel,
+        explorationBlockedByPuzzleLabel: this.explorationBlockedByPuzzleLabel,
         onOpenGacha: () => { this.gachaOpen = true; },
         onOpenMap: () => { this.mapOpen = true; },
         onOpenInventory: () => { this.inventoryOpen = true; },
@@ -822,6 +830,11 @@ struct GamePage {
           this.snapshot.explorationCurrentTargetLabel;
         this.explorationCurrentTargetDistrict =
           this.snapshot.explorationCurrentTargetDistrict;
+        this.explorationBlockedGateId = this.snapshot.explorationBlockedGateId;
+        this.explorationBlockedGateLabel =
+          this.snapshot.explorationBlockedGateLabel;
+        this.explorationBlockedByPuzzleLabel =
+          this.snapshot.explorationBlockedByPuzzleLabel;
         this.fateCount = this.snapshot.fateCount;
         this.goldCount = this.snapshot.goldCount;
         this.expMaterialCount = this.snapshot.expMaterialCount;
