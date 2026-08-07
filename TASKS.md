@@ -60,6 +60,8 @@
       60% 元素色 + 40% 警示红混合（Priest 金白 / Caster 青蓝 /
       Elite 暗紫），首领预警环随阶段源质着色
       （WindupWarningColorFor/BossWindupWarningColorFor 纯函数）。
+- [x] 闪避冲刺动效：进入闪避状态瞬间主角脚下爆出淡蓝冲刺尘土 +
+      小型贴地贴花（原神冲刺语言，与既有全屏蓝闪呼应）。
 
 ## 下一阶段优先级
 

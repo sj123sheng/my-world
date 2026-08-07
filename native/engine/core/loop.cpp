@@ -2358,6 +2358,14 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       surface.resonanceFovSeconds = 0.0f;
       hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + 64, 96);
     }
+    // 闪避释放动效：进入闪避状态瞬间主角脚下爆出淡蓝冲刺尘土
+    //（原神冲刺语言），与既有全屏蓝闪呼应，强化侧身闪避的灵动感。
+    if (actionNow == static_cast<uint8_t>(ActionState::Dodging) &&
+        prevActionForVfx != static_cast<uint8_t>(ActionState::Dodging)) {
+      spawnHitSparks(surface, playerPos, 3, 10, 1.1f, 1.0f, playerRatio);
+      spawnImpactDecal(surface, playerPos, glm::vec3{0.55f, 0.78f, 0.95f},
+                       0.04f * playerRatio);
+    }
     prevActionForVfx = actionNow;
     // 普攻释放动效：连击段数变化（每次挥击升阶/回绕）时，主角周身
     // 爆出小型挥击火花，并朝目标发射双投射物，命中点由爆裂火花收束。
