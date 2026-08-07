@@ -645,6 +645,21 @@ void testPlayerDeathVfxUsesDangerLanguage() {
   assert(death.color != glm::vec3(1.0f, 0.45f, 0.40f));
 }
 
+void testWindupBodyTintBlendsTowardWarning() {
+  const glm::vec3 base{0.60f, 0.30f, 0.20f};
+  const glm::vec3 warning{1.0f, 0.32f, 0.22f};
+  // 混合比随脉冲在 0.35~0.65 呼吸，结果始终在基色与预警色之间。
+  const glm::vec3 low = WindupBodyTintFor(base, warning, 0.0f);
+  const glm::vec3 high = WindupBodyTintFor(base, warning, 1.0f);
+  assert(low != base && high != base);
+  assert(low != high);
+  // 脉冲越高越靠近预警色（红通道更高）。
+  assert(high.r > low.r);
+  // 越界脉冲自动钳制，不产生外插颜色。
+  assert(WindupBodyTintFor(base, warning, -2.0f) == low);
+  assert(WindupBodyTintFor(base, warning, 5.0f) == high);
+}
+
 }  // namespace
 
 int main() {
@@ -684,5 +699,6 @@ int main() {
   testCharacterSourceMapping();
   testUltimateDimAlphaRampsAndCaps();
   testPlayerDeathVfxUsesDangerLanguage();
+  testWindupBodyTintBlendsTowardWarning();
   return 0;
 }

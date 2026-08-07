@@ -410,6 +410,18 @@ static glm::vec3 hitFlashTint(const glm::vec3& base, float flashSeconds) {
   return base + (glm::vec3(1.0f) - base) * factor;
 }
 
+// 前摇身体染色：前摇期间把基色向预警色混合并随 0.8s 呼吸脉冲
+//（与脚下预警环同周期），在模型本体上给出"它要攻击了"的最直接
+// 前兆；非前摇返回原色。受击闪白在调用侧后置，优先级更高。
+static glm::vec3 windupBodyTint(const Surface& s, const glm::vec3& base,
+                                const glm::vec3& warningColor,
+                                bool windingUp) {
+  if (!windingUp) return base;
+  const float phase = s.windupPulseSeconds / 0.8f * 6.2831853f;
+  const float pulse = 0.5f + 0.5f * std::sin(phase);
+  return WindupBodyTintFor(base, warningColor, pulse);
+}
+
 // 查询实体的剩余闪白时间（无记录返回 0）。
 static float hitFlashRemaining(const Surface& s, uint32_t id) {
   const auto flash = s.enemyHitFlash.find(id);
@@ -2557,14 +2569,17 @@ static void draw3DPhase(Surface& s) {
                                s.enemyAssetProfile.scale,
                                enemy.angle +
                                    s.enemyAssetProfile.yawOffsetRadians),
-              vp, hitFlashTint(enemyColorByArchetype(enemy.archetype),
-                               hitFlashRemaining(s, enemy.id)),
+              vp, hitFlashTint(
+                      windupBodyTint(s, enemyColorByArchetype(enemy.archetype),
+                                     WindupWarningColorFor(enemy.archetype),
+                                     enemy.alive && enemy.windingUp),
+                      hitFlashRemaining(s, enemy.id)),
               s.enemyAssetProfile, hitFlashRemaining(s, enemy.id),
               enemy.id == s.targetMarker3d.targetId,
               DeathFadeAlpha(enemy.deathSeconds), 1.0f,
               "enemy", &s.staffMesh, s.enemyWeaponJoint,
               enemyAttachmentOverride(s, enemy.archetype));
-  }
+    }
   // 野外敌人（Phase 3.2/3.3）：复用同一 drawActor 路径与动画状态表
   // （id 从 5000 起无冲突），按原型缩放与色调区分。
   for (const WildEnemy3DRenderState& enemy : s.wildEnemies3d) {
@@ -2584,8 +2599,11 @@ static void draw3DPhase(Surface& s) {
                                s.enemyAssetProfile.scale * archetypeScale,
                                enemy.angle +
                                    s.enemyAssetProfile.yawOffsetRadians),
-              vp, hitFlashTint(enemyColorByArchetype(enemy.archetype),
-                               hitFlashRemaining(s, enemy.id)),
+              vp, hitFlashTint(
+                      windupBodyTint(s, enemyColorByArchetype(enemy.archetype),
+                                     WindupWarningColorFor(enemy.archetype),
+                                     enemy.alive && enemy.windingUp),
+                      hitFlashRemaining(s, enemy.id)),
               s.enemyAssetProfile, hitFlashRemaining(s, enemy.id),
               enemy.id == s.targetMarker3d.targetId,
               DeathFadeAlpha(enemy.deathSeconds), 1.0f,
@@ -2635,8 +2653,11 @@ static void draw3DPhase(Surface& s) {
                                  s.bossAssetProfile.scale,
                                  s.boss3d.angle +
                                      s.bossAssetProfile.yawOffsetRadians),
-               vp, hitFlashTint(bossColorByPhase(s.boss3d.phase),
-                                s.boss3d.hitAnimationSeconds),
+               vp, hitFlashTint(
+                       windupBodyTint(s, bossColorByPhase(s.boss3d.phase),
+                                      BossWindupWarningColorFor(s.boss3d.phase),
+                                      s.boss3d.windingUp && !s.boss3d.defeated),
+                       s.boss3d.hitAnimationSeconds),
                s.bossAssetProfile, s.boss3d.hitAnimationSeconds,
                s.boss3d.targeted, 1.0f,
                BossEntranceReveal(s.boss3d.entranceSeconds), "boss",

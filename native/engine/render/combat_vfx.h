@@ -598,3 +598,14 @@ struct PlayerDeathVfx {
 };
 
 inline PlayerDeathVfx PlayerDeathVfxFor() { return {}; }
+
+// 前摇身体染色（原神攻击前兆语言）：前摇期间把实体基色向预警色
+// 混合并随脉冲呼吸（混合比 0.35~0.65），预警色与脚下预警环/
+// 聚能粒子同源；pulse01 越界自动钳制。
+inline glm::vec3 WindupBodyTintFor(const glm::vec3& base,
+                                   const glm::vec3& warningColor,
+                                   float pulse01) {
+  const float mix =
+      0.35f + 0.3f * std::clamp(pulse01, 0.0f, 1.0f);
+  return base * (1.0f - mix) + warningColor * mix;
+}
