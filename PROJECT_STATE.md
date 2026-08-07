@@ -73,6 +73,10 @@
   源质，普攻刀光与武器拖尾随之染色（辉印金白/脉流青蓝/蚀质暗紫），
   终结段固定金橙；染色为纯函数 SlashArcColorFor/WeaponTrailKindFor，
   遭遇重置归零。
+- 首领转阶段 VFX（原神首领转阶段仪式）：阶段跳变（1→2→3）瞬间
+  首领周身爆发阶段元素色大火花 + 冲击波 + 光柱 + 旋转符文环，
+  规模随阶段递增（终阶段最猛烈），伴随 80ms 卡肉与 FOV 冲击；
+  配色/规模纯函数 BossPhaseVfxFor 决策，test_combat_vfx 锁定。
 
 ## 验证状态
 
@@ -83,8 +87,8 @@
 - OHOS arm64 `native_game` CMake 目标已完整编译并链接通过。
 - HAP 已完成 ArkTS、Native、打包与签名，Hvigor `assembleHap` 返回 `BUILD SUCCESSFUL`。
 - 卡通着色/描边/刀光/冲击波纯函数与几何断言（test_combat_vfx、test_asset_profile、
-  test_shader_3d、test_mesh、test_bloom_pass）通过；本机 104 个可编译测试 103 通过，
-  现已 104 全部通过（test_loop_integration 基线失败已修复：击杀帧软锁定
+  test_shader_3d、test_mesh、test_bloom_pass）通过；本机 104 个可编译测试全部通过
+  （test_loop_integration 基线失败已修复：击杀帧软锁定
   释放时序 + 出生点侦察敌测试隔离）。
 - 尚未完成真机首次通关时长/卡点测试和 30/45 FPS 三档设备基线。
 - 卡通着色与描边的真机观感、描边宽度/阴影色档位尚未在设备上验收调优。

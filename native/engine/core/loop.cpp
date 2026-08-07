@@ -483,7 +483,9 @@ void spawnEnemySlashArc(Surface& surface, uint32_t id, Vec2 position,
 // 敌方释放动效：与主角侧对称——敌人前摇开始时在自身位置爆出
 // 蓄力火花（施法前兆），挥击瞬间朝主角发射红色投射物并挥出
 // 红色刀光；首领吟唱开始时爆出更大规模的暗紫火花环并向主角齐射束流。
-void spawnEnemyReleaseVfx(Surface& surface) {
+// 返回本步是否发生首领阶段转换（供调用侧施加卡肉/FOV 冲击）。
+bool spawnEnemyReleaseVfx(Surface& surface) {
+  bool bossPhaseTransitioned = false;
   const Vec2 playerPos{surface.player.x, surface.player.y};
   // 遭遇敌人与野外敌人字段布局一致，共用同一边沿检测模板。
   const auto processEnemy = [&surface, playerPos](const auto& enemy) {
@@ -548,6 +550,25 @@ void spawnEnemyReleaseVfx(Surface& surface) {
     const float bossRatio =
         actorVfxRatio(surface, EncounterController::kBossId);
     const Vec2 bossPos{surface.boss3d.x, surface.boss3d.y};
+    // 阶段转换边沿（1→2→3）：首领周身爆发阶段元素色大火花 +
+    // 冲击波 + 光柱 + 符文环（原神首领转阶段仪式）。激活 0→1
+    // 由出场渐入表达，不视为转阶段。
+    if (surface.boss3d.phase != surface.bossPrevPhase) {
+      if (surface.bossPrevPhase > 0 && surface.boss3d.phase > 0) {
+        const BossPhaseVfx phaseVfx =
+            BossPhaseVfxFor(surface.boss3d.phase);
+        spawnHitSparks(surface, bossPos, phaseVfx.sparkKind, 28, 2.2f,
+                       1.6f, bossRatio * phaseVfx.scale * 1.2f);
+        spawnShockwave(surface, bossPos, phaseVfx.color,
+                       0.20f * bossRatio * phaseVfx.scale);
+        spawnLightPillar(surface, bossPos, phaseVfx.color,
+                         0.16f * bossRatio * phaseVfx.scale);
+        spawnSkillRune(surface, bossPos, phaseVfx.color,
+                       0.12f * bossRatio * phaseVfx.scale);
+        bossPhaseTransitioned = true;
+      }
+      surface.bossPrevPhase = surface.boss3d.phase;
+    }
     // 火花 kind → 冲击波环配色（与 drawHitSparks 同源）。
     const auto kindColor = [](int kind) {
       if (kind == 6) return glm::vec3{0.72f, 0.45f, 0.95f};
@@ -591,7 +612,9 @@ void spawnEnemyReleaseVfx(Surface& surface) {
   } else {
     surface.bossPrevWindingUp = false;
     surface.bossPrevBasicAttacking = false;
+    surface.bossPrevPhase = 0;
   }
+  return bossPhaseTransitioned;
 }
 
 // 开放世界探索字段发布：体力、运动状态、分块统计、锚点交互与小地图。
@@ -1655,6 +1678,7 @@ void Loop::resetInput() {
   surface.enemyPrevAttacking.clear();
   surface.bossPrevWindingUp = false;
   surface.bossPrevBasicAttacking = false;
+  surface.bossPrevPhase = 0;
   surface.hitSparks3d.clear();
   surface.playerSlashSeconds = -1.0f;
   surface.playerSlashCombo = 0;
@@ -2930,7 +2954,11 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                 npcVisibleLimitForPerf(performanceGuard.lodLevel()));
   publish3DEncounterState(surface, encounter.snapshot(), dtSeconds);
   // 敌方释放动效：依赖 publish 后的 enemies3d/boss3d 状态做边沿检测。
-  spawnEnemyReleaseVfx(surface);
+  // 首领转阶段镜头语言：更重的卡肉 + FOV 冲击（与元素反应同源）。
+  if (spawnEnemyReleaseVfx(surface)) {
+    hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + 80, 96);
+    surface.resonanceFovSeconds = 0.0f;
+  }
 
   GameSnapshot updated = snapshots.read();
   ApplyCombatSnapshot(updated, combat.snapshot());

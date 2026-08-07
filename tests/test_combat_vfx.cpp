@@ -407,6 +407,35 @@ void testWeaponTrailKindFollowsInfusion() {
   assert(WeaponTrailKindFor(99) == 7);
 }
 
+void testBossPhaseVfxDistinctAndEscalating() {
+  const BossPhaseVfx lockdown = BossPhaseVfxFor(1);
+  const BossPhaseVfx storm = BossPhaseVfxFor(2);
+  const BossPhaseVfx collapse = BossPhaseVfxFor(3);
+  // 三阶段颜色互不相同，且与阶段源质语义一致：
+  // 辉印封锁金白、脉流风暴青蓝、蚀质崩塌暗紫。
+  assert(lockdown.color != storm.color);
+  assert(storm.color != collapse.color);
+  assert(lockdown.color != collapse.color);
+  assert(lockdown.color.r > lockdown.color.b);   // 金白：红主导
+  assert(storm.color.b > storm.color.r);         // 青蓝：蓝主导
+  assert(collapse.color.r > collapse.color.g);   // 暗紫：红主导
+  // 火花 kind 在有效范围（0..10）且各阶段不同。
+  const BossPhaseVfx all[] = {lockdown, storm, collapse};
+  for (const BossPhaseVfx& vfx : all) {
+    assert(vfx.sparkKind >= 0 && vfx.sparkKind <= 10);
+    assert(vfx.scale >= 1.0f);
+  }
+  assert(lockdown.sparkKind != storm.sparkKind);
+  assert(storm.sparkKind != collapse.sparkKind);
+  // 规模随阶段递增（终阶段最猛烈）。
+  assert(storm.scale > lockdown.scale);
+  assert(collapse.scale > storm.scale);
+  // 未知阶段回退辉印配色，不产生黑环。
+  const BossPhaseVfx unknown = BossPhaseVfxFor(99);
+  assert(unknown.color == lockdown.color);
+  assert(unknown.sparkKind == lockdown.sparkKind);
+}
+
 }  // namespace
 
 int main() {
@@ -432,5 +461,6 @@ int main() {
   testSkillRuneSpinsEaseOutAndFades();
   testSlashArcColorFollowsInfusion();
   testWeaponTrailKindFollowsInfusion();
+  testBossPhaseVfxDistinctAndEscalating();
   return 0;
 }

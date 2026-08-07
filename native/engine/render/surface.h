@@ -352,6 +352,9 @@ struct Surface {
   bool bossPrevWindingUp = false;
   // 首领普攻边沿状态：前摇上升沿触发蓄力爆发，挥击下降沿触发齐射。
   bool bossPrevBasicAttacking = false;
+  // 首领阶段边沿状态：阶段号变化（1→2→3）触发元素色阶段转换爆发；
+  // 0 表示未激活/刚激活，激活瞬间（0→1）走出场渐入不触发转换特效。
+  int bossPrevPhase = 0;
   bool shader3dReady = false;
   // ---- bloom 后处理资源（原神式技能发光）----
   // 逻辑侧按画质档位写入（高画质 true）；渲染侧据此决定场景是否

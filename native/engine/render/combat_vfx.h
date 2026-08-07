@@ -380,3 +380,25 @@ inline int WeaponTrailKindFor(int lastSource) {
       return 7;  // 无附魔/辉印金白拖尾
   }
 }
+
+// 首领阶段转换爆发配色（原神首领转阶段语言）：阶段切换瞬间按
+// 该阶段主导源质着色——1=辉印封锁金白、2=脉流风暴青蓝、
+// 3=蚀质崩塌暗紫；终段规模更大，转阶段一阶段比一阶段凶。
+struct BossPhaseVfx {
+  glm::vec3 color{1.0f};  // 冲击波/光柱/符阵颜色
+  int sparkKind = 4;      // 爆发火花 kind（复用既有配色表）
+  float scale = 1.0f;     // 整体规模倍率（终段最强）
+};
+
+inline BossPhaseVfx BossPhaseVfxFor(int phase) {
+  switch (phase) {
+    case 1:  // 辉印封锁：金白
+      return {{1.0f, 0.92f, 0.55f}, 4, 1.0f};
+    case 2:  // 脉流风暴：青蓝
+      return {{0.45f, 0.85f, 1.0f}, 5, 1.15f};
+    case 3:  // 蚀质崩塌：暗紫（终段）
+      return {{0.75f, 0.42f, 0.95f}, 6, 1.3f};
+    default:  // 未知阶段回退辉印配色，不产生黑环。
+      return {{1.0f, 0.92f, 0.55f}, 4, 1.0f};
+  }
+}
