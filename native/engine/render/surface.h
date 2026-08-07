@@ -401,6 +401,15 @@ struct Surface {
     glm::vec3 color{1.0f};
   };
   std::vector<ShockwaveRing> shockwaveRings;
+  // 命中贴地冲击贴花：伤害命中点在受击实体脚下浮现的短促光斑。
+  struct ImpactDecal {
+    float x = 0.0f;
+    float z = 0.0f;
+    float seconds = 0.0f;
+    float maxRadius = 0.0f;
+    glm::vec3 color{1.0f};
+  };
+  std::vector<ImpactDecal> impactDecals;
 
   // 玩家当前血量比例（0..1）：低于阈值时渲染层绘制边缘脉冲警示。
   float playerHpRatio = 1.0f;

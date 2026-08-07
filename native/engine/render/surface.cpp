@@ -1217,6 +1217,51 @@ static void drawShockwaveRings(Surface& s, const glm::mat4& vp) {
   s.shader3d.setSpecular(kNeutralSpecularStrength, kNeutralSpecularShininess);
 }
 
+// 命中贴地冲击贴花：加法混合的地面光斑（单位圆盘 shadowMesh，
+// 半径 0.5），快速扩张后淡出；深度只读不写，双面可见。
+static void drawImpactDecals(Surface& s, const glm::mat4& vp) {
+  if (s.impactDecals.empty() || s.shadowMesh.vbo == 0u) return;
+  glDepthMask(GL_FALSE);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+  glDisable(GL_CULL_FACE);
+  s.shader3d.setSkinned(false);
+  s.shader3d.setHasTexture(false);
+  s.shader3d.setToonShading(false, glm::vec3(0.7f), 0.1f, 0.08f);
+  s.shader3d.setOutlinePass(0.0f, glm::vec3(0.0f));
+  s.shader3d.setRim(glm::vec3(0.0f), 0.0f);
+  s.shader3d.setSpecular(0.0f, 1.0f);
+  s.shader3d.setEnvironmentTint(glm::vec3(0.0f), 0.0f);
+  constexpr float kDiskBaseRadius = 0.5f;  // createDisk(0.5) 基准半径
+  for (const Surface::ImpactDecal& decal : s.impactDecals) {
+    const ImpactDecalPose pose = ImpactDecalPoseAt(decal.seconds);
+    if (!pose.visible) continue;
+    const float radius =
+        decal.maxRadius * (0.35f + 0.65f * pose.radiusScale);
+    const glm::mat4 model =
+        glm::translate(glm::mat4(1.0f),
+                       glm::vec3(decal.x,
+                                 groundYAt(s, decal.x, decal.z) + 0.010f,
+                                 decal.z)) *
+        glm::scale(glm::mat4(1.0f),
+                   glm::vec3(radius / kDiskBaseRadius, 1.0f,
+                             radius / kDiskBaseRadius));
+    s.shader3d.setLight(glm::vec3(0.0f, 1.0f, 0.0f), decal.color * 0.8f,
+                        decal.color * 0.6f);
+    s.shader3d.setAlpha(pose.alpha * 0.6f);
+    s.shader3d.setMVP(vp * model);
+    s.shader3d.setModel(model);
+    s.shadowMesh.draw();
+  }
+  s.shader3d.setAlpha(1.0f);
+  glDisable(GL_BLEND);
+  glDepthMask(GL_TRUE);
+  glEnable(GL_CULL_FACE);
+  glCullFace(GL_BACK);
+  s.shader3d.setRim(kNeutralRimColor, kNeutralRimStrength);
+  s.shader3d.setSpecular(kNeutralSpecularStrength, kNeutralSpecularShininess);
+}
+
 // 普攻刀光：加法混合的新月弧线，双层叠加（外层柔晕 + 内层亮芯）
 // 模拟渐变刀光；双面可见，深度只读不写。主角为金白刀光、终结段
 // 更亮更大；敌人为红色刀光，尺寸随原型缩放。结束后恢复状态。
@@ -1846,6 +1891,8 @@ static void draw3DPhase(Surface& s) {
   s.shader3d.setSpecular(0.28f, 24.0f);
   // 技能释放冲击波：地面层光环，先于角色绘制，结束后恢复状态。
   drawShockwaveRings(s, vp);
+  // 命中贴地冲击贴花：与冲击波同层，先于角色绘制。
+  drawImpactDecals(s, vp);
   s.shader3d.setRim({0.62f, 0.72f, 0.85f}, 0.45f);
   s.shader3d.setSpecular(0.28f, 24.0f);
 

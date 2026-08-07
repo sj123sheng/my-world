@@ -121,6 +121,26 @@ void testSparkStretchGrowsWithSpeedAndClamps() {
   assert(nearlyEqual(turned.angleRadians, 0.0f, 0.001f));
 }
 
+void testImpactDecalExpandsFastThenFades() {
+  const ImpactDecalPose spawn = ImpactDecalPoseAt(0.0f);
+  assert(spawn.visible);
+  assert(nearlyEqual(spawn.radiusScale, 0.0f));
+  assert(nearlyEqual(spawn.alpha, 1.0f));
+  // 前 40% 时长内即完成扩张（贴花快速落地成形）。
+  const ImpactDecalPose expanded =
+      ImpactDecalPoseAt(ImpactDecalDuration() * 0.4f);
+  assert(expanded.visible);
+  assert(nearlyEqual(expanded.radiusScale, 1.0f, 0.01f));
+  // 成形后半径保持，仅透明度继续衰减。
+  const ImpactDecalPose late =
+      ImpactDecalPoseAt(ImpactDecalDuration() * 0.999f);
+  assert(late.visible);
+  assert(nearlyEqual(late.radiusScale, 1.0f, 0.01f));
+  assert(late.alpha < 0.05f);
+  const ImpactDecalPose done = ImpactDecalPoseAt(ImpactDecalDuration());
+  assert(!done.visible);
+}
+
 }  // namespace
 
 int main() {
@@ -133,5 +153,6 @@ int main() {
   testSparkStretchStaysRoundWhenSlow();
   testSparkStretchAlignsWithScreenVelocity();
   testSparkStretchGrowsWithSpeedAndClamps();
+  testImpactDecalExpandsFastThenFades();
   return 0;
 }

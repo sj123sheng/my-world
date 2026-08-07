@@ -410,6 +410,14 @@ void spawnShockwave(Surface& surface, Vec2 position, glm::vec3 color,
       {position.x, position.y, 0.0f, maxRadius, color});
 }
 
+// 命中冲击贴花：受击点脚下生成短促源质色光斑（上限防溢出）。
+void spawnImpactDecal(Surface& surface, Vec2 position, glm::vec3 color,
+                      float maxRadius) {
+  if (surface.impactDecals.size() > 24) return;
+  surface.impactDecals.push_back(
+      {position.x, position.y, 0.0f, maxRadius, color});
+}
+
 // 敌方普攻刀光：挥击上升沿生成红色新月弧线，尺寸随原型缩放。
 void spawnEnemySlashArc(Surface& surface, uint32_t id, Vec2 position,
                         float yaw, int archetype) {
@@ -1597,6 +1605,7 @@ void Loop::resetInput() {
   surface.playerSlashYaw = 0.0f;
   surface.enemySlashArcs.clear();
   surface.shockwaveRings.clear();
+  surface.impactDecals.clear();
   hitStopRemainingMs = 0;
   surface.player3dAnimation.action = RenderAnimation::Idle;
   surface.player3dAnimation.hit = false;
@@ -2436,9 +2445,16 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     damageNumbers.spawn(*position, amount, kind);
     // 命中火花：与飘字同源，玩家受击用红色火花，其余金橙；
     // 尺寸按受击实体的模型缩放同步，大体型目标火花更大。
-    spawnHitSparks(surface, *position,
-                   event.target == CombatController::kPlayerId ? 1 : 0, 6,
-                   1.0f, 1.0f, actorVfxRatio(surface, event.target));
+    const bool playerHit = event.target == CombatController::kPlayerId;
+    spawnHitSparks(surface, *position, playerHit ? 1 : 0, 6, 1.0f, 1.0f,
+                   actorVfxRatio(surface, event.target));
+    // 命中贴地冲击贴花：玩家受击红色、命中敌方金橙，重击半径更大，
+    // 与火花/飘字共同构成“打中了”的地面反馈。
+    const float decalRatio = actorVfxRatio(surface, event.target);
+    spawnImpactDecal(surface, *position,
+                     playerHit ? glm::vec3{1.0f, 0.35f, 0.30f}
+                               : glm::vec3{1.0f, 0.78f, 0.32f},
+                     (amount >= 15.0f ? 0.045f : 0.03f) * decalRatio);
   }
   damageNumbers.update(dtMs);
   // 击杀事件推进任务与秘境：仅统计敌人/首领死亡，排除玩家自身。
@@ -2631,6 +2647,16 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                        return ring.seconds >= ShockwaveDuration();
                      }),
       surface.shockwaveRings.end());
+  for (Surface::ImpactDecal& decal : surface.impactDecals) {
+    decal.seconds += dtSeconds;
+  }
+  surface.impactDecals.erase(
+      std::remove_if(surface.impactDecals.begin(),
+                     surface.impactDecals.end(),
+                     [](const Surface::ImpactDecal& decal) {
+                       return decal.seconds >= ImpactDecalDuration();
+                     }),
+      surface.impactDecals.end());
   const CombatSnapshot& combatSnapshot = combat.snapshot();
   surface.player3dAnimation.alive = combatSnapshot.playerHp > 0;
   // 玩家血量比例：供低血量边缘脉冲警示推导强度。

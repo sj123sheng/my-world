@@ -107,3 +107,26 @@ inline SparkStretch SparkStretchFor(float vx, float vy, float vz,
   result.stretch = std::min(1.0f + planeSpeed * 14.0f, 3.2f);
   return result;
 }
+
+// 命中贴地冲击贴花：伤害命中瞬间在受击点地面浮现的源质色光斑，
+// 比释放冲击波更短促（0.35s）、半径更小，快速扩张后淡出，
+// 与火花/飘字共同构成“打中了”的地面反馈。
+inline float ImpactDecalDuration() { return 0.35f; }
+
+struct ImpactDecalPose {
+  float radiusScale = 0.0f;  // 相对最大半径的扩张进度（0..1）
+  float alpha = 0.0f;        // 整体透明度（0..1）
+  bool visible = false;
+};
+
+inline ImpactDecalPose ImpactDecalPoseAt(float seconds) {
+  ImpactDecalPose pose;
+  const float duration = ImpactDecalDuration();
+  if (seconds < 0.0f || seconds >= duration) return pose;
+  const float t = seconds / duration;
+  pose.visible = true;
+  // 前 40% 快速扩张到满半径，之后保持半径仅淡出，避免贴花“游走”。
+  pose.radiusScale = SlashArcEaseOutCubic(std::min(t / 0.4f, 1.0f));
+  pose.alpha = 1.0f - t;
+  return pose;
+}
