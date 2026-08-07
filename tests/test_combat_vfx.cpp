@@ -511,6 +511,22 @@ void testWindupWarningColorKeepsDangerAndElement() {
   assert(bossP1.r > 0.5f && bossP2.r > 0.5f && bossP3.r > 0.5f);
 }
 
+void testTargetMarkerColorBlendsElement() {
+  const glm::vec3 marker{0.35f, 0.85f, 0.80f};
+  // 无元素（物理/首领/假人）保持青蓝锁定色。
+  assert(TargetMarkerColorFor(-1) == marker);
+  // 元素目标混入元素色：与纯青蓝不同，三系互不相同。
+  const glm::vec3 radiance = TargetMarkerColorFor(0);
+  const glm::vec3 current = TargetMarkerColorFor(1);
+  const glm::vec3 corruption = TargetMarkerColorFor(2);
+  assert(radiance != marker);
+  assert(current != marker);
+  assert(corruption != marker);
+  assert(radiance != current);
+  assert(current != corruption);
+  assert(radiance != corruption);
+}
+
 }  // namespace
 
 int main() {
@@ -540,5 +556,6 @@ int main() {
   testEnemySkillElementPerArchetype();
   testWeaponInfusionTintFollowsSource();
   testWindupWarningColorKeepsDangerAndElement();
+  testTargetMarkerColorBlendsElement();
   return 0;
 }

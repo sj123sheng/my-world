@@ -195,6 +195,9 @@ struct TargetMarkerRenderState {
   // 当前锁定目标的 EntityId（0 = 无锁定）：渲染层据此给对应
   // 敌人轮廓光常亮增强，与脚下指示环形成双重锁定反馈。
   uint32_t targetId = 0;
+  // 锁定目标元素归属（0=辉印 1=脉流 2=蚀质，-1=无元素）：
+  // 指示环按 TargetMarkerColorFor 混入元素色提示目标系别。
+  int element = -1;
 };
 
 // 伤害飘字渲染状态：逻辑侧每帧生成，渲染层绘制为面向相机的

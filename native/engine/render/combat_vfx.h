@@ -462,3 +462,12 @@ inline glm::vec3 BossWindupWarningColorFor(int phase) {
   constexpr glm::vec3 kDanger{1.0f, 0.32f, 0.22f};
   return BossPhaseVfxFor(phase).color * 0.6f + kDanger * 0.4f;
 }
+
+// 锁定标记配色（元素提示）：默认青蓝（"已锁定"语义）；锁定元素
+// 目标时混入 45% 元素色，锁定同时提示目标系别，与全链路元素语言
+// 一致；element<0（物理/首领/假人）保持青蓝。
+inline glm::vec3 TargetMarkerColorFor(int element) {
+  constexpr glm::vec3 kMarker{0.35f, 0.85f, 0.80f};
+  if (element < 0) return kMarker;
+  return kMarker * 0.55f + AuraColorFor(element) * 0.45f;
+}

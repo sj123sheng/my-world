@@ -2446,6 +2446,15 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       surface.targetMarker3d.active = false;
       surface.targetMarker3d.targetId = 0u;
     }
+    // 锁定标记元素归属：供渲染层把指示环混入目标元素色。
+    const std::optional<int> markerElement = resolveEnemyElement(
+        encounter.snapshot(), static_cast<EntityId>(currentTarget->id),
+        &wildSpawn);
+    surface.targetMarker3d.element =
+        markerElement.has_value() ? *markerElement : -1;
+  }
+  if (!currentTarget.has_value()) {
+    surface.targetMarker3d.element = -1;
   }
   surface.targetMarker3d.pulsePhase =
       static_cast<float>(combatTimeMs_.load()) * 0.004f;

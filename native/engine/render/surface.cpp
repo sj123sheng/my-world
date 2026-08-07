@@ -1281,7 +1281,9 @@ static void drawTargetMarker(Surface& s, const glm::mat4& vp) {
                                s.targetMarker3d.z)) *
       glm::scale(glm::mat4(1.0f), glm::vec3(scalePulse));
   // 青金色锁定环，背光面仍保持可见。
-  const glm::vec3 markerColor{0.35f, 0.85f, 0.80f};
+  // 锁定元素目标时指示环混入元素色，提示目标系别。
+  const glm::vec3 markerColor =
+      TargetMarkerColorFor(s.targetMarker3d.element);
   s.shader3d.setMVP(vp * model);
   s.shader3d.setModel(model);
   s.shader3d.setSkinned(false);
