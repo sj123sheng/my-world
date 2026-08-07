@@ -510,7 +510,8 @@ void spawnEnemySlashArc(Surface& surface, uint32_t id, Vec2 position,
 // 红色刀光；首领吟唱开始时爆出更大规模的暗紫火花环并向主角齐射束流。
 // 返回本步是否发生首领阶段转换（供调用侧施加卡肉/FOV 冲击）。
 bool spawnEnemyReleaseVfx(Surface& surface) {
-  bool bossPhaseTransitioned = false;
+  // 首领戏剧性事件（出场/转阶段）→ 调用侧施加卡肉 + FOV 冲击。
+  bool bossCameraFeedback = false;
   const Vec2 playerPos{surface.player.x, surface.player.y};
   // 遭遇敌人与野外敌人字段布局一致，共用同一边沿检测模板。
   const auto processEnemy = [&surface, playerPos](const auto& enemy) {
@@ -579,6 +580,23 @@ bool spawnEnemyReleaseVfx(Surface& surface) {
     const float bossRatio =
         actorVfxRatio(surface, EncounterController::kBossId);
     const Vec2 bossPos{surface.boss3d.x, surface.boss3d.y};
+    // 出场边沿（未激活→激活）：首领周身爆发阶段元素色大火花 +
+    // 冲击波 + 光柱 + 符文环（原神首领出场仪式），与出场渐入轮廓
+    // 光同帧叠加；镜头反馈与转阶段同源。
+    if (!surface.bossPrevActive) {
+      const BossPhaseVfx entranceVfx =
+          BossPhaseVfxFor(surface.boss3d.phase);
+      spawnHitSparks(surface, bossPos, entranceVfx.sparkKind, 24, 2.0f,
+                     1.5f, bossRatio * entranceVfx.scale * 1.1f);
+      spawnShockwave(surface, bossPos, entranceVfx.color,
+                     0.18f * bossRatio * entranceVfx.scale);
+      spawnLightPillar(surface, bossPos, entranceVfx.color,
+                       0.14f * bossRatio * entranceVfx.scale);
+      spawnSkillRune(surface, bossPos, entranceVfx.color,
+                     0.11f * bossRatio * entranceVfx.scale);
+      bossCameraFeedback = true;
+    }
+    surface.bossPrevActive = true;
     // 阶段转换边沿（1→2→3）：首领周身爆发阶段元素色大火花 +
     // 冲击波 + 光柱 + 符文环（原神首领转阶段仪式）。激活 0→1
     // 由出场渐入表达，不视为转阶段。
@@ -594,7 +612,7 @@ bool spawnEnemyReleaseVfx(Surface& surface) {
                          0.16f * bossRatio * phaseVfx.scale);
         spawnSkillRune(surface, bossPos, phaseVfx.color,
                        0.12f * bossRatio * phaseVfx.scale);
-        bossPhaseTransitioned = true;
+        bossCameraFeedback = true;
       }
       surface.bossPrevPhase = surface.boss3d.phase;
     }
@@ -642,8 +660,9 @@ bool spawnEnemyReleaseVfx(Surface& surface) {
     surface.bossPrevWindingUp = false;
     surface.bossPrevBasicAttacking = false;
     surface.bossPrevPhase = 0;
+    surface.bossPrevActive = false;
   }
-  return bossPhaseTransitioned;
+  return bossCameraFeedback;
 }
 
 // 开放世界探索字段发布：体力、运动状态、分块统计、锚点交互与小地图。
@@ -1708,6 +1727,7 @@ void Loop::resetInput() {
   surface.bossPrevWindingUp = false;
   surface.bossPrevBasicAttacking = false;
   surface.bossPrevPhase = 0;
+  surface.bossPrevActive = false;
   surface.hitSparks3d.clear();
   surface.playerSlashSeconds = -1.0f;
   surface.playerSlashCombo = 0;
@@ -3079,7 +3099,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                 npcVisibleLimitForPerf(performanceGuard.lodLevel()));
   publish3DEncounterState(surface, encounter.snapshot(), dtSeconds);
   // 敌方释放动效：依赖 publish 后的 enemies3d/boss3d 状态做边沿检测。
-  // 首领转阶段镜头语言：更重的卡肉 + FOV 冲击（与元素反应同源）。
+  // 首领出场/转阶段镜头语言：更重的卡肉 + FOV 冲击（与元素反应同源）。
   if (spawnEnemyReleaseVfx(surface)) {
     hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + 80, 96);
     surface.resonanceFovSeconds = 0.0f;
