@@ -507,3 +507,21 @@ inline float FovPunchMaxOffsetFor(int triggerTier) {
       return -7.0f;
   }
 }
+
+// 元素技能释放点缀（三系技能剪影差异化，原神技能语言）：
+// 辉印=光柱（辉印降临）、脉流=束流（流动投射物增强）、
+// 蚀质=贴地蚀斑（腐蚀染地）；未知源质无点缀。
+enum class SkillCastAccent { None, Pillar, Stream, Decal };
+
+inline SkillCastAccent SkillCastAccentFor(int source) {
+  switch (source) {
+    case 0:
+      return SkillCastAccent::Pillar;
+    case 1:
+      return SkillCastAccent::Stream;
+    case 2:
+      return SkillCastAccent::Decal;
+    default:
+      return SkillCastAccent::None;
+  }
+}

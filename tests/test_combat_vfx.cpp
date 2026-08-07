@@ -559,6 +559,16 @@ void testFovPunchTierAmplitudes() {
   assert(FovPunchMaxOffsetFor(99) == heavy);
 }
 
+void testSkillCastAccentPerSource() {
+  // 三系技能剪影差异化：辉印光柱 / 脉流束流 / 蚀质贴花，互不相同。
+  assert(SkillCastAccentFor(0) == SkillCastAccent::Pillar);
+  assert(SkillCastAccentFor(1) == SkillCastAccent::Stream);
+  assert(SkillCastAccentFor(2) == SkillCastAccent::Decal);
+  // 未知源质不产生点缀，避免黑环/空特效。
+  assert(SkillCastAccentFor(-1) == SkillCastAccent::None);
+  assert(SkillCastAccentFor(99) == SkillCastAccent::None);
+}
+
 }  // namespace
 
 int main() {
@@ -591,5 +601,6 @@ int main() {
   testTargetMarkerColorBlendsElement();
   testCharacterSwitchVfxFollowsElement();
   testFovPunchTierAmplitudes();
+  testSkillCastAccentPerSource();
   return 0;
 }

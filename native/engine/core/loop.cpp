@@ -2316,6 +2316,27 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
         encounter.snapshot().boss.hp > 0) {
       releaseTarget = Vec2{surface.boss3d.x, surface.boss3d.y};
     }
+    // 三系技能释放点缀（剪影差异化，原神技能语言）：辉印=光柱
+    // （辉印降临）、脉流=追加束流（流动投射物）、蚀质=贴地蚀斑，
+    // 由 SkillCastAccentFor 同源驱动，三技能释放轮廓不再同形。
+    const auto applySkillAccent = [&](int source, glm::vec3 color) {
+      switch (SkillCastAccentFor(source)) {
+        case SkillCastAccent::Pillar:
+          spawnLightPillar(surface, playerPos, color, 0.09f * playerRatio);
+          break;
+        case SkillCastAccent::Stream:
+          if (releaseTarget.has_value()) {
+            spawnAttackProjectiles(surface, playerPos, *releaseTarget,
+                                   AuraSparkKindFor(source), playerRatio, 3);
+          }
+          break;
+        case SkillCastAccent::Decal:
+          spawnImpactDecal(surface, playerPos, color, 0.06f * playerRatio);
+          break;
+        case SkillCastAccent::None:
+          break;
+      }
+    };
     if (skillSnapshot.radianceCooldownMs > 0 && prevRadianceCdMs <= 0) {
       spawnHitSparks(surface, playerPos, 4, 12, 1.3f, 1.3f, playerRatio);
       if (releaseTarget.has_value()) {
@@ -2326,6 +2347,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                      0.07f * playerRatio);
       spawnSkillRune(surface, playerPos, glm::vec3{1.0f, 0.96f, 0.72f},
                      0.05f * playerRatio);
+      applySkillAccent(0, glm::vec3{1.0f, 0.96f, 0.72f});
       // 元素技能镜头语言：轻档 FOV 冲击 + 40ms 卡肉（重于普攻、
       // 轻于终结技/反应），把技能释放从普攻节奏里分层拎出。
       surface.fovPunchMaxOffset = FovPunchMaxOffsetFor(0);
@@ -2344,6 +2366,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                      0.07f * playerRatio);
       spawnSkillRune(surface, playerPos, glm::vec3{0.45f, 0.85f, 1.0f},
                      0.05f * playerRatio);
+      applySkillAccent(1, glm::vec3{0.45f, 0.85f, 1.0f});
       surface.fovPunchMaxOffset = FovPunchMaxOffsetFor(0);
       surface.resonanceFovSeconds = 0.0f;
       hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + 40, 96);
@@ -2360,6 +2383,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                      0.07f * playerRatio);
       spawnSkillRune(surface, playerPos, glm::vec3{0.72f, 0.45f, 0.95f},
                      0.05f * playerRatio);
+      applySkillAccent(2, glm::vec3{0.72f, 0.45f, 0.95f});
       surface.fovPunchMaxOffset = FovPunchMaxOffsetFor(0);
       surface.resonanceFovSeconds = 0.0f;
       hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + 40, 96);

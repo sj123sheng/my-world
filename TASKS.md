@@ -94,6 +94,9 @@
       普攻变体（重劈/束流/旋转冲击）各用专用 clip
       （PlayerAttackClipFor/EnemyAttackClipFor/BossAttackClipFor
       纯函数），缺失自动回退通用 attack。
+- [x] 三系技能释放剪影差异化：辉印=光柱（辉印降临）、脉流=追加
+      束流（流动投射物）、蚀质=贴地蚀斑（SkillCastAccentFor
+      纯函数），三技能释放轮廓可剪影区分。
 
 ## 下一阶段优先级
 

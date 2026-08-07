@@ -131,6 +131,9 @@
   变体（重劈/束流/旋转冲击）各用专用 KayKit clip
   （PlayerAttackClipFor/EnemyAttackClipFor/BossAttackClipFor 纯函数
   锁定），ActorRenderState.attackClip 偏好 + ResolveClip 缺失回退。
+- 三系技能释放剪影差异化：辉印=光柱（辉印降临）、脉流=追加束流
+  （流动投射物）、蚀质=贴地蚀斑（SkillCastAccentFor 纯函数锁定），
+  三技能释放轮廓可剪影区分，不再仅颜色不同。
 
 ## 验证状态
 
