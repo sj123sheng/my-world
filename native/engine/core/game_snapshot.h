@@ -211,4 +211,9 @@ struct GameSnapshot {
   int32_t explorationBlockedGateId = -1;
   std::string explorationBlockedGateLabel;
   std::string explorationBlockedByPuzzleLabel;
+  int32_t explorationFeedbackType = 0;
+  int32_t explorationFeedbackId = -1;
+  std::string explorationFeedbackTitle;
+  std::string explorationFeedbackSubtitle;
+  Tick explorationFeedbackRemainingMs = 0;
 };

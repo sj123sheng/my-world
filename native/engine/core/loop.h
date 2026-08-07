@@ -30,6 +30,7 @@
 #include "../../gameplay/world/interactable.h"
 #include "../../gameplay/world/exploration_content.h"
 #include "../../gameplay/world/exploration_gate_collision.h"
+#include "../../gameplay/world/exploration_feedback.h"
 #include "../../gameplay/world/npc_agent.h"
 #include "../../gameplay/quest/quest_system.h"
 #include "../../gameplay/quest/side_quests.h"
@@ -107,6 +108,7 @@ struct Loop {
   ExplorationContent explorationContent = ExplorationContent::verticalSlice();
   ExplorationGateCollision explorationGateCollision =
       ExplorationGateCollision::fromContent(explorationContent);
+  ExplorationFeedbackState explorationFeedback;
   InteractableTarget currentInteractable;
   DialogSession dialogSession;
   // NPC 轻量状态机（Phase 4）：巡逻/驻守/对话朝向，只输出位置与朝向。
@@ -150,6 +152,10 @@ struct Loop {
   int32_t chunkLoadCount = 0;
 
   void refreshExplorationGateCollision();
+  void publishExplorationFeedback(ExplorationFeedbackType type, int32_t id,
+                                  const std::string& title,
+                                  const std::string& subtitle,
+                                  Tick durationMs);
   BuildingContact resolvePlayerWorldCollision(float& x, float& y,
                                               float radius, float height);
   // 野外敌人数量（性能仪表预留）：当前无野外敌人系统恒为 0，

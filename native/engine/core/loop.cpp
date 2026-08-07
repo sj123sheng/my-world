@@ -532,6 +532,12 @@ void ApplyExplorationSnapshot(GameSnapshot& output, const Loop& loop) {
   output.explorationBlockedGateId = -1;
   output.explorationBlockedGateLabel.clear();
   output.explorationBlockedByPuzzleLabel.clear();
+  const ExplorationFeedback& feedback = loop.explorationFeedback.snapshot();
+  output.explorationFeedbackType = static_cast<int32_t>(feedback.type);
+  output.explorationFeedbackId = feedback.id;
+  output.explorationFeedbackTitle = feedback.title;
+  output.explorationFeedbackSubtitle = feedback.subtitle;
+  output.explorationFeedbackRemainingMs = feedback.remainingMs;
   const ExplorationTarget nearbyTarget = loop.explorationContent.nearestTarget(
       {loop.surface.player.x, loop.surface.player.y}, 0.045f);
   if (nearbyTarget.kind == ExplorationTargetKind::TraversalGate &&
@@ -759,6 +765,13 @@ void ApplyGrowthSnapshot(GameSnapshot& output, const Loop& loop) {
 void Loop::refreshExplorationGateCollision() {
   explorationGateCollision =
       ExplorationGateCollision::fromContent(explorationContent);
+}
+
+void Loop::publishExplorationFeedback(ExplorationFeedbackType type, int32_t id,
+                                      const std::string& title,
+                                      const std::string& subtitle,
+                                      Tick durationMs) {
+  explorationFeedback.publish(type, id, title, subtitle, durationMs);
 }
 
 BuildingContact Loop::resolvePlayerWorldCollision(float& x, float& y,
@@ -1864,6 +1877,9 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   if (explorationTarget.kind == ExplorationTargetKind::PointOfInterest &&
       explorationContent.discoverPoint(explorationTarget.id)) {
     quests.notifyPointReached(explorationTarget.id);
+    publishExplorationFeedback(ExplorationFeedbackType::PoiDiscovered,
+                               explorationTarget.id, explorationTarget.label,
+                               "发现新地标", 1200);
     teleportFlashMs = std::max<Tick>(teleportFlashMs, 300);
     audioBridge.playUiSound(SoundEffect::AuraApplied);
   }
@@ -1903,6 +1919,22 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
         if (explorationContent.activatePuzzle(explorationTarget.id,
                                               motionState.state)) {
           quests.notifyPuzzleActivated(explorationTarget.id);
+          publishExplorationFeedback(ExplorationFeedbackType::PuzzleActivated,
+                                     explorationTarget.id,
+                                     explorationTarget.label, "机关已激活",
+                                     1200);
+          const PuzzleNode* puzzle =
+              explorationContent.puzzleById(explorationTarget.id);
+          const TraversalGate* openedGate =
+              puzzle != nullptr
+                  ? explorationContent.gateById(puzzle->opensGateId)
+                  : nullptr;
+          if (openedGate != nullptr &&
+              explorationContent.isGateOpen(openedGate->id)) {
+            publishExplorationFeedback(ExplorationFeedbackType::GateOpened,
+                                       openedGate->id, openedGate->label,
+                                       "路径已开启", 1400);
+          }
           refreshExplorationGateCollision();
           teleportFlashMs = 700;
           audioBridge.playUiSound(SoundEffect::Resonance);
@@ -1917,6 +1949,9 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
           }
         }
         if (reward != nullptr && explorationContent.claimReward(reward->id)) {
+          publishExplorationFeedback(ExplorationFeedbackType::RewardClaimed,
+                                     reward->id, reward->label,
+                                     "获得探索奖励", 1200);
           if (reward->gold > 0) {
             inventory.addItem(static_cast<int32_t>(ItemId::Gold), reward->gold);
           }
@@ -1983,6 +2018,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   if (teleportFlashMs > 0) {
     teleportFlashMs = dtMs >= teleportFlashMs ? 0 : teleportFlashMs - dtMs;
   }
+  explorationFeedback.update(dtMs);
   // 采集物重生（优化）：倒计时归零后恢复全部已消耗采集物可交互。
   if (collectRespawnRemainingMs > 0) {
     collectRespawnRemainingMs -= dtMs;

@@ -1,6 +1,7 @@
 #include "native/engine/core/game_snapshot.h"
 #include "native/gameplay/world/exploration_content.h"
 #include "native/gameplay/world/exploration_gate_collision.h"
+#include "native/gameplay/world/exploration_feedback.h"
 
 #include <cassert>
 #include <string>
@@ -46,5 +47,20 @@ int main() {
   gateX = 0.78f;
   gateY = 0.28f;
   assert(!gates.resolve(gateX, gateY, 0.012f, 0.0f).touching);
+
+  ExplorationFeedbackState feedback;
+  feedback.publish(ExplorationFeedbackType::PoiDiscovered, 60, "辉光湖畔",
+                   "发现新地标", 1200);
+  assert(feedback.snapshot().type == ExplorationFeedbackType::PoiDiscovered);
+  assert(feedback.snapshot().id == 60);
+  feedback.update(1200);
+  assert(feedback.snapshot().type == ExplorationFeedbackType::None);
+  snapshot.explorationFeedbackType =
+      static_cast<int32_t>(ExplorationFeedbackType::PoiDiscovered);
+  snapshot.explorationFeedbackId = 60;
+  snapshot.explorationFeedbackTitle = "辉光湖畔";
+  snapshot.explorationFeedbackSubtitle = "发现新地标";
+  snapshot.explorationFeedbackRemainingMs = 1200;
+  assert(snapshot.explorationFeedbackId == 60);
   return 0;
 }

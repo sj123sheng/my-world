@@ -1440,6 +1440,31 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
                           explorationBlockedGateLabelVal);
   napi_set_named_property(env, result, "explorationBlockedByPuzzleLabel",
                           explorationBlockedByPuzzleLabelVal);
+  napi_value explorationFeedbackTypeVal, explorationFeedbackIdVal,
+      explorationFeedbackTitleVal, explorationFeedbackSubtitleVal,
+      explorationFeedbackRemainingMsVal;
+  napi_create_int32(env, snapshot.explorationFeedbackType,
+                    &explorationFeedbackTypeVal);
+  napi_create_int32(env, snapshot.explorationFeedbackId,
+                    &explorationFeedbackIdVal);
+  napi_create_string_utf8(env, snapshot.explorationFeedbackTitle.c_str(),
+                          snapshot.explorationFeedbackTitle.size(),
+                          &explorationFeedbackTitleVal);
+  napi_create_string_utf8(env, snapshot.explorationFeedbackSubtitle.c_str(),
+                          snapshot.explorationFeedbackSubtitle.size(),
+                          &explorationFeedbackSubtitleVal);
+  napi_create_int64(env, snapshot.explorationFeedbackRemainingMs,
+                    &explorationFeedbackRemainingMsVal);
+  napi_set_named_property(env, result, "explorationFeedbackType",
+                          explorationFeedbackTypeVal);
+  napi_set_named_property(env, result, "explorationFeedbackId",
+                          explorationFeedbackIdVal);
+  napi_set_named_property(env, result, "explorationFeedbackTitle",
+                          explorationFeedbackTitleVal);
+  napi_set_named_property(env, result, "explorationFeedbackSubtitle",
+                          explorationFeedbackSubtitleVal);
+  napi_set_named_property(env, result, "explorationFeedbackRemainingMs",
+                          explorationFeedbackRemainingMsVal);
   return result;
 }
 
