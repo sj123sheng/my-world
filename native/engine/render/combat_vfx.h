@@ -589,3 +589,12 @@ inline float UltimateDimAlphaFor(float dimSeconds) {
   if (dimSeconds <= 0.0f) return 0.0f;
   return std::min(dimSeconds / 0.15f, 1.0f) * 0.22f;
 }
+
+// 玩家死亡爆发 VFX（原神角色死亡语言）：暗红（危险语义，与受击
+// 红闪同族但更饱和），火花复用受击红 kind，把倒下拎成重击时刻。
+struct PlayerDeathVfx {
+  glm::vec3 color{0.85f, 0.28f, 0.24f};
+  int sparkKind = 1;
+};
+
+inline PlayerDeathVfx PlayerDeathVfxFor() { return {}; }

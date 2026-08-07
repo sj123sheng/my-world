@@ -635,6 +635,16 @@ void testUltimateDimAlphaRampsAndCaps() {
   assert(UltimateDimAlphaFor(10.0f) == full);
 }
 
+void testPlayerDeathVfxUsesDangerLanguage() {
+  // 死亡爆发用受击红 kind（危险语义），颜色为饱和暗红，
+  // 与受击红闪同族但可区分。
+  const PlayerDeathVfx death = PlayerDeathVfxFor();
+  assert(death.sparkKind == 1);
+  assert(death.color.r > 0.6f && death.color.g < 0.4f &&
+         death.color.b < 0.4f);
+  assert(death.color != glm::vec3(1.0f, 0.45f, 0.40f));
+}
+
 }  // namespace
 
 int main() {
@@ -673,5 +683,6 @@ int main() {
   testUltimateVfxFollowsCharacterElement();
   testCharacterSourceMapping();
   testUltimateDimAlphaRampsAndCaps();
+  testPlayerDeathVfxUsesDangerLanguage();
   return 0;
 }

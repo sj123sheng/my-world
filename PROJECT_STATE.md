@@ -188,6 +188,10 @@
   发射元素上升粒子（与敌人附着光环上升粒子同源：
   AuraParticleVelocity/AuraSparkKindFor），附魔状态从武器延伸到
   角色周身；切人重置附魔时粒子随 playerSlashSource 自然停止。
+- 玩家死亡爆发 VFX：主角倒下瞬间（Death 事件 target==kPlayerId，
+  此前被显式排除）暗红火花 + 冲击波 + 重档 FOV + 72ms 卡肉 +
+  2×FP_ONE 震动（PlayerDeathVfxFor 纯函数锁定），死亡动画与
+  复活/重置流程不变。
 
 ## 验证状态
 

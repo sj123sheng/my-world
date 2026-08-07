@@ -2741,6 +2741,25 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
        eventIndex < frameCombatEvents_.gameplay.size(); ++eventIndex) {
     const GameplayEvent& event = frameCombatEvents_.gameplay[eventIndex];
     // 击杀爆裂：非玩家死亡时爆发更大规模的亮金火花，强化击杀确认感。
+    // 玩家死亡爆发（原神角色死亡语言）：主角倒下瞬间周身暗红
+    // 火花 + 冲击波 + 重镜头反馈，把死亡拎成重击时刻；死亡动画
+    // 与后续复活/重置流程不变。
+    if (event.type == GameplayEventType::Death &&
+        event.target == CombatController::kPlayerId) {
+      const PlayerDeathVfx deathVfx = PlayerDeathVfxFor();
+      const Vec2 playerDeathPos{surface.player.x, surface.player.y};
+      const float playerDeathRatio =
+          VfxSizeRatio(surface.playerAssetProfile, ModelKind::Player);
+      spawnHitSparks(surface, playerDeathPos, deathVfx.sparkKind, 18, 1.8f,
+                     1.4f, playerDeathRatio);
+      spawnShockwave(surface, playerDeathPos, deathVfx.color,
+                     0.12f * playerDeathRatio);
+      surface.fovPunchMaxOffset = FovPunchMaxOffsetFor(2);
+      surface.resonanceFovSeconds = 0.0f;
+      hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + 72, 96);
+      vfxSystem.triggerCameraShake(2 * FP_ONE);
+      continue;
+    }
     if (event.type == GameplayEventType::Death &&
         event.target != CombatController::kPlayerId) {
       killsThisStep += 1;
