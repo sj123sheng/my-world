@@ -211,6 +211,9 @@ struct Loop {
   int prevComboSegmentForVfx = 0;
   // 上一帧动作状态（特效专用）：检测终结技吟唱上升沿释放大招动效。
   uint8_t prevActionForVfx = 0;
+  // 逐实体元素附着掩码（特效专用）：实体 id → 上一步附着掩码，
+  // 掩码差分检测新附着位，触发元素施加爆发。
+  std::unordered_map<uint32_t, int> prevAuraMasks;
   // 命中卡肉（hitstop）剩余毫秒：>0 时冻结固定步逻辑、渲染继续，
   // 制造命中瞬间的顿帧打击感。仅在玩家命中敌人时触发。
   int64_t hitStopRemainingMs = 0;

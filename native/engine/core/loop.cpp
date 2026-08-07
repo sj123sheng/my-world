@@ -1731,6 +1731,7 @@ void Loop::resetInput() {
   prevCorruptionCdMs = 0;
   prevComboSegmentForVfx = 0;
   prevActionForVfx = 0;
+  prevAuraMasks.clear();
   currentTarget.reset();
   input.clear();
 }
@@ -2472,6 +2473,61 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                               combat.snapshot().currentAttached,
                               combat.snapshot().corruptionAttached)
           : 0;
+  // 元素附着施加爆发（原神式）：目标新附着源质瞬间在其位置爆出
+  // 小型元素火花 + 贴地元素贴花，与呼吸附着光环同元素语言；附着
+  // 掩码差分边沿检测（不新增事件），死亡/离场实体掩码归零清理。
+  {
+    const auto auraBurst = [this](EntityId id, int newMask, Vec2 position,
+                                  float ratio) {
+      const uint32_t key = static_cast<uint32_t>(id);
+      const auto prev = prevAuraMasks.find(key);
+      const int prevMask = prev != prevAuraMasks.end() ? prev->second : 0;
+      const int freshMask = newMask & ~prevMask;
+      prevAuraMasks[key] = newMask;
+      for (int sourceType = 0; sourceType < 3; ++sourceType) {
+        if ((freshMask & (1 << sourceType)) == 0) continue;
+        spawnHitSparks(surface, position, AuraSparkKindFor(sourceType), 8,
+                       1.2f, 1.1f, ratio);
+        spawnImpactDecal(surface, position, AuraColorFor(sourceType),
+                         0.05f * ratio);
+      }
+    };
+    for (const EncounterEnemySnapshot& enemy : encounter.snapshot().enemies) {
+      const int mask = enemy.alive
+                           ? AuraMaskFromFlags(enemy.radianceAttached,
+                                               enemy.currentAttached,
+                                               enemy.corruptionAttached)
+                           : 0;
+      auraBurst(enemy.id, mask, enemy.position,
+                actorVfxRatio(surface, enemy.id));
+    }
+    if (encounter.snapshot().mode == EncounterMode::Training) {
+      const int mask = AuraMaskFromFlags(combat.snapshot().radianceAttached,
+                                         combat.snapshot().currentAttached,
+                                         combat.snapshot().corruptionAttached);
+      auraBurst(CombatController::kTrainingTargetId, mask,
+                {surface.trainingTarget.x, surface.trainingTarget.y},
+                actorVfxRatio(surface,
+                              CombatController::kTrainingTargetId));
+    }
+    // 清理已离开快照的实体边沿状态，避免长期泄漏。
+    for (auto entry = prevAuraMasks.begin(); entry != prevAuraMasks.end();) {
+      const EntityId id = static_cast<EntityId>(entry->first);
+      const bool present =
+          (id == CombatController::kTrainingTargetId &&
+           encounter.snapshot().mode == EncounterMode::Training) ||
+          std::any_of(encounter.snapshot().enemies.begin(),
+                      encounter.snapshot().enemies.end(),
+                      [id](const EncounterEnemySnapshot& enemy) {
+                        return enemy.id == id;
+                      });
+      if (present) {
+        ++entry;
+      } else {
+        entry = prevAuraMasks.erase(entry);
+      }
+    }
+  }
   // 锁定释放复核必须用本步结算后的新鲜候选：帧首候选是上一步快照，
   // 不含本步 encounter.update 的击杀结果，已死目标会多挂一帧锁定；
   // 而击杀触发的命中卡肉又会冻结后续固定步，把延迟放大成幽灵锁定。
