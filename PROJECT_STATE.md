@@ -219,6 +219,11 @@
   旋转斩，未知原型回退法杖），enemyWeaponMeshFor 映射到
   sword/staff/club 程序化网格，修复徒手爪击持杖等武器与攻击 clip
   冲突；训练假人保持法杖，武器染色仍走实体 tint 派生。
+- 附魔命中染色：附魔期间（playerSlashSource>=0）命中火花/贴花按
+  攻击元素着色（InfusedHitSparkKindFor/InfusedHitDecalColorFor
+  纯函数锁定，与 AuraSparkKindFor/AuraColorFor 同源），挥击火花/
+  普攻投射物同步染色；攻击元素优先于目标自身元素，无附魔行为
+  与升级前完全一致，附魔链（刀光/拖尾/飘字/火花）全链路同色。
 
 ## 验证状态
 

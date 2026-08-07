@@ -2495,9 +2495,14 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     // 爆出小型挥击火花，并朝目标发射双投射物，命中点由爆裂火花收束。
     const int comboSegmentNow = static_cast<int>(skillSnapshot.comboSegment);
     if (comboSegmentNow != prevComboSegmentForVfx && comboSegmentNow > 0) {
-      spawnHitSparks(surface, playerPos, 0, 4, 0.8f, 0.8f, playerRatio);
+      // 附魔普攻释放：挥击火花/投射物也按源质着色，与刀光/拖尾
+      // 同语言（无附魔保持金橙）。
+      const int swingKind =
+          InfusedHitSparkKindFor(surface.playerSlashSource, 0);
+      spawnHitSparks(surface, playerPos, swingKind, 4, 0.8f, 0.8f,
+                     playerRatio);
       if (releaseTarget.has_value()) {
-        spawnAttackProjectiles(surface, playerPos, *releaseTarget, 0,
+        spawnAttackProjectiles(surface, playerPos, *releaseTarget, swingKind,
                                playerRatio, 2);
       }
       // 普攻刀光：记录挥击瞬间朝向并启动弧线计时；第 4 段为终结段，
@@ -2936,11 +2941,22 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     glm::vec3 decalColor = playerHit ? glm::vec3{1.0f, 0.35f, 0.30f}
                                      : glm::vec3{1.0f, 0.78f, 0.32f};
     if (!playerHit) {
-      const std::optional<int> hitElement = resolveEnemyElement(
-          encounter.snapshot(), event.target, &wildSpawn);
-      if (hitElement.has_value()) {
-        hitKind = AuraSparkKindFor(*hitElement);
-        decalColor = AuraColorFor(*hitElement);
+      const int infusionSource =
+          event.source == CombatController::kPlayerId
+              ? surface.playerSlashSource
+              : -1;
+      if (infusionSource >= 0) {
+        // 附魔普攻命中：攻击元素优先（原神元素附魔语言），与
+        // 刀光/拖尾/飘字染色同状态。
+        hitKind = InfusedHitSparkKindFor(infusionSource, hitKind);
+        decalColor = InfusedHitDecalColorFor(infusionSource, decalColor);
+      } else {
+        const std::optional<int> hitElement = resolveEnemyElement(
+            encounter.snapshot(), event.target, &wildSpawn);
+        if (hitElement.has_value()) {
+          hitKind = AuraSparkKindFor(*hitElement);
+          decalColor = AuraColorFor(*hitElement);
+        }
       }
     }
     spawnHitSparks(surface, *position, hitKind, 6, 1.0f, 1.0f,

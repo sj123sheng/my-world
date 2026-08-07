@@ -702,6 +702,19 @@ void testDodgeGhostAlphaFadesWithAge() {
   assert(nearlyEqual(old, 0.28f * 0.25f));
 }
 
+void testInfusedHitSparkFollowsInfusion() {
+  // 无附魔返回基础 kind/颜色，与升级前等价。
+  assert(InfusedHitSparkKindFor(-1, 0) == 0);
+  assert(InfusedHitSparkKindFor(-1, 1) == 1);
+  const glm::vec3 physical{1.0f, 0.78f, 0.32f};
+  assert(InfusedHitDecalColorFor(-1, physical) == physical);
+  // 附魔期间按源质着色：与 AuraSparkKindFor/AuraColorFor 同源。
+  assert(InfusedHitSparkKindFor(0, 0) == 4);
+  assert(InfusedHitSparkKindFor(1, 0) == 5);
+  assert(InfusedHitSparkKindFor(2, 0) == 6);
+  assert(InfusedHitDecalColorFor(1, physical) == AuraColorFor(1));
+}
+
 }  // namespace
 
 int main() {
@@ -745,5 +758,6 @@ int main() {
   testHitRecoilTiltDecaysQuadratically();
   testWindupScaleBreathesWithinBounds();
   testDodgeGhostAlphaFadesWithAge();
+  testInfusedHitSparkFollowsInfusion();
   return 0;
 }

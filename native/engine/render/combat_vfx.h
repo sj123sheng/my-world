@@ -644,3 +644,18 @@ inline float DodgeGhostAlphaFor(float ageSeconds, float maxAgeSeconds) {
   }
   return 0.28f * (1.0f - ageSeconds / maxAgeSeconds);
 }
+
+// 附魔普攻命中染色（原神元素附魔语言）：附魔期间命中火花/贴花
+// 按攻击元素着色（源质 → spark kind 4/5/6 与 AuraColorFor 同源），
+// 打物理敌人不再回退金橙；无附魔（source<0）返回 base，与升级前
+// 完全等价。
+inline int InfusedHitSparkKindFor(int infusionSource, int baseKind) {
+  if (infusionSource < 0) return baseKind;
+  return AuraSparkKindFor(infusionSource);
+}
+
+inline glm::vec3 InfusedHitDecalColorFor(int infusionSource,
+                                         const glm::vec3& baseColor) {
+  if (infusionSource < 0) return baseColor;
+  return AuraColorFor(infusionSource);
+}

@@ -163,6 +163,10 @@
 - [x] 敌人原型武器差异化：按原型配武器（EnemyWeaponKindFor 纯函数，
       RiftClaw 徒手/Priest/Guard/Caster 法杖/Bruiser 重棍/Elite 长剑），
       修复徒手爪击持杖等武器与攻击 clip 冲突，剪影与动作语言一致。
+- [x] 附魔命中染色：附魔期间命中火花/贴花/挥击火花/普攻投射物按
+      攻击元素着色（InfusedHitSparkKindFor/InfusedHitDecalColorFor
+      纯函数，与三系光环同源），攻击元素优先于目标元素，附魔链
+      补全到命中点。
 
 ## 下一阶段优先级
 
