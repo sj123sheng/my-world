@@ -1,5 +1,13 @@
 # 技术决策
 
+## 2026-08-07：探索反馈事件由 Native 统一生产
+
+- 地标发现、机关激活、路径门开启和探索奖励领取只在成功状态变化时产生一次
+  `ExplorationFeedback` 事件；失败交互不产生成功反馈。
+- 反馈事件是瞬时状态，不进入 V9 存档；快照字段只追加在尾部，供 ArkTS 边沿检测消费。
+- Native 继续负责探索音效，ArkTS 只根据快照显示统一 `ExplorationToast` 并触发震动，
+  不在 UI 中复制探索状态判断。
+
 ## 2026-08-07：动态路径门独立于静态建筑碰撞
 
 - `BuildingCollision` 继续只负责静态环境；`ExplorationGateCollision` 根据

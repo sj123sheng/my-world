@@ -16,6 +16,7 @@ import { DialogBox } from '../ui/DialogBox';
 import { GachaPanel } from '../ui/GachaPanel';
 import { MapPanel } from '../ui/MapPanel';
 import { QuestRewardToast } from '../ui/QuestRewardToast';
+import { ExplorationToast } from '../ui/ExplorationToast';
 import { InventoryPanel } from '../ui/InventoryPanel';
 import { ArtifactPanel } from '../ui/ArtifactPanel';
 
