@@ -193,6 +193,23 @@ inline const char* EnemyAttackClipFor(int archetype) {
   }
 }
 
+// 敌人原型武器种类（武器与攻击 clip 语言对齐）：0=无武器
+//（RiftClaw 徒手爪击与徒手 clip 一致）1=法杖（Priest/Guard/Caster
+// 施法语言）2=长剑（Elite 旋转斩）3=重棍（Bruiser 双手重劈，与
+// 首领重棍同分量语言）；未知原型回退法杖。
+inline int EnemyWeaponKindFor(int archetype) {
+  switch (archetype) {
+    case 0:
+      return 0;
+    case 3:
+      return 3;
+    case 5:
+      return 2;
+    default:
+      return 1;
+  }
+}
+
 // 首领普攻变体 clip：0=重劈（金橙挥击）1=吟唱束流（暗紫）
 // 2=旋转冲击（青蓝）；与普攻三变体的配色/规模语言对应。
 inline const char* BossAttackClipFor(int basicAttackVariant) {

@@ -449,6 +449,16 @@ void testAttackClipDifferentiationBySegmentArchetypeVariant() {
   assert(PlayerComboSegmentFor(ActionState::Dodging) == 0);
 }
 
+void testEnemyWeaponKindMatchesAttackLanguage() {
+  assert(EnemyWeaponKindFor(0) == 0);  // RiftClaw 徒手爪击
+  assert(EnemyWeaponKindFor(1) == 1);  // Priest 法杖
+  assert(EnemyWeaponKindFor(2) == 1);  // Guard 法杖
+  assert(EnemyWeaponKindFor(3) == 3);  // Bruiser 重棍
+  assert(EnemyWeaponKindFor(4) == 1);  // Caster 法杖
+  assert(EnemyWeaponKindFor(5) == 2);  // Elite 长剑
+  assert(EnemyWeaponKindFor(99) == 1); // 未知原型回退法杖
+}
+
 }  // namespace
 
 int main() {
@@ -466,6 +476,7 @@ int main() {
   testClipVariantsAlternateByVariantIndex();
   testLowSpeedLocomotionPrefersWalkClip();
   testAttackClipDifferentiationBySegmentArchetypeVariant();
+  testEnemyWeaponKindMatchesAttackLanguage();
   testAnimationLogOnlyReportsIntentOrResolvedClipChanges();
   testUnavailableRuntimeModelStaysOnFallbackPath();
   testSurfaceStoresLateModelAssetsForContextBoundInitialization();

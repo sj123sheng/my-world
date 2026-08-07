@@ -1021,6 +1021,22 @@ static const std::vector<bool>* npcAttachmentOverride(const Surface& s,
   return &variant;
 }
 
+// 敌人原型武器网格（武器与攻击 clip 语言对齐）：徒手爪击不持武器、
+// 施法语言持法杖、Bruiser 重劈持重棍、Elite 旋转斩持长剑；
+// 武器染色仍走 drawActor 内实体 tint 派生，与受击闪白同步。
+static const Mesh* enemyWeaponMeshFor(const Surface& s, int archetype) {
+  switch (EnemyWeaponKindFor(archetype)) {
+    case 0:
+      return nullptr;
+    case 2:
+      return &s.swordMesh;
+    case 3:
+      return &s.clubMesh;
+    default:
+      return &s.staffMesh;
+  }
+}
+
 static void tryInitializeModelAsset(Surface& s, ModelKind kind,
                                     SkinnedModel& model,
                                     const char* assetName) {
@@ -2639,7 +2655,8 @@ static void draw3DPhase(Surface& s) {
               s.enemyAssetProfile, hitFlashRemaining(s, enemy.id),
               enemy.id == s.targetMarker3d.targetId,
               DeathFadeAlpha(enemy.deathSeconds), 1.0f,
-              "enemy", &s.staffMesh, s.enemyWeaponJoint,
+              "enemy", enemyWeaponMeshFor(s, enemy.archetype),
+              s.enemyWeaponJoint,
               enemyAttachmentOverride(s, enemy.archetype));
     }
   // 野外敌人（Phase 3.2/3.3）：复用同一 drawActor 路径与动画状态表
@@ -2672,7 +2689,8 @@ static void draw3DPhase(Surface& s) {
               s.enemyAssetProfile, hitFlashRemaining(s, enemy.id),
               enemy.id == s.targetMarker3d.targetId,
               DeathFadeAlpha(enemy.deathSeconds), 1.0f,
-              "enemy", &s.staffMesh, s.enemyWeaponJoint,
+              "enemy", enemyWeaponMeshFor(s, enemy.archetype),
+              s.enemyWeaponJoint,
               enemyAttachmentOverride(s, enemy.archetype));
   }
 

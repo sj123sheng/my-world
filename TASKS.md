@@ -160,6 +160,9 @@
       复用主体蒙皮姿态在过去位置画两道淡蓝残影（DodgeGhostAlphaFor
       纯函数，按年龄线性衰减峰值 0.28，与冲刺尘土同色），闪避运动
       轨迹可视化。
+- [x] 敌人原型武器差异化：按原型配武器（EnemyWeaponKindFor 纯函数，
+      RiftClaw 徒手/Priest/Guard/Caster 法杖/Bruiser 重棍/Elite 长剑），
+      修复徒手爪击持杖等武器与攻击 clip 冲突，剪影与动作语言一致。
 
 ## 下一阶段优先级
 
