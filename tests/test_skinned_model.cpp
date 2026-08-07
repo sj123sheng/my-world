@@ -551,6 +551,22 @@ void testRigidAttachmentBakesIntoSingleJointSkinning() {
          close(positions[5].z, 1.0f));
 }
 
+void testAttachmentEnabledForOverridePrecedence() {
+  const std::vector<bool> overrideOn{true, false, true};
+  // 覆盖表内按下标取值。
+  assert(AttachmentEnabledFor(&overrideOn, 0, false));
+  assert(!AttachmentEnabledFor(&overrideOn, 1, true));
+  assert(AttachmentEnabledFor(&overrideOn, 2, false));
+  // 越界下标回退全局开关。
+  assert(AttachmentEnabledFor(&overrideOn, 3, true));
+  assert(!AttachmentEnabledFor(&overrideOn, 3, false));
+  // 无覆盖表（nullptr）使用全局开关。
+  assert(AttachmentEnabledFor(nullptr, 0, true));
+  assert(!AttachmentEnabledFor(nullptr, 0, false));
+  // 负下标视为本体/非法，回退全局。
+  assert(AttachmentEnabledFor(&overrideOn, -1, true));
+}
+
 }  // namespace
 
 int main() {
@@ -576,5 +592,6 @@ int main() {
   testRejectsOver64Joints();
   testJointNamesTrackPaletteAndFindJointIndexHits();
   testRigidAttachmentBakesIntoSingleJointSkinning();
+  testAttachmentEnabledForOverridePrecedence();
   return 0;
 }

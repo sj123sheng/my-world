@@ -391,6 +391,10 @@ struct Surface {
   // 训练假人的元素附着掩码（bit0=辉印 bit1=脉流 bit2=蚀质）：
   // 训练模式下取自战斗快照附着位，其余模式恒 0。
   int trainingTargetAuraMask = 0;
+  // 敌人原型装备挂件启用表（下标 = EnemyArchetype 数值，向量与
+  // enemyModel.attachmentNames() 同序）：6 类原型共享法师模型，
+  // 用装备组合差异化剪影；越界原型回退全局开关。
+  std::array<std::vector<bool>, 6> enemyArchetypeAttachments;
 
   // ---- 命中火花字段 ----
   std::vector<HitSpark3D> hitSparks3d;

@@ -698,7 +698,8 @@ static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
                       const AssetProfile& profile, float hitFlashSeconds,
                       bool targeted, float fadeAlpha, float appearance,
                       const char* actorName, const Mesh* weapon = nullptr,
-                      int weaponJoint = -1) {
+                      int weaponJoint = -1,
+                      const std::vector<bool>* attachmentOverride = nullptr) {
   if (fadeAlpha <= 0.0f) return;  // 尸体淡出完毕：整体跳过绘制。
   // 逐角色轮廓光：玩家青绿/敌人紫/Boss 品红，受击窗口内增强，
   // 被软锁定时常亮抬升，出场进度驱动渐入；绘制结束后恢复中性轮廓光，
@@ -748,7 +749,7 @@ static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
     glCullFace(GL_FRONT);
 #endif
     if (s.shader3d.skinningEnabled()) {
-      model.draw(s.shader3d);
+      model.draw(s.shader3d, attachmentOverride);
     } else if (actor.alive) {
       fallback.draw();
     }
@@ -781,7 +782,7 @@ static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
 #endif
     s.shader3d.setSkinned(true);
     if (s.shader3d.skinningEnabled()) {
-      model.draw(s.shader3d);
+      model.draw(s.shader3d, attachmentOverride);
       // 武器挂载：关节矩阵（globalTransform * inverseBind）把剑网格放进
       // handslot 绑定姿态，严格跟随手部动画；受击闪白同步染白剑身。
       const bool hasWeapon = weapon != nullptr && weapon->vbo != 0u &&
@@ -878,6 +879,30 @@ static bool takePendingModelAsset(Surface& s, ModelKind kind,
   return asset != nullptr && asset->take(bytes);
 }
 
+// 按名构建挂件启用表（与 attachmentNames() 同序）：未列出的挂件关闭。
+static std::vector<bool> buildAttachmentOverride(
+    const SkinnedModel& model,
+    std::initializer_list<const char*> enabledNames) {
+  const std::vector<std::string> names = model.attachmentNames();
+  std::vector<bool> overrideFlags(names.size(), false);
+  for (const char* name : enabledNames) {
+    for (std::size_t i = 0; i < names.size(); ++i) {
+      if (names[i] == name) overrideFlags[i] = true;
+    }
+  }
+  return overrideFlags;
+}
+
+// 敌人原型装备覆盖指针：越界原型返回 nullptr（回退全局开关）。
+static const std::vector<bool>* enemyAttachmentOverride(const Surface& s,
+                                                        int archetype) {
+  if (archetype < 0 ||
+      archetype >= static_cast<int>(s.enemyArchetypeAttachments.size())) {
+    return nullptr;
+  }
+  return &s.enemyArchetypeAttachments[static_cast<std::size_t>(archetype)];
+}
+
 static void tryInitializeModelAsset(Surface& s, ModelKind kind,
                                     SkinnedModel& model,
                                     const char* assetName) {
@@ -920,6 +945,20 @@ static void tryInitializeModelAsset(Surface& s, ModelKind kind,
     model.setAttachmentEnabled("Mage_Hat", true);
     model.setAttachmentEnabled("Mage_Cape", true);
     model.setAttachmentEnabled("Spellbook", true);
+    // 原型装备变体（下标 = EnemyArchetype）：6 类原型共享法师模型，
+    // 用装备组合差异化剪影；训练假人走上面的全局默认组合。
+    s.enemyArchetypeAttachments[0] =
+        buildAttachmentOverride(model, {"Mage_Cape"});  // RiftClaw
+    s.enemyArchetypeAttachments[1] = buildAttachmentOverride(
+        model, {"Mage_Hat", "Spellbook_open"});  // Priest
+    s.enemyArchetypeAttachments[2] = buildAttachmentOverride(
+        model, {"Mage_Hat", "Mage_Cape", "Spellbook"});  // Guard
+    s.enemyArchetypeAttachments[3] =
+        buildAttachmentOverride(model, {"Mage_Cape"});  // Bruiser
+    s.enemyArchetypeAttachments[4] = buildAttachmentOverride(
+        model, {"Mage_Hat", "Mage_Cape", "Spellbook_open"});  // Caster
+    s.enemyArchetypeAttachments[5] = buildAttachmentOverride(
+        model, {"Mage_Hat", "Mage_Cape", "Spellbook"});  // Elite
   }
   if (kind == ModelKind::Boss) {
     s.bossWeaponJoint = FindJointIndex(model.jointNames(), "handslot.r");
@@ -2404,7 +2443,8 @@ static void draw3DPhase(Surface& s) {
               s.enemyAssetProfile, hitFlashRemaining(s, enemy.id),
               enemy.id == s.targetMarker3d.targetId,
               DeathFadeAlpha(enemy.deathSeconds), 1.0f,
-              "enemy", &s.staffMesh, s.enemyWeaponJoint);
+              "enemy", &s.staffMesh, s.enemyWeaponJoint,
+              enemyAttachmentOverride(s, enemy.archetype));
   }
   // 野外敌人（Phase 3.2/3.3）：复用同一 drawActor 路径与动画状态表
   // （id 从 5000 起无冲突），按原型缩放与色调区分。
@@ -2430,7 +2470,8 @@ static void draw3DPhase(Surface& s) {
               s.enemyAssetProfile, hitFlashRemaining(s, enemy.id),
               enemy.id == s.targetMarker3d.targetId,
               DeathFadeAlpha(enemy.deathSeconds), 1.0f,
-              "enemy", &s.staffMesh, s.enemyWeaponJoint);
+              "enemy", &s.staffMesh, s.enemyWeaponJoint,
+              enemyAttachmentOverride(s, enemy.archetype));
   }
 
   // NPC（Phase 4）：复用骨骼角色绘制路径，仅 idle/walk 动画，无血条。

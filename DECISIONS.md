@@ -1,5 +1,17 @@
 # 技术决策
 
+## 2026-08-08：敌人原型装备差异化（逐实例挂件覆盖）
+
+- SkinnedModel::draw 新增逐实例挂件覆盖参数（与 attachmentNames()
+  同序的 bool 表，nullptr 回退全局开关）；启用判定抽为纯函数
+  AttachmentEnabledFor（覆盖优先、越界回退全局），test 锁定。
+- 6 类敌人原型共享法师模型，用装备组合差异化剪影：
+  RiftClaw/Bruiser=披风、Priest=帽+翻开法术书、Guard/Elite=
+  帽+披风+合起法术书、Caster=帽+披风+翻开法术书；训练假人走
+  全局默认（帽+披风+法术书），遭遇/野外敌人共用同一查表。
+- 配合既有原型缩放/色调，敌人从"同一模型换色"升级为可辨识的
+  装备剪影差异，向原神敌人辨识度靠拢。
+
 ## 2026-08-08：KayKit 模块化装备刚性挂件（角色建模升级）
 
 - SkinnedModel loader 扩展：无 skin 的网格节点（KayKit 模块化装备：

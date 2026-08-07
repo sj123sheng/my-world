@@ -109,6 +109,17 @@ inline int FindJointIndex(const std::vector<std::string>& names,
   return -1;
 }
 
+// 挂件启用判定（纯函数）：逐实例覆盖表优先（按下标），越界/无覆盖
+// 时回退全局开关；供共享模型的多实例差异化装备组合。
+inline bool AttachmentEnabledFor(const std::vector<bool>* overrideFlags,
+                                 int attachmentIndex, bool globalEnabled) {
+  if (overrideFlags != nullptr && attachmentIndex >= 0 &&
+      attachmentIndex < static_cast<int>(overrideFlags->size())) {
+    return (*overrideFlags)[static_cast<std::size_t>(attachmentIndex)];
+  }
+  return globalEnabled;
+}
+
 class SkinnedModel {
  public:
   SkinnedModel();
@@ -125,6 +136,11 @@ class SkinnedModel {
   SkinPalette update(const ActorRenderState& actor, float dtSeconds) const;
   void draw() const;
   void draw(Shader3D& shader) const;
+  // 逐实例挂件启用覆盖：attachmentOverride 与 attachmentNames() 同序，
+  // nullptr 使用全局开关（setAttachmentEnabled）；供共享同一模型的
+  // 敌人原型按 archetype 差异化装备组合。
+  void draw(Shader3D& shader,
+            const std::vector<bool>* attachmentOverride) const;
   void destroy();
 
   // context 已不可 current 时仅丢弃 CPU/GPU 侧跟踪，绝不发出 GL 调用。
@@ -155,6 +171,7 @@ class SkinnedModel {
 
  private:
   struct Impl;
-  void drawInternal(Shader3D* shader) const;
+  void drawInternal(Shader3D* shader,
+                    const std::vector<bool>* attachmentOverride = nullptr) const;
   std::unique_ptr<Impl> impl_;
 };

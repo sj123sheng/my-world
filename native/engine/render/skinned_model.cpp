@@ -103,9 +103,8 @@ struct RuntimeData {
   std::vector<SkinnedVertex> vertices;
   std::vector<uint32_t> indices;
   std::vector<PrimitiveRange> primitives;
-  // 与 primitives 同序：本体 primitive 恒 true；挂件 primitive 随
-  // Attachment::enabled 切换，drawInternal 据此跳过未启用挂件。
-  std::vector<bool> primitiveEnabled;
+  // 与 primitives 同序：挂件索引（本体为 -1），供逐实例覆盖绘制。
+  std::vector<int> primitiveAttachmentIndex;
   std::vector<Attachment> attachments;
   std::vector<OwnedNode> nodes;
   std::vector<std::size_t> jointNodes;
@@ -268,7 +267,7 @@ struct RigidBake {
 bool copyPrimitive(const cgltf_primitive& primitive, std::size_t jointCount,
                    RuntimeData& output, const std::string& assetName,
                    std::string& error, const RigidBake* rigid = nullptr,
-                   bool initiallyEnabled = true) {
+                   int attachmentIndex = -1) {
   if (primitive.type != cgltf_primitive_type_triangles) {
     return fail(assetName, "primitive mode must be TRIANGLES", error);
   }
@@ -428,7 +427,7 @@ bool copyPrimitive(const cgltf_primitive& primitive, std::size_t jointCount,
   }
   if (!copyTextureImage(primitive, output, range, assetName, error)) return false;
   output.primitives.push_back(range);
-  output.primitiveEnabled.push_back(initiallyEnabled);
+  output.primitiveAttachmentIndex.push_back(attachmentIndex);
   return true;
 }
 
@@ -671,11 +670,12 @@ bool copyMeshes(const cgltf_data& data, RuntimeData& output,
     attachment.name = source.name != nullptr ? source.name : "";
     attachment.jointIndex = jointIndex;
     attachment.firstPrimitive = output.primitives.size();
+    const int attachmentIndex = static_cast<int>(output.attachments.size());
     const cgltf_mesh& mesh = *source.mesh;
     for (std::size_t primitive = 0; primitive < mesh.primitives_count;
          ++primitive) {
       if (!copyPrimitive(mesh.primitives[primitive], output.jointNodes.size(),
-                         output, assetName, error, &bake, false)) {
+                         output, assetName, error, &bake, attachmentIndex)) {
         return false;
       }
     }
@@ -1217,7 +1217,13 @@ void SkinnedModel::draw() const { drawInternal(nullptr); }
 
 void SkinnedModel::draw(Shader3D& shader) const { drawInternal(&shader); }
 
-void SkinnedModel::drawInternal(Shader3D* shader) const {
+void SkinnedModel::draw(Shader3D& shader,
+                        const std::vector<bool>* attachmentOverride) const {
+  drawInternal(&shader, attachmentOverride);
+}
+
+void SkinnedModel::drawInternal(
+    Shader3D* shader, const std::vector<bool>* attachmentOverride) const {
 #ifdef OHOS_PLATFORM
   if (!impl_->ready || impl_->vbo == 0u || impl_->ibo == 0u) return;
   glBindBuffer(GL_ARRAY_BUFFER, impl_->vbo);
@@ -1242,10 +1248,19 @@ void SkinnedModel::drawInternal(Shader3D* shader) const {
 
   for (std::size_t primitiveIndex = 0;
        primitiveIndex < impl_->data.primitives.size(); ++primitiveIndex) {
-    // 未启用的装备挂件跳过：本体 primitive 恒启用。
-    if (primitiveIndex < impl_->data.primitiveEnabled.size() &&
-        !impl_->data.primitiveEnabled[primitiveIndex]) {
-      continue;
+    // 装备挂件启用判定：逐实例覆盖优先，否则用全局开关；本体恒启用。
+    if (primitiveIndex < impl_->data.primitiveAttachmentIndex.size()) {
+      const int attachmentIndex =
+          impl_->data.primitiveAttachmentIndex[primitiveIndex];
+      if (attachmentIndex >= 0 &&
+          attachmentIndex <
+              static_cast<int>(impl_->data.attachments.size())) {
+        const bool enabled = AttachmentEnabledFor(
+            attachmentOverride, attachmentIndex,
+            impl_->data.attachments[static_cast<std::size_t>(attachmentIndex)]
+                .enabled);
+        if (!enabled) continue;
+      }
     }
     const PrimitiveRange& primitive = impl_->data.primitives[primitiveIndex];
     const bool hasTexture =
@@ -1327,12 +1342,6 @@ void SkinnedModel::setAttachmentEnabled(const std::string& name,
   for (Attachment& attachment : impl_->data.attachments) {
     if (attachment.name != name) continue;
     attachment.enabled = enabled;
-    for (std::size_t i = 0; i < attachment.primitiveCount; ++i) {
-      const std::size_t primitive = attachment.firstPrimitive + i;
-      if (primitive < impl_->data.primitiveEnabled.size()) {
-        impl_->data.primitiveEnabled[primitive] = enabled;
-      }
-    }
   }
 }
 
