@@ -2782,6 +2782,11 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                          deathRatio);
           spawnShockwave(surface, *deathPos, AuraColorFor(*deathElement),
                          0.09f * deathRatio);
+          // 元素死亡光柱：死亡点升起小型元素色光柱（元素死亡的
+          // 垂直签名，与共鸣/终结光柱同曲线），物理系亮金击杀
+          // 爆裂保持原样不叠加，避免群怪死亡刷屏抢戏。
+          spawnLightPillar(surface, *deathPos, AuraColorFor(*deathElement),
+                           0.10f * deathRatio);
         } else {
           spawnHitSparks(surface, *deathPos, 2, 14, 1.8f, 1.4f, deathRatio);
         }
