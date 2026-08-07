@@ -2499,6 +2499,9 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                        0.08f * playerRatio);
         spawnImpactDecal(surface, playerPos, glm::vec3{1.0f, 0.78f, 0.38f},
                          0.045f * playerRatio);
+        // 终结段相机震动：重劈分量对应的轻震（幅度与受击同级、
+        // 轻于首领砸地），补全终结段"刀光+地面+镜头"分量链。
+        vfxSystem.triggerCameraShake(FP_ONE);
       }
     }
     prevComboSegmentForVfx = comboSegmentNow;
