@@ -2445,6 +2445,25 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       }
       continue;
     }
+    // 元素反应爆发：三源共鸣触发时在受击点爆发大规模元素色火花 +
+    // 冲击波环 + 贴花，颜色/火花 kind 按反应类型区分（原神式
+    // 元素反应反馈）；反应类型取自战斗快照（同帧单次反应准确）。
+    if (event.type == GameplayEventType::Resonance) {
+      const std::optional<Vec2> reactionPos = resolveEntityPosition(
+          surface, encounter.snapshot(), event.target, &wildSpawn);
+      if (reactionPos.has_value()) {
+        const ReactionVfx reactionVfx =
+            ReactionVfxFor(combat.snapshot().currentReaction);
+        const float ratio = actorVfxRatio(surface, event.target);
+        spawnHitSparks(surface, *reactionPos, reactionVfx.sparkKind, 16,
+                       1.6f, 1.3f, ratio);
+        spawnShockwave(surface, *reactionPos, reactionVfx.color,
+                       0.11f * ratio);
+        spawnImpactDecal(surface, *reactionPos, reactionVfx.color,
+                         0.05f * ratio);
+      }
+      continue;
+    }
     if (event.type != GameplayEventType::Damage) continue;
     // 非玩家目标受击：启动模型闪白计时器，渲染层据此提亮配色；
     // 累计受击次数按奇偶驱动受击动画变体轮换。

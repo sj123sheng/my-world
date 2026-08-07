@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include <glm/vec3.hpp>
+
 // 普攻刀光弧线：挥击瞬间在角色身前扫过的新月形刀光。
 // 时长 0.26s，略长于命中时刻（kAttackHitMs=160ms），保证刀光
 // 覆盖"起手→命中→收招"全过程；扫掠角度以模型局部 +Z 前方为 0。
@@ -153,4 +155,28 @@ inline void DirectionalSparkVelocity(float dirX, float dirY, float speed,
   vx = (nx * ca - ny * sa) * speed;
   vz = (nx * sa + ny * ca) * speed;
   vy = lift;
+}
+
+// 元素反应（三源共鸣）爆发配色：按 ResonanceType 数值返回冲击波/贴花
+// 颜色与火花 kind，四种反应各自独立的元素色（原神式元素反应反馈）。
+// ResonanceType：0=折光(辉印+脉流) 1=凝滞(脉流+蚀质)
+// 2=崩解(蚀质+辉印) 3=共鸣爆发。
+struct ReactionVfx {
+  glm::vec3 color{1.0f};  // 冲击波环/贴花颜色
+  int sparkKind = 4;      // 命中火花 kind（复用既有配色表）
+};
+
+inline ReactionVfx ReactionVfxFor(int resonanceType) {
+  switch (resonanceType) {
+    case 0:  // 折光：金白折射光
+      return {{1.0f, 0.92f, 0.55f}, 4};
+    case 1:  // 凝滞：青蓝冰凝光
+      return {{0.40f, 0.85f, 1.0f}, 5};
+    case 2:  // 崩解：暗紫侵蚀光
+      return {{0.75f, 0.42f, 0.95f}, 6};
+    case 3:  // 共鸣爆发：亮金全共鸣
+      return {{1.0f, 1.0f, 0.85f}, 2};
+    default:  // 未知反应回退折光配色，不产生黑环。
+      return {{1.0f, 0.92f, 0.55f}, 4};
+  }
 }

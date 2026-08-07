@@ -166,6 +166,31 @@ void testDirectionalSparkVelocityFollowsAttackDirection() {
   assert(nearlyEqual(vy, 0.02f));
 }
 
+void testReactionVfxDistinctPerResonanceType() {
+  const ReactionVfx refraction = ReactionVfxFor(0);
+  const ReactionVfx stasis = ReactionVfxFor(1);
+  const ReactionVfx collapse = ReactionVfxFor(2);
+  const ReactionVfx burst = ReactionVfxFor(3);
+  // 四种反应颜色互不相同，火花 kind 也在有效范围内（0..6）。
+  assert(refraction.color != stasis.color);
+  assert(stasis.color != collapse.color);
+  assert(collapse.color != burst.color);
+  assert(refraction.color != burst.color);
+  const ReactionVfx all[] = {refraction, stasis, collapse, burst};
+  for (const ReactionVfx& vfx : all) {
+    assert(vfx.sparkKind >= 0 && vfx.sparkKind <= 6);
+    assert(vfx.color.r > 0.0f || vfx.color.g > 0.0f || vfx.color.b > 0.0f);
+  }
+  // 折光金白、凝滞青蓝、崩解暗紫：主通道符合元素语义。
+  assert(refraction.color.r > refraction.color.b);
+  assert(stasis.color.b > stasis.color.r);
+  assert(collapse.color.r > collapse.color.g);
+  // 未知反应回退折光配色，不产生黑环。
+  const ReactionVfx unknown = ReactionVfxFor(99);
+  assert(unknown.color == refraction.color);
+  assert(unknown.sparkKind == refraction.sparkKind);
+}
+
 }  // namespace
 
 int main() {
@@ -180,5 +205,6 @@ int main() {
   testSparkStretchGrowsWithSpeedAndClamps();
   testImpactDecalExpandsFastThenFades();
   testDirectionalSparkVelocityFollowsAttackDirection();
+  testReactionVfxDistinctPerResonanceType();
   return 0;
 }
