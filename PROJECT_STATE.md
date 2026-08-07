@@ -169,6 +169,9 @@
   （CharacterSourceFor 纯函数锁定：1辉印/2脉流/3蚀质/其余物理 -1），
   刀光/拖尾/武器染色/附魔光环随角色切换；CharacterSwitchVfxFor/
   UltimateVfxFor 重构为同源消费，角色元素映射单点维护。
+- 首领仪式时刻相机震动：出场/转阶段/死亡爆发（bossCameraFeedback
+  消费点）统一追加 2×FP_ONE 震动，震动矩阵补全（受击/终结段/
+  反应/破韧/首领砸地/首领仪式）。
 
 ## 验证状态
 

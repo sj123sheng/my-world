@@ -3309,6 +3309,9 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + 80, 96);
     surface.fovPunchMaxOffset = FovPunchMaxOffsetFor(2);
     surface.resonanceFovSeconds = 0.0f;
+    // 首领仪式时刻相机震动（出场/转阶段/死亡爆发同源）：与首领
+    // 砸地同级幅度，补全首领大时刻的镜头位移维度。
+    vfxSystem.triggerCameraShake(2 * FP_ONE);
   }
   // 首领挥击落地相机震动：与受击震动同源通道，幅度加倍突出体量。
   if (releaseVfx.bossSlamLanded) {
