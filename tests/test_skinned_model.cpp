@@ -518,6 +518,39 @@ void testJointNamesTrackPaletteAndFindJointIndexHits() {
   assert(model.jointNames().size() == model.jointCount());
 }
 
+void testRigidAttachmentBakesIntoSingleJointSkinning() {
+  SkinnedModel model;
+  const std::vector<uint8_t> bytes = gltf_fixture::makeRigidAttachmentGlb();
+  assert(model.tryInitialize(bytes, "attachment.glb"));
+  assert(model.ready());
+  // 本体 3 顶点 + 挂件 3 顶点，两个 primitive。
+  assert(model.vertexCount() == 6);
+  assert(model.primitiveCount() == 2);
+  // 挂件按节点名注册，默认关闭，可按名开关；未知名字无副作用。
+  assert((model.attachmentNames() ==
+          std::vector<std::string>{"Test_Shield"}));
+  assert(!model.attachmentEnabled("Test_Shield"));
+  model.setAttachmentEnabled("Test_Shield", true);
+  assert(model.attachmentEnabled("Test_Shield"));
+  model.setAttachmentEnabled("Test_Shield", false);
+  assert(!model.attachmentEnabled("Test_Shield"));
+  model.setAttachmentEnabled("Missing", true);
+  assert(!model.attachmentEnabled("Missing"));
+  // 烘焙断言：bind(关节1)=单位阵，挂件节点 translation (0.5,0.25,0)
+  // 直接加到挂件顶点上；本体顶点保持不变。
+  const std::vector<glm::vec3> positions =
+      model.vertexPositionsForVerification();
+  assert(positions.size() == 6);
+  assert(close(positions[0].x, 0.0f) && close(positions[0].y, 0.0f));
+  assert(close(positions[1].x, 1.0f) && close(positions[1].y, 0.0f));
+  assert(close(positions[3].x, 0.5f) && close(positions[3].y, 0.25f) &&
+         close(positions[3].z, 0.0f));
+  assert(close(positions[4].x, 1.5f) && close(positions[4].y, 0.25f) &&
+         close(positions[4].z, 0.0f));
+  assert(close(positions[5].x, 0.5f) && close(positions[5].y, 0.25f) &&
+         close(positions[5].z, 1.0f));
+}
+
 }  // namespace
 
 int main() {
@@ -542,5 +575,6 @@ int main() {
   testRejectsUnsupportedGltfInputsWithAssetNames();
   testRejectsOver64Joints();
   testJointNamesTrackPaletteAndFindJointIndexHits();
+  testRigidAttachmentBakesIntoSingleJointSkinning();
   return 0;
 }

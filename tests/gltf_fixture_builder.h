@@ -204,6 +204,131 @@ inline std::vector<uint8_t> makeMinimalGlb(bool includeAttack = false) {
   return glb;
 }
 
+// 刚性装备挂件夹具：在最小 GLB 基础上追加一个无 skin 的三角形
+// 网格节点 Test_Shield，挂在关节节点 2（translation [0,1,0]）下，
+// 自身 translation [0.5,0.25,0]，仅 POSITION/NORMAL/TEXCOORD_0。
+inline std::vector<uint8_t> makeRigidAttachmentGlb() {
+  BinaryBuilder bin;
+  const BufferSlice positions = bin.append<float>({
+      0.0f, 0.0f, 0.0f,
+      1.0f, 0.0f, 0.0f,
+      0.0f, 1.0f, 0.0f,
+  });
+  const BufferSlice normals = bin.append<float>({
+      0.0f, 0.0f, 1.0f,
+      0.0f, 0.0f, 1.0f,
+      0.0f, 0.0f, 1.0f,
+  });
+  const BufferSlice texcoords = bin.append<float>({
+      0.0f, 0.0f,
+      1.0f, 0.0f,
+      0.0f, 1.0f,
+  });
+  const BufferSlice joints = bin.append<uint8_t>({
+      0, 1, 0, 0,
+      0, 1, 0, 0,
+      0, 1, 0, 0,
+  });
+  const BufferSlice weights = bin.append<float>({
+      0.75f, 0.25f, 0.0f, 0.0f,
+      0.75f, 0.25f, 0.0f, 0.0f,
+      0.75f, 0.25f, 0.0f, 0.0f,
+  });
+  const BufferSlice indices = bin.append<uint16_t>({0, 1, 2});
+  std::vector<float> inverseBinds(32, 0.0f);
+  for (std::size_t matrix = 0; matrix < 2; ++matrix) {
+    inverseBinds[matrix * 16 + 0] = 1.0f;
+    inverseBinds[matrix * 16 + 5] = 1.0f;
+    inverseBinds[matrix * 16 + 10] = 1.0f;
+    inverseBinds[matrix * 16 + 15] = 1.0f;
+  }
+  const BufferSlice inverseBindMatrices = bin.append(inverseBinds);
+  const BufferSlice times = bin.append<float>({0.0f, 1.0f});
+  const BufferSlice idleTranslations = bin.append<float>({
+      0.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 0.0f,
+  });
+  // 挂件三角形：位置/法线/UV 独立于本体，无 JOINTS_0/WEIGHTS_0。
+  const BufferSlice attachPositions = bin.append<float>({
+      0.0f, 0.0f, 0.0f,
+      1.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 1.0f,
+  });
+  const BufferSlice attachNormals = bin.append<float>({
+      0.0f, 1.0f, 0.0f,
+      0.0f, 1.0f, 0.0f,
+      0.0f, 1.0f, 0.0f,
+  });
+  const BufferSlice attachTexcoords = bin.append<float>({
+      0.0f, 0.0f,
+      1.0f, 0.0f,
+      0.0f, 1.0f,
+  });
+  const BufferSlice attachIndices = bin.append<uint16_t>({0, 1, 2});
+
+  const std::array<BufferSlice, 14> views{
+      positions, normals, texcoords, joints, weights, indices,
+      inverseBindMatrices, times, idleTranslations, idleTranslations,
+      attachPositions, attachNormals, attachTexcoords, attachIndices,
+  };
+
+  std::ostringstream json;
+  json << R"({"asset":{"version":"2.0"},"buffers":[{"byteLength":)"
+       << bin.bytes().size() << R"(}],"bufferViews":[)";
+  for (std::size_t i = 0; i < views.size(); ++i) {
+    if (i != 0) json << ',';
+    json << R"({"buffer":0,"byteOffset":)" << views[i].offset
+         << R"(,"byteLength":)" << views[i].size << '}';
+  }
+  json << R"glb(],"accessors":[
+    {"bufferView":0,"componentType":5126,"count":3,"type":"VEC3"},
+    {"bufferView":1,"componentType":5126,"count":3,"type":"VEC3"},
+    {"bufferView":2,"componentType":5126,"count":3,"type":"VEC2"},
+    {"bufferView":3,"componentType":5121,"count":3,"type":"VEC4"},
+    {"bufferView":4,"componentType":5126,"count":3,"type":"VEC4"},
+    {"bufferView":5,"componentType":5123,"count":3,"type":"SCALAR"},
+    {"bufferView":6,"componentType":5126,"count":2,"type":"MAT4"},
+    {"bufferView":7,"componentType":5126,"count":2,"type":"SCALAR"},
+    {"bufferView":8,"componentType":5126,"count":2,"type":"VEC3"},
+    {"bufferView":9,"componentType":5126,"count":2,"type":"VEC3"},
+    {"bufferView":10,"componentType":5126,"count":3,"type":"VEC3"},
+    {"bufferView":11,"componentType":5126,"count":3,"type":"VEC3"},
+    {"bufferView":12,"componentType":5126,"count":3,"type":"VEC2"},
+    {"bufferView":13,"componentType":5123,"count":3,"type":"SCALAR"}
+  ],"meshes":[
+    {"primitives":[{"attributes":{"POSITION":0,"NORMAL":1,
+      "TEXCOORD_0":2,"JOINTS_0":3,"WEIGHTS_0":4},"indices":5,"mode":4}]},
+    {"name":"Test_Shield","primitives":[{"attributes":{"POSITION":10,
+      "NORMAL":11,"TEXCOORD_0":12},"indices":13,"mode":4}]}],
+  "skins":[{"inverseBindMatrices":6,"joints":[1,2],"skeleton":1}],
+  "nodes":[{"translation":[3,0,0],"children":[1]},
+    {"children":[2]},{"translation":[0,1,0],"children":[4]},
+    {"mesh":0,"skin":0},
+    {"name":"Test_Shield","mesh":1,"translation":[0.5,0.25,0]}],
+  "scenes":[{"nodes":[0,3]}],"scene":0,
+  "animations":[
+    {"name":"idle","samplers":[{"input":7,"output":8,"interpolation":"LINEAR"}],
+      "channels":[{"sampler":0,"target":{"node":1,"path":"translation"}}]}]})glb";
+
+  std::string jsonChunk = json.str();
+  while ((jsonChunk.size() & 3u) != 0u) jsonChunk.push_back(' ');
+  std::vector<uint8_t> binChunk = bin.bytes();
+  while ((binChunk.size() & 3u) != 0u) binChunk.push_back(0);
+
+  std::vector<uint8_t> glb;
+  glb.reserve(12 + 8 + jsonChunk.size() + 8 + binChunk.size());
+  appendU32(glb, 0x46546c67u);
+  appendU32(glb, 2u);
+  appendU32(glb, static_cast<uint32_t>(12 + 8 + jsonChunk.size() + 8 + binChunk.size()));
+  appendU32(glb, static_cast<uint32_t>(jsonChunk.size()));
+  appendU32(glb, 0x4e4f534au);
+  glb.insert(glb.end(), jsonChunk.begin(), jsonChunk.end());
+  appendU32(glb, static_cast<uint32_t>(binChunk.size()));
+  appendU32(glb, 0x004e4942u);
+  glb.insert(glb.end(), binChunk.begin(), binChunk.end());
+  return glb;
+}
+
 // 在最小 GLB 上追加 Hit_B 受击变体 clip（复用 run 的平移通道，
 // LINEAR 0→2），供受击变体轮换测试使用。
 inline std::vector<uint8_t> makeHitVariantGlb() {

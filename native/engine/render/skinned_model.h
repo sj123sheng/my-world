@@ -137,6 +137,15 @@ class SkinnedModel {
   // 与蒙皮调色板同序的关节名（缺失为空串），供武器挂点按名查找。
   const std::vector<std::string>& jointNames() const;
   const std::vector<std::string>& clipNames() const;
+  // 刚性装备挂件（KayKit 模块化装备：头盔/披风/盾牌/副手等）：
+  // 无 skin 的网格节点，父链挂在皮肤关节上，加载时烘焙为单关节
+  // 全权重蒙皮，随本体同一管线绘制（描边/受击闪白/卡通共用）。
+  // 默认全部关闭（一个 GLB 内含全部变体），调用方按名启用所需挂件。
+  std::vector<std::string> attachmentNames() const;
+  void setAttachmentEnabled(const std::string& name, bool enabled);
+  bool attachmentEnabled(const std::string& name) const;
+  // 宿主验证接口：顶点位置只读副本（挂件烘焙断言用，不参与渲染）。
+  std::vector<glm::vec3> vertexPositionsForVerification() const;
   bool hasTexture() const;
   std::size_t primitiveCount() const;
   bool primitiveHasTexture(std::size_t primitiveIndex) const;

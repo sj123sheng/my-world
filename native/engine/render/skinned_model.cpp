@@ -89,10 +89,24 @@ struct PrimitiveRange {
   int textureIndex = -1;
 };
 
+// 刚性装备挂件：无 skin 的网格节点按父链绑定到最近的皮肤关节，
+// 顶点烘焙为单关节全权重，随本体同管线绘制。
+struct Attachment {
+  std::string name;
+  int jointIndex = -1;
+  std::size_t firstPrimitive = 0;
+  std::size_t primitiveCount = 0;
+  bool enabled = false;
+};
+
 struct RuntimeData {
   std::vector<SkinnedVertex> vertices;
   std::vector<uint32_t> indices;
   std::vector<PrimitiveRange> primitives;
+  // 与 primitives 同序：本体 primitive 恒 true；挂件 primitive 随
+  // Attachment::enabled 切换，drawInternal 据此跳过未启用挂件。
+  std::vector<bool> primitiveEnabled;
+  std::vector<Attachment> attachments;
   std::vector<OwnedNode> nodes;
   std::vector<std::size_t> jointNodes;
   // 与 jointNodes 同序的关节名（skin.joints[i]->name），缺失为空串；
@@ -115,6 +129,10 @@ struct PoseNode {
 struct CgltfDeleter {
   void operator()(cgltf_data* data) const { cgltf_free(data); }
 };
+
+// 前置声明：挂件父链变换在 copyMeshes 中消费（定义见后文）。
+glm::mat4 composeNode(const PoseNode& node);
+glm::mat4 composeNode(const OwnedNode& node);
 
 bool fail(const std::string& assetName, const std::string& detail,
           std::string& error) {
@@ -238,9 +256,19 @@ bool copyTextureImage(const cgltf_primitive& primitive, RuntimeData& output,
   return true;
 }
 
+// 刚性挂件烘焙上下文：jointIndex 为父链上最近的皮肤关节，
+// positionMatrix = bind(J) × 挂件相对关节的父链变换；顶点位置
+// 预乘该矩阵后按单关节全权重蒙皮，GPU 端还原出
+// global(J) × invBind(J) × bind(J) × chain × v = global(J) × chain × v。
+struct RigidBake {
+  int jointIndex = 0;
+  glm::mat4 positionMatrix{1.0f};
+};
+
 bool copyPrimitive(const cgltf_primitive& primitive, std::size_t jointCount,
                    RuntimeData& output, const std::string& assetName,
-                   std::string& error) {
+                   std::string& error, const RigidBake* rigid = nullptr,
+                   bool initiallyEnabled = true) {
   if (primitive.type != cgltf_primitive_type_triangles) {
     return fail(assetName, "primitive mode must be TRIANGLES", error);
   }
@@ -284,25 +312,35 @@ bool copyPrimitive(const cgltf_primitive& primitive, std::size_t jointCount,
       !validateAccessor(normals, cgltf_type_vec3, {cgltf_component_type_r_32f},
                         "NORMAL", assetName, error) ||
       !validateAccessor(texcoords, cgltf_type_vec2, {cgltf_component_type_r_32f},
-                        "TEXCOORD_0", assetName, error) ||
-      !validateAccessor(joints, cgltf_type_vec4,
-                        {cgltf_component_type_r_8u, cgltf_component_type_r_16u},
-                        "JOINTS_0", assetName, error) ||
-      !validateAccessor(weights, cgltf_type_vec4,
-                        {cgltf_component_type_r_32f, cgltf_component_type_r_8u,
-                         cgltf_component_type_r_16u},
-                        "WEIGHTS_0", assetName, error)) {
+                        "TEXCOORD_0", assetName, error)) {
     return false;
   }
-  if ((weights->component_type == cgltf_component_type_r_8u ||
-       weights->component_type == cgltf_component_type_r_16u) &&
-      !weights->normalized) {
-    return fail(assetName, "integer WEIGHTS_0 accessor must be normalized", error);
+  // 刚性挂件无 JOINTS_0/WEIGHTS_0（加载期烘焙单关节全权重）；
+  // 蒙皮本体仍强制要求两套属性。
+  if (rigid == nullptr) {
+    if (!validateAccessor(joints, cgltf_type_vec4,
+                          {cgltf_component_type_r_8u, cgltf_component_type_r_16u},
+                          "JOINTS_0", assetName, error) ||
+        !validateAccessor(weights, cgltf_type_vec4,
+                          {cgltf_component_type_r_32f, cgltf_component_type_r_8u,
+                           cgltf_component_type_r_16u},
+                          "WEIGHTS_0", assetName, error)) {
+      return false;
+    }
+    if ((weights->component_type == cgltf_component_type_r_8u ||
+         weights->component_type == cgltf_component_type_r_16u) &&
+        !weights->normalized) {
+      return fail(assetName, "integer WEIGHTS_0 accessor must be normalized", error);
+    }
+  } else if (joints != nullptr || weights != nullptr) {
+    return fail(assetName,
+                "unskinned attachment must not carry JOINTS_0/WEIGHTS_0", error);
   }
   const std::size_t vertexCount = positions->count;
   if (vertexCount == 0 || normals->count != vertexCount ||
-      texcoords->count != vertexCount || joints->count != vertexCount ||
-      weights->count != vertexCount) {
+      texcoords->count != vertexCount ||
+      (rigid == nullptr &&
+       (joints->count != vertexCount || weights->count != vertexCount))) {
     return fail(assetName, "vertex attribute counts must match", error);
   }
 
@@ -316,20 +354,41 @@ bool copyPrimitive(const cgltf_primitive& primitive, std::size_t jointCount,
     cgltf_uint j[4]{};
     if (!readFloat(positions, vertexIndex, p, 3) ||
         !readFloat(normals, vertexIndex, n, 3) ||
-        !readFloat(texcoords, vertexIndex, uv, 2) ||
-        !readFloat(weights, vertexIndex, w, 4) ||
-        !cgltf_accessor_read_uint(joints, vertexIndex, j, 4)) {
+        !readFloat(texcoords, vertexIndex, uv, 2)) {
       return fail(assetName, "vertex accessor read is out of bounds", error);
     }
-    const float totalWeight = w[0] + w[1] + w[2] + w[3];
-    if (!std::isfinite(totalWeight) || totalWeight <= 0.0f) {
-      return fail(assetName, "vertex weights sum to zero", error);
-    }
-    for (std::size_t influence = 0; influence < 4; ++influence) {
-      if (j[influence] >= jointCount) {
-        return fail(assetName, "vertex joint index exceeds skin joint count", error);
+    if (rigid != nullptr) {
+      // 刚性烘焙：位置预乘 bind(J)×chain，法线取旋转部分（KayKit
+      // 挂件变换为纯平移/旋转，无切变缩放，mat3 足够）。
+      const glm::vec3 bakedPosition =
+          rigid->positionMatrix * glm::vec4(p[0], p[1], p[2], 1.0f);
+      const glm::vec3 bakedNormal = glm::normalize(
+          glm::mat3(rigid->positionMatrix) * glm::vec3(n[0], n[1], n[2]));
+      p[0] = bakedPosition.x;
+      p[1] = bakedPosition.y;
+      p[2] = bakedPosition.z;
+      n[0] = bakedNormal.x;
+      n[1] = bakedNormal.y;
+      n[2] = bakedNormal.z;
+      j[0] = static_cast<cgltf_uint>(rigid->jointIndex);
+      j[1] = j[2] = j[3] = 0;
+      w[0] = 1.0f;
+      w[1] = w[2] = w[3] = 0.0f;
+    } else {
+      if (!readFloat(weights, vertexIndex, w, 4) ||
+          !cgltf_accessor_read_uint(joints, vertexIndex, j, 4)) {
+        return fail(assetName, "vertex accessor read is out of bounds", error);
       }
-      w[influence] /= totalWeight;
+      const float totalWeight = w[0] + w[1] + w[2] + w[3];
+      if (!std::isfinite(totalWeight) || totalWeight <= 0.0f) {
+        return fail(assetName, "vertex weights sum to zero", error);
+      }
+      for (std::size_t influence = 0; influence < 4; ++influence) {
+        if (j[influence] >= jointCount) {
+          return fail(assetName, "vertex joint index exceeds skin joint count", error);
+        }
+        w[influence] /= totalWeight;
+      }
     }
     output.vertices.push_back({
         glm::vec3(p[0], p[1], p[2]),
@@ -369,6 +428,7 @@ bool copyPrimitive(const cgltf_primitive& primitive, std::size_t jointCount,
   }
   if (!copyTextureImage(primitive, output, range, assetName, error)) return false;
   output.primitives.push_back(range);
+  output.primitiveEnabled.push_back(initiallyEnabled);
   return true;
 }
 
@@ -567,6 +627,64 @@ bool copyMeshes(const cgltf_data& data, RuntimeData& output,
   if (!foundSkinnedMesh || output.primitives.empty()) {
     return fail(assetName, "no mesh node references the skin", error);
   }
+  // 刚性装备挂件第二遍：无 skin 的网格节点沿父链找最近皮肤关节，
+  // 烘焙为单关节全权重（KayKit 把全部模块化装备变体打进同一
+  // GLB，默认关闭，调用方按名启用所需挂件）。
+  const auto jointIndexOfNode = [&output](std::size_t nodeIndex) -> int {
+    for (std::size_t joint = 0; joint < output.jointNodes.size(); ++joint) {
+      if (output.jointNodes[joint] == nodeIndex) return static_cast<int>(joint);
+    }
+    return -1;
+  };
+  for (std::size_t node = 0; node < data.nodes_count; ++node) {
+    const cgltf_node& source = data.nodes[node];
+    if (source.mesh == nullptr || source.skin == skin) continue;
+    if (source.skin != nullptr) {
+      return fail(assetName, "mesh node references an unsupported skin", error);
+    }
+    // 自挂件节点向上走父链：chain 累积"关节→挂件"的相对变换。
+    glm::mat4 chain(1.0f);
+    int jointIndex = -1;
+    int cursor = static_cast<int>(node);
+    for (int guard = 0; guard < 64; ++guard) {
+      const int parent =
+          output.nodes[static_cast<std::size_t>(cursor)].parent;
+      if (parent < 0) break;
+      const int candidate =
+          jointIndexOfNode(static_cast<std::size_t>(parent));
+      if (candidate >= 0) {
+        jointIndex = candidate;
+        break;
+      }
+      chain = composeNode(output.nodes[static_cast<std::size_t>(parent)]) *
+              chain;
+      cursor = parent;
+    }
+    if (jointIndex < 0) continue;  // 不挂在关节下：非装备挂件，跳过。
+    RigidBake bake;
+    bake.jointIndex = jointIndex;
+    bake.positionMatrix =
+        glm::inverse(output.inverseBindMatrices[static_cast<std::size_t>(
+            jointIndex)]) *
+        chain * composeNode(output.nodes[node]);
+    Attachment attachment;
+    attachment.name = source.name != nullptr ? source.name : "";
+    attachment.jointIndex = jointIndex;
+    attachment.firstPrimitive = output.primitives.size();
+    const cgltf_mesh& mesh = *source.mesh;
+    for (std::size_t primitive = 0; primitive < mesh.primitives_count;
+         ++primitive) {
+      if (!copyPrimitive(mesh.primitives[primitive], output.jointNodes.size(),
+                         output, assetName, error, &bake, false)) {
+        return false;
+      }
+    }
+    attachment.primitiveCount =
+        output.primitives.size() - attachment.firstPrimitive;
+    if (attachment.primitiveCount > 0) {
+      output.attachments.push_back(std::move(attachment));
+    }
+  }
   return true;
 }
 
@@ -636,6 +754,13 @@ bool parseGlb(const std::vector<uint8_t>& bytes, const std::string& assetName,
 }
 
 glm::mat4 composeNode(const PoseNode& node) {
+  if (node.hasMatrix) return node.matrix;
+  return glm::translate(glm::mat4(1.0f), node.translation) *
+         glm::mat4_cast(node.rotation) * glm::scale(glm::mat4(1.0f), node.scale);
+}
+
+// OwnedNode 与 PoseNode 字段同构：挂件父链变换复用同一组合逻辑。
+glm::mat4 composeNode(const OwnedNode& node) {
   if (node.hasMatrix) return node.matrix;
   return glm::translate(glm::mat4(1.0f), node.translation) *
          glm::mat4_cast(node.rotation) * glm::scale(glm::mat4(1.0f), node.scale);
@@ -1115,7 +1240,14 @@ void SkinnedModel::drawInternal(Shader3D* shader) const {
   glVertexAttribPointer(kWeightsAttribute, 4, GL_FLOAT, GL_FALSE, stride,
                         reinterpret_cast<void*>(offsetof(SkinnedVertex, weights)));
 
-  for (const PrimitiveRange& primitive : impl_->data.primitives) {
+  for (std::size_t primitiveIndex = 0;
+       primitiveIndex < impl_->data.primitives.size(); ++primitiveIndex) {
+    // 未启用的装备挂件跳过：本体 primitive 恒启用。
+    if (primitiveIndex < impl_->data.primitiveEnabled.size() &&
+        !impl_->data.primitiveEnabled[primitiveIndex]) {
+      continue;
+    }
+    const PrimitiveRange& primitive = impl_->data.primitives[primitiveIndex];
     const bool hasTexture =
         primitive.textureIndex >= 0 &&
         static_cast<std::size_t>(primitive.textureIndex) < impl_->textures.size();
@@ -1179,6 +1311,45 @@ const std::vector<std::string>& SkinnedModel::jointNames() const {
 
 const std::vector<std::string>& SkinnedModel::clipNames() const {
   return impl_->data.clipNames;
+}
+
+std::vector<std::string> SkinnedModel::attachmentNames() const {
+  std::vector<std::string> names;
+  names.reserve(impl_->data.attachments.size());
+  for (const Attachment& attachment : impl_->data.attachments) {
+    names.push_back(attachment.name);
+  }
+  return names;
+}
+
+void SkinnedModel::setAttachmentEnabled(const std::string& name,
+                                        bool enabled) {
+  for (Attachment& attachment : impl_->data.attachments) {
+    if (attachment.name != name) continue;
+    attachment.enabled = enabled;
+    for (std::size_t i = 0; i < attachment.primitiveCount; ++i) {
+      const std::size_t primitive = attachment.firstPrimitive + i;
+      if (primitive < impl_->data.primitiveEnabled.size()) {
+        impl_->data.primitiveEnabled[primitive] = enabled;
+      }
+    }
+  }
+}
+
+bool SkinnedModel::attachmentEnabled(const std::string& name) const {
+  for (const Attachment& attachment : impl_->data.attachments) {
+    if (attachment.name == name) return attachment.enabled;
+  }
+  return false;
+}
+
+std::vector<glm::vec3> SkinnedModel::vertexPositionsForVerification() const {
+  std::vector<glm::vec3> positions;
+  positions.reserve(impl_->data.vertices.size());
+  for (const SkinnedVertex& vertex : impl_->data.vertices) {
+    positions.push_back(vertex.position);
+  }
+  return positions;
 }
 
 bool SkinnedModel::hasTexture() const {

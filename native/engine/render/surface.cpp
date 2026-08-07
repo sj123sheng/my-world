@@ -908,14 +908,26 @@ static void tryInitializeModelAsset(Surface& s, ModelKind kind,
     // KayKit 角色右手的武器挂点；缺失时保持 -1，武器不挂载。
     s.playerWeaponJoint = FindJointIndex(model.jointNames(), "handslot.r");
     LOGI("player weapon joint=%{public}d", s.playerWeaponJoint);
+    // 骑士模块化装备：头盔 + 披风 + 左手圆盾（右手保留程序化佩剑）。
+    model.setAttachmentEnabled("Knight_Helmet", true);
+    model.setAttachmentEnabled("Knight_Cape", true);
+    model.setAttachmentEnabled("Round_Shield", true);
   }
   if (kind == ModelKind::Enemy) {
     s.enemyWeaponJoint = FindJointIndex(model.jointNames(), "handslot.r");
     LOGI("enemy weapon joint=%{public}d", s.enemyWeaponJoint);
+    // 法师模块化装备：帽子 + 披风 + 左手法术书（右手保留程序化法杖）。
+    model.setAttachmentEnabled("Mage_Hat", true);
+    model.setAttachmentEnabled("Mage_Cape", true);
+    model.setAttachmentEnabled("Spellbook", true);
   }
   if (kind == ModelKind::Boss) {
     s.bossWeaponJoint = FindJointIndex(model.jointNames(), "handslot.r");
     LOGI("boss weapon joint=%{public}d", s.bossWeaponJoint);
+    // 野蛮人模块化装备：帽子 + 披风 + 左手圆盾（右手保留程序化重棍）。
+    model.setAttachmentEnabled("Barbarian_Hat", true);
+    model.setAttachmentEnabled("Barbarian_Cape", true);
+    model.setAttachmentEnabled("Barbarian_Round_Shield", true);
   }
 }
 
