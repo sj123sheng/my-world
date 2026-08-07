@@ -688,6 +688,20 @@ void testWindupScaleBreathesWithinBounds() {
   assert(nearlyEqual(WindupScaleFor(0.7f, -1.0f), 1.0f));
 }
 
+void testDodgeGhostAlphaFadesWithAge() {
+  // 窗口边界与非法参数归零。
+  assert(DodgeGhostAlphaFor(0.0f, 0.24f) == 0.0f);
+  assert(DodgeGhostAlphaFor(0.24f, 0.24f) == 0.0f);
+  assert(DodgeGhostAlphaFor(0.5f, 0.24f) == 0.0f);
+  assert(DodgeGhostAlphaFor(0.1f, 0.0f) == 0.0f);
+  // 窗口内线性衰减：采样越新越亮。
+  const float young = DodgeGhostAlphaFor(0.06f, 0.24f);
+  const float old = DodgeGhostAlphaFor(0.18f, 0.24f);
+  assert(young > old && old > 0.0f);
+  assert(nearlyEqual(young, 0.28f * 0.75f));
+  assert(nearlyEqual(old, 0.28f * 0.25f));
+}
+
 }  // namespace
 
 int main() {
@@ -730,5 +744,6 @@ int main() {
   testWindupBodyTintBlendsTowardWarning();
   testHitRecoilTiltDecaysQuadratically();
   testWindupScaleBreathesWithinBounds();
+  testDodgeGhostAlphaFadesWithAge();
   return 0;
 }

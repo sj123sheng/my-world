@@ -633,3 +633,14 @@ inline float WindupScaleFor(float pulse01, float maxInflate) {
   if (maxInflate <= 0.0f) return 1.0f;
   return 1.0f + maxInflate * std::clamp(pulse01, 0.0f, 1.0f);
 }
+
+// 闪避残影（原神闪避运动语言）：无敌帧窗口内在过去位置绘制残影，
+// 透明度按采样年龄线性衰减（越旧越淡），峰值 0.28 保持残影不抢
+// 主体；age<=0 / age>=maxAge / 窗口非正均返回 0。
+inline float DodgeGhostAlphaFor(float ageSeconds, float maxAgeSeconds) {
+  if (ageSeconds <= 0.0f || maxAgeSeconds <= 0.0f ||
+      ageSeconds >= maxAgeSeconds) {
+    return 0.0f;
+  }
+  return 0.28f * (1.0f - ageSeconds / maxAgeSeconds);
+}

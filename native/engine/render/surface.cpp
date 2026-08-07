@@ -2559,6 +2559,37 @@ static void draw3DPhase(Surface& s) {
       s.shader3d.setAlpha(1.0f);
       glDisable(GL_BLEND);
     }
+    // 闪避残影（原神闪避运动语言）：无敌帧窗口与短暂余韵内复用
+    // 主体当前姿态（蒙皮调色板已由主体绘制上传），在过去位置绘制
+    // 两道按年龄衰减透明度的淡蓝残影（与冲刺尘土同色）；无描边
+    // 无武器，保持残影不抢主体。
+    if (s.playerGhostFadeSeconds > 0.0f && s.playerModel.ready()) {
+      const float ghostFade =
+          std::min(1.0f, s.playerGhostFadeSeconds / 0.08f);
+      for (const float targetAge : {0.08f, 0.16f}) {
+        const Surface::PlayerGhostSample* sample =
+            s.findPlayerGhostSample(targetAge);
+        if (sample == nullptr) continue;
+        const float ghostAlpha =
+            DodgeGhostAlphaFor(sample->age, 0.24f) * ghostFade;
+        if (ghostAlpha <= 0.01f) continue;
+        const glm::vec3 ghostFeet{
+            sample->x, groundYAt(s, sample->x, sample->y) + 0.012f,
+            sample->y};
+        const glm::mat4 ghostMatrix = actorModelMatrix(
+            ghostFeet, s.playerAssetProfile.scale,
+            sample->angle + s.playerAssetProfile.yawOffsetRadians);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        s.shader3d.setAlpha(ghostAlpha);
+        applyEntityTint(s, DodgeDustColor());
+        s.shader3d.setMVP(vp * ghostMatrix);
+        s.shader3d.setModel(ghostMatrix);
+        s.playerModel.draw(s.shader3d, nullptr);
+        s.shader3d.setAlpha(1.0f);
+        glDisable(GL_BLEND);
+      }
+    }
   }
 
   // 训练假人立方体（按 alive 跳过）。

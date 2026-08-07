@@ -1789,6 +1789,8 @@ void Loop::resetInput() {
   prevFinalForgeCasting = false;
   surface.ultimateDimSeconds = 0.0f;
   surface.infusionEmitSeconds = 0.0f;
+  surface.playerGhostHistory.clear();
+  surface.playerGhostFadeSeconds = 0.0f;
   surface.hitSparks3d.clear();
   surface.playerSlashSeconds = -1.0f;
   surface.playerSlashCombo = 0;
@@ -3339,6 +3341,9 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                               : 1.0f;
   // 无敌帧状态：闪避期间渲染层半透明化玩家模型。
   surface.playerInvulnerable = combatSnapshot.invulnerable;
+  // 闪避残影：无敌帧窗口内逐帧采样位置，窗口结束后留短暂余韵
+  //（原神闪避运动语言）。
+  surface.updatePlayerGhostTrail(dtSeconds, combatSnapshot.invulnerable);
   surface.player3dAnimation.action = PlayerRenderAnimation(
       static_cast<ActionState>(combatSnapshot.currentAction),
       combatSnapshot.activeCombatAction);

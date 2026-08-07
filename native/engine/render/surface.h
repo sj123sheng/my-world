@@ -507,6 +507,54 @@ struct Surface {
   float playerHpRatio = 1.0f;
   // 玩家处于无敌帧（闪避中）：渲染层半透明化给出清晰的免伤反馈。
   bool playerInvulnerable = false;
+  // 闪避残影位置历史（front=最旧）：无敌帧窗口与短暂余韵内逐帧
+  // 采样玩家位姿，绘制时按年龄取过去位置画残影；余韵结束后清空。
+  struct PlayerGhostSample {
+    float x = 0.0f;
+    float y = 0.0f;
+    float angle = 0.0f;
+    float age = 0.0f;
+  };
+  std::vector<PlayerGhostSample> playerGhostHistory;
+  // 闪避残影余韵计时：闪避中刷新到上限，窗口结束后衰减；>0 时
+  // 绘制残影且整体透明度随剩余时间缩小，避免窗口结束硬切。
+  float playerGhostFadeSeconds = 0.0f;
+
+  // 闪避残影轨迹更新：闪避中逐帧采样当前位置并刷新余韵窗口；
+  // 推进样本年龄并移除过期样本；余韵结束后清空历史。
+  void updatePlayerGhostTrail(float dtSeconds, bool dodging) {
+    playerGhostFadeSeconds =
+        dodging ? 0.12f
+                : std::max(0.0f, playerGhostFadeSeconds - dtSeconds);
+    if (!dodging && playerGhostFadeSeconds <= 0.0f) {
+      playerGhostHistory.clear();
+      return;
+    }
+    for (PlayerGhostSample& sample : playerGhostHistory) {
+      sample.age += dtSeconds;
+    }
+    playerGhostHistory.push_back({player.x, player.y, player.angle, 0.0f});
+    // 移除超过最大残影年龄（0.24s）的样本，避免无限增长。
+    while (!playerGhostHistory.empty() &&
+           playerGhostHistory.front().age > 0.24f) {
+      playerGhostHistory.erase(playerGhostHistory.begin());
+    }
+  }
+
+  // 按目标年龄在残影历史中取最接近的样本（历史为空返回 nullptr）。
+  const PlayerGhostSample* findPlayerGhostSample(float targetAge) const {
+    const PlayerGhostSample* best = nullptr;
+    float bestDistance = 0.0f;
+    for (const PlayerGhostSample& sample : playerGhostHistory) {
+      const float distance = sample.age > targetAge ? sample.age - targetAge
+                                                    : targetAge - sample.age;
+      if (best == nullptr || distance < bestDistance) {
+        best = &sample;
+        bestDistance = distance;
+      }
+    }
+    return best;
+  }
 
   void applyAssetProfile(ModelKind kind, const AssetProfile& profile) {
     switch (kind) {
