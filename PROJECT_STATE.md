@@ -184,6 +184,10 @@
   纯函数锁定：0.15s 淡入到 0.22 上限，吟唱结束双倍速回落），
   与光柱/FOV/卡肉叠加，爆发演出升级为接管整个画面；
   暗场累加器遭遇重置归零。
+- 武器附魔粒子：附魔期间主角周身按 AuraParticleInterval() 节奏
+  发射元素上升粒子（与敌人附着光环上升粒子同源：
+  AuraParticleVelocity/AuraSparkKindFor），附魔状态从武器延伸到
+  角色周身；切人重置附魔时粒子随 playerSlashSource 自然停止。
 
 ## 验证状态
 

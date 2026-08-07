@@ -1788,6 +1788,7 @@ void Loop::resetInput() {
   surface.bossPrevDefeated = false;
   prevFinalForgeCasting = false;
   surface.ultimateDimSeconds = 0.0f;
+  surface.infusionEmitSeconds = 0.0f;
   surface.hitSparks3d.clear();
   surface.playerSlashSeconds = -1.0f;
   surface.playerSlashCombo = 0;
@@ -3138,6 +3139,34 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     if (surface.trainingTarget.alive) {
       emitAuraParticles({surface.trainingTarget.x, surface.trainingTarget.y},
                         surface.trainingTargetAuraMask);
+    }
+  }
+  // 武器附魔粒子：附魔期间主角周身持续元素粒子上涌（原神武器附魔
+  // 语言），与敌人附着光环上升粒子同源（AuraParticleVelocity/
+  // AuraSparkKindFor），附魔状态从刀光/染色延伸到角色周身。
+  surface.infusionEmitSeconds += dtSeconds;
+  if (surface.infusionEmitSeconds >= AuraParticleInterval()) {
+    surface.infusionEmitSeconds -= AuraParticleInterval();
+    if (surface.playerSlashSource >= 0 && surface.hitSparks3d.size() <= 128) {
+      const float infusionRatio =
+          VfxSizeRatio(surface.playerAssetProfile, ModelKind::Player);
+      surface.hitSparkSeed = surface.hitSparkSeed * 1664525u + 1013904223u;
+      const float r0 =
+          static_cast<float>((surface.hitSparkSeed >> 8) & 0xFFFFu) /
+          65535.0f;
+      const float infusionAngle = r0 * 6.2831853f;
+      float ivx = 0.0f, ivy = 0.0f, ivz = 0.0f;
+      AuraParticleVelocity(infusionAngle, 0.002f * infusionRatio,
+                           (0.026f + 0.012f * r0) * infusionRatio, ivx, ivy,
+                           ivz);
+      const float infusionLife = 0.45f + 0.2f * r0;
+      const float infusionSpawnRadius = 0.02f * infusionRatio;
+      surface.hitSparks3d.push_back(
+          {surface.player.x + std::cos(infusionAngle) * infusionSpawnRadius,
+           0.04f,
+           surface.player.y + std::sin(infusionAngle) * infusionSpawnRadius,
+           ivx, ivy, ivz, infusionLife, infusionLife,
+           AuraSparkKindFor(surface.playerSlashSource), infusionRatio});
     }
   }
   // 前摇聚能粒子：敌人/首领吟唱期间持续向自身汇聚粒子（原神蓄力
