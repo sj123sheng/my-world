@@ -501,6 +501,9 @@ static void drawAuraRings(Surface& s, const glm::mat4& vp) {
       break;
     }
   }
+  // 主角附魔/首领阶段光环也是持续状态环，纳入提前退出判断。
+  if (s.playerSlashSource >= 0) any = true;
+  if (s.boss3d.active && !s.boss3d.defeated) any = true;
   if (!any) return;
 
   glDepthMask(GL_FALSE);
@@ -550,6 +553,52 @@ static void drawAuraRings(Surface& s, const glm::mat4& vp) {
   if (s.trainingTarget.alive && s.trainingTargetAuraMask != 0) {
     drawAura(s.trainingTarget.x, s.trainingTarget.y,
              s.enemyAssetProfile.scale, s.trainingTargetAuraMask);
+  }
+  // 主角附魔光环：施放元素技能后脚下浮现对应源质的淡呼吸环
+  //（原神元素附魔状态语言），与武器染色/刀光染色同状态驱动；
+  // 透明度降档避免与锁定环/终结段地面反馈抢戏。
+  if (s.playerSlashSource >= 0) {
+    const AuraRingPose infusionPose =
+        AuraRingPoseAt(s.auraPulseSeconds, 0);
+    const float infusionRadius = s.playerAssetProfile.scale * 0.42f *
+                                 infusionPose.radiusScale;
+    const glm::vec3 infusionColor = AuraColorFor(s.playerSlashSource);
+    const glm::mat4 infusionModel =
+        glm::translate(glm::mat4(1.0f),
+                       glm::vec3(s.player.x,
+                                 groundYAt(s, s.player.x, s.player.y) + 0.008f,
+                                 s.player.y)) *
+        glm::scale(glm::mat4(1.0f),
+                   glm::vec3(infusionRadius / kRingOuterRadius));
+    s.shader3d.setLight(glm::vec3(0.0f, 1.0f, 0.0f), infusionColor * 0.8f,
+                        infusionColor * 0.6f);
+    s.shader3d.setAlpha(infusionPose.alpha * 0.55f);
+    s.shader3d.setMVP(vp * infusionModel);
+    s.shader3d.setModel(infusionModel);
+    s.targetRingMesh.draw();
+  }
+  // 首领阶段光环：首领脚下持续阶段元素色呼吸环（原神首领光环
+  // 语言），与转阶段爆发/血条阶段色同源，阶段语言从爆发延伸到
+  // 常驻状态。
+  if (s.boss3d.active && !s.boss3d.defeated) {
+    const BossPhaseVfx bossPhaseVfx = BossPhaseVfxFor(s.boss3d.phase);
+    const AuraRingPose bossPose = AuraRingPoseAt(s.auraPulseSeconds, 0);
+    const float bossRadius =
+        s.bossAssetProfile.scale * 0.5f * bossPose.radiusScale;
+    const glm::mat4 bossModel =
+        glm::translate(glm::mat4(1.0f),
+                       glm::vec3(s.boss3d.x,
+                                 groundYAt(s, s.boss3d.x, s.boss3d.y) + 0.008f,
+                                 s.boss3d.y)) *
+        glm::scale(glm::mat4(1.0f),
+                   glm::vec3(bossRadius / kRingOuterRadius));
+    s.shader3d.setLight(glm::vec3(0.0f, 1.0f, 0.0f),
+                        bossPhaseVfx.color * 0.8f,
+                        bossPhaseVfx.color * 0.6f);
+    s.shader3d.setAlpha(bossPose.alpha * 0.7f);
+    s.shader3d.setMVP(vp * bossModel);
+    s.shader3d.setModel(bossModel);
+    s.targetRingMesh.draw();
   }
 
   s.shader3d.setAlpha(1.0f);
