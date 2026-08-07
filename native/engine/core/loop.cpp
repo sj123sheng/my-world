@@ -2680,6 +2680,24 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       }
       continue;
     }
+    // 破韧爆发（原神式破韧）：敌人韧性击碎瞬间在其位置爆发亮金
+    // 碎裂火花 + 冲击波，伴随更重卡肉与 FOV 冲击，传达"防线破碎、
+    // 全力输出"窗口；此前破韧仅有音效无视觉反馈。
+    if (event.type == GameplayEventType::PoiseBreak &&
+        event.target != CombatController::kPlayerId) {
+      const std::optional<Vec2> poisePos = resolveEntityPosition(
+          surface, encounter.snapshot(), event.target, &wildSpawn);
+      if (poisePos.has_value()) {
+        const float poiseRatio = actorVfxRatio(surface, event.target);
+        spawnHitSparks(surface, *poisePos, 2, 18, 1.9f, 1.4f,
+                       poiseRatio * 1.2f);
+        spawnShockwave(surface, *poisePos, glm::vec3{1.0f, 0.92f, 0.62f},
+                       0.12f * poiseRatio);
+        hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + 72, 96);
+        surface.resonanceFovSeconds = 0.0f;
+      }
+      continue;
+    }
     // 元素反应爆发：三源共鸣触发时在受击点爆发大规模元素色火花 +
     // 冲击波环 + 贴花，颜色/火花 kind 按反应类型区分（原神式
     // 元素反应反馈）；反应类型取自战斗快照（同帧单次反应准确）。
