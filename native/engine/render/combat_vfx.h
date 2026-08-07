@@ -581,3 +581,11 @@ inline UltimateVfx UltimateVfxFor(int characterId) {
   if (source < 0) return {{1.0f, 0.90f, 0.50f}, 4};  // 物理：通用亮金
   return {AuraColorFor(source), AuraSparkKindFor(source)};
 }
+
+// 终结技暗场聚焦曲线（原神元素爆发演出）：吟唱期间全屏渐暗，
+// 把世界压暗突出爆发主体；0.15s 淡入到 0.22 上限，结束后按
+// 累加器回落反向淡出。
+inline float UltimateDimAlphaFor(float dimSeconds) {
+  if (dimSeconds <= 0.0f) return 0.0f;
+  return std::min(dimSeconds / 0.15f, 1.0f) * 0.22f;
+}

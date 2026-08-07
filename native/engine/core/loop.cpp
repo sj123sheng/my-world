@@ -1787,6 +1787,7 @@ void Loop::resetInput() {
   surface.bossPrevActive = false;
   surface.bossPrevDefeated = false;
   prevFinalForgeCasting = false;
+  surface.ultimateDimSeconds = 0.0f;
   surface.hitSparks3d.clear();
   surface.playerSlashSeconds = -1.0f;
   surface.playerSlashCombo = 0;
@@ -3297,6 +3298,16 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   surface.player3dAnimation.attackClip = PlayerAttackClipFor(
       PlayerComboSegmentFor(
           static_cast<ActionState>(combatSnapshot.currentAction)));
+  // 终结技暗场聚焦：吟唱中累加（0.3 封顶），结束后双倍速回落，
+  // 渲染层按 UltimateDimAlphaFor 压暗全屏突出爆发（原神爆发演出）。
+  if (combatSnapshot.currentAction ==
+      static_cast<uint8_t>(ActionState::CastingUltimate)) {
+    surface.ultimateDimSeconds =
+        std::min(surface.ultimateDimSeconds + dtSeconds, 0.3f);
+  } else {
+    surface.ultimateDimSeconds =
+        std::max(surface.ultimateDimSeconds - dtSeconds * 2.0f, 0.0f);
+  }
   surface.player3dAnimation.hit = surface.playerHitAnimationSeconds > 0.0f;
   surface.player3dAnimation.moving = surface.player.moving;
   // 摇杆幅度驱动跑动步频缩放：地面移速与输入幅度成正比，

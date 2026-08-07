@@ -409,6 +409,9 @@ struct Surface {
   // FOV 冲击振幅（度，负值收窄）：按触发档位写入
   // （FovPunchMaxOffsetFor），渲染层据此决定冲击轻重。
   float fovPunchMaxOffset = -7.0f;
+  // 终结技暗场聚焦累加器（秒）：吟唱中累加（0.3 封顶），结束后
+  // 双倍速回落；渲染层按 UltimateDimAlphaFor 压暗全屏突出爆发。
+  float ultimateDimSeconds = 0.0f;
   // 训练假人的元素附着掩码（bit0=辉印 bit1=脉流 bit2=蚀质）：
   // 训练模式下取自战斗快照附着位，其余模式恒 0。
   int trainingTargetAuraMask = 0;

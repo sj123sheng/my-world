@@ -308,6 +308,13 @@ static void drawVfxOverlayGL(const Surface& s) {
   if (s.vfxResonanceBurst > 0.0f) {
     drawSolidRectGL(s, 0.0f, 0.0f, 2.0f, 2.0f, 0.85f, 0.63f, 0.16f, s.vfxResonanceBurst * 0.2f);
   }
+  // 终结技暗场聚焦：吟唱期间全屏渐暗（原神元素爆发演出），
+  // 把世界压暗突出爆发主体；深蓝色调与爆发光柱形成冷暖对比。
+  const float ultimateDim = UltimateDimAlphaFor(s.ultimateDimSeconds);
+  if (ultimateDim > 0.0f) {
+    drawSolidRectGL(s, 0.0f, 0.0f, 2.0f, 2.0f, 0.02f, 0.02f, 0.06f,
+                    ultimateDim);
+  }
   // 低血量警示：血量低于 35% 时屏幕四边红色脉冲，越低越强烈。
   if (s.playerHpRatio < 0.35f) {
     const float phase = s.windupPulseSeconds / 0.8f * 6.2831853f;

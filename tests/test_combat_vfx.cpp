@@ -623,6 +623,18 @@ void testCharacterSourceMapping() {
   assert(CharacterSourceFor(99) == -1);
 }
 
+void testUltimateDimAlphaRampsAndCaps() {
+  // 非正计时全亮；0.15s 线性淡入到 0.22 上限后封顶。
+  assert(UltimateDimAlphaFor(0.0f) == 0.0f);
+  assert(UltimateDimAlphaFor(-1.0f) == 0.0f);
+  const float half = UltimateDimAlphaFor(0.075f);
+  const float full = UltimateDimAlphaFor(0.15f);
+  assert(half > 0.0f && half < full);
+  assert(std::fabs(full - 0.22f) < 1e-4f);
+  assert(UltimateDimAlphaFor(0.3f) == full);
+  assert(UltimateDimAlphaFor(10.0f) == full);
+}
+
 }  // namespace
 
 int main() {
@@ -660,5 +672,6 @@ int main() {
   testConvergingSparkMotionArrivesAtCenter();
   testUltimateVfxFollowsCharacterElement();
   testCharacterSourceMapping();
+  testUltimateDimAlphaRampsAndCaps();
   return 0;
 }
