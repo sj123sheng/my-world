@@ -37,6 +37,23 @@ inline RenderAnimation PlayerRenderAnimation(ActionState state,
   }
 }
 
+// 连段段数（Attack1..Attack4 → 1..4）：供攻击 clip 差异化选取，
+// 非攻击状态返回 0（回退通用 attack）。
+inline int PlayerComboSegmentFor(ActionState state) {
+  switch (state) {
+    case ActionState::Attack1:
+      return 1;
+    case ActionState::Attack2:
+      return 2;
+    case ActionState::Attack3:
+      return 3;
+    case ActionState::Attack4:
+      return 4;
+    default:
+      return 0;
+  }
+}
+
 inline RenderAnimation BossRenderAnimation(const BossSnapshot& boss,
                                            FixedPoint previousHp) {
   if (boss.defeated) return RenderAnimation::Death;

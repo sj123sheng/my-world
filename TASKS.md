@@ -89,6 +89,11 @@
 - [x] 敌人血条元素边框：元素系敌人头顶血条深色底外圈薄元素色框
       （EnemyElementFor 判定 + AuraColorFor 同源配色），血量填充
       仍走渐变保持可读，物理敌人保持纯深色底。
+- [x] 攻击动画差异化：主角四段连招（斜劈/横斩/突刺/终结重劈）、
+      六类敌人原型（爪击/仪式/盾击/重斩/法术/旋转斩）、首领三
+      普攻变体（重劈/束流/旋转冲击）各用专用 clip
+      （PlayerAttackClipFor/EnemyAttackClipFor/BossAttackClipFor
+      纯函数），缺失自动回退通用 attack。
 
 ## 下一阶段优先级
 

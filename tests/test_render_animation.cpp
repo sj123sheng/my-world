@@ -405,6 +405,50 @@ void testLowSpeedLocomotionPrefersWalkClip() {
   assert(ResolveClip(clips, RenderAnimation::Idle, 0, 0.2f) == "idle");
 }
 
+void testAttackClipDifferentiationBySegmentArchetypeVariant() {
+  // 主角连段：四段各不同，终结段为双手重劈，未知段数回退 attack。
+  assert(PlayerAttackClipFor(1) ==
+         std::string("1H_Melee_Attack_Slice_Diagonal"));
+  assert(PlayerAttackClipFor(2) ==
+         std::string("1H_Melee_Attack_Slice_Horizontal"));
+  assert(PlayerAttackClipFor(3) == std::string("1H_Melee_Attack_Stab"));
+  assert(PlayerAttackClipFor(4) == std::string("2H_Melee_Attack_Chop"));
+  assert(PlayerAttackClipFor(0) == std::string("attack"));
+  assert(PlayerAttackClipFor(9) == std::string("attack"));
+  // 敌人原型：六类各不同，未知原型回退 attack。
+  assert(EnemyAttackClipFor(0) ==
+         std::string("Unarmed_Melee_Attack_Punch_A"));
+  assert(EnemyAttackClipFor(1) == std::string("Spellcast_Raise"));
+  assert(EnemyAttackClipFor(2) == std::string("Block_Attack"));
+  assert(EnemyAttackClipFor(3) == std::string("2H_Melee_Attack_Chop"));
+  assert(EnemyAttackClipFor(4) == std::string("Spellcast_Shoot"));
+  assert(EnemyAttackClipFor(5) == std::string("2H_Melee_Attack_Spin"));
+  assert(EnemyAttackClipFor(99) == std::string("attack"));
+  // 首领变体：三变体循环，各不同。
+  assert(BossAttackClipFor(0) == std::string("2H_Melee_Attack_Chop"));
+  assert(BossAttackClipFor(1) == std::string("Spellcast_Long"));
+  assert(BossAttackClipFor(2) == std::string("2H_Melee_Attack_Spin"));
+  assert(BossAttackClipFor(3) == std::string("2H_Melee_Attack_Chop"));
+  // ResolveClip：偏好 clip 存在时优先，缺失回退 attack；
+  // 非攻击动作忽略偏好 clip。
+  const std::vector<std::string> full{"idle", "run", "attack",
+                                      "1H_Melee_Attack_Stab"};
+  assert(ResolveClip(full, RenderAnimation::Attack, 0, 1.0f,
+                     "1H_Melee_Attack_Stab") == "1H_Melee_Attack_Stab");
+  const std::vector<std::string> bare{"idle", "run", "attack"};
+  assert(ResolveClip(bare, RenderAnimation::Attack, 0, 1.0f,
+                     "1H_Melee_Attack_Stab") == "attack");
+  assert(ResolveClip(full, RenderAnimation::Idle, 0, 1.0f,
+                     "1H_Melee_Attack_Stab") == "idle");
+  // 连段段数映射：Attack1..Attack4 → 1..4，其余 0。
+  assert(PlayerComboSegmentFor(ActionState::Attack1) == 1);
+  assert(PlayerComboSegmentFor(ActionState::Attack2) == 2);
+  assert(PlayerComboSegmentFor(ActionState::Attack3) == 3);
+  assert(PlayerComboSegmentFor(ActionState::Attack4) == 4);
+  assert(PlayerComboSegmentFor(ActionState::Idle) == 0);
+  assert(PlayerComboSegmentFor(ActionState::Dodging) == 0);
+}
+
 }  // namespace
 
 int main() {
@@ -421,6 +465,7 @@ int main() {
   testDeathFadeAlphaHoldsThenFadesToZero();
   testClipVariantsAlternateByVariantIndex();
   testLowSpeedLocomotionPrefersWalkClip();
+  testAttackClipDifferentiationBySegmentArchetypeVariant();
   testAnimationLogOnlyReportsIntentOrResolvedClipChanges();
   testUnavailableRuntimeModelStaysOnFallbackPath();
   testSurfaceStoresLateModelAssetsForContextBoundInitialization();

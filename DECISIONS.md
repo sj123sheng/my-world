@@ -1,5 +1,16 @@
 # 技术决策
 
+## 2026-08-08：攻击动画差异化（连段/原型/首领变体）
+
+- 此前主角四段连招、六类敌人原型、首领三普攻变体共用同一条
+  attack clip，动作语言单一。现按语义分派 KayKit 库存中的专用
+  clip（PlayerAttackClipFor/EnemyAttackClipFor/BossAttackClipFor/
+  PlayerComboSegmentFor 纯函数锁定）：主角 1斜劈 2横斩 3突刺
+  4双手重劈（终结段呼应放大刀光/地面冲击波）；敌人爪击/仪式/
+  盾击/重斩/法术射击/旋转斩；首领重劈/吟唱束流/旋转冲击。
+- 机制：ActorRenderState 增加 attackClip 偏好字段，ResolveClip
+  攻击意图下优先选用、资产缺失自动回退通用 attack，不新增资产。
+
 ## 2026-08-08：敌人血条元素边框（系别可读不抢血量可读性）
 
 - 敌人头顶血条此前统一深色底 + 血量渐变填充，系别信息只在技能/

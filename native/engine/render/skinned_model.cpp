@@ -1160,7 +1160,7 @@ SkinPalette SkinnedModel::update(SkinnedAnimationState& animation,
           : 1.0f;
   const std::string desiredName = ResolveClip(
       impl_->data.clipNames, requestedAnimation, actor.variant,
-      actor.moveRatio);
+      actor.moveRatio, actor.attackClip);
   const int desiredClip = findClip(impl_->data, desiredName);
   if (desiredClip != animation.currentClip) {
     const float blendSeconds = AnimationBlendSeconds(

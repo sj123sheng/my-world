@@ -85,6 +85,8 @@ void publish3DEncounterState(Surface& surface,
     state.animation.alive = enemy.alive;
     state.animation.action = enemy.attacking ? RenderAnimation::Attack
                                              : RenderAnimation::Idle;
+    // 原型攻击 clip 差异化：爪击/仪式/盾击/重斩/法术/旋转斩。
+    state.animation.attackClip = EnemyAttackClipFor(state.archetype);
     state.animation.hit = enemy.hit;
     state.animation.moving = enemy.moving;
     state.windingUp = enemy.windingUp;
@@ -180,6 +182,9 @@ void publish3DEncounterState(Surface& surface,
       bossAnimation == RenderAnimation::Hit ? RenderAnimation::Idle
                                             : bossAnimation;
   surface.boss3d.animation.hit = surface.boss3d.hitAnimationSeconds > 0.0f;
+  // 首领普攻变体 clip：重劈/吟唱束流/旋转冲击按变体切换。
+  surface.boss3d.animation.attackClip =
+      BossAttackClipFor(snapshot.boss.basicAttackVariant);
   // 首领移动/普攻状态驱动跑动与攻击动画（ChooseAnimation 按优先级选择）。
   surface.boss3d.animation.moving = snapshot.boss.moving;
   surface.boss3d.previousHp = snapshot.boss.hp;
@@ -205,6 +210,7 @@ void publishWildEnemies3d(Surface& surface, const WildSpawnSystem& wild,
     state.animation.alive = enemy.alive;
     state.animation.action = enemy.attacking ? RenderAnimation::Attack
                                              : RenderAnimation::Idle;
+    state.animation.attackClip = EnemyAttackClipFor(state.archetype);
     state.animation.hit = enemy.hit;
     state.animation.moving = enemy.moving;
     state.windingUp = enemy.windingUp;
@@ -3136,6 +3142,10 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   surface.player3dAnimation.action = PlayerRenderAnimation(
       static_cast<ActionState>(combatSnapshot.currentAction),
       combatSnapshot.activeCombatAction);
+  // 连段攻击 clip 差异化：斜劈/横斩/突刺/终结重劈按段数切换。
+  surface.player3dAnimation.attackClip = PlayerAttackClipFor(
+      PlayerComboSegmentFor(
+          static_cast<ActionState>(combatSnapshot.currentAction)));
   surface.player3dAnimation.hit = surface.playerHitAnimationSeconds > 0.0f;
   surface.player3dAnimation.moving = surface.player.moving;
   // 摇杆幅度驱动跑动步频缩放：地面移速与输入幅度成正比，

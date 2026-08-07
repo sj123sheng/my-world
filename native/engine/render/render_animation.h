@@ -38,6 +38,9 @@ struct ActorRenderState {
   // 受击/死亡动画变体索引：按奇偶在 hit/Hit_B、death/Death_B 之间
   // 轮换，打破连续受击与群体死亡的重复感。
   uint8_t variant = 0;
+  // 攻击 clip 偏好（发布侧按连段段数/敌人原型/首领变体写入）：
+  // 非空时 ResolveClip 优先选用，缺失自动回退通用 attack。
+  std::string attackClip;
 };
 
 struct AnimationLogState {
@@ -150,10 +153,71 @@ inline const char* RenderAnimationName(RenderAnimation animation) {
   }
 }
 
+// 主角连段攻击 clip（原神四段连招差异化）：1=斜劈 2=横斩 3=突刺、
+// 4=双手重劈（终结段，与放大刀光/地面冲击波的分量呼应）；
+// 未知段数回退通用 attack。
+inline const char* PlayerAttackClipFor(int comboSegment) {
+  switch (comboSegment) {
+    case 1:
+      return "1H_Melee_Attack_Slice_Diagonal";
+    case 2:
+      return "1H_Melee_Attack_Slice_Horizontal";
+    case 3:
+      return "1H_Melee_Attack_Stab";
+    case 4:
+      return "2H_Melee_Attack_Chop";
+    default:
+      return "attack";
+  }
+}
+
+// 敌人原型攻击 clip（原型动作语言差异化）：0=RiftClaw 徒手爪击、
+// 1=Priest 仪式施法、2=Guard 盾击、3=Bruiser 双手重斩、
+// 4=Caster 法术射击、5=Elite 旋转斩；未知原型回退通用 attack。
+inline const char* EnemyAttackClipFor(int archetype) {
+  switch (archetype) {
+    case 0:
+      return "Unarmed_Melee_Attack_Punch_A";
+    case 1:
+      return "Spellcast_Raise";
+    case 2:
+      return "Block_Attack";
+    case 3:
+      return "2H_Melee_Attack_Chop";
+    case 4:
+      return "Spellcast_Shoot";
+    case 5:
+      return "2H_Melee_Attack_Spin";
+    default:
+      return "attack";
+  }
+}
+
+// 首领普攻变体 clip：0=重劈（金橙挥击）1=吟唱束流（暗紫）
+// 2=旋转冲击（青蓝）；与普攻三变体的配色/规模语言对应。
+inline const char* BossAttackClipFor(int basicAttackVariant) {
+  switch (basicAttackVariant % 3) {
+    case 0:
+      return "2H_Melee_Attack_Chop";
+    case 1:
+      return "Spellcast_Long";
+    case 2:
+      return "2H_Melee_Attack_Spin";
+    default:
+      return "attack";
+  }
+}
+
 inline std::string ResolveClip(const std::vector<std::string>& clips,
                                RenderAnimation animation, int variant = 0,
-                               float moveRatio = 1.0f) {
+                               float moveRatio = 1.0f,
+                               const std::string& preferredAttackClip = {}) {
   std::vector<std::string> candidates{RenderAnimationName(animation)};
+  // 攻击 clip 差异化：发布侧写入的段数/原型/变体 clip 优先，
+  // 资产缺失时自动回退通用 attack（候选链后段）。
+  if (animation == RenderAnimation::Attack && !preferredAttackClip.empty()) {
+    candidates.insert(candidates.begin(), preferredAttackClip);
+  }
   // 低速步态分层：低幅度输入优先行走 clip（Walking_B），缺失时
   // 自动回退 run；资产无行走 clip 时行为与升级前完全一致。
   if (animation == RenderAnimation::Run && ShouldUseWalkClip(moveRatio)) {
