@@ -1110,6 +1110,15 @@ static void tryInitializeModelAsset(Surface& s, ModelKind kind,
     model.setAttachmentEnabled("Barbarian_Hat", true);
     model.setAttachmentEnabled("Barbarian_Cape", true);
     model.setAttachmentEnabled("Barbarian_Round_Shield", true);
+    // 阶段装备集（下标 = BossPhaseAttachmentSetFor）：随阶段卸甲，
+    // 转阶段爆发特效掩盖切换瞬间，剪影与阶段语言同步演进。
+    s.bossPhaseAttachments[0] = buildAttachmentOverride(
+        model, {"Barbarian_Hat", "Barbarian_Cape",
+                "Barbarian_Round_Shield"});
+    s.bossPhaseAttachments[1] = buildAttachmentOverride(
+        model, {"Barbarian_Hat", "Barbarian_Cape"});
+    s.bossPhaseAttachments[2] =
+        buildAttachmentOverride(model, {"Barbarian_Cape"});
   }
   if (kind == ModelKind::Npc) {
     // 市民模块化装备（NPC 复用玩家 KayKit 模型）：披风为基础着装，
@@ -2744,6 +2753,19 @@ static void draw3DPhase(Surface& s) {
         s.boss3d.defeated ? 0 : s.boss3d.phase, windupPulse01(s));
     const ActorRimLight bossBerserkRim{bossBerserk.color,
                                        bossBerserk.strength};
+    // 阶段剪影：按当前阶段选取装备集（卸甲语言）；表未构建回退
+    // 全局开关。
+    const std::vector<bool>* bossAttachments = nullptr;
+    {
+      const int setIndex = BossPhaseAttachmentSetFor(s.boss3d.phase);
+      if (setIndex >= 0 &&
+          setIndex < static_cast<int>(s.bossPhaseAttachments.size()) &&
+          !s.bossPhaseAttachments[static_cast<std::size_t>(setIndex)]
+               .empty()) {
+        bossAttachments =
+            &s.bossPhaseAttachments[static_cast<std::size_t>(setIndex)];
+      }
+    }
     if (actorInFrustum(frustum, bossFeet, s.bossAssetProfile.scale)) {
       drawActor(s, s.bossModel, s.bossMesh, s.bossAnimationState,
                 s.boss3d.animation,
@@ -2764,7 +2786,7 @@ static void draw3DPhase(Surface& s) {
                s.bossAssetProfile, s.boss3d.hitAnimationSeconds,
                s.boss3d.targeted, 1.0f,
                BossEntranceReveal(s.boss3d.entranceSeconds), "boss",
-               &s.clubMesh, s.bossWeaponJoint, nullptr, -1,
+               &s.clubMesh, s.bossWeaponJoint, bossAttachments, -1,
                &bossBerserkRim);
     }
     drawBossCinematicGeometry(s, vp);

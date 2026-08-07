@@ -487,6 +487,21 @@ inline float BossBerserkAuraBoostFor(int phase) {
 // 首领终段狂暴粒子发射间隔（秒）。
 inline float BossBerserkEmitInterval() { return 0.12f; }
 
+// 首领阶段装备集决策（原神首领阶段剪影语言）：随阶段推进首领
+// 逐步卸甲——阶段 1 全副武装（帽+披风+盾，封锁重甲）、阶段 2
+// 卸盾（风暴放开手脚）、阶段 3 卸帽披风狂暴（蚀质暴露本体）；
+// 返回装备集下标（0/1/2），未知阶段回退阶段 1 套装。
+inline int BossPhaseAttachmentSetFor(int phase) {
+  switch (phase) {
+    case 2:
+      return 1;
+    case 3:
+      return 2;
+    default:
+      return 0;
+  }
+}
+
 // 锁定标记配色（元素提示）：默认青蓝（"已锁定"语义）；锁定元素
 // 目标时混入 45% 元素色，锁定同时提示目标系别，与全链路元素语言
 // 一致；element<0（物理/首领/假人）保持青蓝。

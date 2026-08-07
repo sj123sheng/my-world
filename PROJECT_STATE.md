@@ -245,6 +245,11 @@
   常驻光环透明度提升一档（BossBerserkAuraBoostFor），周身蚀质粒子
   持续上涌（BossBerserkEmitInterval 0.12s，AuraParticleVelocity
   同源）；其余阶段表现与升级前完全一致，遭遇重置清空发射时钟。
+- 首领阶段剪影（卸甲语言）：随阶段推进首领逐步卸甲——阶段 1
+  帽+披风+盾、阶段 2 卸盾、阶段 3 卸帽仅披风
+  （BossPhaseAttachmentSetFor 纯函数锁定，未知阶段回退阶段 1 套装；
+  bossPhaseAttachments 三套装备集与 attachmentNames 同序，表未构建
+  回退全局开关），转阶段爆发特效掩盖切换瞬间，剪影与阶段语言同步。
 
 ## 验证状态
 

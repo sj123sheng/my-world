@@ -433,6 +433,10 @@ struct Surface {
   // enemyModel.attachmentNames() 同序）：6 类原型共享法师模型，
   // 用装备组合差异化剪影；越界原型回退全局开关。
   std::array<std::vector<bool>, 6> enemyArchetypeAttachments;
+  // 首领阶段装备启用表（下标 = BossPhaseAttachmentSetFor 返回值，
+  // 向量与 bossModel.attachmentNames() 同序）：随阶段推进卸甲，
+  // 剪影与阶段语言同步；表未构建（模型未加载）时回退全局开关。
+  std::array<std::vector<bool>, 3> bossPhaseAttachments;
   // NPC 市民装备变体表（向量与 npcModel.attachmentNames() 同序）：
   // NPC 共享玩家 KayKit 模型，按 id 取模分配 3 种装备组合差异化
   // 剪影（披风基础 + 头盔/盾牌变体），与全副武装的主角区分。

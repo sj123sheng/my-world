@@ -765,7 +765,21 @@ void testBossBerserkEmitIntervalPositive() {
   assert(BossBerserkEmitInterval() > 0.0f);
 }
 
+
+void testBossPhaseAttachmentSetEscalates() {
+  // 阶段 1 与未知阶段回退全副武装档。
+  assert(BossPhaseAttachmentSetFor(1) == 0);
+  assert(BossPhaseAttachmentSetFor(0) == 0);
+  assert(BossPhaseAttachmentSetFor(9) == 0);
+  // 阶段推进逐档卸甲，三档互不相同。
+  assert(BossPhaseAttachmentSetFor(2) == 1);
+  assert(BossPhaseAttachmentSetFor(3) == 2);
+  assert(BossPhaseAttachmentSetFor(1) != BossPhaseAttachmentSetFor(2));
+  assert(BossPhaseAttachmentSetFor(2) != BossPhaseAttachmentSetFor(3));
+}
+
 }  // namespace
+
 
 int main() {
   testSlashArcInvisibleOutsideWindow();
@@ -813,5 +827,6 @@ int main() {
   testBossBerserkRimOnlyInFinalPhase();
   testBossBerserkAuraBoostFinalPhaseOnly();
   testBossBerserkEmitIntervalPositive();
+  testBossPhaseAttachmentSetEscalates();
   return 0;
 }
