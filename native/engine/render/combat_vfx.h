@@ -559,3 +559,24 @@ inline void ConvergingSparkMotion(float angleRadians, float radius, float life,
   vx = -dx * speed;
   vz = -dz * speed;
 }
+
+// 终结技爆发配色（原神元素爆发语言）：按出战角色所属源质释放，
+// 元素角色用自身源质色（辉印金白/脉流青蓝/蚀质暗紫），物理/
+// 未知角色保持通用亮金爆发色。
+struct UltimateVfx {
+  glm::vec3 color{1.0f, 0.90f, 0.50f};
+  int sparkKind = 4;
+};
+
+inline UltimateVfx UltimateVfxFor(int characterId) {
+  switch (characterId) {
+    case 1:
+      return {AuraColorFor(0), AuraSparkKindFor(0)};
+    case 2:
+      return {AuraColorFor(1), AuraSparkKindFor(1)};
+    case 3:
+      return {AuraColorFor(2), AuraSparkKindFor(2)};
+    default:
+      return {{1.0f, 0.90f, 0.50f}, 4};
+  }
+}

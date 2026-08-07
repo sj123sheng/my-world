@@ -600,6 +600,20 @@ void testConvergingSparkMotionArrivesAtCenter() {
   assert(WindupConvergeInterval() < 0.2f);
 }
 
+void testUltimateVfxFollowsCharacterElement() {
+  // 元素角色终结技与自身源质同源（与切人出场同语言）。
+  for (int id = 1; id <= 3; ++id) {
+    const UltimateVfx ult = UltimateVfxFor(id);
+    assert(ult.color == AuraColorFor(id - 1));
+    assert(ult.sparkKind == AuraSparkKindFor(id - 1));
+  }
+  // 物理/未知角色保持通用亮金爆发色与金白火花 kind。
+  const UltimateVfx physical = UltimateVfxFor(0);
+  assert(physical.color == glm::vec3(1.0f, 0.90f, 0.50f));
+  assert(physical.sparkKind == 4);
+  assert(UltimateVfxFor(99).sparkKind == 4);
+}
+
 }  // namespace
 
 int main() {
@@ -635,5 +649,6 @@ int main() {
   testSkillCastAccentPerSource();
   testPerfectDodgeVfxSharesDodgeLanguage();
   testConvergingSparkMotionArrivesAtCenter();
+  testUltimateVfxFollowsCharacterElement();
   return 0;
 }

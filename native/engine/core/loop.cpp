@@ -2447,21 +2447,25 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     if (actionNow == static_cast<uint8_t>(ActionState::CastingUltimate) &&
         prevActionForVfx !=
             static_cast<uint8_t>(ActionState::CastingUltimate)) {
-      spawnHitSparks(surface, playerPos, 4, 20, 2.0f, 1.6f,
+      // 终结技按出战角色源质着色（原神元素爆发语言）：元素角色
+      // 释放自身源质色爆发，物理角色保持通用亮金。
+      const UltimateVfx ultimateVfx = UltimateVfxFor(activeCharacterId);
+      spawnHitSparks(surface, playerPos, ultimateVfx.sparkKind, 20, 2.0f, 1.6f,
                      playerRatio * 1.5f);
       if (releaseTarget.has_value()) {
-        spawnAttackProjectiles(surface, playerPos, *releaseTarget, 4,
+        spawnAttackProjectiles(surface, playerPos, *releaseTarget,
+                               ultimateVfx.sparkKind,
                                playerRatio * 1.5f, 7);
       }
       // 终结技冲击波：半径更大，强化“终结一击”的地面震荡感。
-      spawnShockwave(surface, playerPos, glm::vec3{1.0f, 0.90f, 0.50f},
+      spawnShockwave(surface, playerPos, ultimateVfx.color,
                      0.11f * playerRatio);
       // 终结技符文环：更大更亮的旋转符阵，强化爆发仪式感。
-      spawnSkillRune(surface, playerPos, glm::vec3{1.0f, 0.90f, 0.50f},
+      spawnSkillRune(surface, playerPos, ultimateVfx.color,
                      0.08f * playerRatio);
       // 终结技光柱：施法者位置升起亮金元素光柱（原神元素爆发语言），
       // 高度随模型缩放，与共鸣光柱同源曲线。
-      spawnLightPillar(surface, playerPos, glm::vec3{1.0f, 0.90f, 0.50f},
+      spawnLightPillar(surface, playerPos, ultimateVfx.color,
                        0.15f * playerRatio);
       // 终结技镜头语言：FOV 收窄冲击 + 64ms 卡肉（重于普攻命中、
       // 略轻于转阶段），把终结一击从普通技能里拎出来。
