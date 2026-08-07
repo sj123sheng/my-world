@@ -46,6 +46,10 @@
   附着源质时脚下浮现对应元素色呼吸光环（辉印金白/脉流青蓝/
   蚀质暗紫，多源质同心多环错峰脉动）+ 周身上升元素粒子，
   光环/粒子尺寸随模型缩放同步，纯函数曲线由 test_combat_vfx 锁定。
+- bloom 后处理（原神式技能发光）：高画质预设下场景先入全分辨率
+  FBO，亮通提取 → 半分辨率高斯 ping-pong 模糊 ×2 → 加法合成，
+  刀光/冲击波/火花/附着光环产生溢出光晕；低画质跳过整条管线，
+  资源失败自动回退直绘，参数纯函数由 test_bloom_pass 锁定。
 
 ## 验证状态
 
@@ -56,7 +60,7 @@
 - OHOS arm64 `native_game` CMake 目标已完整编译并链接通过。
 - HAP 已完成 ArkTS、Native、打包与签名，Hvigor `assembleHap` 返回 `BUILD SUCCESSFUL`。
 - 卡通着色/描边/刀光/冲击波纯函数与几何断言（test_combat_vfx、test_asset_profile、
-  test_shader_3d、test_mesh）通过；本机 103 个可编译测试 102 通过，
+  test_shader_3d、test_mesh、test_bloom_pass）通过；本机 104 个可编译测试 103 通过，
   test_loop_integration 为 HEAD 基线即存在的失败（已用 pristine 工作树复核），非本轮回归。
 - 尚未完成真机首次通关时长/卡点测试和 30/45 FPS 三档设备基线。
 - 卡通着色与描边的真机观感、描边宽度/阴影色档位尚未在设备上验收调优。

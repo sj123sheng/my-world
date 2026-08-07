@@ -249,6 +249,9 @@ void testSurfaceDestroyDestroysGlBeforeUnbindAndEglCleanup() {
       case SurfaceGlResource::StaticMeshes:
         calls.emplace_back("destroy-static-meshes");
         break;
+      case SurfaceGlResource::BloomPipeline:
+        calls.emplace_back("destroy-bloom-pipeline");
+        break;
       case SurfaceGlResource::Shader3D:
         calls.emplace_back("destroy-shader-3d");
         break;
@@ -268,6 +271,7 @@ void testSurfaceDestroyDestroysGlBeforeUnbindAndEglCleanup() {
   assert((calls == std::vector<std::string>{
                        "make-current", "destroy-skinned-models", "destroy-environment-models",
                        "destroy-static-meshes",
+                       "destroy-bloom-pipeline",
                        "destroy-shader-3d", "destroy-program-2d", "unbind",
                        "destroy-egl-surface", "destroy-egl-context", "terminate-egl-display"}));
 }

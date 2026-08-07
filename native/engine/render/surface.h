@@ -35,6 +35,7 @@ inline constexpr EGLContext EGL_NO_CONTEXT = nullptr;
 #include "native/engine/render/render_animation.h"
 #include "native/engine/render/render_lifecycle.h"
 #include "native/engine/render/shader_3d.h"
+#include "native/engine/render/bloom_pass.h"
 #include "native/engine/render/skinned_model.h"
 #include "native/engine/render/static_model.h"
 #include "native/engine/render/environment.h"
@@ -350,6 +351,21 @@ struct Surface {
   // 首领普攻边沿状态：前摇上升沿触发蓄力爆发，挥击下降沿触发齐射。
   bool bossPrevBasicAttacking = false;
   bool shader3dReady = false;
+  // ---- bloom 后处理资源（原神式技能发光）----
+  // 逻辑侧按画质档位写入（高画质 true）；渲染侧据此决定场景是否
+  // 先入 FBO 再做亮通提取/模糊/合成。资源随窗口尺寸惰性重建。
+  bool bloomEnabled = true;
+  bool bloomReady = false;
+  GLuint bloomProgram = 0;    // 亮通/模糊/合成三合一程序（uMode 切换）
+  GLuint bloomSceneFbo = 0;   // 场景颜色 FBO（全分辨率）
+  GLuint bloomSceneTex = 0;   // 场景颜色纹理 RGBA8
+  GLuint bloomDepthRbo = 0;   // 场景深度 renderbuffer
+  GLuint bloomPingFbo = 0;    // 半分辨率 ping-pong FBO A
+  GLuint bloomPongFbo = 0;    // 半分辨率 ping-pong FBO B
+  GLuint bloomPingTex = 0;    // 半分辨率纹理 A
+  GLuint bloomPongTex = 0;    // 半分辨率纹理 B
+  int bloomFboWidth = 0;      // 当前 FBO 对应的窗口尺寸（重建判据）
+  int bloomFboHeight = 0;
   AssetProfile playerAssetProfile = AssetProfile::forModel(ModelKind::Player);
   AssetProfile enemyAssetProfile = AssetProfile::forModel(ModelKind::Enemy);
   AssetProfile bossAssetProfile = AssetProfile::forModel(ModelKind::Boss);

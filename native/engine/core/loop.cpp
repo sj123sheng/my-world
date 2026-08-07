@@ -1694,6 +1694,8 @@ void Loop::tickOnce(int64_t elapsedMs) {
       static_cast<float>(elapsedMs > 0 ? elapsedMs : 0) / 1000.0f;
   if (surface.renderSeconds > 3600.0f) surface.renderSeconds -= 3600.0f;
   surface.environmentPerfLevel = performanceGuard.level();
+  // bloom 后处理仅高画质预设启用（低画质设备跳过整条管线）。
+  surface.bloomEnabled = qualityPreset == 0;
   surface_draw(surface);
   surface_swap(surface);
 #endif

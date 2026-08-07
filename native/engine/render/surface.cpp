@@ -1815,6 +1815,229 @@ static bool actorInFrustum(const FrustumPlanes& frustum, const glm::vec3& feet,
                                radius);
 }
 
+// -----------------------------------------------------------------------------
+// bloom 后处理（原神式技能发光）：场景先渲染入全分辨率 FBO，
+// 亮通提取 → 半分辨率双向高斯 ping-pong → 与场景加法合成。
+// 刀光/冲击波/火花/光环等加法混合特效因此获得溢出光晕。
+// -----------------------------------------------------------------------------
+
+// 全屏三角形由 gl_VertexID 生成，无需 VBO。
+static const char* kBloomVertexShader =
+    "#version 300 es\n"
+    "out vec2 vUV;\n"
+    "void main() {\n"
+    "  vec2 pos = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n"
+    "  vUV = pos;\n"
+    "  gl_Position = vec4(pos * 2.0 - 1.0, 0.0, 1.0);\n"
+    "}\n";
+
+// uMode：0=亮通提取（软膝阈值） 1=9-tap 方向高斯模糊 2=场景+bloom 合成。
+// kW 权重与 bloom_pass.h 的 BloomGaussianWeight 一致。
+static const char* kBloomFragmentShader =
+    "#version 300 es\n"
+    "precision mediump float;\n"
+    "uniform sampler2D uScene;\n"
+    "uniform sampler2D uBloomTex;\n"
+    "uniform int uMode;\n"
+    "uniform vec2 uTexel;\n"
+    "uniform vec2 uDirection;\n"
+    "uniform float uThreshold;\n"
+    "uniform float uIntensity;\n"
+    "in vec2 vUV;\n"
+    "out vec4 fragColor;\n"
+    "const float kW[5] = float[5](0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);\n"
+    "void main() {\n"
+    "  if (uMode == 0) {\n"
+    "    vec3 c = texture(uScene, vUV).rgb;\n"
+    "    float luma = dot(c, vec3(0.299, 0.587, 0.114));\n"
+    "    float knee = clamp((luma - uThreshold) / max(uThreshold, 0.001), 0.0, 1.0);\n"
+    "    fragColor = vec4(c * knee, 1.0);\n"
+    "  } else if (uMode == 1) {\n"
+    "    vec3 c = texture(uScene, vUV).rgb * kW[0];\n"
+    "    for (int i = 1; i < 5; ++i) {\n"
+    "      vec2 off = uDirection * uTexel * (float(i) * 1.6);\n"
+    "      c += texture(uScene, vUV + off).rgb * kW[i];\n"
+    "      c += texture(uScene, vUV - off).rgb * kW[i];\n"
+    "    }\n"
+    "    fragColor = vec4(c, 1.0);\n"
+    "  } else {\n"
+    "    vec3 scene = texture(uScene, vUV).rgb;\n"
+    "    vec3 bloom = texture(uBloomTex, vUV).rgb;\n"
+    "    fragColor = vec4(scene + bloom * uIntensity, 1.0);\n"
+    "  }\n"
+    "}\n";
+
+static bool initBloomProgram(Surface& s) {
+  const GLuint vs = compileShader(GL_VERTEX_SHADER, kBloomVertexShader);
+  const GLuint fs = compileShader(GL_FRAGMENT_SHADER, kBloomFragmentShader);
+  if (!vs || !fs) {
+    if (vs != 0u) glDeleteShader(vs);
+    if (fs != 0u) glDeleteShader(fs);
+    LOGE("bloom shader compile failed");
+    return false;
+  }
+  s.bloomProgram = glCreateProgram();
+  if (s.bloomProgram == 0u) {
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+    return false;
+  }
+  glAttachShader(s.bloomProgram, vs);
+  glAttachShader(s.bloomProgram, fs);
+  glLinkProgram(s.bloomProgram);
+  GLint linked = 0;
+  glGetProgramiv(s.bloomProgram, GL_LINK_STATUS, &linked);
+  glDeleteShader(vs);
+  glDeleteShader(fs);
+  if (!linked) {
+    char buf[512];
+    glGetProgramInfoLog(s.bloomProgram, sizeof(buf), nullptr, buf);
+    LOGE("bloom program link failed: %{public}s", buf);
+    glDeleteProgram(s.bloomProgram);
+    s.bloomProgram = 0;
+    return false;
+  }
+  return true;
+}
+
+static void deleteBloomTargets(Surface& s) {
+  if (s.bloomSceneFbo != 0u) glDeleteFramebuffers(1, &s.bloomSceneFbo);
+  if (s.bloomPingFbo != 0u) glDeleteFramebuffers(1, &s.bloomPingFbo);
+  if (s.bloomPongFbo != 0u) glDeleteFramebuffers(1, &s.bloomPongFbo);
+  if (s.bloomSceneTex != 0u) glDeleteTextures(1, &s.bloomSceneTex);
+  if (s.bloomPingTex != 0u) glDeleteTextures(1, &s.bloomPingTex);
+  if (s.bloomPongTex != 0u) glDeleteTextures(1, &s.bloomPongTex);
+  if (s.bloomDepthRbo != 0u) glDeleteRenderbuffers(1, &s.bloomDepthRbo);
+  s.bloomSceneFbo = 0;
+  s.bloomPingFbo = 0;
+  s.bloomPongFbo = 0;
+  s.bloomSceneTex = 0;
+  s.bloomPingTex = 0;
+  s.bloomPongTex = 0;
+  s.bloomDepthRbo = 0;
+  s.bloomFboWidth = 0;
+  s.bloomFboHeight = 0;
+}
+
+static GLuint createBloomTexture(int width, int height) {
+  GLuint tex = 0;
+  glGenTextures(1, &tex);
+  glBindTexture(GL_TEXTURE_2D, tex);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA,
+               GL_UNSIGNED_BYTE, nullptr);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  return tex;
+}
+
+// 按当前窗口尺寸惰性（重）建 bloom 目标；尺寸不变则直接复用。
+static bool ensureBloomTargets(Surface& s) {
+  if (s.width <= 0 || s.height <= 0) return false;
+  if (s.bloomSceneFbo != 0u && s.bloomFboWidth == s.width &&
+      s.bloomFboHeight == s.height) {
+    return true;
+  }
+  deleteBloomTargets(s);
+  const int w = s.width;
+  const int h = s.height;
+  const int hw = BloomDownsampleSize(w);
+  const int hh = BloomDownsampleSize(h);
+  // 场景 FBO：全分辨率 RGBA8 颜色 + DEPTH24 renderbuffer。
+  glGenFramebuffers(1, &s.bloomSceneFbo);
+  s.bloomSceneTex = createBloomTexture(w, h);
+  glGenRenderbuffers(1, &s.bloomDepthRbo);
+  glBindRenderbuffer(GL_RENDERBUFFER, s.bloomDepthRbo);
+  glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, w, h);
+  glBindFramebuffer(GL_FRAMEBUFFER, s.bloomSceneFbo);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+                         s.bloomSceneTex, 0);
+  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                            GL_RENDERBUFFER, s.bloomDepthRbo);
+  if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    LOGE("bloom scene FBO incomplete");
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
+    deleteBloomTargets(s);
+    return false;
+  }
+  glBindRenderbuffer(GL_RENDERBUFFER, 0);
+  // 半分辨率 ping-pong：模糊在 1/4 像素量上做，移动端开销可控。
+  s.bloomPingTex = createBloomTexture(hw, hh);
+  s.bloomPongTex = createBloomTexture(hw, hh);
+  glGenFramebuffers(1, &s.bloomPingFbo);
+  glBindFramebuffer(GL_FRAMEBUFFER, s.bloomPingFbo);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+                         s.bloomPingTex, 0);
+  glGenFramebuffers(1, &s.bloomPongFbo);
+  glBindFramebuffer(GL_FRAMEBUFFER, s.bloomPongFbo);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+                         s.bloomPongTex, 0);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  s.bloomFboWidth = w;
+  s.bloomFboHeight = h;
+  LOGI("bloom targets ready: %{public}dx%{public}d blur %{public}dx%{public}d",
+       w, h, hw, hh);
+  return true;
+}
+
+// 亮通提取 → 双向高斯 ping-pong → 加法合成回默认帧缓冲。
+// 调用前提：场景已渲染入 bloomSceneFbo，bloomProgram 已链接。
+static void runBloomPasses(Surface& s, const BloomParams& params) {
+  const int hw = BloomDownsampleSize(s.bloomFboWidth);
+  const int hh = BloomDownsampleSize(s.bloomFboHeight);
+  glDisable(GL_DEPTH_TEST);
+  glDisable(GL_BLEND);
+  glUseProgram(s.bloomProgram);
+  const GLint locScene = glGetUniformLocation(s.bloomProgram, "uScene");
+  const GLint locBloomTex = glGetUniformLocation(s.bloomProgram, "uBloomTex");
+  const GLint locMode = glGetUniformLocation(s.bloomProgram, "uMode");
+  const GLint locTexel = glGetUniformLocation(s.bloomProgram, "uTexel");
+  const GLint locDirection = glGetUniformLocation(s.bloomProgram, "uDirection");
+  const GLint locThreshold = glGetUniformLocation(s.bloomProgram, "uThreshold");
+  const GLint locIntensity = glGetUniformLocation(s.bloomProgram, "uIntensity");
+  glUniform1i(locScene, 0);
+  glUniform1i(locBloomTex, 1);
+  // Pass 1：亮通提取（全分辨率场景 → 半分辨率 ping，线性采样降采样）。
+  glBindFramebuffer(GL_FRAMEBUFFER, s.bloomPingFbo);
+  glViewport(0, 0, hw, hh);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, s.bloomSceneTex);
+  glUniform1i(locMode, 0);
+  glUniform1f(locThreshold, params.threshold);
+  glDrawArrays(GL_TRIANGLES, 0, 3);
+  // Pass 2..N：方向高斯 ping-pong（H→V 为一轮）。
+  glUniform1i(locMode, 1);
+  glUniform2f(locTexel, 1.0f / static_cast<float>(hw),
+              1.0f / static_cast<float>(hh));
+  GLuint srcTex = s.bloomPingTex;
+  GLuint dstFbo = s.bloomPongFbo;
+  for (int iteration = 0; iteration < params.blurIterations; ++iteration) {
+    for (int dir = 0; dir < 2; ++dir) {
+      glBindFramebuffer(GL_FRAMEBUFFER, dstFbo);
+      glBindTexture(GL_TEXTURE_2D, srcTex);
+      glUniform2f(locDirection, dir == 0 ? 1.0f : 0.0f,
+                  dir == 0 ? 0.0f : 1.0f);
+      glDrawArrays(GL_TRIANGLES, 0, 3);
+      srcTex = dstFbo == s.bloomPongFbo ? s.bloomPongTex : s.bloomPingTex;
+      dstFbo = dstFbo == s.bloomPongFbo ? s.bloomPingFbo : s.bloomPongFbo;
+    }
+  }
+  // 合成：场景 + bloom*intensity 写回默认帧缓冲（全屏三角形覆盖）。
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  glViewport(0, 0, s.bloomFboWidth, s.bloomFboHeight);
+  glUniform1i(locMode, 2);
+  glUniform1f(locIntensity, params.intensity);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, s.bloomSceneTex);
+  glActiveTexture(GL_TEXTURE1);
+  glBindTexture(GL_TEXTURE_2D, srcTex);
+  glDrawArrays(GL_TRIANGLES, 0, 3);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, 0);
+}
+
 static void draw3DPhase(Surface& s) {
   // bridge 可能晚于 Surface 创建；surface_draw 已成功 makeCurrent，因此只在这里
   // 消费一次标脏字节，解析失败后保持静态 Mesh，不在每帧反复尝试。
@@ -1822,6 +2045,18 @@ static void draw3DPhase(Surface& s) {
   tryInitializePendingEnvironmentAssets(s);
   tryInitializePendingBlockEnvironmentAssets(s);
   if (!s.shader3dReady || s.shader3d.program() == 0u) return;
+
+  // bloom（原神式技能发光）：高画质档场景先渲染入 FBO，3D 阶段末尾
+  // 做亮通提取/半分辨率模糊/加法合成；资源失败自动回退直渲。
+  const BloomParams bloomParams = BloomParamsFor(s.bloomEnabled ? 0 : 1);
+  const bool bloomActive = BloomEnabled(bloomParams) &&
+                           s.bloomProgram != 0u && ensureBloomTargets(s);
+  if (bloomActive) {
+    glBindFramebuffer(GL_FRAMEBUFFER, s.bloomSceneFbo);
+    glViewport(0, 0, s.bloomFboWidth, s.bloomFboHeight);
+    glClearColor(0.06f, 0.08f, 0.14f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  }
 
   // 3D 阶段需要深度测试；2D 阶段未写深度，故在此单独清深度并开启深度测试，
   // 绘制结束后关闭，避免影响下一帧 2D 绘制。
@@ -2139,6 +2374,12 @@ static void draw3DPhase(Surface& s) {
 
   glDisable(GL_CULL_FACE);
   glDisable(GL_DEPTH_TEST);
+
+  // bloom 合成：亮通提取 → 半分辨率 ping-pong 模糊 → 场景+bloom 加法
+  // 合成回默认帧缓冲；viewport 恢复为窗口尺寸（引擎无全局 viewport）。
+  if (bloomActive) {
+    runBloomPasses(s, bloomParams);
+  }
 }
 #endif  // OHOS_PLATFORM
 
@@ -2566,6 +2807,12 @@ static void init3DResources(Surface& s) {
   } else {
     LOGI("3D resources ready: shader=%{public}u", s.shader3d.program());
   }
+  // bloom 程序与场景着色器独立：编译失败时 bloomReady 保持 false，
+  // draw3DPhase 自动回退直绘（FBO 目标在首帧按需惰性创建）。
+  s.bloomReady = initBloomProgram(s);
+  if (!s.bloomReady) {
+    LOGE("bloom program init failed, bloom disabled");
+  }
   tryInitializePendingModelAssets(s);
   tryInitializePendingEnvironmentAssets(s);
   tryInitializePendingBlockEnvironmentAssets(s);
@@ -2607,6 +2854,13 @@ static void destroy3DResource(Surface& s, SurfaceGlResource resource) {
       s.clubMesh.destroy();
       for (auto& entry : s.terrainChunkMeshes) entry.second.destroy();
       s.terrainChunkMeshes.clear();
+      break;
+    case SurfaceGlResource::BloomPipeline:
+      // bloom 程序与 FBO/纹理：先于 Shader3D 销毁，互不依赖。
+      if (s.bloomProgram != 0u) glDeleteProgram(s.bloomProgram);
+      s.bloomProgram = 0;
+      deleteBloomTargets(s);
+      s.bloomReady = false;
       break;
     case SurfaceGlResource::Shader3D:
       s.shader3d.destroy();
@@ -2670,6 +2924,18 @@ static void abandon3DResources(Surface& s) {
   for (Mesh& digitMesh : s.digitMeshes) digitMesh.abandonGpuResources();
   s.digitAtlasTexture = 0;
   s.digitAssetsReady = false;
+  // bloom 句柄随 context 失效：仅清 CPU 跟踪，不调 GL 删除。
+  s.bloomProgram = 0;
+  s.bloomSceneFbo = 0;
+  s.bloomSceneTex = 0;
+  s.bloomDepthRbo = 0;
+  s.bloomPingFbo = 0;
+  s.bloomPongFbo = 0;
+  s.bloomPingTex = 0;
+  s.bloomPongTex = 0;
+  s.bloomFboWidth = 0;
+  s.bloomFboHeight = 0;
+  s.bloomReady = false;
   s.shader3d.abandonGpuResources();
   s.shader3dReady = false;
   {

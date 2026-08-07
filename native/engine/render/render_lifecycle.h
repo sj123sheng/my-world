@@ -39,6 +39,7 @@ enum class SurfaceGlResource {
   SkinnedModels,
   StaticEnvironmentModels,
   StaticMeshes,
+  BloomPipeline,
   Shader3D,
   Program2D,
 };
@@ -47,6 +48,7 @@ inline const std::vector<SurfaceGlResource> kSurfaceGlDestroyOrder = {
     SurfaceGlResource::SkinnedModels,
     SurfaceGlResource::StaticEnvironmentModels,
     SurfaceGlResource::StaticMeshes,
+    SurfaceGlResource::BloomPipeline,
     SurfaceGlResource::Shader3D,
     SurfaceGlResource::Program2D,
 };

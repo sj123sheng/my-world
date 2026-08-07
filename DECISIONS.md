@@ -1,5 +1,19 @@
 # 技术决策
 
+## 2026-08-08：bloom 后处理（原神式技能发光）
+
+- 场景先渲染入全分辨率 FBO（RGBA8 + 深度 renderbuffer），再做
+  亮通提取（软膝亮度阈值 0.62）→ 半分辨率 9-tap 高斯 ping-pong
+  模糊 ×2 → 与默认帧缓冲加法合成（强度 0.85），让加法混合的
+  刀光/冲击波/火花/附着光环产生溢出光晕，技能释放观感向原神靠拢。
+- 三 pass 共用一个程序（uMode 切换），全屏三角形由 gl_VertexID
+  生成（无 VBO）；阈值/强度/降采样/卷积权重为 bloom_pass.h
+  纯函数（BloomParamsFor/BloomDownsampleSize/BloomGaussianWeight），
+  由 tests/test_bloom_pass.cpp 断言锁定。
+- 仅高画质预设（qualityPreset=0）启用，低画质整条管线跳过；
+  程序编译或 FBO 创建失败自动回退直绘。FBO 随窗口尺寸惰性重建，
+  销毁纳入 SurfaceGlResource::BloomPipeline 档位（先于 Shader3D）。
+
 ## 2026-08-08：元素附着光环可视化（原神式附着指示）
 
 - 目标附着源质时脚下浮现对应元素色呼吸光环 + 周身上升元素粒子：
