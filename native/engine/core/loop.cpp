@@ -2902,11 +2902,14 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   surface.enemyHpBars3d.clear();
   // 遭遇敌人与野外敌人共用同一滞后条逻辑（id 无冲突，共享 trail 表）。
   const auto publishHpBar = [&](uint32_t id, Vec2 position, FixedPoint hp,
-                                FixedPoint maxHp) {
+                                FixedPoint maxHp, int archetype) {
     EnemyHpBarRenderState bar;
     bar.x = position.x;
     bar.z = position.y;
     bar.ratio = static_cast<float>(hp) / static_cast<float>(maxHp);
+    // 元素归属（-1=物理）：渲染层据此给元素敌人血条加元素色边框，
+    // 与技能/附着/死亡爆发同源，血条填充仍按血量渐变保持可读。
+    bar.element = EnemyElementFor(archetype);
     EnemyHpTrailState& trail = enemyHpTrails[id];
     if (bar.ratio >= trail.trail) {
       // 回血或满血：立即贴合，不残留滞后条。
@@ -2938,7 +2941,8 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
         enemyHpTrails.erase(enemy.id);
         continue;
       }
-      publishHpBar(enemy.id, enemy.position, enemy.hp, enemy.maxHp);
+      publishHpBar(enemy.id, enemy.position, enemy.hp, enemy.maxHp,
+                   static_cast<int>(enemy.archetype));
     }
   };
   publishEnemyHpBars(encounter.snapshot().enemies);

@@ -184,6 +184,9 @@ struct EnemyHpBarRenderState {
   float z = 0.0f;
   float ratio = 1.0f;  // hp / maxHp，[0, 1]
   float trailRatio = 1.0f;  // 滞后条比例，受击后延迟追赶 ratio
+  // 原型元素归属（0=辉印 1=脉流 2=蚀质，-1=物理）：
+  // 元素敌人血条加元素色细框，提示系别（血量渐变保持可读）。
+  int element = -1;
 };
 
 // 锁定目标指示器渲染状态：软瞄准命中的目标脚下绘制脉冲环。

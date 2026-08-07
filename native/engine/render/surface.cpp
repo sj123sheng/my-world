@@ -1782,6 +1782,24 @@ static void drawEnemyHpBars(Surface& s, const glm::mat4& vp) {
     const float ratio = std::clamp(bar.ratio, 0.0f, 1.0f);
     const glm::vec3 basePosition(bar.x, kBarY, bar.z);
 
+    // 元素边框：元素系敌人血条深色底外圈一层薄元素色框（与技能/
+    // 附着同源 AuraColorFor），提示系别；血量填充仍走渐变保持可读，
+    // 物理敌人保持纯深色底不抢戏。
+    if (bar.element >= 0) {
+      const glm::vec3 accent = AuraColorFor(bar.element);
+      constexpr float kFramePad = 0.003f;
+      const glm::mat4 frameModel =
+          glm::translate(glm::mat4(1.0f), basePosition) * billboard *
+          glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -0.0002f)) *
+          glm::scale(glm::mat4(1.0f),
+                     glm::vec3(kBarWidth + kFramePad * 2.0f,
+                               kBarHeight + kFramePad * 2.0f, 1.0f));
+      s.shader3d.setMVP(vp * frameModel);
+      s.shader3d.setModel(frameModel);
+      s.shader3d.setLight(billboardNormal, accent * 0.7f, accent * 0.3f);
+      s.hpBarQuadMesh.draw();
+    }
+
     // 背景条（深色底）。
     const glm::vec3 backColor{0.10f, 0.12f, 0.16f};
     glm::mat4 model =
