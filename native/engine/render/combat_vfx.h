@@ -130,3 +130,27 @@ inline ImpactDecalPose ImpactDecalPoseAt(float seconds) {
   pose.alpha = 1.0f - t;
   return pose;
 }
+
+// 受击方向性粒子初速度：沿攻击方向（击退方向）喷射，spread ∈ [-1,1]
+// 在 ±60° 内横向散布，lift 给出上扬分量。逻辑平面 (x, y) 映射到
+// 3D (x, z)，与项目坐标约定一致；方向退化时只保留上扬。
+inline void DirectionalSparkVelocity(float dirX, float dirY, float speed,
+                                     float spread, float lift, float& vx,
+                                     float& vy, float& vz) {
+  const float length = std::sqrt(dirX * dirX + dirY * dirY);
+  if (length < 1e-5f || speed <= 0.0f) {
+    vx = 0.0f;
+    vy = lift;
+    vz = 0.0f;
+    return;
+  }
+  const float nx = dirX / length;
+  const float ny = dirY / length;
+  constexpr float kMaxSpreadRadians = 1.04719755f;  // ±60°
+  const float angle = std::clamp(spread, -1.0f, 1.0f) * kMaxSpreadRadians;
+  const float ca = std::cos(angle);
+  const float sa = std::sin(angle);
+  vx = (nx * ca - ny * sa) * speed;
+  vz = (nx * sa + ny * ca) * speed;
+  vy = lift;
+}

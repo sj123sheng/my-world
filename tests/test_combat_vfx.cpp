@@ -141,6 +141,31 @@ void testImpactDecalExpandsFastThenFades() {
   assert(!done.visible);
 }
 
+void testDirectionalSparkVelocityFollowsAttackDirection() {
+  float vx = 0.0f, vy = 0.0f, vz = 0.0f;
+  // 零方向回退为纯上扬，不产生 NaN。
+  DirectionalSparkVelocity(0.0f, 0.0f, 0.1f, 0.5f, 0.04f, vx, vy, vz);
+  assert(nearlyEqual(vx, 0.0f));
+  assert(nearlyEqual(vz, 0.0f));
+  assert(nearlyEqual(vy, 0.04f));
+  // 逻辑 +X 攻击方向、零散布：水平速度沿 3D +X，大小守恒。
+  DirectionalSparkVelocity(1.0f, 0.0f, 0.1f, 0.0f, 0.04f, vx, vy, vz);
+  assert(nearlyEqual(vx, 0.1f));
+  assert(nearlyEqual(vz, 0.0f));
+  assert(nearlyEqual(vy, 0.04f));
+  // 非单位方向先归一化：结果速度大小不受输入长度影响。
+  DirectionalSparkVelocity(10.0f, 0.0f, 0.1f, 0.0f, 0.04f, vx, vy, vz);
+  assert(nearlyEqual(vx, 0.1f));
+  // 满散布 = ±60° 旋转：+1 把 +X 方向转到 (cos60°, sin60°)。
+  DirectionalSparkVelocity(1.0f, 0.0f, 0.1f, 1.0f, 0.0f, vx, vy, vz);
+  assert(nearlyEqual(vx, 0.1f * 0.5f, 0.001f));
+  assert(nearlyEqual(vz, 0.1f * 0.8660254f, 0.001f));
+  // 任意散布下水平速度大小守恒（只旋转不缩放）。
+  DirectionalSparkVelocity(0.3f, -0.7f, 0.13f, -0.42f, 0.02f, vx, vy, vz);
+  assert(nearlyEqual(std::sqrt(vx * vx + vz * vz), 0.13f, 0.001f));
+  assert(nearlyEqual(vy, 0.02f));
+}
+
 }  // namespace
 
 int main() {
@@ -154,5 +179,6 @@ int main() {
   testSparkStretchAlignsWithScreenVelocity();
   testSparkStretchGrowsWithSpeedAndClamps();
   testImpactDecalExpandsFastThenFades();
+  testDirectionalSparkVelocityFollowsAttackDirection();
   return 0;
 }

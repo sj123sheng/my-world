@@ -366,6 +366,32 @@ void spawnHitSparks(Surface& surface, Vec2 position, int kind, int count = 6,
   }
 }
 
+// 受击方向性粒子：沿攻击方向（击退方向）喷射的短命火花，
+// LCG 决定横向偏转与速度抖动（同输入可重现）；kind<=2 自动受
+// 火花重力影响形成抛物线拖尾，强化打击方向感。
+void spawnDirectionalSparks(Surface& surface, Vec2 position, Vec2 direction,
+                            int kind, int count, float speedScale,
+                            float sizeScale) {
+  if (surface.hitSparks3d.size() > 128) return;
+  for (int i = 0; i < count; ++i) {
+    surface.hitSparkSeed = surface.hitSparkSeed * 1664525u + 1013904223u;
+    const float r0 =
+        static_cast<float>((surface.hitSparkSeed >> 8) & 0xFFFFu) / 65535.0f;
+    surface.hitSparkSeed = surface.hitSparkSeed * 1664525u + 1013904223u;
+    const float r1 =
+        static_cast<float>((surface.hitSparkSeed >> 8) & 0xFFFFu) / 65535.0f;
+    const float spread = (r0 - 0.5f) * 2.0f;  // -1..1 → ±60°
+    const float speed = (0.05f + 0.03f * r1) * speedScale * sizeScale;
+    const float lift = (0.03f + 0.03f * r1) * speedScale * sizeScale;
+    float vx = 0.0f, vy = 0.0f, vz = 0.0f;
+    DirectionalSparkVelocity(direction.x, direction.y, speed, spread, lift,
+                             vx, vy, vz);
+    const float life = 0.25f + 0.08f * r0;
+    surface.hitSparks3d.push_back({position.x, 0.03f, position.y, vx, vy, vz,
+                                   life, life, kind, sizeScale});
+  }
+}
+
 // 特效尺寸比例：按实体归属的模型档案缩放 / 基准缩放派生，
 // 模型放大后命中火花、技能爆发与投射物尺寸同步跟随。
 float actorVfxRatio(const Surface& surface, EntityId id) {
@@ -2455,6 +2481,17 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                      playerHit ? glm::vec3{1.0f, 0.35f, 0.30f}
                                : glm::vec3{1.0f, 0.78f, 0.32f},
                      (amount >= 15.0f ? 0.045f : 0.03f) * decalRatio);
+    // 受击方向性粒子：沿攻击方向（攻击者→受击者）喷射，强化打击
+    // 方向感；攻击者位置不可解析（环境伤害等）时跳过。
+    const std::optional<Vec2> sourcePosition = resolveEntityPosition(
+        surface, encounter.snapshot(), event.source, &wildSpawn);
+    if (sourcePosition.has_value()) {
+      const Vec2 hitDirection = *position - *sourcePosition;
+      if (hitDirection.length() > 0.001f) {
+        spawnDirectionalSparks(surface, *position, hitDirection,
+                               playerHit ? 1 : 0, 4, 1.0f, decalRatio);
+      }
+    }
   }
   damageNumbers.update(dtMs);
   // 击杀事件推进任务与秘境：仅统计敌人/首领死亡，排除玩家自身。
