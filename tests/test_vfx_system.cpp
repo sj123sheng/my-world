@@ -92,6 +92,24 @@ void testCameraShakeOscillates() {
   assert(signChanged);
 }
 
+void testTriggerCameraShakeMatchesEventPath() {
+  // 逻辑层直触（首领砸地）与事件通道同语义：触发后 update 产生
+  // 非零偏移，窗口结束归零；更强强度产生更大峰值幅度。
+  VfxSystem vfx;
+  vfx.triggerCameraShake(FP_ONE);
+  assert(vfx.snapshot().vfxFlags & VfxCameraShake);
+  vfx.update(16, 16);
+  const float weakX = vfx.snapshot().cameraShakeX;
+  assert(weakX != 0.0f);
+  for (int i = 2; i <= 20; i++) vfx.update(16 * i, 16);
+  assert(vfx.snapshot().cameraShakeX == 0.0f &&
+         vfx.snapshot().cameraShakeY == 0.0f);
+  VfxSystem strong;
+  strong.triggerCameraShake(2 * FP_ONE);
+  strong.update(16, 16);
+  assert(std::fabs(strong.snapshot().cameraShakeX) >= std::fabs(weakX));
+}
+
 void testRepeatEventRefreshesNotStacks() {
   VfxSystem vfx;
   CombatEventBatch batch{};
@@ -141,6 +159,7 @@ int main() {
   testCastBarBrokenTriggers();
   testCameraShakeDecays();
   testCameraShakeOscillates();
+  testTriggerCameraShakeMatchesEventPath();
   testRepeatEventRefreshesNotStacks();
   testVfxFlagsReflectActiveEffects();
   testEmptyBatchNoEffect();

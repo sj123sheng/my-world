@@ -60,9 +60,13 @@ class VfxSystem {
   void consume(const CombatEventBatch& batch);
   void update(Tick tick, int64_t dtMs);
   const VfxSnapshot& snapshot() const { return snapshot_; }
+  // 逻辑层直接触发相机震动（首领挥击落地等无战斗事件来源的
+  // 冲击时刻）；与 consume(CameraShake) 同窗口/同幅度语义，
+  // 重复触发取峰值幅度不叠加。
+  void triggerCameraShake(FixedPoint intensity);
 
  private:
- void refreshFlags();
+  void refreshFlags();
 
   Tick cameraShakeRemainingMs_ = 0;
   // 受击时记录的抖动峰值幅度；振荡衰减期间保持不变，

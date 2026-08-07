@@ -51,17 +51,22 @@ void VfxSystem::consume(const CombatEventBatch& batch) {
         snapshot_.castBarBrokenMs = kCastBarBrokenMs;
         break;
       case PresentationEventType::CameraShake: {
-        // 记录峰值幅度（取最大值，避免重复事件压低抖动）并重开窗口；
-        // 实际偏移在 update() 中按振荡×线性衰减逐帧计算。
-        const float amp = RandomShake(e.intensity);
-        if (cameraShakeRemainingMs_ <= 0 || amp > cameraShakeAmplitude_) {
-          cameraShakeAmplitude_ = amp;
-        }
-        cameraShakeRemainingMs_ = kCameraShakeMs;
+        triggerCameraShake(e.intensity);
         break;
       }
     }
   }
+  refreshFlags();
+}
+
+void VfxSystem::triggerCameraShake(FixedPoint intensity) {
+  // 记录峰值幅度（取最大值，避免重复事件压低抖动）并重开窗口；
+  // 实际偏移在 update() 中按振荡×线性衰减逐帧计算。
+  const float amp = RandomShake(intensity);
+  if (cameraShakeRemainingMs_ <= 0 || amp > cameraShakeAmplitude_) {
+    cameraShakeAmplitude_ = amp;
+  }
+  cameraShakeRemainingMs_ = kCameraShakeMs;
   refreshFlags();
 }
 

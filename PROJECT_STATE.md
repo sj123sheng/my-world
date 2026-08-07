@@ -138,6 +138,10 @@
   冲击波 + 中档 FOV 冲击 + 56ms 卡肉（PerfectDodgeVfxFor/
   DodgeDustColor 纯函数锁定，与冲刺尘土同淡蓝闪避语言），
   补齐此前仅有音效/蓝闪的完美闪避反馈。
+- 首领挥击落地相机震动：落地边沿经 VfxSystem.triggerCameraShake
+  触发（与受击震动同通道同曲线，幅度加倍突出体量），闪避成功
+  也能感到重击落地的冲击；spawnEnemyReleaseVfx 改返回
+  EnemyReleaseVfxResult 分层结果（出场/转阶段 vs 挥击落地）。
 
 ## 验证状态
 

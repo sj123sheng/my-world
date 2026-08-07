@@ -516,9 +516,15 @@ void spawnEnemySlashArc(Surface& surface, uint32_t id, Vec2 position,
 // 蓄力火花（施法前兆），挥击瞬间朝主角发射红色投射物并挥出
 // 红色刀光；首领吟唱开始时爆出更大规模的暗紫火花环并向主角齐射束流。
 // 返回本步是否发生首领阶段转换（供调用侧施加卡肉/FOV 冲击）。
-bool spawnEnemyReleaseVfx(Surface& surface) {
+// 敌方释放动效结果：调用侧据此施加镜头反馈（分层）。
+struct EnemyReleaseVfxResult {
+  bool bossCameraFeedback = false;  // 出场/转阶段：重卡肉 + FOV 冲击
+  bool bossSlamLanded = false;      // 普攻挥击落地：相机震动
+};
+
+EnemyReleaseVfxResult spawnEnemyReleaseVfx(Surface& surface) {
   // 首领戏剧性事件（出场/转阶段）→ 调用侧施加卡肉 + FOV 冲击。
-  bool bossCameraFeedback = false;
+  EnemyReleaseVfxResult result;
   const Vec2 playerPos{surface.player.x, surface.player.y};
   // 遭遇敌人与野外敌人字段布局一致，共用同一边沿检测模板。
   const auto processEnemy = [&surface, playerPos](const auto& enemy) {
@@ -601,7 +607,7 @@ bool spawnEnemyReleaseVfx(Surface& surface) {
                        0.14f * bossRatio * entranceVfx.scale);
       spawnSkillRune(surface, bossPos, entranceVfx.color,
                      0.11f * bossRatio * entranceVfx.scale);
-      bossCameraFeedback = true;
+      result.bossCameraFeedback = true;
     }
     surface.bossPrevActive = true;
     // 阶段转换边沿（1→2→3）：首领周身爆发阶段元素色大火花 +
@@ -619,7 +625,7 @@ bool spawnEnemyReleaseVfx(Surface& surface) {
                          0.16f * bossRatio * phaseVfx.scale);
         spawnSkillRune(surface, bossPos, phaseVfx.color,
                        0.12f * bossRatio * phaseVfx.scale);
-        bossCameraFeedback = true;
+        result.bossCameraFeedback = true;
       }
       surface.bossPrevPhase = surface.boss3d.phase;
     }
@@ -661,6 +667,8 @@ bool spawnEnemyReleaseVfx(Surface& surface) {
       // 挥击落地冲击波：按变体配色，体量随首领缩放。
       spawnShockwave(surface, bossPos, kindColor(kVolleyKinds[variant]),
                      0.14f * bossRatio);
+      // 挥击落地相机震动：闪避成功也能感到重击落地的冲击。
+      result.bossSlamLanded = true;
     }
     surface.bossPrevBasicAttacking = surface.boss3d.basicAttacking;
   } else {
@@ -669,7 +677,7 @@ bool spawnEnemyReleaseVfx(Surface& surface) {
     surface.bossPrevPhase = 0;
     surface.bossPrevActive = false;
   }
-  return bossCameraFeedback;
+  return result;
 }
 
 // 开放世界探索字段发布：体力、运动状态、分块统计、锚点交互与小地图。
@@ -3201,10 +3209,15 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   publish3DEncounterState(surface, encounter.snapshot(), dtSeconds);
   // 敌方释放动效：依赖 publish 后的 enemies3d/boss3d 状态做边沿检测。
   // 首领出场/转阶段镜头语言：更重的卡肉 + FOV 冲击（与元素反应同源）。
-  if (spawnEnemyReleaseVfx(surface)) {
+  const EnemyReleaseVfxResult releaseVfx = spawnEnemyReleaseVfx(surface);
+  if (releaseVfx.bossCameraFeedback) {
     hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + 80, 96);
     surface.fovPunchMaxOffset = FovPunchMaxOffsetFor(2);
     surface.resonanceFovSeconds = 0.0f;
+  }
+  // 首领挥击落地相机震动：与受击震动同源通道，幅度加倍突出体量。
+  if (releaseVfx.bossSlamLanded) {
+    vfxSystem.triggerCameraShake(2 * FP_ONE);
   }
 
   GameSnapshot updated = snapshots.read();
