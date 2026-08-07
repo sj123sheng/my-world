@@ -527,6 +527,26 @@ void testTargetMarkerColorBlendsElement() {
   assert(radiance != corruption);
 }
 
+void testCharacterSwitchVfxFollowsElement() {
+  // 三系角色出场配色与附着光环同源：火花 kind 4/5/6，颜色=AuraColorFor。
+  const CharacterSwitchVfx radiance = CharacterSwitchVfxFor(1);
+  const CharacterSwitchVfx current = CharacterSwitchVfxFor(2);
+  const CharacterSwitchVfx corruption = CharacterSwitchVfxFor(3);
+  assert(radiance.sparkKind == AuraSparkKindFor(0));
+  assert(current.sparkKind == AuraSparkKindFor(1));
+  assert(corruption.sparkKind == AuraSparkKindFor(2));
+  assert(radiance.color == AuraColorFor(0));
+  assert(current.color == AuraColorFor(1));
+  assert(corruption.color == AuraColorFor(2));
+  assert(radiance.color != current.color);
+  assert(current.color != corruption.color);
+  // 未知角色回退通用金橙（与火花 kind 0 配色同源），不产生黑环。
+  const CharacterSwitchVfx physical = CharacterSwitchVfxFor(0);
+  assert(physical.sparkKind == 0);
+  assert(physical.color == glm::vec3(1.0f, 0.78f, 0.32f));
+  assert(CharacterSwitchVfxFor(99).sparkKind == 0);
+}
+
 }  // namespace
 
 int main() {
@@ -557,5 +577,6 @@ int main() {
   testWeaponInfusionTintFollowsSource();
   testWindupWarningColorKeepsDangerAndElement();
   testTargetMarkerColorBlendsElement();
+  testCharacterSwitchVfxFollowsElement();
   return 0;
 }

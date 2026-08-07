@@ -1462,26 +1462,21 @@ bool Loop::switchCharacter() {
     const size_t nextIndex =
         currentIndex >= owned.size() ? 0 : (currentIndex + 1) % owned.size();
     activeCharacterId = owned[nextIndex].characterId;
-    // 出场动效：按角色所属源质释放对应色火花（1辉印 2脉流 3蚀质，
-    // 其余角色用通用金橙）。
-    int kind = 0;
-    switch (activeCharacterId) {
-      case 1:
-        kind = 4;
-        break;
-      case 2:
-        kind = 5;
-        break;
-      case 3:
-        kind = 6;
-        break;
-      default:
-        kind = 0;
-        break;
-    }
-    spawnHitSparks(surface, {surface.player.x, surface.player.y}, kind, 12,
-                   1.3f, 1.2f,
-                   VfxSizeRatio(surface.playerAssetProfile, ModelKind::Player));
+    // 出场动效（原神切人仪式）：按角色所属源质释放对应色火花 +
+    // 冲击波 + 光柱 + 符阵（1辉印 2脉流 3蚀质，其余角色通用金橙），
+    // 配合轻微 FOV 冲击与卡肉，把"换人"从静默切换拎成一次出场。
+    const CharacterSwitchVfx switchVfx =
+        CharacterSwitchVfxFor(activeCharacterId);
+    const Vec2 playerPos{surface.player.x, surface.player.y};
+    const float playerRatio =
+        VfxSizeRatio(surface.playerAssetProfile, ModelKind::Player);
+    spawnHitSparks(surface, playerPos, switchVfx.sparkKind, 16, 1.5f, 1.3f,
+                   playerRatio);
+    spawnShockwave(surface, playerPos, switchVfx.color, 0.10f * playerRatio);
+    spawnLightPillar(surface, playerPos, switchVfx.color, 0.10f * playerRatio);
+    spawnSkillRune(surface, playerPos, switchVfx.color, 0.07f * playerRatio);
+    surface.resonanceFovSeconds = 0.0f;
+    hitStopRemainingMs = std::min<int64_t>(hitStopRemainingMs + 48, 96);
     audioBridge.playUiSound(SoundEffect::AuraApplied);
     return true;
   });

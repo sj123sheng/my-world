@@ -471,3 +471,24 @@ inline glm::vec3 TargetMarkerColorFor(int element) {
   if (element < 0) return kMarker;
   return kMarker * 0.55f + AuraColorFor(element) * 0.45f;
 }
+
+// 角色切换出场配色（原神切人语言）：按出战角色所属源质着色——
+// 1=辉印金白、2=脉流青蓝、3=蚀质暗紫，其余角色回退通用金橙；
+// 与附着光环/技能释放的元素语言同源，切人瞬间即读出角色系别。
+struct CharacterSwitchVfx {
+  glm::vec3 color{1.0f};  // 冲击波/光柱/符阵颜色
+  int sparkKind = 0;      // 出场火花 kind（复用既有配色表）
+};
+
+inline CharacterSwitchVfx CharacterSwitchVfxFor(int characterId) {
+  switch (characterId) {
+    case 1:  // 辉印
+      return {AuraColorFor(0), AuraSparkKindFor(0)};
+    case 2:  // 脉流
+      return {AuraColorFor(1), AuraSparkKindFor(1)};
+    case 3:  // 蚀质
+      return {AuraColorFor(2), AuraSparkKindFor(2)};
+    default:  // 物理/未知：通用金橙
+      return {{1.0f, 0.78f, 0.32f}, 0};
+  }
+}
