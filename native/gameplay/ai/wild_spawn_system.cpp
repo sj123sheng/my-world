@@ -204,6 +204,11 @@ WildSpawnSystem::~WildSpawnSystem() = default;
 
 WildSpawnSystem::WildSpawnSystem(
     std::vector<WorldLayout::WorldSpawnZoneDef> zones) {
+  buildZones(zones);
+}
+
+void WildSpawnSystem::buildZones(
+    const std::vector<WorldLayout::WorldSpawnZoneDef>& zones) {
   zones_.reserve(zones.size());
   for (std::size_t i = 0; i < zones.size(); ++i) {
     Zone zone;
@@ -218,6 +223,19 @@ WildSpawnSystem::WildSpawnSystem(
     }
     zones_.push_back(zone);
   }
+}
+
+void WildSpawnSystem::resetZones(
+    std::vector<WorldLayout::WorldSpawnZoneDef> zones) {
+  // 清空已生成敌人与本步事件，回到新建构造的等价状态。
+  slots_.clear();
+  snapshot_.clear();
+  deaths_.clear();
+  playerHits_.clear();
+  lastTick_ = 0;
+  nextSequence_ = 1;
+  zones_.clear();
+  buildZones(zones);
 }
 
 void WildSpawnSystem::update(const WildSpawnFrameInput& input) {
@@ -585,7 +603,9 @@ std::vector<TargetCandidate> WildSpawnSystem::candidates() const {
   result.reserve(slots_.size());
   for (const std::unique_ptr<Slot>& uptr : slots_) {
     const Slot& slot = *uptr;
-    if (slot.deathTick != 0 || slot.frozen) continue;
+    // deathTick 在死亡次帧才结算，存活判定兜底保证刚被击杀的
+    // 敌人立即退出软锁定候选（与遭遇候选的 alive 过滤对齐）。
+    if (slot.deathTick != 0 || slot.frozen || !slot.target.alive()) continue;
     result.push_back({static_cast<int32_t>(slot.enemy.id),
                       slot.enemy.position});
   }

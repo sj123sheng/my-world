@@ -84,7 +84,8 @@
 - HAP 已完成 ArkTS、Native、打包与签名，Hvigor `assembleHap` 返回 `BUILD SUCCESSFUL`。
 - 卡通着色/描边/刀光/冲击波纯函数与几何断言（test_combat_vfx、test_asset_profile、
   test_shader_3d、test_mesh、test_bloom_pass）通过；本机 104 个可编译测试 103 通过，
-  test_loop_integration 为 HEAD 基线即存在的失败（已用 pristine 工作树复核），非本轮回归。
+  现已 104 全部通过（test_loop_integration 基线失败已修复：击杀帧软锁定
+  释放时序 + 出生点侦察敌测试隔离）。
 - 尚未完成真机首次通关时长/卡点测试和 30/45 FPS 三档设备基线。
 - 卡通着色与描边的真机观感、描边宽度/阴影色档位尚未在设备上验收调优。
 

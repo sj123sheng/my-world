@@ -108,6 +108,11 @@ class WildSpawnSystem {
   // Slot/Zone 为前向声明的不完整类型，析构需在 .cpp 实例化。
   ~WildSpawnSystem();
 
+  // 替换刷怪区集合并清空已生成槽位/事件，回到新建构造的等价状态；
+  // 空列表关闭全部野外刷怪（测试场景隔离用：出生点侦察敌会抢
+  // 软锁定并提前打玩家，干扰纯时序断言）。
+  void resetZones(std::vector<WorldLayout::WorldSpawnZoneDef> zones);
+
   void update(const WildSpawnFrameInput& input);
 
   // 性能降级档位转发（Phase 5）：取 PerformanceGuard::lodLevel()，
@@ -144,6 +149,9 @@ class WildSpawnSystem {
  private:
   struct Slot;
   struct Zone;
+
+  // zone 定义 → 内部 Zone 表（构造函数与 resetZones 共用）。
+  void buildZones(const std::vector<WorldLayout::WorldSpawnZoneDef>& zones);
 
   static EnemyArchetype fromSpawnArchetype(WorldLayout::SpawnArchetype a);
   static int32_t chunkIdOf(Vec2 position);

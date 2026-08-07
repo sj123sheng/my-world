@@ -2411,12 +2411,27 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
                               combat.snapshot().currentAttached,
                               combat.snapshot().corruptionAttached)
           : 0;
-  if (currentTarget.has_value() &&
-      std::none_of(candidates.begin(), candidates.end(),
-                   [this](const TargetCandidate& candidate) {
-                     return candidate.id == currentTarget->id;
-                   })) {
-    currentTarget.reset();
+  // 锁定释放复核必须用本步结算后的新鲜候选：帧首候选是上一步快照，
+  // 不含本步 encounter.update 的击杀结果，已死目标会多挂一帧锁定；
+  // 而击杀触发的命中卡肉又会冻结后续固定步，把延迟放大成幽灵锁定。
+  // 释放时同步关闭锁定标记并切回探索视角，避免残留一帧幽灵标记。
+  if (currentTarget.has_value()) {
+    std::vector<TargetCandidate> freshCandidates =
+        encounter.snapshot().candidates;
+    const std::vector<TargetCandidate> freshWildCandidates =
+        wildSpawn.candidates();
+    freshCandidates.insert(freshCandidates.end(),
+                           freshWildCandidates.begin(),
+                           freshWildCandidates.end());
+    if (std::none_of(freshCandidates.begin(), freshCandidates.end(),
+                     [this](const TargetCandidate& candidate) {
+                       return candidate.id == currentTarget->id;
+                     })) {
+      currentTarget.reset();
+      surface.targetMarker3d.active = false;
+      surface.targetMarker3d.targetId = 0u;
+      camera.setExploration(true);
+    }
   }
 
   bool playerHitObserved = false;

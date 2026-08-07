@@ -8,6 +8,15 @@
 #include <type_traits>
 #include <vector>
 
+namespace {
+
+// 毫秒级时序/软锁定场景只验证 Loop 与训练脉冲行为：出生点侦察敌
+// （sz_spawn_scout，id 5000）在出生点感知半径内会立即仇恨攻击
+// 玩家并抢占软锁定，干扰纯时序断言；清空野外刷怪区隔离之。
+void isolateWildSpawns(Loop& loop) { loop.wildSpawn.resetZones({}); }
+
+}  // namespace
+
 int main() {
   static_assert(std::is_same_v<decltype(&Loop::tickOnce), void (Loop::*)(int64_t)>);
   static_assert(std::is_same_v<decltype(&Loop::updateFixed), void (Loop::*)(Tick, int64_t)>);
@@ -28,6 +37,7 @@ int main() {
   assert(combatLoop.snapshot().targetHp == fp(300));
 
   Loop millisecondLoop;
+  isolateWildSpawns(millisecondLoop);
   millisecondLoop.surface.width = 1000;
   millisecondLoop.surface.height = 800;
   millisecondLoop.surface.ready = true;
@@ -38,6 +48,7 @@ int main() {
   assert(millisecondLoop.combatTimeMs() == 800);
 
   Loop multiStepLoop;
+  isolateWildSpawns(multiStepLoop);
   multiStepLoop.surface.width = 1000;
   multiStepLoop.surface.height = 800;
   multiStepLoop.surface.ready = true;
@@ -58,6 +69,7 @@ int main() {
 
   // 命中卡肉：玩家命中后逻辑短暂冻结，tick 不推进；顿帧结束后恢复。
   Loop hitStopLoop;
+  isolateWildSpawns(hitStopLoop);
   hitStopLoop.surface.width = 1000;
   hitStopLoop.surface.height = 800;
   hitStopLoop.surface.ready = true;
@@ -88,6 +100,7 @@ int main() {
   assert(hitStopLoop.hitStopRemainingMs == 0);
 
   Loop restartCombatLoop;
+  isolateWildSpawns(restartCombatLoop);
   restartCombatLoop.surface.width = 1000;
   restartCombatLoop.surface.height = 800;
   restartCombatLoop.surface.ready = true;
@@ -102,6 +115,7 @@ int main() {
   CombatConfig fragileTargetConfig = CombatConfig::defaults();
   fragileTargetConfig.trainingTargetHp = fp(8);
   Loop lethalLoop;
+  isolateWildSpawns(lethalLoop);
   lethalLoop.combat = CombatController(fragileTargetConfig);
   lethalLoop.surface.width = 1000;
   lethalLoop.surface.height = 800;
@@ -228,6 +242,7 @@ int main() {
   assert(loop.touchRouter.activeCount() == 0);
 
   Loop targetingLoop;
+  isolateWildSpawns(targetingLoop);
   targetingLoop.surface.width = 1000;
   targetingLoop.surface.height = 800;
   targetingLoop.surface.ready = true;
@@ -254,6 +269,7 @@ int main() {
          static_cast<int32_t>(CombatController::kTrainingTargetId));
 
   Loop enemyEncounterLoop;
+  isolateWildSpawns(enemyEncounterLoop);
   enemyEncounterLoop.surface.width = 1000;
   enemyEncounterLoop.surface.height = 800;
   enemyEncounterLoop.surface.ready = true;
@@ -284,6 +300,7 @@ int main() {
   CombatConfig fragileEnemyConfig = CombatConfig::defaults();
   fragileEnemyConfig.comboDamage = {fp(300), fp(300), fp(300), fp(300)};
   Loop staleTargetLoop;
+  isolateWildSpawns(staleTargetLoop);
   staleTargetLoop.combat = CombatController(fragileEnemyConfig);
   staleTargetLoop.surface.width = 1000;
   staleTargetLoop.surface.height = 800;
@@ -317,6 +334,7 @@ int main() {
   assert(stopped.targetDist == 0.0f);
 
   Loop pausedLoop;
+  isolateWildSpawns(pausedLoop);
   pausedLoop.surface.width = 1000;
   pausedLoop.surface.height = 800;
   pausedLoop.surface.ready = true;
@@ -401,6 +419,7 @@ int main() {
 
   // 暂停：冻结固定步与输入消费，恢复后继续推进。
   Loop pauseLoop;
+  isolateWildSpawns(pauseLoop);
   pauseLoop.surface.width = 1000;
   pauseLoop.surface.height = 800;
   pauseLoop.surface.ready = true;
