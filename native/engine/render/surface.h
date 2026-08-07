@@ -350,6 +350,10 @@ struct Surface {
   // 受击闪白计时器：实体 id → 剩余秒数。由逻辑层从 Damage 事件写入，
   // 渲染层据此把模型配色向白色提亮，给出“打中了”的即时反馈。
   std::unordered_map<uint32_t, float> enemyHitFlash;
+  // 破韧硬直计时器：实体 id → 剩余秒数。破韧瞬间置
+  // PoiseBreakStaggerSeconds()，硬直期间强制受击动画（Hit_B 重反应
+  // 变体）与更深后仰，给出"防线破碎"的体态停顿。
+  std::unordered_map<uint32_t, float> enemyStaggerSeconds;
   // 死亡淡出计时器：实体 id → 死亡后累计秒数。逻辑层逐帧推进，
   // 渲染层据此把尸体模型线性淡出到完全移除。
   std::unordered_map<uint32_t, float> enemyDeathSeconds;

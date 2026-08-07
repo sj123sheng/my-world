@@ -669,3 +669,13 @@ inline float GlideWindInterval() { return 0.07f; }
 inline glm::vec3 GlideWindVelocityFor(const glm::vec2& velocity) {
   return glm::vec3(-velocity.x * 1.5f, -0.05f, -velocity.y * 1.5f);
 }
+
+// 破韧硬直时长（秒）：韧性破碎瞬间敌人进入更长的受击反应，
+// 与破韧爆发 VFX/卡肉/FOV 同窗口，用体态停顿给出"防线被打破"。
+inline float PoiseBreakStaggerSeconds() { return 0.6f; }
+
+// 破韧硬直变体决策：硬直窗口内强制变体为奇数（选用 Hit_B 重反应
+// 受击动画）；非硬直原样返回基础变体。
+inline int StaggerVariantFor(int baseVariant, float staggerSeconds) {
+  return staggerSeconds > 0.0f ? (baseVariant | 1) : baseVariant;
+}

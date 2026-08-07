@@ -234,6 +234,11 @@
   发射两颗逆移动方向掠过的淡蓝风线（GlideWindVelocityFor 纯函数
   锁定：相对风 1.5 倍移速 + 轻微下飘，kind 3 与移动尾迹同源），
   离地（跳跃/滑翔）停用地面脚步尾迹，滑翔速度感可视化。
+- 破韧硬直动画：破韧瞬间敌人进入 0.6s 硬直（PoiseBreakStaggerSeconds
+  纯函数锁定），硬直期间强制受击动画并走 Hit_B 重反应变体
+  （StaggerVariantFor 锁定：硬直窗口 variant 强制奇数），后仰切到
+  更深档（峰值约 8°、0.6s 窗口，HitRecoilTiltFor 同源曲线）；
+  enemyStaggerSeconds 逐帧衰减、遭遇重置清空。
 
 ## 验证状态
 
