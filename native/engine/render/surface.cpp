@@ -410,6 +410,13 @@ static glm::vec3 hitFlashTint(const glm::vec3& base, float flashSeconds) {
   return base + (glm::vec3(1.0f) - base) * factor;
 }
 
+// 前摇呼吸脉冲（0.8s 周期，与脚下预警环同相位）：输出 0~1 正弦，
+// 供前摇身体染色/蓄力膨胀共用同源节奏。
+static float windupPulse01(const Surface& s) {
+  const float phase = s.windupPulseSeconds / 0.8f * 6.2831853f;
+  return 0.5f + 0.5f * std::sin(phase);
+}
+
 // 前摇身体染色：前摇期间把基色向预警色混合并随 0.8s 呼吸脉冲
 //（与脚下预警环同周期），在模型本体上给出"它要攻击了"的最直接
 // 前兆；非前摇返回原色。受击闪白在调用侧后置，优先级更高。
@@ -417,9 +424,16 @@ static glm::vec3 windupBodyTint(const Surface& s, const glm::vec3& base,
                                 const glm::vec3& warningColor,
                                 bool windingUp) {
   if (!windingUp) return base;
-  const float phase = s.windupPulseSeconds / 0.8f * 6.2831853f;
-  const float pulse = 0.5f + 0.5f * std::sin(phase);
-  return WindupBodyTintFor(base, warningColor, pulse);
+  return WindupBodyTintFor(base, warningColor, windupPulse01(s));
+}
+
+// 前摇蓄力膨胀：与身体染色同 0.8s 呼吸脉冲，实体随脉冲轻微放大，
+// 用体态"吸气"暗示力量积蓄；非前摇返回原缩放。首领体量更大，
+// 调用侧传更小幅度。
+static float windupInflate(const Surface& s, float scale, bool windingUp,
+                           float maxInflate = 0.035f) {
+  if (!windingUp) return scale;
+  return scale * WindupScaleFor(windupPulse01(s), maxInflate);
 }
 
 // 查询实体的剩余闪白时间（无记录返回 0）。
@@ -2580,7 +2594,9 @@ static void draw3DPhase(Surface& s) {
       continue;
     }
     drawActor(s, s.enemyModel, s.enemyMesh, animationState, enemy.animation,
-              actorModelMatrix(enemyFeet, s.enemyAssetProfile.scale,
+              actorModelMatrix(enemyFeet,
+                               windupInflate(s, s.enemyAssetProfile.scale,
+                                             enemy.alive && enemy.windingUp),
                                enemy.angle +
                                    s.enemyAssetProfile.yawOffsetRadians,
                                enemyHitRecoilTilt(s, enemy.id)),
@@ -2611,7 +2627,9 @@ static void draw3DPhase(Surface& s) {
     }
     drawActor(s, s.enemyModel, s.enemyMesh, animationState, enemy.animation,
               actorModelMatrix(enemyFeet,
-                               s.enemyAssetProfile.scale * archetypeScale,
+                               windupInflate(s, s.enemyAssetProfile.scale *
+                                                    archetypeScale,
+                                             enemy.alive && enemy.windingUp),
                                enemy.angle +
                                    s.enemyAssetProfile.yawOffsetRadians,
                                enemyHitRecoilTilt(s, enemy.id)),
@@ -2666,7 +2684,10 @@ static void draw3DPhase(Surface& s) {
       drawActor(s, s.bossModel, s.bossMesh, s.bossAnimationState,
                 s.boss3d.animation,
                 actorModelMatrix(
-                    bossFeet, s.bossAssetProfile.scale,
+                    bossFeet,
+                    windupInflate(s, s.bossAssetProfile.scale,
+                                  s.boss3d.windingUp && !s.boss3d.defeated,
+                                  0.02f),
                     s.boss3d.angle + s.bossAssetProfile.yawOffsetRadians,
                     // 首领体量更大，后仰峰值收敛到约 3.4°。
                     HitRecoilTiltFor(s.boss3d.hitAnimationSeconds, 0.2f,

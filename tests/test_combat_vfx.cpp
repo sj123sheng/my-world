@@ -674,6 +674,20 @@ void testHitRecoilTiltDecaysQuadratically() {
   assert(nearlyEqual(HitRecoilTiltFor(0.075f, 0.15f, kMax), kMax * 0.25f));
 }
 
+void testWindupScaleBreathesWithinBounds() {
+  constexpr float kInflate = 0.035f;
+  // 呼吸区间 [1, 1+max]，随脉冲单调增大。
+  assert(nearlyEqual(WindupScaleFor(0.0f, kInflate), 1.0f));
+  assert(nearlyEqual(WindupScaleFor(1.0f, kInflate), 1.0f + kInflate));
+  assert(WindupScaleFor(0.5f, kInflate) > WindupScaleFor(0.25f, kInflate));
+  // 越界脉冲自动钳制，不产生外插缩放。
+  assert(nearlyEqual(WindupScaleFor(-2.0f, kInflate), 1.0f));
+  assert(nearlyEqual(WindupScaleFor(5.0f, kInflate), 1.0f + kInflate));
+  // maxInflate<=0 恒等返回 1.0。
+  assert(nearlyEqual(WindupScaleFor(0.7f, 0.0f), 1.0f));
+  assert(nearlyEqual(WindupScaleFor(0.7f, -1.0f), 1.0f));
+}
+
 }  // namespace
 
 int main() {
@@ -715,5 +729,6 @@ int main() {
   testPlayerDeathVfxUsesDangerLanguage();
   testWindupBodyTintBlendsTowardWarning();
   testHitRecoilTiltDecaysQuadratically();
+  testWindupScaleBreathesWithinBounds();
   return 0;
 }

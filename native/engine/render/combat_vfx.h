@@ -624,3 +624,12 @@ inline float HitRecoilTiltFor(float remainingSeconds, float durationSeconds,
       std::clamp(remainingSeconds / durationSeconds, 0.0f, 1.0f);
   return maxTiltRadians * strength * strength;
 }
+
+// 前摇蓄力膨胀（原神攻击前兆语言）：前摇期间模型随呼吸脉冲轻微
+// 放大（1.0 → 1.0+maxInflate），与脚下预警环/身体染色同周期，
+// 用体态"吸气"暗示力量积蓄；pulse01 越界自动钳制，maxInflate<=0
+// 恒等返回 1.0。
+inline float WindupScaleFor(float pulse01, float maxInflate) {
+  if (maxInflate <= 0.0f) return 1.0f;
+  return 1.0f + maxInflate * std::clamp(pulse01, 0.0f, 1.0f);
+}
