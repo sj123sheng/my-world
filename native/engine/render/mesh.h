@@ -93,6 +93,14 @@ Mesh createSlashArc(float innerRadius, float outerRadius, float arcRadians,
 // 用于按骨骼挂点（handslot.r）随动画挥舞，给出可见的普攻武器。
 Mesh createSword();
 
+// 风格化法师杖：杖杆底部在原点，沿 +Y 延伸约 1.15，顶端为悬浮宝珠。
+// 供敌人（Mage 模型）按 handslot.r 挂载。
+Mesh createStaff();
+
+// 风格化重棒：柄底在原点，沿 +Y 延伸约 1.24，顶端为拉长锤头。
+// 供首领（Barbarian 模型）按 handslot.r 挂载，强调体量压迫感。
+Mesh createClub();
+
 // 生成胶囊网格：沿 Y 轴，圆柱段高 height，两端为半径 radius 的半球。
 Mesh createCapsule(float radius, float height, uint32_t segments,
                    uint32_t rings);

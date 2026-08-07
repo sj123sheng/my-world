@@ -172,8 +172,10 @@ Mesh createCylinder(float radius, float height, uint32_t segments) {
     mesh.vertices.push_back({pb, glm::normalize(glm::vec3(pb.x, 0.0f, pb.z)), {1, 0}});
     mesh.vertices.push_back({tb, glm::normalize(glm::vec3(pb.x, 0.0f, pb.z)), {1, 1}});
     mesh.vertices.push_back({ta, glm::normalize(glm::vec3(pa.x, 0.0f, pa.z)), {0, 1}});
-    mesh.indices.insert(mesh.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3,
-                                             base, base + 3, base + 1, base + 1, base + 3, base + 2});
+    // 侧面四边形沿 pa→ta 对角线拆为两个外翻三角形；旧实现额外输出了一组
+    // 卷绕反向的重复三角形（GL_BACK 剔除下不可见），已移除。
+    mesh.indices.insert(mesh.indices.end(),
+                        {base, base + 3, base + 1, base + 1, base + 3, base + 2});
   }
   return mesh;
 }
@@ -404,6 +406,39 @@ Mesh createSword() {
     pushTriangle(a1, b1, b0);
     pushTriangle(a1, apex, b1);
   }
+  return mesh;
+}
+
+Mesh createStaff() {
+  Mesh mesh;
+  // 杖杆：底部在原点（手握处），沿 +Y 延伸。
+  mergeMesh(mesh, createCylinder(0.5f, 1.0f, 10),
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.525f, 0.0f)) *
+                glm::scale(glm::mat4(1.0f),
+                           glm::vec3(0.044f, 1.05f, 0.044f)));
+  // 杖颈箍环。
+  mergeMesh(mesh, createCube(1.0f),
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.04f, 0.0f)) *
+                glm::scale(glm::mat4(1.0f), glm::vec3(0.06f, 0.03f, 0.06f)));
+  // 杖头宝珠。
+  mergeMesh(mesh, createSphere(1.0f, 12, 8),
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.10f, 0.0f)) *
+                glm::scale(glm::mat4(1.0f), glm::vec3(0.05f)));
+  return mesh;
+}
+
+Mesh createClub() {
+  Mesh mesh;
+  // 棍身：底部在原点，沿 +Y 延伸，比法杖更粗。
+  mergeMesh(mesh, createCylinder(0.5f, 1.0f, 10),
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.45f, 0.0f)) *
+                glm::scale(glm::mat4(1.0f),
+                           glm::vec3(0.07f, 0.9f, 0.07f)));
+  // 棍头：拉长的椭球重锤。
+  mergeMesh(mesh, createSphere(1.0f, 14, 10),
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.05f, 0.0f)) *
+                glm::scale(glm::mat4(1.0f),
+                           glm::vec3(0.14f, 0.18f, 0.14f)));
   return mesh;
 }
 

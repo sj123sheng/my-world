@@ -108,11 +108,21 @@ void testSkinnedVertexUsesExpectedAttributeSlots() {
 void testCylinderHasFiniteNormalsAndTriangles() {
   Mesh cylinder = createCylinder(1.0f, 2.0f, 16);
   assert(!cylinder.vertices.empty());
-  assert(cylinder.indices.size() == 16u * 12u);
+  // 每段侧面 2 个三角形（6 索引）；反向重复三角形已移除。
+  assert(cylinder.indices.size() == 16u * 6u);
   for (const Vertex& vertex : cylinder.vertices) {
     assert(std::isfinite(vertex.normal.x));
     assert(std::isfinite(vertex.normal.y));
     assert(std::isfinite(vertex.normal.z));
+  }
+  // 卷绕法线与存储的径向法线同向（外翻），GL_BACK 剔除下侧面可见。
+  for (std::size_t t = 0; t + 2 < cylinder.indices.size(); t += 3) {
+    const Vertex& v0 = cylinder.vertices[cylinder.indices[t]];
+    const Vertex& v1 = cylinder.vertices[cylinder.indices[t + 1]];
+    const Vertex& v2 = cylinder.vertices[cylinder.indices[t + 2]];
+    const glm::vec3 winding = glm::cross(v1.position - v0.position,
+                                         v2.position - v0.position);
+    assert(glm::dot(winding, v0.normal) > 0.0f);
   }
 }
 
@@ -339,6 +349,32 @@ void testSwordBladeSideFacesPointAwayFromAxis() {
   }
 }
 
+void testStaffAndClubHaveValidStructure() {
+  const Mesh weapons[] = {createStaff(), createClub()};
+  for (const Mesh& weapon : weapons) {
+    assert(!weapon.vertices.empty());
+    assert(indicesInBounds(weapon));
+    assert(normalsUnitLength(weapon));
+    float minY = 1e9f, maxY = -1e9f;
+    for (const Vertex& vertex : weapon.vertices) {
+      minY = std::min(minY, vertex.position.y);
+      maxY = std::max(maxY, vertex.position.y);
+    }
+    // 握柄底部贴原点，杖/棍全长约 1.1~1.25。
+    assert(close(minY, 0.0f, 0.02f));
+    assert(maxY > 1.0f && maxY < 1.3f);
+    // 卷绕法线与存储法线同向（外翻），GL_BACK 剔除下各面可见。
+    for (std::size_t t = 0; t + 2 < weapon.indices.size(); t += 3) {
+      const Vertex& v0 = weapon.vertices[weapon.indices[t]];
+      const Vertex& v1 = weapon.vertices[weapon.indices[t + 1]];
+      const Vertex& v2 = weapon.vertices[weapon.indices[t + 2]];
+      const glm::vec3 winding = glm::cross(v1.position - v0.position,
+                                           v2.position - v0.position);
+      assert(glm::dot(winding, v0.normal) > 0.0f);
+    }
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -365,5 +401,6 @@ int main() {
   testSwordHasValidStructureAndEnvelope();
   testSwordWindingMatchesStoredNormals();
   testSwordBladeSideFacesPointAwayFromAxis();
+  testStaffAndClubHaveValidStructure();
   return 0;
 }

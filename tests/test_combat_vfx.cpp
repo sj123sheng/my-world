@@ -84,6 +84,43 @@ void testShockwaveExpandsAndFades() {
   assert(half.radiusScale > 0.5f);
 }
 
+void testSparkStretchStaysRoundWhenSlow() {
+  // 静止/低速火花保持圆形广告牌（stretch=1），不被拉成细线。
+  const SparkStretch still = SparkStretchFor(0.0f, 0.0f, 0.0f, 0.4f, 0.3f);
+  assert(nearlyEqual(still.stretch, 1.0f));
+  assert(nearlyEqual(still.angleRadians, 0.0f));
+  const SparkStretch slow = SparkStretchFor(0.01f, 0.0f, 0.0f, 0.0f, 0.0f);
+  assert(nearlyEqual(slow.stretch, 1.0f));
+}
+
+void testSparkStretchAlignsWithScreenVelocity() {
+  // yaw=pitch=0 时 billboard = RotY(π)：世界 +X 速度映射到屏幕 -X，
+  // 方向角应为 π（或 -π）；世界 +Y 速度映射到屏幕 +Y，角为 π/2。
+  const SparkStretch right = SparkStretchFor(0.1f, 0.0f, 0.0f, 0.0f, 0.0f);
+  assert(right.stretch > 1.0f);
+  assert(nearlyEqual(std::fabs(right.angleRadians), 3.14159265f, 0.001f));
+  const SparkStretch up = SparkStretchFor(0.0f, 0.1f, 0.0f, 0.0f, 0.0f);
+  assert(nearlyEqual(up.angleRadians, 3.14159265f * 0.5f, 0.001f));
+}
+
+void testSparkStretchGrowsWithSpeedAndClamps() {
+  const SparkStretch a = SparkStretchFor(0.05f, 0.0f, 0.0f, 0.0f, 0.0f);
+  const SparkStretch b = SparkStretchFor(0.2f, 0.0f, 0.0f, 0.0f, 0.0f);
+  const SparkStretch huge = SparkStretchFor(5.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+  assert(b.stretch > a.stretch);
+  assert(huge.stretch <= 3.2f + 0.0001f);
+  // 相机 yaw=π/2 朝向世界 +X：+X 速度沿视线方向，无屏幕分量，保持圆形。
+  const SparkStretch alongView =
+      SparkStretchFor(0.1f, 0.0f, 0.0f, 3.14159265f * 0.5f, 0.0f);
+  assert(nearlyEqual(alongView.stretch, 1.0f));
+  // 同一 yaw 下 +Z 速度沿屏幕水平方向（角 0），验证相机平面投影随
+  // yaw 正确旋转。
+  const SparkStretch turned =
+      SparkStretchFor(0.0f, 0.0f, 0.1f, 3.14159265f * 0.5f, 0.0f);
+  assert(turned.stretch > 1.0f);
+  assert(nearlyEqual(turned.angleRadians, 0.0f, 0.001f));
+}
+
 }  // namespace
 
 int main() {
@@ -93,5 +130,8 @@ int main() {
   testSlashArcFinisherIsLargerAndBrighter();
   testEaseOutCubicBoundsAndMonotonic();
   testShockwaveExpandsAndFades();
+  testSparkStretchStaysRoundWhenSlow();
+  testSparkStretchAlignsWithScreenVelocity();
+  testSparkStretchGrowsWithSpeedAndClamps();
   return 0;
 }

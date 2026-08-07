@@ -816,6 +816,12 @@ static void tryInitializeModelAsset(Surface& s, ModelKind kind,
   if (kind == ModelKind::Player) {
     s.playerWeaponJoint = -1;
   }
+  if (kind == ModelKind::Enemy) {
+    s.enemyWeaponJoint = -1;
+  }
+  if (kind == ModelKind::Boss) {
+    s.bossWeaponJoint = -1;
+  }
   if (bytes.empty()) {
     LOGI("%{public}s cleared; static Mesh fallback remains active", assetName);
     return;
@@ -829,6 +835,14 @@ static void tryInitializeModelAsset(Surface& s, ModelKind kind,
     // KayKit 角色右手的武器挂点；缺失时保持 -1，武器不挂载。
     s.playerWeaponJoint = FindJointIndex(model.jointNames(), "handslot.r");
     LOGI("player weapon joint=%{public}d", s.playerWeaponJoint);
+  }
+  if (kind == ModelKind::Enemy) {
+    s.enemyWeaponJoint = FindJointIndex(model.jointNames(), "handslot.r");
+    LOGI("enemy weapon joint=%{public}d", s.enemyWeaponJoint);
+  }
+  if (kind == ModelKind::Boss) {
+    s.bossWeaponJoint = FindJointIndex(model.jointNames(), "handslot.r");
+    LOGI("boss weapon joint=%{public}d", s.bossWeaponJoint);
   }
 }
 
@@ -1322,10 +1336,22 @@ static void drawHitSparks(Surface& s, const glm::mat4& vp) {
                                              : 0.0035f;
     // sizeScale 随归属实体的模型缩放同步，模型放大后特效等大跟随。
     const float size = (baseSize + 0.004f * t) * std::max(0.0f, spark.sizeScale);
+    // 速度对齐拉伸：把火花沿飞行方向拉成流光（尾迹 kind 速度近 0
+    // 时自动保持圆形），与原神命中/投射物特效的拖尾语言一致。
+    const SparkStretch stretch = SparkStretchFor(
+        spark.vx, spark.vy, spark.vz, s.cameraRenderState.yaw(),
+        s.cameraRenderState.pitch());
+    const float sizeX = size * stretch.stretch;
+    const float sizeY = stretch.stretch > 1.0f
+                            ? size / std::sqrt(stretch.stretch)
+                            : size;
     const glm::mat4 model =
         glm::translate(glm::mat4(1.0f),
                        glm::vec3(spark.x, spark.y, spark.z)) *
-        billboard * glm::scale(glm::mat4(1.0f), glm::vec3(size));
+        billboard *
+        glm::rotate(glm::mat4(1.0f), stretch.angleRadians,
+                    glm::vec3(0.0f, 0.0f, 1.0f)) *
+        glm::scale(glm::mat4(1.0f), glm::vec3(sizeX, sizeY, 1.0f));
     s.shader3d.setMVP(vp * model);
     s.shader3d.setModel(model);
     s.hpBarQuadMesh.draw();
@@ -1865,7 +1891,8 @@ static void draw3DPhase(Surface& s) {
                 vp, hitFlashTint(s.enemyAssetProfile.materialTint,
                                  hitFlashRemaining(s, s.trainingTarget.id)),
                 s.enemyAssetProfile, hitFlashRemaining(s, s.trainingTarget.id),
-                false, 1.0f, 1.0f, "training-target");
+                false, 1.0f, 1.0f, "training-target", &s.staffMesh,
+                s.enemyWeaponJoint);
     }
   }
 
@@ -1891,7 +1918,7 @@ static void draw3DPhase(Surface& s) {
               s.enemyAssetProfile, hitFlashRemaining(s, enemy.id),
               enemy.id == s.targetMarker3d.targetId,
               DeathFadeAlpha(enemy.deathSeconds), 1.0f,
-              "enemy");
+              "enemy", &s.staffMesh, s.enemyWeaponJoint);
   }
   // 野外敌人（Phase 3.2/3.3）：复用同一 drawActor 路径与动画状态表
   // （id 从 5000 起无冲突），按原型缩放与色调区分。
@@ -1917,7 +1944,7 @@ static void draw3DPhase(Surface& s) {
               s.enemyAssetProfile, hitFlashRemaining(s, enemy.id),
               enemy.id == s.targetMarker3d.targetId,
               DeathFadeAlpha(enemy.deathSeconds), 1.0f,
-              "enemy");
+              "enemy", &s.staffMesh, s.enemyWeaponJoint);
   }
 
   // NPC（Phase 4）：复用骨骼角色绘制路径，仅 idle/walk 动画，无血条。
@@ -1965,7 +1992,8 @@ static void draw3DPhase(Surface& s) {
                                 s.boss3d.hitAnimationSeconds),
                s.bossAssetProfile, s.boss3d.hitAnimationSeconds,
                s.boss3d.targeted, 1.0f,
-               BossEntranceReveal(s.boss3d.entranceSeconds), "boss");
+               BossEntranceReveal(s.boss3d.entranceSeconds), "boss",
+               &s.clubMesh, s.bossWeaponJoint);
     }
     drawBossCinematicGeometry(s, vp);
   }
@@ -2368,6 +2396,9 @@ static void init3DResources(Surface& s) {
   s.slashArcMesh = createSlashArc(0.55f, 1.0f, 2.4f, 20);
   // 主角佩剑：按 handslot.r 关节矩阵挂载，随动画挥舞。
   s.swordMesh = createSword();
+  // 敌方法杖与首领重棍：同一挂点机制。
+  s.staffMesh = createStaff();
+  s.clubMesh = createClub();
   // 地形/水面/天空：地形网格需要高度场，未注入时由 drawTerrain 惰性生成；
   // 水面为单位平面（绘制时抬升到水面高度），天空为单位球体（绘制时
   // 以相机为心放大成穹顶）。
@@ -2397,6 +2428,8 @@ static void init3DResources(Surface& s) {
   s.targetRingMesh.upload();
   s.slashArcMesh.upload();
   s.swordMesh.upload();
+  s.staffMesh.upload();
+  s.clubMesh.upload();
   s.hpBarQuadMesh.upload();
   s.shadowMesh.upload();
   s.fallbackPillarMesh.upload();
@@ -2448,6 +2481,8 @@ static void destroy3DResource(Surface& s, SurfaceGlResource resource) {
       s.skyMesh.destroy();
       s.slashArcMesh.destroy();
       s.swordMesh.destroy();
+      s.staffMesh.destroy();
+      s.clubMesh.destroy();
       for (auto& entry : s.terrainChunkMeshes) entry.second.destroy();
       s.terrainChunkMeshes.clear();
       break;
@@ -2503,6 +2538,8 @@ static void abandon3DResources(Surface& s) {
   s.shadowMesh.abandonGpuResources();
   s.slashArcMesh.abandonGpuResources();
   s.swordMesh.abandonGpuResources();
+  s.staffMesh.abandonGpuResources();
+  s.clubMesh.abandonGpuResources();
   s.terrainMesh.abandonGpuResources();
   s.waterMesh.abandonGpuResources();
   s.skyMesh.abandonGpuResources();

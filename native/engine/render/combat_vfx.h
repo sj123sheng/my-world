@@ -72,3 +72,38 @@ inline ShockwavePose ShockwavePoseAt(float seconds) {
   pose.alpha = 1.0f - t;
   return pose;
 }
+
+// 火花速度对齐拉伸：把广告牌四边形绕视线旋转到速度投影方向，并按速度
+// 拉长，把“圆点”变成原神式“流光”。与 cameraBillboard 的旋转约定
+//（RotY(yaw)·RotX(pitch)·RotY(π)）严格互逆，保证屏幕方向一致。
+struct SparkStretch {
+  float angleRadians = 0.0f;  // 相机平面内绕视线的旋转角
+  float stretch = 1.0f;       // 沿速度方向的拉伸倍率（>=1）
+};
+
+inline SparkStretch SparkStretchFor(float vx, float vy, float vz,
+                                    float cameraYaw, float cameraPitch) {
+  SparkStretch result;
+  // 世界速度 → 广告牌局部平面：依次施加 billboard 旋转的逆。
+  const float cy = std::cos(cameraYaw);
+  const float sy = std::sin(cameraYaw);
+  const float cp = std::cos(cameraPitch);
+  const float sp = std::sin(cameraPitch);
+  // RotY(-yaw)
+  const float x1 = vx * cy - vz * sy;
+  const float z1 = vx * sy + vz * cy;
+  // RotX(-pitch)
+  const float x2 = x1;
+  const float y2 = vy * cp + z1 * sp;
+  const float z2 = -vy * sp + z1 * cp;
+  // RotY(π)（自逆）
+  const float px = -x2;
+  const float py = y2;
+  (void)z2;
+  const float planeSpeed = std::sqrt(px * px + py * py);
+  // 速度过低保持圆形广告牌，避免静止火花被拉成细线。
+  if (planeSpeed < 0.02f) return result;
+  result.angleRadians = std::atan2(py, px);
+  result.stretch = std::min(1.0f + planeSpeed * 14.0f, 3.2f);
+  return result;
+}
