@@ -485,7 +485,36 @@ void testJumpAndLandAnimationClips() {
   assert(ResolveClip(partial, RenderAnimation::Land, 0, 1.0f) == "idle");
 }
 
+
+void testDirectionalDodgeClipFollowsRelativeAngle() {
+  // 前/侧/后扇区划分（正角 = 左）。
+  assert(std::string(PlayerDodgeClipFor(0.0f)) == "Dodge_Forward");
+  assert(std::string(PlayerDodgeClipFor(0.5f)) == "Dodge_Forward");
+  assert(std::string(PlayerDodgeClipFor(1.2f)) == "Dodge_Left");
+  assert(std::string(PlayerDodgeClipFor(-1.2f)) == "Dodge_Right");
+  assert(std::string(PlayerDodgeClipFor(3.0f)) == "Dodge_Backward");
+  assert(std::string(PlayerDodgeClipFor(-3.0f)) == "Dodge_Backward");
+  // 扇区边界：pi/4 与 3pi/4。
+  assert(std::string(PlayerDodgeClipFor(0.7853981f)) == "Dodge_Forward");
+  assert(std::string(PlayerDodgeClipFor(0.79f)) == "Dodge_Left");
+  assert(std::string(PlayerDodgeClipFor(2.36f)) == "Dodge_Backward");
+  // ResolveClip：闪避偏好 clip 存在时优先，缺失回退 Dodge_Forward→run。
+  const std::vector<std::string> full{"idle", "run", "Dodge_Forward",
+                                      "Dodge_Left", "Dodge_Right",
+                                      "Dodge_Backward"};
+  assert(ResolveClip(full, RenderAnimation::Dodge, 0, 1.0f, "Dodge_Left") ==
+         "Dodge_Left");
+  assert(ResolveClip(full, RenderAnimation::Dodge, 0, 1.0f,
+                     "Dodge_Backward") == "Dodge_Backward");
+  const std::vector<std::string> forwardOnly{"idle", "run", "Dodge_Forward"};
+  assert(ResolveClip(forwardOnly, RenderAnimation::Dodge, 0, 1.0f,
+                     "Dodge_Left") == "Dodge_Forward");
+  const std::vector<std::string> noDodge{"idle", "run"};
+  assert(ResolveClip(noDodge, RenderAnimation::Dodge, 0, 1.0f) == "run");
+}
+
 }  // namespace
+
 
 int main() {
   testAnimationPriority();
@@ -504,6 +533,7 @@ int main() {
   testAttackClipDifferentiationBySegmentArchetypeVariant();
   testEnemyWeaponKindMatchesAttackLanguage();
   testJumpAndLandAnimationClips();
+  testDirectionalDodgeClipFollowsRelativeAngle();
   testAnimationLogOnlyReportsIntentOrResolvedClipChanges();
   testUnavailableRuntimeModelStaysOnFallbackPath();
   testSurfaceStoresLateModelAssetsForContextBoundInitialization();

@@ -3483,6 +3483,27 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   surface.player3dAnimation.attackClip = PlayerAttackClipFor(
       PlayerComboSegmentFor(
           static_cast<ActionState>(combatSnapshot.currentAction)));
+  // 方向闪避 clip：按移动方向相对朝向选前/侧/后闪避姿态
+  //（原神方向闪避语言）；静止闪退回退前闪避。
+  if (static_cast<ActionState>(combatSnapshot.currentAction) ==
+      ActionState::Dodging) {
+    float dodgeRelativeAngle = 0.0f;
+    const float dodgeSpeed =
+        std::hypot(surface.player.velocity.x, surface.player.velocity.y);
+    if (dodgeSpeed > 1e-4f) {
+      const float moveAngle =
+          std::atan2(surface.player.velocity.x, surface.player.velocity.y);
+      dodgeRelativeAngle = moveAngle - surface.player.angle;
+      while (dodgeRelativeAngle > 3.14159265f) {
+        dodgeRelativeAngle -= 6.2831853f;
+      }
+      while (dodgeRelativeAngle <= -3.14159265f) {
+        dodgeRelativeAngle += 6.2831853f;
+      }
+    }
+    surface.player3dAnimation.attackClip =
+        PlayerDodgeClipFor(dodgeRelativeAngle);
+  }
   // 跳跃/落地/滑翔动画（KayKit 跳跃语言）：空中播放 Jump_Start
   //（前 0.18s）/Jump_Idle，滑翔复用空中姿态，落地播放 0.25s
   // Jump_Land + 脚下轻尘，补全角色离地运动语言。

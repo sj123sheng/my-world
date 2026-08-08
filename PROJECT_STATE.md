@@ -277,6 +277,11 @@
   纯函数锁定，0.3s 线性渐入，playerGlideSeconds 滑翔中累加、结束后
   双倍速回落渐出），与风线粒子共同给出空中速度感；update3DCamera
   在 FOV 冲击之外叠加，遭遇重置归零。
+- 主角方向闪避动画：闪避按移动方向相对朝向选前/侧/后姿态
+  （PlayerDodgeClipFor 纯函数锁定，|angle|<=pi/4 前闪避、
+  (pi/4,3pi/4) 侧闪避、>=3pi/4 后闪避，正角 = 左），启用 KayKit
+  未用的 Dodge_Left/Right/Backward clip；ResolveClip 偏好链扩展到
+  Dodge，资产缺失逐级回退 Dodge_Forward→run，静止闪退回退前闪避。
 
 ## 验证状态
 

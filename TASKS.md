@@ -207,6 +207,10 @@
 - [x] 滑翔 FOV 微效：滑翔中视场角渐入放宽 +4°（GlideFovOffsetFor
       纯函数，0.3s 渐入、结束后双倍速渐出），与风线粒子共同给出
       空中速度感，补全滑翔运动语言的镜头维度。
+- [x] 主角方向闪避动画：闪避按移动方向相对朝向选前/侧/后姿态
+      （PlayerDodgeClipFor 纯函数，KayKit 未用的 Dodge_Left/Right/
+      Backward clip 启用），ResolveClip 偏好链扩展到 Dodge，资产
+      缺失逐级回退，闪避运动语言方向化。
 
 ## 下一阶段优先级
 

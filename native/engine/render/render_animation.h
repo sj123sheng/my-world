@@ -162,6 +162,22 @@ inline const char* RenderAnimationName(RenderAnimation animation) {
 // 主角连段攻击 clip（原神四段连招差异化）：1=斜劈 2=横斩 3=突刺、
 // 4=双手重劈（终结段，与放大刀光/地面冲击波的分量呼应）；
 // 未知段数回退通用 attack。
+// 主角方向闪避 clip（原神方向闪避语言）：按移动方向相对角色
+// 朝向的带符号夹角（弧度，正 = 左）选前/侧/后闪避姿态——
+// |angle| <= pi/4 前闪避、(pi/4, 3pi/4) 侧闪避、>= 3pi/4 后闪避；
+// 资产缺失时 ResolveClip 自动回退 Dodge_Forward→run。
+inline const char* PlayerDodgeClipFor(float relativeAngleRadians) {
+  constexpr float kDiagonal = 0.7853981f;   // pi/4
+  constexpr float kBackward = 2.3561945f;   // 3pi/4
+  if (relativeAngleRadians > kBackward ||
+      relativeAngleRadians < -kBackward) {
+    return "Dodge_Backward";
+  }
+  if (relativeAngleRadians > kDiagonal) return "Dodge_Left";
+  if (relativeAngleRadians < -kDiagonal) return "Dodge_Right";
+  return "Dodge_Forward";
+}
+
 inline const char* PlayerAttackClipFor(int comboSegment) {
   switch (comboSegment) {
     case 1:
@@ -247,7 +263,8 @@ inline std::string ResolveClip(const std::vector<std::string>& clips,
   // 资产缺失时自动回退通用 attack（候选链后段）；跳跃同机制偏好
   // 起跳/空中 clip（Jump_Start/Jump_Idle）。
   if ((animation == RenderAnimation::Attack ||
-       animation == RenderAnimation::Jump) &&
+       animation == RenderAnimation::Jump ||
+       animation == RenderAnimation::Dodge) &&
       !preferredAttackClip.empty()) {
     candidates.insert(candidates.begin(), preferredAttackClip);
   }
