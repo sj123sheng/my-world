@@ -2578,7 +2578,8 @@ static void draw3DPhase(Surface& s) {
   // 闪避无敌帧：半透明化给出清晰的免伤窗口反馈。
   const glm::vec3 playerFeet{s.player.x, s.playerGroundHeight + 0.012f,
                              s.player.y};
-  // 技能释放本体染色源：源质技能吟唱动画 → 对应源质，其余 -1。
+  // 技能释放本体染色源：源质技能吟唱动画 → 对应源质；终结技按
+  // 出战角色元素（playerSlashSource 已随切人同步）；其余 -1。
   int skillCastSource = -1;
   switch (s.player3dAnimation.action) {
     case RenderAnimation::Radiance:
@@ -2589,6 +2590,9 @@ static void draw3DPhase(Surface& s) {
       break;
     case RenderAnimation::Corruption:
       skillCastSource = 2;
+      break;
+    case RenderAnimation::Ultimate:
+      skillCastSource = s.playerSlashSource;
       break;
     default:
       break;

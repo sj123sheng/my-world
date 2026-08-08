@@ -265,8 +265,9 @@
   爆发特效同帧；phaseBreakSeconds 逐帧衰减、遭遇重置清空。
 - 主角技能释放本体染色：源质技能吟唱期间本体向技能元素色高比例
   呼吸混合（SkillCastBodyTintFor 纯函数锁定，混合比 0.20~0.30 强于
-  附魔染色，playerSkillCastSource 从 player3dAnimation.action 派生），
-  与光柱/束流/贴花释放特效同语言；非施法与升级前完全一致，受击
+  附魔染色，skillCastSource 从 player3dAnimation.action 派生），
+  与光柱/束流/贴花释放特效同语言；终结技吟唱按出战角色元素染色
+  （playerSlashSource 随切人同步）；非施法与升级前完全一致，受击
   闪白仍后置优先。
 
 ## 验证状态
