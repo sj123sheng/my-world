@@ -282,6 +282,9 @@
   (pi/4,3pi/4) 侧闪避、>=3pi/4 后闪避，正角 = 左），启用 KayKit
   未用的 Dodge_Left/Right/Backward clip；ResolveClip 偏好链扩展到
   Dodge，资产缺失逐级回退 Dodge_Forward→run，静止闪退回退前闪避。
+- 玩家受击变体轮换：每次新受击翻转 player3dAnimation.variant
+  （hit/Hit_B 交替，ResolveClip 变体链同源），与敌人受击变体语言
+  一致，打破连续受击重复感；遭遇重置归零。
 
 ## 验证状态
 

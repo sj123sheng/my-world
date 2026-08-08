@@ -211,6 +211,8 @@
       （PlayerDodgeClipFor 纯函数，KayKit 未用的 Dodge_Left/Right/
       Backward clip 启用），ResolveClip 偏好链扩展到 Dodge，资产
       缺失逐级回退，闪避运动语言方向化。
+- [x] 玩家受击变体轮换：每次新受击翻转 variant（hit/Hit_B 交替），
+      与敌人受击变体语言一致，打破连续受击的重复感，遭遇重置归零。
 
 ## 下一阶段优先级
 

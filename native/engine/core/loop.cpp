@@ -1848,6 +1848,7 @@ void Loop::resetInput() {
   surface.player3dAnimation.action = RenderAnimation::Idle;
   surface.player3dAnimation.hit = false;
   surface.player3dAnimation.moving = false;
+  surface.player3dAnimation.variant = 0;
   particleEmitTimer = 0.0f;
   trailEmitTimer = 0.0f;
   prevComboSegment = 0;
@@ -3191,7 +3192,12 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   // 只从 gameplay 快照/事件投影动画意图，不反向写入战斗、AI 或玩家控制器。
   surface.playerHitAnimationSeconds = std::max(
       0.0f, surface.playerHitAnimationSeconds - dtSeconds);
-  if (playerHitObserved) surface.playerHitAnimationSeconds = 0.2f;
+  if (playerHitObserved) {
+    surface.playerHitAnimationSeconds = 0.2f;
+    // 玩家受击变体轮换：每次新受击翻转 variant（hit/Hit_B 交替），
+    // 与敌人受击变体语言一致，打破连续受击的重复感。
+    surface.player3dAnimation.variant ^= 1u;
+  }
   // 受击闪白计时器逐帧衰减并清理到期项。
   for (auto flash = surface.enemyHitFlash.begin();
        flash != surface.enemyHitFlash.end();) {
