@@ -804,7 +804,37 @@ void testInfusedBodyTintFollowsElement() {
          InfusedBodyTintFor(base, 2, 0.5f));
 }
 
+
+void testAuraBodyTintFollowsAuraMask() {
+  const glm::vec3 base{0.6f, 0.3f, 0.2f};
+  // 无附着原样返回。
+  assert(AuraBodyTintFor(base, 0, 0.5f) == base);
+  // 单元素附着：向该元素色混合，混合比 0.12~0.20 随脉冲呼吸。
+  const glm::vec3 low = AuraBodyTintFor(base, 1 << 1, 0.0f);
+  const glm::vec3 high = AuraBodyTintFor(base, 1 << 1, 1.0f);
+  const glm::vec3 expectedLow = base * 0.88f + AuraColorFor(1) * 0.12f;
+  const glm::vec3 expectedHigh = base * 0.80f + AuraColorFor(1) * 0.20f;
+  assert(nearlyEqual(low.r, expectedLow.r) &&
+         nearlyEqual(low.g, expectedLow.g) &&
+         nearlyEqual(low.b, expectedLow.b));
+  assert(nearlyEqual(high.r, expectedHigh.r) &&
+         nearlyEqual(high.g, expectedHigh.g) &&
+         nearlyEqual(high.b, expectedHigh.b));
+  // 越界脉冲钳制。
+  const glm::vec3 over = AuraBodyTintFor(base, 1, -1.0f);
+  const glm::vec3 atZero = AuraBodyTintFor(base, 1, 0.0f);
+  assert(nearlyEqual(over.r, atZero.r) && nearlyEqual(over.b, atZero.b));
+  // 多元素附着取均色（pulse 0.5 → 混合比 0.16）。
+  const glm::vec3 dual = AuraBodyTintFor(base, (1 << 0) | (1 << 2), 0.5f);
+  const glm::vec3 avgColor = (AuraColorFor(0) + AuraColorFor(2)) * 0.5f;
+  const glm::vec3 expectedDual = base * 0.84f + avgColor * 0.16f;
+  assert(nearlyEqual(dual.r, expectedDual.r) &&
+         nearlyEqual(dual.g, expectedDual.g) &&
+         nearlyEqual(dual.b, expectedDual.b));
+}
+
 }  // namespace
+
 
 
 
@@ -856,5 +886,6 @@ int main() {
   testBossBerserkEmitIntervalPositive();
   testBossPhaseAttachmentSetEscalates();
   testInfusedBodyTintFollowsElement();
+  testAuraBodyTintFollowsAuraMask();
   return 0;
 }

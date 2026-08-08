@@ -710,6 +710,27 @@ inline glm::vec3 InfusedBodyTintFor(const glm::vec3& base,
   return base * (1.0f - mix) + AuraColorFor(infusionSource) * mix;
 }
 
+// 敌人附着本体染色（原神元素附着体态语言）：附着期间把基色向
+// 附着元素均色低比例混合并随 pulse01 呼吸（混合比 0.12~0.20，与
+// 脚下附着光环同 1.6s 周期），元素态从光环/粒子延伸到本体；
+// auraMask==0 原样返回 base，与升级前完全等价。多元素同时附着
+// 先取元素色均值再混合，结果与附着施加顺序无关。
+inline glm::vec3 AuraBodyTintFor(const glm::vec3& base, int auraMask,
+                                 float pulse01) {
+  if (auraMask == 0) return base;
+  glm::vec3 auraSum{0.0f};
+  int count = 0;
+  for (int source = 0; source < 3; ++source) {
+    if ((auraMask & (1 << source)) == 0) continue;
+    auraSum += AuraColorFor(source);
+    ++count;
+  }
+  if (count == 0) return base;
+  const glm::vec3 auraColor = auraSum / static_cast<float>(count);
+  const float mix = 0.12f + 0.08f * std::clamp(pulse01, 0.0f, 1.0f);
+  return base * (1.0f - mix) + auraColor * mix;
+}
+
 // 滑翔风线发射间隔（秒）。
 inline float GlideWindInterval() { return 0.07f; }
 

@@ -2649,8 +2649,12 @@ static void draw3DPhase(Surface& s) {
                 actorModelMatrix(dummyFeet, s.enemyAssetProfile.scale,
                                  s.enemyAssetProfile.yawOffsetRadians,
                                  enemyHitRecoilTilt(s, s.trainingTarget.id)),
-                vp, hitFlashTint(s.enemyAssetProfile.materialTint,
-                                 hitFlashRemaining(s, s.trainingTarget.id)),
+                vp, hitFlashTint(
+                        // 附着本体染色：训练假人与遭遇敌人同语言。
+                        AuraBodyTintFor(s.enemyAssetProfile.materialTint,
+                                        s.trainingTargetAuraMask,
+                                        auraPulse01(s)),
+                        hitFlashRemaining(s, s.trainingTarget.id)),
                 s.enemyAssetProfile, hitFlashRemaining(s, s.trainingTarget.id),
                 false, 1.0f, 1.0f, "training-target", &s.staffMesh,
                 s.enemyWeaponJoint);
@@ -2677,7 +2681,12 @@ static void draw3DPhase(Surface& s) {
                                    s.enemyAssetProfile.yawOffsetRadians,
                                enemyHitRecoilTilt(s, enemy.id)),
               vp, hitFlashTint(
-                      windupBodyTint(s, enemyColorByArchetype(enemy.archetype),
+                      windupBodyTint(s,
+                                     // 附着本体染色：元素态从光环延伸到
+                                     // 本体，前摇染色/受击闪白优先级更高。
+                                     AuraBodyTintFor(
+                                         enemyColorByArchetype(enemy.archetype),
+                                         enemy.auraMask, auraPulse01(s)),
                                      WindupWarningColorFor(enemy.archetype),
                                      enemy.alive && enemy.windingUp),
                       hitFlashRemaining(s, enemy.id)),
