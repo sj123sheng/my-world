@@ -699,6 +699,17 @@ inline glm::vec3 InfusedHitDecalColorFor(int infusionSource,
   return AuraColorFor(infusionSource);
 }
 
+// 主角附魔本体染色（原神元素附魔体态语言）：附魔期间把基色向
+// 附魔元素色低比例混合并随 pulse01 呼吸（混合比 0.10~0.18，与
+// 脚下附魔环同 1.6s 周期），元素态从武器/刀光/地面环延伸到本体；
+// infusionSource<0 原样返回 base，与升级前完全等价。
+inline glm::vec3 InfusedBodyTintFor(const glm::vec3& base,
+                                    int infusionSource, float pulse01) {
+  if (infusionSource < 0) return base;
+  const float mix = 0.10f + 0.08f * std::clamp(pulse01, 0.0f, 1.0f);
+  return base * (1.0f - mix) + AuraColorFor(infusionSource) * mix;
+}
+
 // 滑翔风线发射间隔（秒）。
 inline float GlideWindInterval() { return 0.07f; }
 

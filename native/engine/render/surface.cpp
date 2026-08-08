@@ -417,6 +417,13 @@ static float windupPulse01(const Surface& s) {
   return 0.5f + 0.5f * std::sin(phase);
 }
 
+// 附魔光环呼吸脉冲（1.6s 周期，与脚下附魔环 ring 0 同相位）：
+// 输出 0~1 正弦，供主角附魔本体染色共用同源节奏。
+static float auraPulse01(const Surface& s) {
+  const float phase = s.auraPulseSeconds / AuraRingPeriod() * 6.2831853f;
+  return 0.5f + 0.5f * std::sin(phase);
+}
+
 // 前摇身体染色：前摇期间把基色向预警色混合并随 0.8s 呼吸脉冲
 //（与脚下预警环同周期），在模型本体上给出"它要攻击了"的最直接
 // 前兆；非前摇返回原色。受击闪白在调用侧后置，优先级更高。
@@ -2584,8 +2591,12 @@ static void draw3DPhase(Surface& s) {
                   s.player.angle + s.playerAssetProfile.yawOffsetRadians,
                   HitRecoilTiltFor(s.playerHitAnimationSeconds, 0.2f,
                                    0.105f)),
-              vp, hitFlashTint(s.playerAssetProfile.materialTint,
-                               s.playerHitAnimationSeconds),
+              vp, hitFlashTint(
+                      // 附魔本体染色：元素态从武器延伸到本体（受击
+                      // 闪白仍后置优先）。
+                      InfusedBodyTintFor(s.playerAssetProfile.materialTint,
+                                         s.playerSlashSource, auraPulse01(s)),
+                      s.playerHitAnimationSeconds),
               s.playerAssetProfile, s.playerHitAnimationSeconds,
               false, 1.0f, 1.0f, "player", &s.swordMesh,
               s.playerWeaponJoint, nullptr, s.playerSlashSource);

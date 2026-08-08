@@ -250,6 +250,10 @@
   （BossPhaseAttachmentSetFor 纯函数锁定，未知阶段回退阶段 1 套装；
   bossPhaseAttachments 三套装备集与 attachmentNames 同序，表未构建
   回退全局开关），转阶段爆发特效掩盖切换瞬间，剪影与阶段语言同步。
+- 主角附魔本体染色：附魔期间本体基色向附魔元素色低比例呼吸混合
+  （InfusedBodyTintFor 纯函数锁定，混合比 0.10~0.18 与脚下附魔环
+  同 1.6s 周期 auraPulse01 同源），元素态从武器/刀光/地面环延伸到
+  角色本体；无附魔与升级前完全一致，受击闪白仍后置优先。
 
 ## 验证状态
 

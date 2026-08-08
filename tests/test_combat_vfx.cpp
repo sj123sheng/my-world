@@ -778,7 +778,34 @@ void testBossPhaseAttachmentSetEscalates() {
   assert(BossPhaseAttachmentSetFor(2) != BossPhaseAttachmentSetFor(3));
 }
 
+
+void testInfusedBodyTintFollowsElement() {
+  const glm::vec3 base{0.8f, 0.8f, 0.85f};
+  // 无附魔原样返回。
+  assert(InfusedBodyTintFor(base, -1, 0.5f) == base);
+  // 附魔期间向元素色混合：混合比 0.10~0.18 随脉冲呼吸。
+  const glm::vec3 low = InfusedBodyTintFor(base, 1, 0.0f);
+  const glm::vec3 high = InfusedBodyTintFor(base, 1, 1.0f);
+  const glm::vec3 expectedLow =
+      base * 0.90f + AuraColorFor(1) * 0.10f;
+  const glm::vec3 expectedHigh =
+      base * 0.82f + AuraColorFor(1) * 0.18f;
+  assert(nearlyEqual(low.r, expectedLow.r) &&
+         nearlyEqual(low.g, expectedLow.g) &&
+         nearlyEqual(low.b, expectedLow.b));
+  assert(nearlyEqual(high.r, expectedHigh.r) &&
+         nearlyEqual(high.g, expectedHigh.g) &&
+         nearlyEqual(high.b, expectedHigh.b));
+  // 越界脉冲钳制。
+  const glm::vec3 over = InfusedBodyTintFor(base, 1, 5.0f);
+  assert(nearlyEqual(over.r, expectedHigh.r));
+  // 不同源质染色不同。
+  assert(InfusedBodyTintFor(base, 0, 0.5f) !=
+         InfusedBodyTintFor(base, 2, 0.5f));
+}
+
 }  // namespace
+
 
 
 int main() {
@@ -828,5 +855,6 @@ int main() {
   testBossBerserkAuraBoostFinalPhaseOnly();
   testBossBerserkEmitIntervalPositive();
   testBossPhaseAttachmentSetEscalates();
+  testInfusedBodyTintFollowsElement();
   return 0;
 }
