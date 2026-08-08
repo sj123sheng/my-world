@@ -112,6 +112,16 @@ void publish3DEncounterState(Surface& surface,
     state.animation.variant = enemy.alive
         ? static_cast<uint8_t>(state.hitCount & 1u)
         : static_cast<uint8_t>((state.hitCount + enemy.id) & 1u);
+    // 破韧硬直：硬直窗口内强制受击动画并走 Hit_B 重反应变体
+    //（StaggerVariantFor），打断攻击姿态，给出可见的失衡状态。
+    const auto stagger = surface.enemyStaggerSeconds.find(enemy.id);
+    if (enemy.alive && stagger != surface.enemyStaggerSeconds.end() &&
+        stagger->second > 0.0f) {
+      state.animation.action = RenderAnimation::Idle;
+      state.animation.hit = true;
+      state.animation.variant = static_cast<uint8_t>(
+          StaggerVariantFor(state.animation.variant, stagger->second));
+    }
     surface.enemies3d.push_back(state);
   }
   // 清理已离开快照的敌人的淡出计时与受击计数，避免长期泄漏。
@@ -226,6 +236,15 @@ void publishWildEnemies3d(Surface& surface, const WildSpawnSystem& wild,
     state.animation.variant =
         enemy.alive ? static_cast<uint8_t>(state.hitCount & 1u)
                     : static_cast<uint8_t>((state.hitCount + enemy.id) & 1u);
+    // 破韧硬直：与遭遇敌人同语言。
+    const auto stagger = surface.enemyStaggerSeconds.find(enemy.id);
+    if (enemy.alive && stagger != surface.enemyStaggerSeconds.end() &&
+        stagger->second > 0.0f) {
+      state.animation.action = RenderAnimation::Idle;
+      state.animation.hit = true;
+      state.animation.variant = static_cast<uint8_t>(
+          StaggerVariantFor(state.animation.variant, stagger->second));
+    }
     surface.wildEnemies3d.push_back(state);
   }
 }
@@ -1781,6 +1800,7 @@ void Loop::resetInput() {
   surface.playerAirSeconds = 0.0f;
   surface.playerLandSeconds = 0.0f;
   surface.enemyHitFlash.clear();
+  surface.enemyStaggerSeconds.clear();
   surface.enemyPrevWindingUp.clear();
   surface.enemyPrevAttacking.clear();
   surface.bossPrevWindingUp = false;
@@ -2901,6 +2921,9 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
         surface.resonanceFovSeconds = 0.0f;
         // 破韧相机震动：韧性破碎瞬间的轻震，与卡肉/FOV 同节奏。
         vfxSystem.triggerCameraShake(FP_ONE);
+        // 破韧硬直：敌人进入 0.6s 失衡窗口（发布侧强制受击动画 +
+        // Hit_B 重反应变体），破韧窗口从纯 VFX 升级到敌人本体。
+        surface.enemyStaggerSeconds[event.target] = PoiseBreakStaggerSeconds();
       }
       continue;
     }
@@ -3159,6 +3182,16 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       flash = surface.enemyHitFlash.erase(flash);
     } else {
       ++flash;
+    }
+  }
+  // 破韧硬直计时器逐帧衰减并清理到期项（与受击闪白同模式）。
+  for (auto stagger = surface.enemyStaggerSeconds.begin();
+       stagger != surface.enemyStaggerSeconds.end();) {
+    stagger->second -= dtSeconds;
+    if (stagger->second <= 0.0f) {
+      stagger = surface.enemyStaggerSeconds.erase(stagger);
+    } else {
+      ++stagger;
     }
   }
   // 预警环脉冲时钟：按 0.8s 周期回绕，避免浮点长时间累加精度退化。

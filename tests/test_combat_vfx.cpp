@@ -833,7 +833,22 @@ void testAuraBodyTintFollowsAuraMask() {
          nearlyEqual(dual.b, expectedDual.b));
 }
 
+
+void testPoiseBreakStaggerForcesHeavyHitVariant() {
+  // 硬直时长为正且处于受击反应量级（>普通受击 0.2s 窗口）。
+  assert(PoiseBreakStaggerSeconds() > 0.2f);
+  // 硬直窗口内变体强制奇数（选用 Hit_B 重反应受击动画）。
+  assert((StaggerVariantFor(0, 0.3f) & 1) == 1);
+  assert((StaggerVariantFor(1, 0.3f) & 1) == 1);
+  assert((StaggerVariantFor(4, PoiseBreakStaggerSeconds()) & 1) == 1);
+  // 非硬直原样返回基础变体。
+  assert(StaggerVariantFor(0, 0.0f) == 0);
+  assert(StaggerVariantFor(3, 0.0f) == 3);
+  assert(StaggerVariantFor(2, -1.0f) == 2);
+}
+
 }  // namespace
+
 
 
 
@@ -887,5 +902,6 @@ int main() {
   testBossPhaseAttachmentSetEscalates();
   testInfusedBodyTintFollowsElement();
   testAuraBodyTintFollowsAuraMask();
+  testPoiseBreakStaggerForcesHeavyHitVariant();
   return 0;
 }
