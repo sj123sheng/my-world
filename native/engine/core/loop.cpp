@@ -183,6 +183,8 @@ void publish3DEncounterState(Surface& surface,
   surface.boss3d.animation.alive = !snapshot.boss.defeated;
   surface.boss3d.hitAnimationSeconds = std::max(
       0.0f, surface.boss3d.hitAnimationSeconds - dtSeconds);
+  surface.boss3d.phaseBreakSeconds = std::max(
+      0.0f, surface.boss3d.phaseBreakSeconds - dtSeconds);
   const RenderAnimation bossAnimation = BossRenderAnimation(
       snapshot.boss, surface.boss3d.previousHp);
   if (bossAnimation == RenderAnimation::Hit) {
@@ -192,6 +194,15 @@ void publish3DEncounterState(Surface& surface,
       bossAnimation == RenderAnimation::Hit ? RenderAnimation::Idle
                                             : bossAnimation;
   surface.boss3d.animation.hit = surface.boss3d.hitAnimationSeconds > 0.0f;
+  // 转阶段硬直：硬直窗口内强制受击动画并走 Hit_B 重反应变体
+  //（StaggerVariantFor），首领体态在转阶段爆发中停顿失衡。
+  if (surface.boss3d.phaseBreakSeconds > 0.0f) {
+    surface.boss3d.animation.action = RenderAnimation::Idle;
+    surface.boss3d.animation.hit = true;
+    surface.boss3d.animation.variant = static_cast<uint8_t>(
+        StaggerVariantFor(surface.boss3d.animation.variant,
+                          surface.boss3d.phaseBreakSeconds));
+  }
   // 首领普攻变体 clip：重劈/吟唱束流/旋转冲击按变体切换。
   surface.boss3d.animation.attackClip =
       BossAttackClipFor(snapshot.boss.basicAttackVariant);
@@ -676,6 +687,9 @@ EnemyReleaseVfxResult spawnEnemyReleaseVfx(Surface& surface) {
     // 由出场渐入表达，不视为转阶段。
     if (surface.boss3d.phase != surface.bossPrevPhase) {
       if (surface.bossPrevPhase > 0 && surface.boss3d.phase > 0) {
+        // 转阶段硬直：首领进入 0.7s 失衡窗口（发布侧强制受击
+        // 动画 + Hit_B 重反应变体），与转阶段爆发特效同窗。
+        surface.boss3d.phaseBreakSeconds = BossPhaseBreakStaggerSeconds();
         const BossPhaseVfx phaseVfx =
             BossPhaseVfxFor(surface.boss3d.phase);
         spawnHitSparks(surface, bossPos, phaseVfx.sparkKind, 28, 2.2f,
@@ -1806,6 +1820,7 @@ void Loop::resetInput() {
   surface.bossPrevWindingUp = false;
   surface.bossPrevBasicAttacking = false;
   surface.bossPrevPhase = 0;
+  surface.boss3d.phaseBreakSeconds = 0.0f;
   surface.bossPrevActive = false;
   surface.bossPrevDefeated = false;
   prevFinalForgeCasting = false;

@@ -745,6 +745,11 @@ inline glm::vec3 GlideWindVelocityFor(const glm::vec2& velocity) {
 // 与破韧爆发 VFX/卡肉/FOV 同窗口，用体态停顿给出"防线被打破"。
 inline float PoiseBreakStaggerSeconds() { return 0.6f; }
 
+// 首领转阶段硬直时长（秒）：转阶段瞬间首领进入比敌人破韧更重
+// 的失衡窗口（与转阶段爆发特效同窗），用体态停顿把"阶段被打破"
+// 从纯特效升级到首领本体。
+inline float BossPhaseBreakStaggerSeconds() { return 0.7f; }
+
 // 破韧硬直变体决策：硬直窗口内强制变体为奇数（选用 Hit_B 重反应
 // 受击动画）；非硬直原样返回基础变体。
 inline int StaggerVariantFor(int baseVariant, float staggerSeconds) {

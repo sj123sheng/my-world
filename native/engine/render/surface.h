@@ -171,6 +171,9 @@ struct Boss3DRenderState {
   float entranceSeconds = 0.0f;
   // 首领自由移动中：驱动跑动动画与步频。
   bool moving = false;
+  // 转阶段硬直计时（秒）：转阶段边沿置 BossPhaseBreakStaggerSeconds()，
+  // 硬直窗口内发布侧强制受击动画（Hit_B 重反应变体）。
+  float phaseBreakSeconds = 0.0f;
   // 首领普攻前摇中：驱动攻击动画与预警环。
   bool basicAttacking = false;
   // 普攻变体（0/1/2）：选择差异化的释放特效配色与齐射规模。

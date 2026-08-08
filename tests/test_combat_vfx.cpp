@@ -847,7 +847,15 @@ void testPoiseBreakStaggerForcesHeavyHitVariant() {
   assert(StaggerVariantFor(2, -1.0f) == 2);
 }
 
+
+void testBossPhaseBreakStaggerHeavierThanHit() {
+  // 转阶段硬直为正且重于普通受击 0.2s 窗口，与破韧硬直同量级。
+  assert(BossPhaseBreakStaggerSeconds() > 0.2f);
+  assert(BossPhaseBreakStaggerSeconds() >= PoiseBreakStaggerSeconds());
+}
+
 }  // namespace
+
 
 
 
@@ -903,5 +911,6 @@ int main() {
   testInfusedBodyTintFollowsElement();
   testAuraBodyTintFollowsAuraMask();
   testPoiseBreakStaggerForcesHeavyHitVariant();
+  testBossPhaseBreakStaggerHeavierThanHit();
   return 0;
 }
