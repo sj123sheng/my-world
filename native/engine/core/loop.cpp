@@ -356,7 +356,9 @@ void update3DCamera(Surface& surface, const ThirdPersonCamera& camera,
           ? FovPunchOffsetAt(surface.resonanceFovSeconds,
                              surface.fovPunchMaxOffset)
           : 0.0f;
-  surface.camera3d.fov = 45.0f + fovPunch;
+  // 滑翔 FOV 微效：滑翔中渐入放宽视场角，与风线粒子同源速度感。
+  surface.camera3d.fov =
+      45.0f + fovPunch + GlideFovOffsetFor(surface.playerGlideSeconds);
 }
 
 // 按实体 ID 解析世界坐标，供伤害飘字定位。wild 为野外敌人兜底。
@@ -1813,6 +1815,7 @@ void Loop::resetInput() {
   surface.playerHitAnimationSeconds = 0.0f;
   surface.playerAirSeconds = 0.0f;
   surface.playerLandSeconds = 0.0f;
+  surface.playerGlideSeconds = 0.0f;
   surface.enemyHitFlash.clear();
   surface.enemyStaggerSeconds.clear();
   surface.enemyPrevWindingUp.clear();
@@ -3486,6 +3489,13 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   const bool playerAirborneNow =
       motionState.state == MotionState::Airborne ||
       motionState.state == MotionState::Gliding;
+  // 滑翔 FOV 计时器：滑翔中累加，结束后双倍速回落（渐出更快收）。
+  if (motionState.state == MotionState::Gliding) {
+    surface.playerGlideSeconds += dtSeconds;
+  } else {
+    surface.playerGlideSeconds =
+        std::max(0.0f, surface.playerGlideSeconds - 2.0f * dtSeconds);
+  }
   if (playerAirborneNow) {
     surface.playerAirSeconds += dtSeconds;
     surface.playerLandSeconds = 0.0f;

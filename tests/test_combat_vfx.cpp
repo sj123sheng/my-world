@@ -899,7 +899,20 @@ void testDeathDissolveTintFollowsElementAndFade() {
   assert(DeathDissolveTintFor(base, 1, -1.0f) == expectedGone);
 }
 
+
+void testGlideFovOffsetRampsAndClamps() {
+  // 起点无扩张，0.3s 渐入到 +4° 上限。
+  assert(nearlyEqual(GlideFovOffsetFor(0.0f), 0.0f));
+  assert(nearlyEqual(GlideFovOffsetFor(0.3f), 4.0f));
+  assert(nearlyEqual(GlideFovOffsetFor(5.0f), 4.0f));
+  // 渐入区间单调。
+  assert(GlideFovOffsetFor(0.2f) > GlideFovOffsetFor(0.1f));
+  // 负值钳制为 0。
+  assert(nearlyEqual(GlideFovOffsetFor(-1.0f), 0.0f));
+}
+
 }  // namespace
+
 
 
 
@@ -961,5 +974,6 @@ int main() {
   testBossPhaseBreakStaggerHeavierThanHit();
   testSkillCastBodyTintStrongerThanInfusion();
   testDeathDissolveTintFollowsElementAndFade();
+  testGlideFovOffsetRampsAndClamps();
   return 0;
 }

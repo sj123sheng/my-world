@@ -273,6 +273,10 @@
   线性溶解（DeathDissolveTintFor 纯函数锁定，mix = 0.6*(1-fadeAlpha)
   随淡出进度增大），遭遇敌人/野怪同语言；物理系（element<0）与未
   开始淡出原样返回，与元素死亡爆发/光柱同语言。
+- 滑翔 FOV 微效：滑翔中视场角渐入放宽 +4°（GlideFovOffsetFor
+  纯函数锁定，0.3s 线性渐入，playerGlideSeconds 滑翔中累加、结束后
+  双倍速回落渐出），与风线粒子共同给出空中速度感；update3DCamera
+  在 FOV 冲击之外叠加，遭遇重置归零。
 
 ## 验证状态
 

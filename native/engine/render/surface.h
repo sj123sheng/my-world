@@ -288,6 +288,9 @@ struct Surface {
   //（PlayerJumpClipFor），落地倒计时播放 Jump_Land。
   float playerAirSeconds = 0.0f;
   float playerLandSeconds = 0.0f;
+  // 滑翔 FOV 计时器（秒）：滑翔中累加、结束后双倍速回落，
+  // 渲染层按 GlideFovOffsetFor 渐入渐出放宽视场角。
+  float playerGlideSeconds = 0.0f;
 
   // ---- 伤害飘字字段 ----
   std::vector<DamageNumberRenderState> damageNumbers3d;
