@@ -285,6 +285,10 @@
 - 玩家受击变体轮换：每次新受击翻转 player3dAnimation.variant
   （hit/Hit_B 交替，ResolveClip 变体链同源），与敌人受击变体语言
   一致，打破连续受击重复感；遭遇重置归零。
+- 首领普攻刀光：近战变体（0 重劈/2 旋转冲击）挥击落地瞬间挥出
+  阶段元素色大刀光 + 同源拖尾（EnemySlashArc 增 trailKind 字段，
+  首领写阶段火花 kind），scale 换算成 enemyAssetProfile 相对倍率
+  复用敌方刀光渲染管线；吟唱束流（1）远程语言不产生刀光。
 
 ## 验证状态
 

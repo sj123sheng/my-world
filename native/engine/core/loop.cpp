@@ -566,6 +566,22 @@ void spawnEnemySlashArc(Surface& surface, uint32_t id, Vec2 position,
        EnemySkillColorFor(archetype)});
 }
 
+// 首领普攻刀光（原神首领挥击语言）：近战变体挥击落地瞬间挥出
+// 阶段元素色大刀光，scale 换算成 enemyAssetProfile 相对倍率以复用
+// 敌方刀光渲染管线；拖尾 kind 与阶段火花同源。
+void spawnBossSlashArc(Surface& surface) {
+  if (surface.enemySlashArcs.size() > 16) return;
+  const float scaleRatio =
+      surface.enemyAssetProfile.scale > 0.0f
+          ? surface.bossAssetProfile.scale / surface.enemyAssetProfile.scale
+          : 1.0f;
+  const BossPhaseVfx phaseVfx = BossPhaseVfxFor(surface.boss3d.phase);
+  surface.enemySlashArcs.push_back(
+      {EncounterController::kBossId, surface.boss3d.x, surface.boss3d.y,
+       surface.boss3d.angle, 0.0f, scaleRatio, phaseVfx.color,
+       phaseVfx.sparkKind});
+}
+
 // 敌方释放动效：与主角侧对称——敌人前摇开始时在自身位置爆出
 // 蓄力火花（施法前兆），挥击瞬间朝主角发射红色投射物并挥出
 // 红色刀光；首领吟唱开始时爆出更大规模的暗紫火花环并向主角齐射束流。
@@ -744,6 +760,11 @@ EnemyReleaseVfxResult spawnEnemyReleaseVfx(Surface& surface) {
       // 挥击落地冲击波：按变体配色，体量随首领缩放。
       spawnShockwave(surface, bossPos, kindColor(kVolleyKinds[variant]),
                      0.14f * bossRatio);
+      // 首领普攻刀光：近战变体（0 重劈/2 旋转冲击）挥出阶段元素色
+      // 大刀光 + 同源拖尾；吟唱束流（1）是远程语言不产生刀光。
+      if (variant != 1) {
+        spawnBossSlashArc(surface);
+      }
       // 挥击落地相机震动：闪避成功也能感到重击落地的冲击。
       result.bossSlamLanded = true;
     }
@@ -3410,7 +3431,8 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       surface.hitSparks3d.push_back(
           {arc.x + std::sin(phi) * radius,
            0.02f + enemyTrail.heightFactor * scale,
-           arc.y + std::cos(phi) * radius, vx, vy, vz, 0.2f, 0.2f, 8, 1.0f});
+           arc.y + std::cos(phi) * radius, vx, vy, vz, 0.2f, 0.2f,
+           arc.trailKind, 1.0f});
     }
     arc.seconds += dtSeconds;
   }
