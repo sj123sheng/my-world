@@ -731,6 +731,17 @@ inline glm::vec3 AuraBodyTintFor(const glm::vec3& base, int auraMask,
   return base * (1.0f - mix) + auraColor * mix;
 }
 
+// 主角技能释放本体染色（原神元素技能释放体态语言）：源质技能吟唱
+// 期间把基色向技能元素色高比例混合并随 pulse01 呼吸（混合比
+// 0.20~0.30，强于附魔档，元素力量在体表可见聚集）；source<0 原样
+// 返回 base，与升级前完全等价。
+inline glm::vec3 SkillCastBodyTintFor(const glm::vec3& base, int source,
+                                      float pulse01) {
+  if (source < 0) return base;
+  const float mix = 0.20f + 0.10f * std::clamp(pulse01, 0.0f, 1.0f);
+  return base * (1.0f - mix) + AuraColorFor(source) * mix;
+}
+
 // 滑翔风线发射间隔（秒）。
 inline float GlideWindInterval() { return 0.07f; }
 

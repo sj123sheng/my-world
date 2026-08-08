@@ -854,7 +854,29 @@ void testBossPhaseBreakStaggerHeavierThanHit() {
   assert(BossPhaseBreakStaggerSeconds() >= PoiseBreakStaggerSeconds());
 }
 
+
+void testSkillCastBodyTintStrongerThanInfusion() {
+  const glm::vec3 base{0.8f, 0.8f, 0.85f};
+  // 非施法原样返回。
+  assert(SkillCastBodyTintFor(base, -1, 0.5f) == base);
+  // 施法染色混合比 0.20~0.30 随脉冲呼吸。
+  const glm::vec3 low = SkillCastBodyTintFor(base, 1, 0.0f);
+  const glm::vec3 high = SkillCastBodyTintFor(base, 1, 1.0f);
+  const glm::vec3 expectedLow = base * 0.80f + AuraColorFor(1) * 0.20f;
+  const glm::vec3 expectedHigh = base * 0.70f + AuraColorFor(1) * 0.30f;
+  assert(nearlyEqual(low.r, expectedLow.r) &&
+         nearlyEqual(low.g, expectedLow.g) &&
+         nearlyEqual(low.b, expectedLow.b));
+  assert(nearlyEqual(high.r, expectedHigh.r) &&
+         nearlyEqual(high.g, expectedHigh.g) &&
+         nearlyEqual(high.b, expectedHigh.b));
+  // 施法染色强于附魔染色（元素能量聚于本体更醒目）。
+  assert(std::fabs(SkillCastBodyTintFor(base, 1, 0.5f).b - base.b) >
+         std::fabs(InfusedBodyTintFor(base, 1, 0.5f).b - base.b));
+}
+
 }  // namespace
+
 
 
 
@@ -912,5 +934,6 @@ int main() {
   testAuraBodyTintFollowsAuraMask();
   testPoiseBreakStaggerForcesHeavyHitVariant();
   testBossPhaseBreakStaggerHeavierThanHit();
+  testSkillCastBodyTintStrongerThanInfusion();
   return 0;
 }

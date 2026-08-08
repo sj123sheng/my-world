@@ -2578,6 +2578,21 @@ static void draw3DPhase(Surface& s) {
   // 闪避无敌帧：半透明化给出清晰的免伤窗口反馈。
   const glm::vec3 playerFeet{s.player.x, s.playerGroundHeight + 0.012f,
                              s.player.y};
+  // 技能释放本体染色源：源质技能吟唱动画 → 对应源质，其余 -1。
+  int skillCastSource = -1;
+  switch (s.player3dAnimation.action) {
+    case RenderAnimation::Radiance:
+      skillCastSource = 0;
+      break;
+    case RenderAnimation::Current:
+      skillCastSource = 1;
+      break;
+    case RenderAnimation::Corruption:
+      skillCastSource = 2;
+      break;
+    default:
+      break;
+  }
   if (actorInFrustum(frustum, playerFeet, s.playerAssetProfile.scale)) {
     if (s.playerInvulnerable) {
       glEnable(GL_BLEND);
@@ -2592,10 +2607,13 @@ static void draw3DPhase(Surface& s) {
                   HitRecoilTiltFor(s.playerHitAnimationSeconds, 0.2f,
                                    0.105f)),
               vp, hitFlashTint(
-                      // 附魔本体染色：元素态从武器延伸到本体（受击
-                      // 闪白仍后置优先）。
-                      InfusedBodyTintFor(s.playerAssetProfile.materialTint,
-                                         s.playerSlashSource, auraPulse01(s)),
+                      // 技能释放本体染色叠在附魔染色之上（吟唱期间
+                      // 元素聚集强于附魔常态），受击闪白仍后置优先。
+                      SkillCastBodyTintFor(
+                          InfusedBodyTintFor(
+                              s.playerAssetProfile.materialTint,
+                              s.playerSlashSource, auraPulse01(s)),
+                          skillCastSource, auraPulse01(s)),
                       s.playerHitAnimationSeconds),
               s.playerAssetProfile, s.playerHitAnimationSeconds,
               false, 1.0f, 1.0f, "player", &s.swordMesh,
