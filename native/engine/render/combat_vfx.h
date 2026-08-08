@@ -638,6 +638,18 @@ struct PlayerDeathVfx {
 
 inline PlayerDeathVfx PlayerDeathVfxFor() { return {}; }
 
+// 敌人死亡元素溶解染色（原神元素死亡语言）：尸体淡出期间把基色
+// 向原型元素色混合，混合比随淡出进度线性增大（fadeAlpha 1→0 对应
+// mix 0→0.6），元素系敌人"溶解在自己的元素里"；物理原型
+//（element<0）与未开始淡出（fadeAlpha>=1）原样返回 base。
+inline glm::vec3 DeathDissolveTintFor(const glm::vec3& base, int element,
+                                      float fadeAlpha) {
+  if (element < 0 || fadeAlpha >= 1.0f) return base;
+  const float dissolve = 1.0f - std::clamp(fadeAlpha, 0.0f, 1.0f);
+  const float mix = 0.6f * dissolve;
+  return base * (1.0f - mix) + AuraColorFor(element) * mix;
+}
+
 // 前摇身体染色（原神攻击前兆语言）：前摇期间把实体基色向预警色
 // 混合并随脉冲呼吸（混合比 0.35~0.65），预警色与脚下预警环/
 // 聚能粒子同源；pulse01 越界自动钳制。

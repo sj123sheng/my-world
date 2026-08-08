@@ -875,7 +875,32 @@ void testSkillCastBodyTintStrongerThanInfusion() {
          std::fabs(InfusedBodyTintFor(base, 1, 0.5f).b - base.b));
 }
 
+
+void testDeathDissolveTintFollowsElementAndFade() {
+  const glm::vec3 base{0.6f, 0.3f, 0.2f};
+  // 物理原型与未开始淡出原样返回。
+  assert(DeathDissolveTintFor(base, -1, 0.5f) == base);
+  assert(DeathDissolveTintFor(base, 1, 1.0f) == base);
+  // 淡出进度越深，向元素色混合越多（mix = 0.6 * (1 - fadeAlpha)）。
+  const glm::vec3 early = DeathDissolveTintFor(base, 1, 0.8f);
+  const glm::vec3 late = DeathDissolveTintFor(base, 1, 0.2f);
+  const glm::vec3 expectedEarly = base * 0.88f + AuraColorFor(1) * 0.12f;
+  const glm::vec3 expectedLate = base * 0.52f + AuraColorFor(1) * 0.48f;
+  assert(nearlyEqual(early.r, expectedEarly.r) &&
+         nearlyEqual(early.g, expectedEarly.g) &&
+         nearlyEqual(early.b, expectedEarly.b));
+  assert(nearlyEqual(late.r, expectedLate.r) &&
+         nearlyEqual(late.g, expectedLate.g) &&
+         nearlyEqual(late.b, expectedLate.b));
+  // fadeAlpha 越界钳制（mix 上限 0.6）。
+  const glm::vec3 gone = DeathDissolveTintFor(base, 1, 0.0f);
+  const glm::vec3 expectedGone = base * 0.40f + AuraColorFor(1) * 0.60f;
+  assert(nearlyEqual(gone.r, expectedGone.r));
+  assert(DeathDissolveTintFor(base, 1, -1.0f) == expectedGone);
+}
+
 }  // namespace
+
 
 
 
@@ -935,5 +960,6 @@ int main() {
   testPoiseBreakStaggerForcesHeavyHitVariant();
   testBossPhaseBreakStaggerHeavierThanHit();
   testSkillCastBodyTintStrongerThanInfusion();
+  testDeathDissolveTintFollowsElementAndFade();
   return 0;
 }

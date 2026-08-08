@@ -2695,6 +2695,7 @@ static void draw3DPhase(Surface& s) {
     if (!actorInFrustum(frustum, enemyFeet, s.enemyAssetProfile.scale)) {
       continue;
     }
+    const float enemyFade = DeathFadeAlpha(enemy.deathSeconds);
     drawActor(s, s.enemyModel, s.enemyMesh, animationState, enemy.animation,
               actorModelMatrix(enemyFeet,
                                windupInflate(s, s.enemyAssetProfile.scale,
@@ -2704,17 +2705,23 @@ static void draw3DPhase(Surface& s) {
                                enemyHitRecoilTilt(s, enemy.id)),
               vp, hitFlashTint(
                       windupBodyTint(s,
-                                     // 附着本体染色：元素态从光环延伸到
-                                     // 本体，前摇染色/受击闪白优先级更高。
-                                     AuraBodyTintFor(
-                                         enemyColorByArchetype(enemy.archetype),
-                                         enemy.auraMask, auraPulse01(s)),
+                                     // 死亡溶解染色：尸体淡出期间向原型
+                                     // 元素色溶解；附着本体染色：元素态
+                                     // 从光环延伸到本体；前摇染色/受击
+                                     // 闪白优先级更高。
+                                     DeathDissolveTintFor(
+                                         AuraBodyTintFor(
+                                             enemyColorByArchetype(
+                                                 enemy.archetype),
+                                             enemy.auraMask, auraPulse01(s)),
+                                         EnemyElementFor(enemy.archetype),
+                                         enemyFade),
                                      WindupWarningColorFor(enemy.archetype),
                                      enemy.alive && enemy.windingUp),
                       hitFlashRemaining(s, enemy.id)),
               s.enemyAssetProfile, hitFlashRemaining(s, enemy.id),
               enemy.id == s.targetMarker3d.targetId,
-              DeathFadeAlpha(enemy.deathSeconds), 1.0f,
+              enemyFade, 1.0f,
               "enemy", enemyWeaponMeshFor(s, enemy.archetype),
               s.enemyWeaponJoint,
               enemyAttachmentOverride(s, enemy.archetype));
@@ -2733,6 +2740,7 @@ static void draw3DPhase(Surface& s) {
                         s.enemyAssetProfile.scale * archetypeScale)) {
       continue;
     }
+    const float wildFade = DeathFadeAlpha(enemy.deathSeconds);
     drawActor(s, s.enemyModel, s.enemyMesh, animationState, enemy.animation,
               actorModelMatrix(enemyFeet,
                                windupInflate(s, s.enemyAssetProfile.scale *
@@ -2742,13 +2750,18 @@ static void draw3DPhase(Surface& s) {
                                    s.enemyAssetProfile.yawOffsetRadians,
                                enemyHitRecoilTilt(s, enemy.id)),
               vp, hitFlashTint(
-                      windupBodyTint(s, enemyColorByArchetype(enemy.archetype),
+                      windupBodyTint(s,
+                                     // 死亡溶解染色：与遭遇敌人同语言。
+                                     DeathDissolveTintFor(
+                                         enemyColorByArchetype(enemy.archetype),
+                                         EnemyElementFor(enemy.archetype),
+                                         wildFade),
                                      WindupWarningColorFor(enemy.archetype),
                                      enemy.alive && enemy.windingUp),
                       hitFlashRemaining(s, enemy.id)),
               s.enemyAssetProfile, hitFlashRemaining(s, enemy.id),
               enemy.id == s.targetMarker3d.targetId,
-              DeathFadeAlpha(enemy.deathSeconds), 1.0f,
+              wildFade, 1.0f,
               "enemy", enemyWeaponMeshFor(s, enemy.archetype),
               s.enemyWeaponJoint,
               enemyAttachmentOverride(s, enemy.archetype));
