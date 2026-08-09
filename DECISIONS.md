@@ -1,5 +1,46 @@
 # 技术决策
 
+## 2026-08-09：原神式地形升级（数据驱动地貌特征层 + 分区生态着色）
+
+- 原地形只有全局低频正弦基础八度，水面高度 -0.012 随处积出随机水塘，
+  没有地貌骨架、没有分区差异，地标/POI/主干道与地形完全脱节。本次把
+  地形升级为原神式手工地貌：地貌骨架全部来自数据驱动的特征层，基础
+  八度刻意压缓只留呼吸起伏。
+- 决策一：数据驱动地形特征层。`assets/world/world.json` 新增
+  `terrainFeatures`（22 个特征），schema 与构建期生成脚本
+  （automation/assets/generate_world_layout.mjs）扩展，生成为
+  `WorldLayout::kTerrainFeatures`；新桥接层 `native/gameplay/world/
+  world_terrain.cpp`（makeWorldTerrain/worldRouteSegments）把生成头
+  转换为引擎特征列表，`Loop::terrain = makeWorldTerrain()`。特征类型
+  四种：Hill 加性丘 / Basin 双向拉平（湖盆与平顶台地中心精确收敛到
+  targetHeight）/ Terrace 只抬不压台地 / Ridge 旋转正弦脊线；特征按
+  数据顺序依次叠加，数据顺序即地貌合成顺序，可被确定性测试覆盖。
+- 决策二：地形与内容布局锁定。22 个特征全部为地标/POI/主干道设计：
+  辉光湖盆压出可游泳湖面（target -0.075）、湖心残塔平顶 mesa 提供
+  攀爬崖壁 + 滑翔起点（target 0.055）、圣所高原整体抬升形成分区高差、
+  灰烬劣地脊线与回廊悬崖提供穿越语言、世界边缘 smoothstep 掩码山脊环
+  （edgeMountain 0.09，inner 0.42/outer 0.78）充当天际线远景并遮挡
+  世界边界，中心玩法区掩码为 0 不受干扰。水面压低到 -0.045 后水域只由
+  湖盆特征决定，基础八度不再产生杂散水塘；所有内容点（POI/宝箱/采集物/
+  出生点）干地且坡度 < 0.55，由 test_terrain_heightfield 全量断言锁定。
+- 决策三：分区生态着色（biome 语言）。地形片段着色器新增
+  uDistrictRects/Grass/Sand/Rock（6 区）按世界坐标矩形距离加权混合
+  沙/草/岩配色，相邻分区平滑过渡；三条主干道路径段（world.json
+  `routes` → uRouteSegments）在地形上压出路径色带；水面升级双频涟漪 +
+  菲涅尔 + 高光闪点。调色板为纯函数 `TerrainBiomeFor(districtId)`
+  （terrain_biome.h，六区配色 + 默认回退），test_terrain_biome 锁定。
+- 影响范围：terrain_heightfield.h/.cpp 重写（特征层 + 新默认配置），
+  world.json/schema/生成脚本/world_layout.gen.h 扩展，world_terrain
+  桥接新增，loop.h 接线，shader_3d.cpp/.h 与 surface.cpp 渲染升级，
+  CMakeLists 增补。逻辑层地面贴合/攀爬坡度/水域判定与渲染网格采样
+  同一高度场，视觉与逻辑严格一致；分块高度范围余量 0.09→0.12 覆盖
+  特征层抬升。
+- 验证：test_terrain_heightfield（重写，全内容点干地 + 坡度断言）、
+  test_terrain_biome（新增）、test_world_layout_gen（扩展）通过；
+  全量宿主测试 101 pass / 0 fail / 4 skipped；glslangValidator 对
+  地形 frag/vert 零错误；HAP assembleHap BUILD SUCCESSFUL（设备侧
+  surface.cpp/shader_3d.cpp 编译通过）。真机观感验收待做。
+
 ## 2026-08-09：主角重制模型兼容替换（新骨架 + 新动画语言）
 
 - 主角 player.glb 换为自研 UE 风格骨架模型：41 骨骨架

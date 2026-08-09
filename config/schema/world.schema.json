@@ -1,103 +1,666 @@
-{ "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "required": ["schemaVersion", "grid", "districts", "anchors", "npcs", "spawnZones", "chests", "collectibles", "pointsOfInterest", "puzzles", "traversalGates", "explorationRewards"],
-  "properties": {
-    "schemaVersion": { "type": "integer", "minimum": 1 },
-    "grid": { "type": "object", "required": ["countX", "countY"], "properties": {
-      "countX": { "type": "integer", "minimum": 1 },
-      "countY": { "type": "integer", "minimum": 1 } } },
-    "districts": { "type": "array", "minItems": 1, "items": { "type": "object",
-      "required": ["districtId", "name", "chunkXRange", "chunkYRange", "description"], "properties": {
-        "districtId": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
-        "name": { "type": "string", "minLength": 1 },
-        "chunkXRange": { "type": "array", "minItems": 2, "maxItems": 2,
-          "items": { "type": "integer", "minimum": 0, "maximum": 7 } },
-        "chunkYRange": { "type": "array", "minItems": 2, "maxItems": 2,
-          "items": { "type": "integer", "minimum": 0, "maximum": 7 } },
-        "description": { "type": "string" } } } },
-    "anchors": { "type": "array", "minItems": 1, "items": { "type": "object",
-      "required": ["id", "x", "y", "label", "districtId"], "properties": {
-        "id": { "type": "integer", "minimum": 8 },
-        "x": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
-        "y": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
-        "label": { "type": "string", "minLength": 1 },
-        "districtId": { "type": "string" } } } },
-    "npcs": { "type": "array", "minItems": 1, "items": { "type": "object",
-      "required": ["id", "x", "y", "facing", "dialogId", "behavior", "patrolPoints", "districtId", "label"],
-      "properties": {
-        "id": { "type": "integer", "minimum": 32 },
-        "x": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
-        "y": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
-        "facing": { "type": "number" },
-        "dialogId": { "type": "integer", "minimum": 100 },
-        "behavior": { "type": "string", "enum": ["idle", "patrol"] },
-        "patrolPoints": { "type": "array", "minItems": 0, "maxItems": 4, "items": {
-          "type": "array", "minItems": 2, "maxItems": 2, "items": {
-            "type": "number", "minimum": 0.02, "maximum": 0.98 } } },
-        "districtId": { "type": "string" },
-        "label": { "type": "string", "minLength": 1 } } } },
-    "spawnZones": { "type": "array", "minItems": 1, "items": { "type": "object",
-      "required": ["zoneId", "districtId", "archetype", "count", "positions", "patrolCenter", "aggroGroup", "respawnMs"],
-      "properties": {
-        "zoneId": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
-        "districtId": { "type": "string" },
-        "archetype": { "type": "string", "enum": ["RiftClaw", "Priest", "Guard", "Bruiser", "Caster", "Elite"] },
-        "count": { "type": "integer", "minimum": 1, "maximum": 3 },
-        "positions": { "type": "array", "minItems": 1, "maxItems": 3, "items": {
-          "type": "array", "minItems": 2, "maxItems": 2, "items": {
-            "type": "number", "minimum": 0.02, "maximum": 0.98 } } },
-        "patrolCenter": { "type": "array", "minItems": 2, "maxItems": 2, "items": {
-          "type": "number", "minimum": 0.02, "maximum": 0.98 } },
-        "aggroGroup": { "type": "string", "minLength": 1 },
-        "respawnMs": { "type": "integer", "minimum": 30000, "maximum": 90000 } } } },
-    "chests": { "type": "array", "minItems": 1, "items": { "type": "object",
-      "required": ["id", "x", "y", "districtId", "label"], "properties": {
-        "id": { "type": "integer", "minimum": 32 },
-        "x": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
-        "y": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
-        "districtId": { "type": "string" },
-        "label": { "type": "string", "minLength": 1 } } } },
-    "collectibles": { "type": "array", "minItems": 1, "items": { "type": "object",
-      "required": ["id", "x", "y", "kind", "districtId", "label"], "properties": {
-        "id": { "type": "integer", "minimum": 32 },
-        "x": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
-        "y": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
-        "kind": { "type": "string", "minLength": 1 },
-        "districtId": { "type": "string" },
-        "label": { "type": "string", "minLength": 1 } } } },
-    "pointsOfInterest": { "type": "array", "minItems": 4, "maxItems": 6, "items": { "type": "object",
-      "required": ["id", "x", "y", "label", "districtId", "mainRoute"], "properties": {
-        "id": { "type": "integer", "minimum": 60 },
-        "x": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
-        "y": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
-        "label": { "type": "string", "minLength": 1 },
-        "districtId": { "type": "string" },
-        "mainRoute": { "type": "boolean" } } } },
-    "puzzles": { "type": "array", "minItems": 3, "maxItems": 5, "items": { "type": "object",
-      "required": ["id", "x", "y", "label", "requiredMotion", "opensGateId", "rewardId"], "properties": {
-        "id": { "type": "integer", "minimum": 70 },
-        "x": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
-        "y": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
-        "label": { "type": "string", "minLength": 1 },
-        "requiredMotion": { "type": "string", "enum": ["Grounded", "Airborne", "Gliding", "Climbing", "Swimming"] },
-        "opensGateId": { "type": "integer", "minimum": 80 },
-        "rewardId": { "type": "integer", "minimum": 90 } } } },
-    "traversalGates": { "type": "array", "minItems": 2, "maxItems": 5, "items": { "type": "object",
-      "required": ["id", "x", "y", "label", "requiredMotion", "halfExtents", "yaw", "top"], "properties": {
-        "id": { "type": "integer", "minimum": 80 },
-        "x": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
-        "y": { "type": "number", "minimum": 0.02, "maximum": 0.98 },
-        "label": { "type": "string", "minLength": 1 },
-        "requiredMotion": { "type": "string", "enum": ["Grounded", "Airborne", "Gliding", "Climbing", "Swimming"] },
-        "halfExtents": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "number", "exclusiveMinimum": 0, "maximum": 0.15 } },
-        "yaw": { "type": "number" },
-        "top": { "type": "number", "exclusiveMinimum": 0, "maximum": 0.5 } } } },
-    "explorationRewards": { "type": "array", "minItems": 4, "maxItems": 6, "items": { "type": "object",
-      "required": ["id", "label", "sourceTraces", "gold", "fate", "itemId", "itemCount"], "properties": {
-        "id": { "type": "integer", "minimum": 90 },
-        "label": { "type": "string", "minLength": 1 },
-        "sourceTraces": { "type": "integer", "minimum": 0 },
-        "gold": { "type": "integer", "minimum": 0 },
-        "fate": { "type": "integer", "minimum": 0 },
-        "itemId": { "type": "integer", "minimum": 0 },
-        "itemCount": { "type": "integer", "minimum": 0 } } } } } }
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "required": [
+        "schemaVersion",
+        "grid",
+        "districts",
+        "anchors",
+        "npcs",
+        "spawnZones",
+        "chests",
+        "collectibles",
+        "pointsOfInterest",
+        "puzzles",
+        "traversalGates",
+        "explorationRewards"
+    ],
+    "properties": {
+        "schemaVersion": {
+            "type": "integer",
+            "minimum": 1
+        },
+        "grid": {
+            "type": "object",
+            "required": [
+                "countX",
+                "countY"
+            ],
+            "properties": {
+                "countX": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "countY": {
+                    "type": "integer",
+                    "minimum": 1
+                }
+            }
+        },
+        "districts": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "required": [
+                    "districtId",
+                    "name",
+                    "chunkXRange",
+                    "chunkYRange",
+                    "description"
+                ],
+                "properties": {
+                    "districtId": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "name": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "chunkXRange": {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "items": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 7
+                        }
+                    },
+                    "chunkYRange": {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "items": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 7
+                        }
+                    },
+                    "description": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "anchors": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "x",
+                    "y",
+                    "label",
+                    "districtId"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "minimum": 8
+                    },
+                    "x": {
+                        "type": "number",
+                        "minimum": 0.02,
+                        "maximum": 0.98
+                    },
+                    "y": {
+                        "type": "number",
+                        "minimum": 0.02,
+                        "maximum": 0.98
+                    },
+                    "label": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "districtId": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "npcs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "x",
+                    "y",
+                    "facing",
+                    "dialogId",
+                    "behavior",
+                    "patrolPoints",
+                    "districtId",
+                    "label"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "minimum": 32
+                    },
+                    "x": {
+                        "type": "number",
+                        "minimum": 0.02,
+                        "maximum": 0.98
+                    },
+                    "y": {
+                        "type": "number",
+                        "minimum": 0.02,
+                        "maximum": 0.98
+                    },
+                    "facing": {
+                        "type": "number"
+                    },
+                    "dialogId": {
+                        "type": "integer",
+                        "minimum": 100
+                    },
+                    "behavior": {
+                        "type": "string",
+                        "enum": [
+                            "idle",
+                            "patrol"
+                        ]
+                    },
+                    "patrolPoints": {
+                        "type": "array",
+                        "minItems": 0,
+                        "maxItems": 4,
+                        "items": {
+                            "type": "array",
+                            "minItems": 2,
+                            "maxItems": 2,
+                            "items": {
+                                "type": "number",
+                                "minimum": 0.02,
+                                "maximum": 0.98
+                            }
+                        }
+                    },
+                    "districtId": {
+                        "type": "string"
+                    },
+                    "label": {
+                        "type": "string",
+                        "minLength": 1
+                    }
+                }
+            }
+        },
+        "spawnZones": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "required": [
+                    "zoneId",
+                    "districtId",
+                    "archetype",
+                    "count",
+                    "positions",
+                    "patrolCenter",
+                    "aggroGroup",
+                    "respawnMs"
+                ],
+                "properties": {
+                    "zoneId": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "districtId": {
+                        "type": "string"
+                    },
+                    "archetype": {
+                        "type": "string",
+                        "enum": [
+                            "RiftClaw",
+                            "Priest",
+                            "Guard",
+                            "Bruiser",
+                            "Caster",
+                            "Elite"
+                        ]
+                    },
+                    "count": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 3
+                    },
+                    "positions": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 3,
+                        "items": {
+                            "type": "array",
+                            "minItems": 2,
+                            "maxItems": 2,
+                            "items": {
+                                "type": "number",
+                                "minimum": 0.02,
+                                "maximum": 0.98
+                            }
+                        }
+                    },
+                    "patrolCenter": {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "items": {
+                            "type": "number",
+                            "minimum": 0.02,
+                            "maximum": 0.98
+                        }
+                    },
+                    "aggroGroup": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "respawnMs": {
+                        "type": "integer",
+                        "minimum": 30000,
+                        "maximum": 90000
+                    }
+                }
+            }
+        },
+        "chests": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "x",
+                    "y",
+                    "districtId",
+                    "label"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "minimum": 32
+                    },
+                    "x": {
+                        "type": "number",
+                        "minimum": 0.02,
+                        "maximum": 0.98
+                    },
+                    "y": {
+                        "type": "number",
+                        "minimum": 0.02,
+                        "maximum": 0.98
+                    },
+                    "districtId": {
+                        "type": "string"
+                    },
+                    "label": {
+                        "type": "string",
+                        "minLength": 1
+                    }
+                }
+            }
+        },
+        "collectibles": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "x",
+                    "y",
+                    "kind",
+                    "districtId",
+                    "label"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "minimum": 32
+                    },
+                    "x": {
+                        "type": "number",
+                        "minimum": 0.02,
+                        "maximum": 0.98
+                    },
+                    "y": {
+                        "type": "number",
+                        "minimum": 0.02,
+                        "maximum": 0.98
+                    },
+                    "kind": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "districtId": {
+                        "type": "string"
+                    },
+                    "label": {
+                        "type": "string",
+                        "minLength": 1
+                    }
+                }
+            }
+        },
+        "pointsOfInterest": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 6,
+            "items": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "x",
+                    "y",
+                    "label",
+                    "districtId",
+                    "mainRoute"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "minimum": 60
+                    },
+                    "x": {
+                        "type": "number",
+                        "minimum": 0.02,
+                        "maximum": 0.98
+                    },
+                    "y": {
+                        "type": "number",
+                        "minimum": 0.02,
+                        "maximum": 0.98
+                    },
+                    "label": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "districtId": {
+                        "type": "string"
+                    },
+                    "mainRoute": {
+                        "type": "boolean"
+                    }
+                }
+            }
+        },
+        "puzzles": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 5,
+            "items": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "x",
+                    "y",
+                    "label",
+                    "requiredMotion",
+                    "opensGateId",
+                    "rewardId"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "minimum": 70
+                    },
+                    "x": {
+                        "type": "number",
+                        "minimum": 0.02,
+                        "maximum": 0.98
+                    },
+                    "y": {
+                        "type": "number",
+                        "minimum": 0.02,
+                        "maximum": 0.98
+                    },
+                    "label": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "requiredMotion": {
+                        "type": "string",
+                        "enum": [
+                            "Grounded",
+                            "Airborne",
+                            "Gliding",
+                            "Climbing",
+                            "Swimming"
+                        ]
+                    },
+                    "opensGateId": {
+                        "type": "integer",
+                        "minimum": 80
+                    },
+                    "rewardId": {
+                        "type": "integer",
+                        "minimum": 90
+                    }
+                }
+            }
+        },
+        "traversalGates": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 5,
+            "items": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "x",
+                    "y",
+                    "label",
+                    "requiredMotion",
+                    "halfExtents",
+                    "yaw",
+                    "top"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "minimum": 80
+                    },
+                    "x": {
+                        "type": "number",
+                        "minimum": 0.02,
+                        "maximum": 0.98
+                    },
+                    "y": {
+                        "type": "number",
+                        "minimum": 0.02,
+                        "maximum": 0.98
+                    },
+                    "label": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "requiredMotion": {
+                        "type": "string",
+                        "enum": [
+                            "Grounded",
+                            "Airborne",
+                            "Gliding",
+                            "Climbing",
+                            "Swimming"
+                        ]
+                    },
+                    "halfExtents": {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "items": {
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "maximum": 0.15
+                        }
+                    },
+                    "yaw": {
+                        "type": "number"
+                    },
+                    "top": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "maximum": 0.5
+                    }
+                }
+            }
+        },
+        "explorationRewards": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 6,
+            "items": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "label",
+                    "sourceTraces",
+                    "gold",
+                    "fate",
+                    "itemId",
+                    "itemCount"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "minimum": 90
+                    },
+                    "label": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "sourceTraces": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "gold": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "fate": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "itemId": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "itemCount": {
+                        "type": "integer",
+                        "minimum": 0
+                    }
+                }
+            }
+        },
+        "terrainFeatures": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "required": [
+                    "featureId",
+                    "kind",
+                    "x",
+                    "y",
+                    "radiusX",
+                    "radiusY",
+                    "feather"
+                ],
+                "properties": {
+                    "featureId": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "hill",
+                            "basin",
+                            "terrace",
+                            "ridge"
+                        ]
+                    },
+                    "districtId": {
+                        "type": "string"
+                    },
+                    "x": {
+                        "type": "number",
+                        "minimum": 0.0,
+                        "maximum": 1.0
+                    },
+                    "y": {
+                        "type": "number",
+                        "minimum": 0.0,
+                        "maximum": 1.0
+                    },
+                    "radiusX": {
+                        "type": "number",
+                        "minimum": 0.005,
+                        "maximum": 0.5
+                    },
+                    "radiusY": {
+                        "type": "number",
+                        "minimum": 0.005,
+                        "maximum": 0.5
+                    },
+                    "feather": {
+                        "type": "number",
+                        "minimum": 0.05,
+                        "maximum": 1.0
+                    },
+                    "amplitude": {
+                        "type": "number",
+                        "minimum": -0.2,
+                        "maximum": 0.2
+                    },
+                    "targetHeight": {
+                        "type": "number",
+                        "minimum": -0.2,
+                        "maximum": 0.2
+                    },
+                    "frequency": {
+                        "type": "number",
+                        "minimum": 0.5,
+                        "maximum": 20.0
+                    },
+                    "angleRadians": {
+                        "type": "number",
+                        "minimum": -6.5,
+                        "maximum": 6.5
+                    },
+                    "description": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "routes": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "required": [
+                    "fromPoiId",
+                    "toPoiId"
+                ],
+                "properties": {
+                    "fromPoiId": {
+                        "type": "integer",
+                        "minimum": 1
+                    },
+                    "toPoiId": {
+                        "type": "integer",
+                        "minimum": 1
+                    },
+                    "description": {
+                        "type": "string"
+                    }
+                }
+            }
+        }
+    }
+}

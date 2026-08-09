@@ -240,5 +240,292 @@
     { "id": 91, "label": "湖心源痕", "sourceTraces": 20, "gold": 50, "fate": 0, "itemId": 0, "itemCount": 0 },
     { "id": 92, "label": "残塔隐藏宝匣", "sourceTraces": 30, "gold": 100, "fate": 1, "itemId": 0, "itemCount": 0 },
     { "id": 93, "label": "回廊遗物构件", "sourceTraces": 0, "gold": 0, "fate": 0, "itemId": 0, "itemCount": 1 }
+  ],
+  "terrainFeatures": [
+    {
+      "featureId": "gimmer_lake",
+      "kind": "basin",
+      "districtId": "gimmerlake",
+      "x": 0.745,
+      "y": 0.265,
+      "radiusX": 0.055,
+      "radiusY": 0.04,
+      "feather": 0.25,
+      "description": "辉光湖盆地把主湖区压到水面以下，保证浮桥机关与湖心浮桥永远可游泳；边缘缓坡形成湖岸沙滩。",
+      "targetHeight": -0.075
+    },
+    {
+      "featureId": "ruined_tower_mesa",
+      "kind": "basin",
+      "districtId": "gimmerlake",
+      "x": 0.86,
+      "y": 0.12,
+      "radiusX": 0.085,
+      "radiusY": 0.085,
+      "feather": 0.45,
+      "description": "湖心残塔所在的平顶台地：四面是可攀爬崖壁，塔顶为滑翔起点，构成湖区垂直地标。",
+      "targetHeight": 0.055
+    },
+    {
+      "featureId": "sanctum_plateau",
+      "kind": "terrace",
+      "districtId": "sanctum_highlands",
+      "x": 0.77,
+      "y": 0.77,
+      "radiusX": 0.24,
+      "radiusY": 0.24,
+      "feather": 0.75,
+      "description": "圣所高地整体抬升台地，只抬不压，保留基础起伏；东北高地与低地形成明确高差。",
+      "targetHeight": 0.035
+    },
+    {
+      "featureId": "sanctum_ridge",
+      "kind": "ridge",
+      "districtId": "sanctum_highlands",
+      "x": 0.77,
+      "y": 0.77,
+      "radiusX": 0.22,
+      "radiusY": 0.22,
+      "feather": 0.6,
+      "description": "圣所台地上的岩脊纹理，打破大面积抬升的单调感。",
+      "amplitude": 0.005,
+      "frequency": 4.0,
+      "angleRadians": 0.9
+    },
+    {
+      "featureId": "sanctum_terrace",
+      "kind": "hill",
+      "districtId": "sanctum_highlands",
+      "x": 0.8,
+      "y": 0.8,
+      "radiusX": 0.06,
+      "radiusY": 0.06,
+      "feather": 0.6,
+      "description": "圣所阶地锚点下的阶地丘，让传送锚点拥有抬升剪影。",
+      "amplitude": 0.02
+    },
+    {
+      "featureId": "ashen_uplift",
+      "kind": "terrace",
+      "districtId": "ashen_wastes",
+      "x": 0.22,
+      "y": 0.7,
+      "radiusX": 0.24,
+      "radiusY": 0.24,
+      "feather": 0.6,
+      "description": "灰烬荒原整体抬升基座，与翠风低地形成西低北高的地势过渡。",
+      "targetHeight": 0.025
+    },
+    {
+      "featureId": "ashen_badlands",
+      "kind": "ridge",
+      "districtId": "ashen_wastes",
+      "x": 0.22,
+      "y": 0.7,
+      "radiusX": 0.22,
+      "radiusY": 0.22,
+      "feather": 0.5,
+      "description": "荒原劣地脊线：斜向中频褶皱，坡度仍可通行，给出干旱侵蚀地貌语言。",
+      "amplitude": 0.014,
+      "frequency": 4.5,
+      "angleRadians": 0.6
+    },
+    {
+      "featureId": "ashen_outpost",
+      "kind": "hill",
+      "districtId": "ashen_wastes",
+      "x": 0.2,
+      "y": 0.75,
+      "radiusX": 0.055,
+      "radiusY": 0.055,
+      "feather": 0.6,
+      "description": "灰烬前哨锚点下的哨站土丘。",
+      "amplitude": 0.02
+    },
+    {
+      "featureId": "west_roll_1",
+      "kind": "hill",
+      "districtId": "westlands",
+      "x": 0.05,
+      "y": 0.05,
+      "radiusX": 0.06,
+      "radiusY": 0.06,
+      "feather": 0.7,
+      "description": "翠风低地西南角缓丘。",
+      "amplitude": 0.012
+    },
+    {
+      "featureId": "westlands_calm",
+      "kind": "basin",
+      "districtId": "westlands",
+      "x": 0.1,
+      "y": 0.14,
+      "radiusX": 0.12,
+      "radiusY": 0.12,
+      "feather": 0.6,
+      "description": "低地新手营地整平区：狼群出生点与翠风哨站周围压平，保证遭遇战地面平整。",
+      "targetHeight": 0.005
+    },
+    {
+      "featureId": "west_roll_2",
+      "kind": "hill",
+      "districtId": "westlands",
+      "x": 0.3,
+      "y": 0.08,
+      "radiusX": 0.06,
+      "radiusY": 0.06,
+      "feather": 0.7,
+      "description": "翠风低地南部缓丘。",
+      "amplitude": 0.012
+    },
+    {
+      "featureId": "west_roll_3",
+      "kind": "hill",
+      "districtId": "westlands",
+      "x": 0.07,
+      "y": 0.4,
+      "radiusX": 0.08,
+      "radiusY": 0.08,
+      "feather": 0.7,
+      "description": "翠风低地西侧缓丘，丰富低地天际线。",
+      "amplitude": 0.018
+    },
+    {
+      "featureId": "corridor_cliff",
+      "kind": "hill",
+      "districtId": "central_corridor",
+      "x": 0.56,
+      "y": 0.44,
+      "radiusX": 0.05,
+      "radiusY": 0.035,
+      "feather": 0.35,
+      "description": "回廊东侧攀爬悬崖：升降机关旁的可攀爬崖壁，坡度超过攀爬阈值。",
+      "amplitude": 0.045
+    },
+    {
+      "featureId": "spawn_plateau_rise",
+      "kind": "hill",
+      "districtId": "spawn_plateau",
+      "x": 0.5,
+      "y": 0.06,
+      "radiusX": 0.22,
+      "radiusY": 0.1,
+      "feather": 0.7,
+      "description": "启明台地南缘的宽缓抬升，让出生区有台地感但不影响行走。",
+      "amplitude": 0.012
+    },
+    {
+      "featureId": "corridor_calm",
+      "kind": "basin",
+      "districtId": "central_corridor",
+      "x": 0.49,
+      "y": 0.34,
+      "radiusX": 0.12,
+      "radiusY": 0.1,
+      "feather": 0.7,
+      "description": "中枢回廊整平带：遗门、门庭锚点与升降机关所在走廊压平，突出通道感。",
+      "targetHeight": 0.004
+    },
+    {
+      "featureId": "lakeshore_calm",
+      "kind": "basin",
+      "districtId": "gimmerlake",
+      "x": 0.705,
+      "y": 0.21,
+      "radiusX": 0.05,
+      "radiusY": 0.045,
+      "feather": 0.7,
+      "description": "湖畔渡口与渔夫所在的湖岸整平区，形成天然小滩。",
+      "targetHeight": 0.002
+    },
+    {
+      "featureId": "sacred_chest_pedestal",
+      "kind": "basin",
+      "districtId": "sanctum_highlands",
+      "x": 0.88,
+      "y": 0.9,
+      "radiusX": 0.045,
+      "radiusY": 0.045,
+      "feather": 0.6,
+      "description": "圣所圣匣脚下的小平台，避免宝箱落在陡坡上。",
+      "targetHeight": 0.04
+    },
+    {
+      "featureId": "spawn_calm",
+      "kind": "basin",
+      "districtId": "spawn_plateau",
+      "x": 0.5,
+      "y": 0.1,
+      "radiusX": 0.2,
+      "radiusY": 0.13,
+      "feather": 0.65,
+      "description": "出生点与观景台整平区：保证开局地面平缓、战斗区过渡自然。",
+      "targetHeight": 0.006
+    },
+    {
+      "featureId": "westlands_meadow",
+      "kind": "terrace",
+      "districtId": "westlands",
+      "x": 0.2,
+      "y": 0.3,
+      "radiusX": 0.16,
+      "radiusY": 0.16,
+      "feather": 0.7,
+      "description": "低地巡林员活动区轻微抬升草甸，避免正弦谷底积水。",
+      "targetHeight": 0.008
+    },
+    {
+      "featureId": "skyline_nw",
+      "kind": "hill",
+      "districtId": "ashen_wastes",
+      "x": 0.08,
+      "y": 0.88,
+      "radiusX": 0.1,
+      "radiusY": 0.1,
+      "feather": 0.6,
+      "description": "西北天际线 accent 峰，打破边缘山脊环的单调轮廓。",
+      "amplitude": 0.05
+    },
+    {
+      "featureId": "skyline_e",
+      "kind": "hill",
+      "districtId": "sanctum_highlands",
+      "x": 0.94,
+      "y": 0.55,
+      "radiusX": 0.09,
+      "radiusY": 0.09,
+      "feather": 0.6,
+      "description": "东侧天际线 accent 峰。",
+      "amplitude": 0.04
+    },
+    {
+      "featureId": "skyline_n",
+      "kind": "hill",
+      "districtId": "sanctum_highlands",
+      "x": 0.5,
+      "y": 0.97,
+      "radiusX": 0.12,
+      "radiusY": 0.12,
+      "feather": 0.6,
+      "description": "北侧天际线 accent 峰。",
+      "amplitude": 0.045
+    }
+  ],
+  "routes": [
+    {
+      "fromPoiId": 60,
+      "toPoiId": 63,
+      "description": "主路：启明台地观景台 -> 中枢回廊遗门"
+    },
+    {
+      "fromPoiId": 60,
+      "toPoiId": 61,
+      "description": "主路：启明台地观景台 -> 翠风低地哨站"
+    },
+    {
+      "fromPoiId": 60,
+      "toPoiId": 62,
+      "description": "主路：启明台地观景台 -> 辉光湖畔渡口"
+    }
   ]
 }

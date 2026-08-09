@@ -186,5 +186,66 @@ int main() {
     assert(reward.sourceTraces >= 0 && reward.gold >= 0 && reward.fate >= 0);
   }
 
+  // ---- 地形特征层（原神式手工地貌数据）----
+  static_assert(WL::kTerrainFeatureCount >= 16,
+                "vertical slice needs a full feature-layer landform set");
+  std::set<std::string_view> featureIds;
+  for (const auto& feature : WL::kTerrainFeatures) {
+    assert(!feature.featureId.empty());
+    assert(featureIds.insert(feature.featureId).second &&
+           "duplicate terrain featureId");
+    // kind 数值契约：0=Hill / 1=Basin / 2=Terrace / 3=Ridge。
+    assert(feature.kind >= 0 && feature.kind <= 3);
+    assert(feature.x >= 0.0f && feature.x <= 1.0f);
+    assert(feature.y >= 0.0f && feature.y <= 1.0f);
+    assert(feature.radiusX > 0.0f && feature.radiusY > 0.0f);
+    assert(feature.feather >= 0.0f && feature.feather <= 1.0f);
+    // 按类型校验关键字段：丘/脊线用 amplitude，湖盆/台地用 targetHeight。
+    if (feature.kind == 0 || feature.kind == 3) {
+      assert(feature.amplitude != 0.0f);
+    } else {
+      assert(feature.targetHeight != 0.0f);
+    }
+    if (feature.kind == 3) {
+      assert(feature.frequency > 0.0f);
+    }
+    // districtId 允许 "world"（天际线峰等跨区特征），否则必须已知。
+    if (feature.districtId != "world") {
+      (void)DistrictById(feature.districtId);
+    }
+  }
+  // 湖盆必须存在且目标高度低于水面（保证游泳玩法水域常存）。
+  bool hasLakeBasin = false;
+  for (const auto& feature : WL::kTerrainFeatures) {
+    if (feature.kind == 1 && feature.targetHeight < -0.05f) {
+      hasLakeBasin = true;
+    }
+  }
+  assert(hasLakeBasin);
+
+  // ---- 主干道路径段 ----
+  static_assert(WL::kRouteCount >= 1, "vertical slice needs main routes");
+  std::set<int32_t> mainRoutePoiIds;
+  for (const auto& poi : WL::kPointsOfInterest) {
+    if (poi.mainRoute) mainRoutePoiIds.insert(poi.id);
+  }
+  for (const auto& route : WL::kRoutes) {
+    // 路线端点必须都是 mainRoute POI，且坐标与该 POI 一致。
+    assert(mainRoutePoiIds.count(route.fromPoiId) == 1);
+    assert(mainRoutePoiIds.count(route.toPoiId) == 1);
+    assert(route.fromPoiId != route.toPoiId);
+    bool fromMatched = false;
+    bool toMatched = false;
+    for (const auto& poi : WL::kPointsOfInterest) {
+      if (poi.id == route.fromPoiId) {
+        fromMatched = poi.x == route.fromX && poi.y == route.fromY;
+      }
+      if (poi.id == route.toPoiId) {
+        toMatched = poi.x == route.toX && poi.y == route.toY;
+      }
+    }
+    assert(fromMatched && toMatched);
+  }
+
   return 0;
 }

@@ -1,7 +1,11 @@
 #include "surface.h"
 #include "native/engine/render/combat_vfx.h"
 #include "native/engine/render/digit_atlas.h"
+#include "native/engine/render/terrain_biome.h"
 #include "native/engine/render/terrain_mesh.h"
+#include "native/engine/world/terrain_heightfield.h"
+#include "native/gameplay/world/world_terrain.h"
+#include "native/generated/world_layout.gen.h"
 #include "native/engine/world/stream_scheduler.h"
 #include "platform/harmony/fence_wait.h"
 #include <hilog/log.h>
@@ -2090,6 +2094,51 @@ static void drawSkyDome(Surface& s, const glm::mat4& vp) {
 
 // 整世界地形网格回退：分块尚未就绪时保证启动不黑屏。
 // 采样与逻辑层同一高度场，按高度/坡度混合沙地/草地/岩石色。
+
+// 分区生态调色 uniform（原神式 biome）：从世界布局生成头取分区矩形
+// （分块范围 → 世界 [0,1] 坐标），配色取 terrain_biome 调色板。
+static TerrainBiomeUniforms makeTerrainBiomeUniforms() {
+  TerrainBiomeUniforms biomes;
+  const size_t count = WorldLayout::kDistrictCount <
+                               TerrainBiomeUniforms::kMaxDistricts
+                           ? WorldLayout::kDistrictCount
+                           : TerrainBiomeUniforms::kMaxDistricts;
+  for (size_t i = 0; i < count; ++i) {
+    const WorldLayout::WorldDistrictDef& district = WorldLayout::kDistricts[i];
+    const float x0 = static_cast<float>(district.chunkXMin) /
+                     static_cast<float>(WorldLayout::kGridCountX);
+    const float x1 = static_cast<float>(district.chunkXMax + 1) /
+                     static_cast<float>(WorldLayout::kGridCountX);
+    const float y0 = static_cast<float>(district.chunkYMin) /
+                     static_cast<float>(WorldLayout::kGridCountY);
+    const float y1 = static_cast<float>(district.chunkYMax + 1) /
+                     static_cast<float>(WorldLayout::kGridCountY);
+    biomes.rects[i] = glm::vec4(x0, y0, x1, y1);
+    const TerrainBiomePalette palette = TerrainBiomeFor(district.districtId);
+    biomes.grass[i] = palette.grass;
+    biomes.sand[i] = palette.sand;
+    biomes.rock[i] = palette.rock;
+  }
+  biomes.count = static_cast<int>(count);
+  return biomes;
+}
+
+// 主干道路径段 uniform：世界布局生成的 mainRoute 连线。
+static TerrainRouteUniforms makeTerrainRouteUniforms() {
+  TerrainRouteUniforms routes;
+  const std::vector<WorldRouteSegment> segments = worldRouteSegments();
+  const size_t count =
+      segments.size() < TerrainRouteUniforms::kMaxRoutes
+          ? segments.size()
+          : TerrainRouteUniforms::kMaxRoutes;
+  for (size_t i = 0; i < count; ++i) {
+    routes.segments[i] = glm::vec4(segments[i].fromX, segments[i].fromY,
+                                   segments[i].toX, segments[i].toY);
+  }
+  routes.count = static_cast<int>(count);
+  return routes;
+}
+
 static void drawTerrainFallback(Surface& s, const glm::mat4& vp) {
 #ifdef OHOS_PLATFORM
   if (s.terrainMesh.vbo == 0u && s.terrain != nullptr &&
@@ -2100,9 +2149,15 @@ static void drawTerrainFallback(Surface& s, const glm::mat4& vp) {
 #endif
   if (s.terrainMesh.vbo == 0u) return;
   s.shader3d.setSurfaceMode(SurfaceMode::Terrain);
-  s.shader3d.setTerrainColors({0.72f, 0.64f, 0.46f}, {0.30f, 0.48f, 0.27f},
-                              {0.44f, 0.44f, 0.48f});
-  s.shader3d.setTerrainWaterLevel(-0.012f);
+  // 全局配色作为着色器回退底色（分区权重为 0 时使用），分区调色板
+  // 与主干道路径经 uniform 数组注入。
+  s.shader3d.setTerrainColors(TerrainBiomeFor({}).sand,
+                              TerrainBiomeFor({}).grass,
+                              TerrainBiomeFor({}).rock);
+  s.shader3d.setTerrainBiomes(makeTerrainBiomeUniforms());
+  s.shader3d.setTerrainRoutes(makeTerrainRouteUniforms());
+  s.shader3d.setTerrainWaterLevel(
+      s.terrain != nullptr ? s.terrain->config().waterLevel : -0.045f);
   const glm::mat4 model(1.0f);
   s.shader3d.setMVP(vp * model);
   s.shader3d.setModel(model);
@@ -2117,14 +2172,15 @@ static void drawTerrainFallback(Surface& s, const glm::mat4& vp) {
 }
 
 // 分块地形 AABB 高度范围估计（Phase 5 视锥剔除）：3×3 网格采样
-// 高度场取 min/max，再叠加全幅度保守余量（主起伏+褶皱+山脊
-// 总幅宽）覆盖采样间隙；下缘额外含侧裙深度。
+// 高度场取 min/max，再叠加保守余量覆盖采样间隙——特征层里窄于
+// 采样间距的地貌（悬崖 rx0.05、mesa r0.085、湖盆）可能整体落在
+// 两个采样点之间，余量取其最大抬升/下切幅度。
 static void terrainChunkHeightRange(const Surface& s,
                                     const TerrainChunkRect& rect,
                                     float& outMin, float& outMax) {
-  // 高度场正弦组合总幅宽上限（amplitude+detail+ridge），边缘山脊
-  // 只抬升不下降，上缘余量同样覆盖。
-  constexpr float kAmplitudeMargin = 0.09f;
+  // 基础八度幅宽 + 特征层最大单点偏离（mesa 平顶 +0.055、悬崖
+  // +0.045、天际线峰 +0.05、湖盆下切 -0.075）的保守上界。
+  constexpr float kAmplitudeMargin = 0.12f;
   constexpr float kSkirtMargin = 0.06f;
   float minHeight = 0.0f;
   float maxHeight = 0.0f;
@@ -2183,9 +2239,13 @@ static void drawTerrainChunks(Surface& s, const glm::mat4& vp,
     return;
   }
   s.shader3d.setSurfaceMode(SurfaceMode::Terrain);
-  s.shader3d.setTerrainColors({0.72f, 0.64f, 0.46f}, {0.30f, 0.48f, 0.27f},
-                              {0.44f, 0.44f, 0.48f});
-  s.shader3d.setTerrainWaterLevel(-0.012f);
+  s.shader3d.setTerrainColors(TerrainBiomeFor({}).sand,
+                              TerrainBiomeFor({}).grass,
+                              TerrainBiomeFor({}).rock);
+  s.shader3d.setTerrainBiomes(makeTerrainBiomeUniforms());
+  s.shader3d.setTerrainRoutes(makeTerrainRouteUniforms());
+  s.shader3d.setTerrainWaterLevel(
+      s.terrain != nullptr ? s.terrain->config().waterLevel : -0.045f);
   const glm::mat4 model(1.0f);
   s.shader3d.setMVP(vp * model);
   s.shader3d.setModel(model);

@@ -267,6 +267,64 @@ export function validateWorldLayout(world, schema) {
     }
   }
 
+  // 地形特征：featureId 唯一、kind 合法、几何参数有效、districtId 存在。
+  const featureKinds = new Set(['hill', 'basin', 'terrace', 'ridge']);
+  const seenFeatureIds = new Set();
+  for (const feature of world.terrainFeatures ?? []) {
+    if (seenFeatureIds.has(feature.featureId)) {
+      errors.push(`duplicate terrainFeature featureId: ${feature.featureId}`);
+    }
+    seenFeatureIds.add(feature.featureId);
+    if (!featureKinds.has(feature.kind)) {
+      errors.push(`terrainFeature ${feature.featureId}: unknown kind ${feature.kind}`);
+    }
+    if (feature.districtId !== undefined && !districtById.has(feature.districtId)) {
+      errors.push(`terrainFeature ${feature.featureId}: unknown districtId ${feature.districtId}`);
+    }
+    for (const key of ['x', 'y']) {
+      if (!Number.isFinite(feature[key]) || feature[key] < 0 || feature[key] > 1) {
+        errors.push(`terrainFeature ${feature.featureId}: ${key} must be finite in [0, 1]`);
+      }
+    }
+    for (const key of ['radiusX', 'radiusY']) {
+      if (!Number.isFinite(feature[key]) || feature[key] <= 0 || feature[key] > 0.5) {
+        errors.push(`terrainFeature ${feature.featureId}: ${key} must be finite in (0, 0.5]`);
+      }
+    }
+    if (!Number.isFinite(feature.feather) || feature.feather <= 0 || feature.feather > 1) {
+      errors.push(`terrainFeature ${feature.featureId}: feather must be finite in (0, 1]`);
+    }
+    if (feature.kind === 'hill' &&
+        (!Number.isFinite(feature.amplitude) || feature.amplitude <= 0 || feature.amplitude > 0.2)) {
+      errors.push(`terrainFeature ${feature.featureId}: hill amplitude must be finite in (0, 0.2]`);
+    }
+    if ((feature.kind === 'basin' || feature.kind === 'terrace') &&
+        (!Number.isFinite(feature.targetHeight) || feature.targetHeight < -0.2 || feature.targetHeight > 0.2)) {
+      errors.push(`terrainFeature ${feature.featureId}: targetHeight must be finite in [-0.2, 0.2]`);
+    }
+    if (feature.kind === 'ridge') {
+      if (!Number.isFinite(feature.amplitude) || feature.amplitude <= 0 || feature.amplitude > 0.1) {
+        errors.push(`terrainFeature ${feature.featureId}: ridge amplitude must be finite in (0, 0.1]`);
+      }
+      if (!Number.isFinite(feature.frequency) || feature.frequency < 1 || feature.frequency > 16) {
+        errors.push(`terrainFeature ${feature.featureId}: ridge frequency must be finite in [1, 16]`);
+      }
+      if (!Number.isFinite(feature.angleRadians)) {
+        errors.push(`terrainFeature ${feature.featureId}: angleRadians must be finite`);
+      }
+    }
+  }
+
+  // 路线：端点必须引用存在的 mainRoute POI。
+  const poiById = new Map(world.pointsOfInterest.map((poi) => [poi.id, poi]));
+  for (const route of world.routes ?? []) {
+    for (const key of ['fromPoiId', 'toPoiId']) {
+      if (!poiById.has(route[key])) {
+        errors.push(`route ${route.fromPoiId}->${route.toPoiId}: unknown ${key} ${route[key]}`);
+      }
+    }
+  }
+
   return errors;
 }
 
@@ -426,6 +484,25 @@ export function generateWorldLayoutHeader(world) {
   emit('  int32_t fate; int32_t itemId; int32_t itemCount;');
   emit('};');
   emit();
+  emit('// 地形特征（原神式手工地貌）：kind 取值与引擎 TerrainFeatureKind 严格一致');
+  emit('// （0=Hill 加性丘 / 1=Basin 双向拉向目标高度 / 2=Terrace 只抬升 / 3=Ridge 掩码脊线）。');
+  emit('struct WorldTerrainFeatureDef {');
+  emit('  std::string_view featureId;');
+  emit('  std::string_view districtId;');
+  emit('  int32_t kind;');
+  emit('  float x; float y;');
+  emit('  float radiusX; float radiusY;');
+  emit('  float amplitude; float targetHeight;');
+  emit('  float frequency; float angleRadians;');
+  emit('  float feather;');
+  emit('};');
+  emit();
+  emit('// 主干道段：连接 mainRoute POI 的直线段，渲染层在地形上压出路径色。');
+  emit('struct WorldRouteDef {');
+  emit('  int32_t fromPoiId; int32_t toPoiId;');
+  emit('  float fromX; float fromY; float toX; float toY;');
+  emit('};');
+  emit();
 
   emit(`constexpr std::size_t kDistrictCount = ${world.districts.length};`);
   emit('constexpr std::array<WorldDistrictDef, kDistrictCount> kDistricts{{');
@@ -526,6 +603,31 @@ export function generateWorldLayoutHeader(world) {
   emit('constexpr std::array<WorldExplorationRewardDef, kExplorationRewardCount> kExplorationRewards{{');
   for (const reward of world.explorationRewards) {
     emit(`    {${reward.id}, ${cxxStringLiteral(reward.label)}, ${reward.sourceTraces}, ${reward.gold}, ${reward.fate}, ${reward.itemId}, ${reward.itemCount}},`);
+  }
+  emit('}};');
+  emit();
+  const terrainFeatureKindValue = { hill: 0, basin: 1, terrace: 2, ridge: 3 };
+  emit(`constexpr std::size_t kTerrainFeatureCount = ${world.terrainFeatures.length};`);
+  emit('constexpr std::array<WorldTerrainFeatureDef, kTerrainFeatureCount> kTerrainFeatures{{');
+  for (const feature of world.terrainFeatures) {
+    emit('    {');
+    emit(`        ${cxxStringLiteral(feature.featureId)}, ${cxxStringLiteral(feature.districtId)}, ${terrainFeatureKindValue[feature.kind]},`);
+    emit(`        ${floatLiteral(feature.x)}, ${floatLiteral(feature.y)},`);
+    emit(`        ${floatLiteral(feature.radiusX)}, ${floatLiteral(feature.radiusY)},`);
+    emit(`        ${floatLiteral(feature.amplitude ?? 0)}, ${floatLiteral(feature.targetHeight ?? 0)},`);
+    emit(`        ${floatLiteral(feature.frequency ?? 0)}, ${floatLiteral(feature.angleRadians ?? 0)},`);
+    emit(`        ${floatLiteral(feature.feather)},`);
+    emit('    },');
+  }
+  emit('}};');
+  emit();
+  const poiById = new Map(world.pointsOfInterest.map((poi) => [poi.id, poi]));
+  emit(`constexpr std::size_t kRouteCount = ${world.routes.length};`);
+  emit('constexpr std::array<WorldRouteDef, kRouteCount> kRoutes{{');
+  for (const route of world.routes) {
+    const from = poiById.get(route.fromPoiId);
+    const to = poiById.get(route.toPoiId);
+    emit(`    {${route.fromPoiId}, ${route.toPoiId}, ${floatLiteral(from.x)}, ${floatLiteral(from.y)}, ${floatLiteral(to.x)}, ${floatLiteral(to.y)}},`);
   }
   emit('}};');
   emit();

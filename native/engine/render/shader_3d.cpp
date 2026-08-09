@@ -89,6 +89,13 @@ namespace {
     "uniform vec3 uColorSand;\n"
     "uniform vec3 uColorGrass;\n"
     "uniform vec3 uColorRock;\n"
+    "uniform vec4 uDistrictRects[6];\n"
+    "uniform vec3 uDistrictGrass[6];\n"
+    "uniform vec3 uDistrictSand[6];\n"
+    "uniform vec3 uDistrictRock[6];\n"
+    "uniform int uDistrictCount;\n"
+    "uniform vec4 uRouteSegments[8];\n"
+    "uniform int uRouteCount;\n"
     "uniform float uTerrainWaterLevel;\n"
     "uniform vec3 uWaterColor;\n"
     "uniform float uWaterAlpha;\n"
@@ -101,6 +108,16 @@ namespace {
     "out vec4 fragColor;\n"
     "float hash21(vec2 p) {\n"
     "  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);\n"
+    "}\n"
+    "float vnoise(vec2 p) {\n"
+    "  vec2 i = floor(p);\n"
+    "  vec2 f = fract(p);\n"
+    "  f = f * f * (3.0 - 2.0 * f);\n"
+    "  float a = hash21(i);\n"
+    "  float b = hash21(i + vec2(1.0, 0.0));\n"
+    "  float c = hash21(i + vec2(0.0, 1.0));\n"
+    "  float d = hash21(i + vec2(1.0, 1.0));\n"
+    "  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);\n"
     "}\n"
     "void main() {\n"
     // 描边 pass：输出纯色轮廓线，不参与光照/雾计算。
@@ -120,25 +137,79 @@ namespace {
     "}\n"
     "  vec4 baseColor;\n"
     "  if (uSurfaceMode == 1) {\n"
-    // 地形：按高度与坡度混合沙地/草地/岩石色，轻量 hash 噪声打碎色块。\n"
-    "  float noise = hash21(vUV * 140.0) * 0.09 - 0.045;\n"
+    // 地形（原神式分区生态）：分区调色板按世界坐标加权混合出沙/草/岩，
+    // 高度/坡度混色 + 值噪声打碎 + 大尺度明度调制 + 主干道压暗 +
+    // 湿沙带 + 高海拔岩帽。
+    "  vec3 sand = uColorSand;\n"
+    "  vec3 grass = uColorGrass;\n"
+    "  vec3 rock = uColorRock;\n"
+    "  float biomeWeight = 0.0;\n"
+    "  vec3 sandAcc = vec3(0.0);\n"
+    "  vec3 grassAcc = vec3(0.0);\n"
+    "  vec3 rockAcc = vec3(0.0);\n"
+    "  for (int i = 0; i < 6; ++i) {\n"
+    "    if (i >= uDistrictCount) { break; }\n"
+    "    vec4 rect = uDistrictRects[i];\n"
+    "    float outsideX = max(max(rect.x - vUV.x, vUV.x - rect.z), 0.0);\n"
+    "    float outsideY = max(max(rect.y - vUV.y, vUV.y - rect.w), 0.0);\n"
+    "    float outside = length(vec2(outsideX, outsideY));\n"
+    "    float w = 1.0 - smoothstep(0.0, 0.035, outside);\n"
+    "    sandAcc += uDistrictSand[i] * w;\n"
+    "    grassAcc += uDistrictGrass[i] * w;\n"
+    "    rockAcc += uDistrictRock[i] * w;\n"
+    "    biomeWeight += w;\n"
+    "  }\n"
+    "  if (biomeWeight > 0.001) {\n"
+    "    sand = sandAcc / biomeWeight;\n"
+    "    grass = grassAcc / biomeWeight;\n"
+    "    rock = rockAcc / biomeWeight;\n"
+    "  }\n"
+    "  float noise = (vnoise(vUV * 90.0) * 0.6 + vnoise(vUV * 23.0) * 0.4) - 0.5;\n"
+    "  float macro = vnoise(vUV * 6.5) - 0.5;\n"
     "  float slope = 1.0 - clamp(N.y, 0.0, 1.0);\n"
     "  float shore = clamp((vWorldPos.y - uTerrainWaterLevel) / 0.022 +\n"
-    "                      noise * 1.6, 0.0, 1.0);\n"
+    "                      noise * 0.5, 0.0, 1.0);\n"
+    "  float wet = 1.0 - smoothstep(0.0, 0.008,\n"
+    "                               vWorldPos.y - uTerrainWaterLevel);\n"
+    "  sand *= 1.0 - wet * 0.22;\n"
     "  float rockMix = clamp((slope - 0.28) / 0.22 +\n"
-    "                         (vWorldPos.y - 0.055) / 0.05, 0.0, 1.0);\n"
-    "  vec3 terrainColor = mix(mix(uColorSand, uColorGrass, shore),\n"
-    "                          uColorRock, clamp(rockMix, 0.0, 1.0));\n"
-    "  baseColor = vec4(terrainColor + noise, 1.0);\n"
-    "  baseColor.rgb = max(baseColor.rgb, vec3(0.0));\n"
-    "  baseColor.rgb = min(baseColor.rgb, vec3(1.0));\n"
+    "                        (vWorldPos.y - 0.055) / 0.05 +\n"
+    "                        noise * 0.25, 0.0, 1.0);\n"
+    "  float cap = smoothstep(0.062, 0.088, vWorldPos.y);\n"
+    "  rock = mix(rock, vec3(0.60, 0.60, 0.64), cap * 0.55);\n"
+    "  vec3 terrainColor = mix(mix(sand, grass, shore), rock, rockMix);\n"
+    "  terrainColor *= 1.0 + macro * 0.09 + noise * 0.07;\n"
+    "  float pathDist = 1000.0;\n"
+    "  for (int i = 0; i < 8; ++i) {\n"
+    "    if (i >= uRouteCount) { break; }\n"
+    "    vec2 a = uRouteSegments[i].xy;\n"
+    "    vec2 b = uRouteSegments[i].zw;\n"
+    "    vec2 pa = vUV - a;\n"
+    "    vec2 ba = b - a;\n"
+    "    float t = clamp(dot(pa, ba) / max(dot(ba, ba), 0.000001), 0.0, 1.0);\n"
+    "    pathDist = min(pathDist, length(pa - ba * t));\n"
+    "  }\n"
+    "  float path = (1.0 - smoothstep(0.006, 0.013, pathDist)) * shore;\n"
+    "  terrainColor = mix(terrainColor,\n"
+    "                     terrainColor * vec3(0.82, 0.78, 0.70), path * 0.55);\n"
+    "  baseColor = vec4(clamp(terrainColor, 0.0, 1.0), 1.0);\n"
     "} else if (uSurfaceMode == 2) {\n"
-    // 水面：流动正弦涟漪扰动颜色与法线，给出轻量动态感。\n"
+    // 水面：双频涟漪扰动颜色与法线，菲涅尔掠射增浓，日光高光闪点。
     "  float ripple = sin(vWorldPos.x * 120.0 + uTime * 1.6) *\n"
     "                 sin(vWorldPos.z * 105.0 - uTime * 1.2) * 0.5 + 0.5;\n"
-    "  baseColor = vec4(uWaterColor + ripple * 0.07, uWaterAlpha);\n"
-    "  N = normalize(N + vec3(sin(vWorldPos.z * 90.0 + uTime) * 0.06, 0.0,\n"
-    "                           cos(vWorldPos.x * 80.0 - uTime * 0.8) * 0.06));\n"
+    "  float ripple2 = sin(vWorldPos.x * 57.0 - uTime * 0.9 + 1.7) *\n"
+    "                  sin(vWorldPos.z * 49.0 + uTime * 0.7) * 0.5 + 0.5;\n"
+    "  float wave = ripple * 0.6 + ripple2 * 0.4;\n"
+    "  N = normalize(N + vec3(sin(vWorldPos.z * 90.0 + uTime) * 0.06 +\n"
+    "                           sin(vWorldPos.z * 41.0 - uTime * 0.6) * 0.03,\n"
+    "                           0.0,\n"
+    "                           cos(vWorldPos.x * 80.0 - uTime * 0.8) * 0.06 +\n"
+    "                           cos(vWorldPos.x * 37.0 + uTime * 0.5) * 0.03));\n"
+    "  float fresnel = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.0);\n"
+    "  vec3 waterHalf = normalize(normalize(uLightDir) + V);\n"
+    "  float glint = pow(max(dot(N, waterHalf), 0.0), 90.0) * 0.35;\n"
+    "  baseColor = vec4(uWaterColor + wave * 0.07 + glint,\n"
+    "                   mix(uWaterAlpha, 0.92, fresnel));\n"
     "} else {\n"
     "  baseColor = uHasTexture ? texture(uTexture, vUV) : vec4(1.0);\n"
     "}\n"
@@ -269,6 +340,13 @@ bool Shader3D::init() {
   locColorSand_ = glGetUniformLocation(program_, "uColorSand");
   locColorGrass_ = glGetUniformLocation(program_, "uColorGrass");
   locColorRock_ = glGetUniformLocation(program_, "uColorRock");
+  locDistrictRects_ = glGetUniformLocation(program_, "uDistrictRects");
+  locDistrictGrass_ = glGetUniformLocation(program_, "uDistrictGrass");
+  locDistrictSand_ = glGetUniformLocation(program_, "uDistrictSand");
+  locDistrictRock_ = glGetUniformLocation(program_, "uDistrictRock");
+  locDistrictCount_ = glGetUniformLocation(program_, "uDistrictCount");
+  locRouteSegments_ = glGetUniformLocation(program_, "uRouteSegments");
+  locRouteCount_ = glGetUniformLocation(program_, "uRouteCount");
   locTerrainWaterLevel_ = glGetUniformLocation(program_, "uTerrainWaterLevel");
   locWaterColor_ = glGetUniformLocation(program_, "uWaterColor");
   locWaterAlpha_ = glGetUniformLocation(program_, "uWaterAlpha");
@@ -611,6 +689,46 @@ void Shader3D::setTerrainColors(const glm::vec3& sand, const glm::vec3& grass,
   (void)sand;
   (void)grass;
   (void)rock;
+#endif
+}
+
+void Shader3D::setTerrainBiomes(const TerrainBiomeUniforms& biomes) const {
+#ifdef OHOS_PLATFORM
+  const int count = std::clamp(biomes.count, 0,
+                               TerrainBiomeUniforms::kMaxDistricts);
+  if (locDistrictCount_ != -1) {
+    glUniform1i(locDistrictCount_, count);
+  }
+  if (count <= 0) return;
+  if (locDistrictRects_ != -1) {
+    glUniform4fv(locDistrictRects_, count, &biomes.rects[0][0]);
+  }
+  if (locDistrictGrass_ != -1) {
+    glUniform3fv(locDistrictGrass_, count, &biomes.grass[0][0]);
+  }
+  if (locDistrictSand_ != -1) {
+    glUniform3fv(locDistrictSand_, count, &biomes.sand[0][0]);
+  }
+  if (locDistrictRock_ != -1) {
+    glUniform3fv(locDistrictRock_, count, &biomes.rock[0][0]);
+  }
+#else
+  (void)biomes;
+#endif
+}
+
+void Shader3D::setTerrainRoutes(const TerrainRouteUniforms& routes) const {
+#ifdef OHOS_PLATFORM
+  const int count = std::clamp(routes.count, 0,
+                               TerrainRouteUniforms::kMaxRoutes);
+  if (locRouteCount_ != -1) {
+    glUniform1i(locRouteCount_, count);
+  }
+  if (count > 0 && locRouteSegments_ != -1) {
+    glUniform4fv(locRouteSegments_, count, &routes.segments[0][0]);
+  }
+#else
+  (void)routes;
 #endif
 }
 

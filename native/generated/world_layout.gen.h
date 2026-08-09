@@ -119,6 +119,25 @@ struct WorldExplorationRewardDef {
   int32_t fate; int32_t itemId; int32_t itemCount;
 };
 
+// 地形特征（原神式手工地貌）：kind 取值与引擎 TerrainFeatureKind 严格一致
+// （0=Hill 加性丘 / 1=Basin 双向拉向目标高度 / 2=Terrace 只抬升 / 3=Ridge 掩码脊线）。
+struct WorldTerrainFeatureDef {
+  std::string_view featureId;
+  std::string_view districtId;
+  int32_t kind;
+  float x; float y;
+  float radiusX; float radiusY;
+  float amplitude; float targetHeight;
+  float frequency; float angleRadians;
+  float feather;
+};
+
+// 主干道段：连接 mainRoute POI 的直线段，渲染层在地形上压出路径色。
+struct WorldRouteDef {
+  int32_t fromPoiId; int32_t toPoiId;
+  float fromX; float fromY; float toX; float toY;
+};
+
 constexpr std::size_t kDistrictCount = 6;
 constexpr std::array<WorldDistrictDef, kDistrictCount> kDistricts{{
     {
@@ -368,6 +387,193 @@ constexpr std::array<WorldExplorationRewardDef, kExplorationRewardCount> kExplor
     {91, "湖心源痕"sv, 20, 50, 0, 0, 0},
     {92, "残塔隐藏宝匣"sv, 30, 100, 1, 0, 0},
     {93, "回廊遗物构件"sv, 0, 0, 0, 0, 1},
+}};
+
+constexpr std::size_t kTerrainFeatureCount = 22;
+constexpr std::array<WorldTerrainFeatureDef, kTerrainFeatureCount> kTerrainFeatures{{
+    {
+        "gimmer_lake"sv, "gimmerlake"sv, 1,
+        0.745f, 0.265f,
+        0.055f, 0.04f,
+        0.0f, -0.075f,
+        0.0f, 0.0f,
+        0.25f,
+    },
+    {
+        "ruined_tower_mesa"sv, "gimmerlake"sv, 1,
+        0.86f, 0.12f,
+        0.085f, 0.085f,
+        0.0f, 0.055f,
+        0.0f, 0.0f,
+        0.45f,
+    },
+    {
+        "sanctum_plateau"sv, "sanctum_highlands"sv, 2,
+        0.77f, 0.77f,
+        0.24f, 0.24f,
+        0.0f, 0.035f,
+        0.0f, 0.0f,
+        0.75f,
+    },
+    {
+        "sanctum_ridge"sv, "sanctum_highlands"sv, 3,
+        0.77f, 0.77f,
+        0.22f, 0.22f,
+        0.005f, 0.0f,
+        4.0f, 0.9f,
+        0.6f,
+    },
+    {
+        "sanctum_terrace"sv, "sanctum_highlands"sv, 0,
+        0.8f, 0.8f,
+        0.06f, 0.06f,
+        0.02f, 0.0f,
+        0.0f, 0.0f,
+        0.6f,
+    },
+    {
+        "ashen_uplift"sv, "ashen_wastes"sv, 2,
+        0.22f, 0.7f,
+        0.24f, 0.24f,
+        0.0f, 0.025f,
+        0.0f, 0.0f,
+        0.6f,
+    },
+    {
+        "ashen_badlands"sv, "ashen_wastes"sv, 3,
+        0.22f, 0.7f,
+        0.22f, 0.22f,
+        0.014f, 0.0f,
+        4.5f, 0.6f,
+        0.5f,
+    },
+    {
+        "ashen_outpost"sv, "ashen_wastes"sv, 0,
+        0.2f, 0.75f,
+        0.055f, 0.055f,
+        0.02f, 0.0f,
+        0.0f, 0.0f,
+        0.6f,
+    },
+    {
+        "west_roll_1"sv, "westlands"sv, 0,
+        0.05f, 0.05f,
+        0.06f, 0.06f,
+        0.012f, 0.0f,
+        0.0f, 0.0f,
+        0.7f,
+    },
+    {
+        "westlands_calm"sv, "westlands"sv, 1,
+        0.1f, 0.14f,
+        0.12f, 0.12f,
+        0.0f, 0.005f,
+        0.0f, 0.0f,
+        0.6f,
+    },
+    {
+        "west_roll_2"sv, "westlands"sv, 0,
+        0.3f, 0.08f,
+        0.06f, 0.06f,
+        0.012f, 0.0f,
+        0.0f, 0.0f,
+        0.7f,
+    },
+    {
+        "west_roll_3"sv, "westlands"sv, 0,
+        0.07f, 0.4f,
+        0.08f, 0.08f,
+        0.018f, 0.0f,
+        0.0f, 0.0f,
+        0.7f,
+    },
+    {
+        "corridor_cliff"sv, "central_corridor"sv, 0,
+        0.56f, 0.44f,
+        0.05f, 0.035f,
+        0.045f, 0.0f,
+        0.0f, 0.0f,
+        0.35f,
+    },
+    {
+        "spawn_plateau_rise"sv, "spawn_plateau"sv, 0,
+        0.5f, 0.06f,
+        0.22f, 0.1f,
+        0.012f, 0.0f,
+        0.0f, 0.0f,
+        0.7f,
+    },
+    {
+        "corridor_calm"sv, "central_corridor"sv, 1,
+        0.49f, 0.34f,
+        0.12f, 0.1f,
+        0.0f, 0.004f,
+        0.0f, 0.0f,
+        0.7f,
+    },
+    {
+        "lakeshore_calm"sv, "gimmerlake"sv, 1,
+        0.705f, 0.21f,
+        0.05f, 0.045f,
+        0.0f, 0.002f,
+        0.0f, 0.0f,
+        0.7f,
+    },
+    {
+        "sacred_chest_pedestal"sv, "sanctum_highlands"sv, 1,
+        0.88f, 0.9f,
+        0.045f, 0.045f,
+        0.0f, 0.04f,
+        0.0f, 0.0f,
+        0.6f,
+    },
+    {
+        "spawn_calm"sv, "spawn_plateau"sv, 1,
+        0.5f, 0.1f,
+        0.2f, 0.13f,
+        0.0f, 0.006f,
+        0.0f, 0.0f,
+        0.65f,
+    },
+    {
+        "westlands_meadow"sv, "westlands"sv, 2,
+        0.2f, 0.3f,
+        0.16f, 0.16f,
+        0.0f, 0.008f,
+        0.0f, 0.0f,
+        0.7f,
+    },
+    {
+        "skyline_nw"sv, "ashen_wastes"sv, 0,
+        0.08f, 0.88f,
+        0.1f, 0.1f,
+        0.05f, 0.0f,
+        0.0f, 0.0f,
+        0.6f,
+    },
+    {
+        "skyline_e"sv, "sanctum_highlands"sv, 0,
+        0.94f, 0.55f,
+        0.09f, 0.09f,
+        0.04f, 0.0f,
+        0.0f, 0.0f,
+        0.6f,
+    },
+    {
+        "skyline_n"sv, "sanctum_highlands"sv, 0,
+        0.5f, 0.97f,
+        0.12f, 0.12f,
+        0.045f, 0.0f,
+        0.0f, 0.0f,
+        0.6f,
+    },
+}};
+
+constexpr std::size_t kRouteCount = 3;
+constexpr std::array<WorldRouteDef, kRouteCount> kRoutes{{
+    {60, 63, 0.52f, 0.16f, 0.5f, 0.34f},
+    {60, 61, 0.52f, 0.16f, 0.18f, 0.28f},
+    {60, 62, 0.52f, 0.16f, 0.7f, 0.22f},
 }};
 
 }  // namespace WorldLayout

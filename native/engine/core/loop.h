@@ -32,6 +32,7 @@
 #include "../../gameplay/world/exploration_gate_collision.h"
 #include "../../gameplay/world/exploration_feedback.h"
 #include "../../gameplay/world/npc_agent.h"
+#include "../../gameplay/world/world_terrain.h"
 #include "../../gameplay/quest/quest_system.h"
 #include "../../gameplay/quest/side_quests.h"
 #include "../../gameplay/quest/daily_quest.h"
@@ -79,7 +80,8 @@ struct Loop {
   PlayerController playerController;
   // 开放世界探索基础（阶段一）：分块流式、地形、垂直运动与锚点。
   WorldGrid worldGrid;
-  TerrainHeightfield terrain;
+  // 地形 = 生成头特征层（湖盆/台地/劣地/悬崖/天际线）+ 缓基础八度。
+  TerrainHeightfield terrain = makeWorldTerrain();
   // 分块地形流式调度器：消费 worldGrid 的加/卸载请求，后台生成
   // 分块网格；渲染线程经 surface.streamScheduler 每帧取用。
   StreamScheduler streamScheduler{terrain, worldGrid};

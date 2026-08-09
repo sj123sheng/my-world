@@ -25,6 +25,25 @@ enum class SurfaceMode : int {
   Sky = 3,      // 天空穹顶：天顶→地平线渐变，不受光照影响。
 };
 
+// 分区生态调色 uniform 组（原神式 biome 过渡）：世界坐标矩形 +
+// 每区沙/草/岩配色，片段着色器按到矩形距离加权混合。count=0 时
+// 地形回退全局 uColorSand/uColorGrass/uColorRock。
+struct TerrainBiomeUniforms {
+  static constexpr int kMaxDistricts = 6;
+  glm::vec4 rects[kMaxDistricts] = {};
+  glm::vec3 grass[kMaxDistricts] = {};
+  glm::vec3 sand[kMaxDistricts] = {};
+  glm::vec3 rock[kMaxDistricts] = {};
+  int count = 0;
+};
+
+// 主干道路径段 uniform 组：地形上沿 2D 线段压出路径色带。
+struct TerrainRouteUniforms {
+  static constexpr int kMaxRoutes = 8;
+  glm::vec4 segments[kMaxRoutes] = {};  // xy=起点 zw=终点（世界 [0,1] 坐标）
+  int count = 0;
+};
+
 class Shader3D {
  public:
   // 编译并链接着色器程序。成功返回 true，失败返回 false（已清理中间资源）。
@@ -102,6 +121,12 @@ class Shader3D {
   void setTerrainColors(const glm::vec3& sand, const glm::vec3& grass,
                         const glm::vec3& rock) const;
 
+  // 地形分区生态调色（每区沙/草/岩 + 世界坐标矩形）。非平台侧为空操作。
+  void setTerrainBiomes(const TerrainBiomeUniforms& biomes) const;
+
+  // 地形主干道路径段。非平台侧为空操作。
+  void setTerrainRoutes(const TerrainRouteUniforms& routes) const;
+
   // 地形模式的水岸过渡高度：低于该值的区域向沙地色过渡。
   void setTerrainWaterLevel(float level) const;
 
@@ -167,6 +192,13 @@ class Shader3D {
   GLint locColorSand_ = -1;
   GLint locColorGrass_ = -1;
   GLint locColorRock_ = -1;
+  GLint locDistrictRects_ = -1;
+  GLint locDistrictGrass_ = -1;
+  GLint locDistrictSand_ = -1;
+  GLint locDistrictRock_ = -1;
+  GLint locDistrictCount_ = -1;
+  GLint locRouteSegments_ = -1;
+  GLint locRouteCount_ = -1;
   GLint locTerrainWaterLevel_ = -1;
   GLint locWaterColor_ = -1;
   GLint locWaterAlpha_ = -1;
