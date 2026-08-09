@@ -1,6 +1,6 @@
 # 项目状态
 
-更新时间：2026-08-08
+更新时间：2026-08-09
 
 ## 当前阶段
 
@@ -292,6 +292,11 @@
 
 ## 验证状态
 
+- 主角重制模型管线验证：prepare_player_glb.py 内置 verify 通过（42 关节、
+  9 clip、handslot.r 补齐）；test_model_assets（manifest 契约）、
+  test_render_animation（重制模型动画语言 + 武器挂点回退链）、
+  test_skinned_model、test_player_controller（turnSpeedScale）与
+  node tests/test_bridge_contract.mjs 全部通过。
 - 探索内容、探索反馈、动态门碰撞、玩家/敌人/首领组合碰撞、探索契约、任务、世界布局、
   移动状态和 V9 存档测试通过。
 - `node tests/test_bridge_contract.mjs` 通过，`git diff --check` 通过。

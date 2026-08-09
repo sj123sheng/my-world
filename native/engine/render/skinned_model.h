@@ -110,11 +110,13 @@ inline int FindJointIndex(const std::vector<std::string>& names,
 }
 
 // 武器挂点关节查找（兼容自定义骨架）：优先 KayKit 约定 handslot.r，
-// 缺失时回退右手腕关节 R_Hand/RightHand，保证重制主角等无 handslot.r
-// 的自研骨架仍能挂载程序化武器；全部缺失返回 -1（调用方不挂载）。
+// 缺失时回退右手腕关节 R_Hand/RightHand/mixamorig:RightHand，保证重制
+// 主角等无 handslot.r 的自研骨架仍能挂载程序化武器；全部缺失返回 -1
+//（调用方不挂载）。
 inline int FindWeaponJointIndex(const std::vector<std::string>& names) {
   static const char* const kCandidates[] = {"handslot.r", "R_Hand",
-                                            "RightHand"};
+                                            "RightHand",
+                                            "mixamorig:RightHand"};
   for (const char* candidate : kCandidates) {
     const int index = FindJointIndex(names, candidate);
     if (index >= 0) return index;

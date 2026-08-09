@@ -1,5 +1,32 @@
 # 技术决策
 
+## 2026-08-09：主角重制模型兼容替换（新骨架 + 新动画语言）
+
+- 主角 player.glb 换为自研 UE 风格骨架模型：41 骨骨架
+  （Root/Hip/Pelvis/L_Thigh…R_Hand），无 KayKit handslot.r 武器挂点，
+  模型朝向 +X，且 Blender NLA 导出丢失动画名（8 条 clip 均为
+  NlaTrack*）。为在不改引擎资产契约的前提下兼容替换，建立
+  automation/assets/prepare_player_glb.py 转换管线：FK 采样识别
+  clip 语义并重命名（walk/run/Jump_Idle/climb/glide/cast/Dive/
+  Turn_180，另合成静态 idle 共 9 条）、剥离根运动（走/跑保留垂直
+  弹跳、跳/爬整体钉死）、循环窗口拟合 + 端点混合闭合、按 KayKit
+  朝向/偏移补 handslot.r 关节（含 inverseBindMatrix）、Armature
+  绕 Y -90° 对齐引擎 +Z 前向。
+- 引擎动画语言对应扩展：RenderAnimation 新增 Climb/Glide/Turn
+  状态，walk/glide/cast/Jump_Idle 归入循环、Dive/Turn_180/climb
+  一次性钳制尾帧；ResolveClip 回退链保证资产缺失时优雅降级
+  （闪避→Dive、施法→cast、攀爬→run、滑翔→Jump_Idle）。Loop 新增
+  转身状态机：Turn_180 clip 1.62s 内冻结朝向、结束吸附 180°
+  （kPlayerTurnClipSeconds 与资产管线 [1.29,2.91] 裁剪一致）；
+  glide/climb/swim 分别路由到专属 clip。PlayerController 新增
+  turnSpeedScale 参数（默认 1.0）。
+- 武器挂点查找改为 FindWeaponJointIndex 回退链：handslot.r→
+  R_Hand→RightHand→mixamorig:RightHand，重制主角骨架无 handslot.r
+  时仍能挂载程序化佩剑，KayKit 敌人/首领不受影响；surface.cpp
+  四处挂点调用统一走该入口。行为由 test_render_animation
+  （重制模型动画语言 + 回退链用例）与 test_model_assets
+  （42 关节、9 clip manifest）锁定。
+
 ## 2026-08-08：首领普攻刀光（首领挥击语言补全）
 
 - 敌人普攻释放已有原型元素色刀光 + 拖尾，但首领普攻挥击落地只有
