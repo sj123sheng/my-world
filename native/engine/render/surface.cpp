@@ -1114,8 +1114,8 @@ static void tryInitializeModelAsset(Surface& s, ModelKind kind,
     return;
   }
   if (kind == ModelKind::Player) {
-    // KayKit 角色右手的武器挂点；缺失时保持 -1，武器不挂载。
-    s.playerWeaponJoint = FindJointIndex(model.jointNames(), "handslot.r");
+    // 右手武器挂点：handslot.r 优先，自定义骨架回退 R_Hand；均无则 -1 不挂载。
+    s.playerWeaponJoint = FindWeaponJointIndex(model.jointNames());
     LOGI("player weapon joint=%{public}d", s.playerWeaponJoint);
     // 骑士模块化装备：头盔 + 披风 + 左手圆盾（右手保留程序化佩剑）。
     model.setAttachmentEnabled("Knight_Helmet", true);
@@ -1123,7 +1123,7 @@ static void tryInitializeModelAsset(Surface& s, ModelKind kind,
     model.setAttachmentEnabled("Round_Shield", true);
   }
   if (kind == ModelKind::Enemy) {
-    s.enemyWeaponJoint = FindJointIndex(model.jointNames(), "handslot.r");
+    s.enemyWeaponJoint = FindWeaponJointIndex(model.jointNames());
     LOGI("enemy weapon joint=%{public}d", s.enemyWeaponJoint);
     // 法师模块化装备：帽子 + 披风 + 左手法术书（右手保留程序化法杖）。
     model.setAttachmentEnabled("Mage_Hat", true);
@@ -1145,7 +1145,7 @@ static void tryInitializeModelAsset(Surface& s, ModelKind kind,
         model, {"Mage_Hat", "Mage_Cape", "Spellbook"});  // Elite
   }
   if (kind == ModelKind::Boss) {
-    s.bossWeaponJoint = FindJointIndex(model.jointNames(), "handslot.r");
+    s.bossWeaponJoint = FindWeaponJointIndex(model.jointNames());
     LOGI("boss weapon joint=%{public}d", s.bossWeaponJoint);
     // 野蛮人模块化装备：帽子 + 披风 + 左手圆盾（右手保留程序化重棍）。
     model.setAttachmentEnabled("Barbarian_Hat", true);
@@ -1201,7 +1201,7 @@ static void tryInitializeEnemyArchetypeAsset(Surface& s, int archetype) {
     return;
   }
   s.enemyArchetypeWeaponJoints[slot] =
-      FindJointIndex(model.jointNames(), "handslot.r");
+      FindWeaponJointIndex(model.jointNames());
   s.enemyArchetypeModelAttachments[slot].assign(
       model.attachmentNames().size(), true);
   LOGI("enemy archetype %{public}d dedicated model ready: joints=%{public}zu "

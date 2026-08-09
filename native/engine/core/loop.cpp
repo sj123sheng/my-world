@@ -18,6 +18,10 @@
 #endif
 
 namespace {
+// Turn_180 clip 时长：资产管线 prepare_player_glb.py 把转身动画裁剪
+// 到 [1.29, 2.91]，状态机按该时长冻结朝向并在结束时吸附 180°。
+constexpr float kPlayerTurnClipSeconds = 1.62f;
+
 void ApplyCombatSnapshot(GameSnapshot& output, const CombatSnapshot& combat) {
   auto applyEncounter = [](GameSnapshot& snap,
                            const EncounterSnapshot& encounter) {
@@ -2085,11 +2089,45 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   camera.update({surface.player.x, surface.player.y}, lookDelta, dtSeconds);
   surface.cameraRenderState = camera.renderState();
 
+  // 转身动画状态机：地面移动中朝向与速度方向夹角 > 135°（摇杆急反
+  // 转）时触发一次性 Turn_180。播放期间冻结朝向插值
+  //（turnSpeedScale=0），由动画驱动视觉转身；clip 播完时逻辑 yaw
+  // 同步补 180°（±π 等价），残余夹角（≤45°）由常规转速追平。
+  float turnSpeedScale = 1.0f;
+  if (surface.playerTurnSeconds >= 0.0f) {
+    if (motionState.state != MotionState::Grounded) {
+      // 离地/攀爬/游泳中断转身：未播完不做 yaw 快照，常规转速收回。
+      surface.playerTurnSeconds = -1.0f;
+    } else {
+      surface.playerTurnSeconds += dtSeconds;
+      if (surface.playerTurnSeconds >= kPlayerTurnClipSeconds) {
+        surface.player.angle += 3.14159265f;
+        surface.playerTurnSeconds = -1.0f;
+      } else {
+        turnSpeedScale = 0.0f;
+      }
+    }
+  }
+  if (surface.playerTurnSeconds < 0.0f &&
+      motionState.state == MotionState::Grounded && surface.player.moving &&
+      std::hypot(surface.player.velocity.x, surface.player.velocity.y) >
+          1e-4f) {
+    const float velocityAngle =
+        std::atan2(surface.player.velocity.x, surface.player.velocity.y);
+    const float facingDelta = std::fabs(
+        std::remainder(velocityAngle - surface.player.angle,
+                       6.2831853071795864769f));
+    if (facingDelta > 2.3561945f) {  // 135°
+      surface.playerTurnSeconds = 0.0f;
+      turnSpeedScale = 0.0f;
+    }
+  }
   playerController.update(surface.player, intent.move, camera.yaw(),
                           dtSeconds,
                           motionState.sprinting
                               ? explorationMotion.config().sprintSpeedMultiplier
-                              : 1.0f);
+                              : 1.0f,
+                          turnSpeedScale);
 
   // 建筑碰撞：把主角从城墙/塔楼盒内推出并沿墙滑动，不再穿模；
   // 接触信息驱动墙面攀爬判定（高度越过盒顶时不再阻挡，可翻上墙头）。
@@ -3548,9 +3586,16 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   if (playerAirborneNow) {
     surface.playerAirSeconds += dtSeconds;
     surface.playerLandSeconds = 0.0f;
-    surface.player3dAnimation.action = RenderAnimation::Jump;
-    surface.player3dAnimation.attackClip =
-        PlayerJumpClipFor(surface.playerAirSeconds);
+    if (motionState.state == MotionState::Gliding) {
+      // 滑翔语言：水平滑翔姿态替代复用跳跃姿态；无 glide clip 的
+      // 资产由 ResolveClip 回退 KayKit 空中姿态，行为与升级前一致。
+      surface.player3dAnimation.action = RenderAnimation::Glide;
+      surface.player3dAnimation.attackClip.clear();
+    } else {
+      surface.player3dAnimation.action = RenderAnimation::Jump;
+      surface.player3dAnimation.attackClip =
+          PlayerJumpClipFor(surface.playerAirSeconds);
+    }
   } else {
     if (surface.playerAirSeconds > 0.0f) {
       // 落地边沿：启动落地动画 + 脚下淡蓝轻尘（移动语言同源）。
@@ -3565,6 +3610,23 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       surface.player3dAnimation.action = RenderAnimation::Land;
       surface.player3dAnimation.attackClip.clear();
     }
+  }
+  // 攀爬/游泳语言：攀爬播放 climb clip（无该 clip 的资产回退跑动，
+  // 与升级前行为一致）；游泳复用水平滑翔姿态（无 swim 专属 clip）。
+  if (motionState.state == MotionState::Climbing) {
+    surface.player3dAnimation.action = RenderAnimation::Climb;
+    surface.player3dAnimation.attackClip.clear();
+  } else if (motionState.state == MotionState::Swimming) {
+    surface.player3dAnimation.action = RenderAnimation::Glide;
+    surface.player3dAnimation.attackClip.clear();
+  }
+  // 转身语言覆盖：仅覆盖移动类状态（PlayerRenderAnimation 返回
+  // Idle）；战斗动作或离地已在上方中断转身状态。
+  if (surface.playerTurnSeconds >= 0.0f &&
+      surface.player3dAnimation.action == RenderAnimation::Idle &&
+      motionState.state == MotionState::Grounded) {
+    surface.player3dAnimation.action = RenderAnimation::Turn;
+    surface.player3dAnimation.attackClip.clear();
   }
   // 终结技暗场聚焦：吟唱中累加（0.3 封顶），结束后双倍速回落，
   // 渲染层按 UltimateDimAlphaFor 压暗全屏突出爆发（原神爆发演出）。

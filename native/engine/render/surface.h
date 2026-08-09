@@ -291,6 +291,9 @@ struct Surface {
   // 滑翔 FOV 计时器（秒）：滑翔中累加、结束后双倍速回落，
   // 渲染层按 GlideFovOffsetFor 渐入渐出放宽视场角。
   float playerGlideSeconds = 0.0f;
+  // 转身动画计时：-1 未激活；>=0 为 Turn_180 播放秒数，播放期间
+  // 冻结朝向插值，播完由 Loop 把逻辑 yaw 吸附 180° 后复位。
+  float playerTurnSeconds = -1.0f;
 
   // ---- 伤害飘字字段 ----
   std::vector<DamageNumberRenderState> damageNumbers3d;

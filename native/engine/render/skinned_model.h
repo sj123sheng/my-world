@@ -109,6 +109,19 @@ inline int FindJointIndex(const std::vector<std::string>& names,
   return -1;
 }
 
+// 武器挂点关节查找（兼容自定义骨架）：优先 KayKit 约定 handslot.r，
+// 缺失时回退右手腕关节 R_Hand/RightHand，保证重制主角等无 handslot.r
+// 的自研骨架仍能挂载程序化武器；全部缺失返回 -1（调用方不挂载）。
+inline int FindWeaponJointIndex(const std::vector<std::string>& names) {
+  static const char* const kCandidates[] = {"handslot.r", "R_Hand",
+                                            "RightHand"};
+  for (const char* candidate : kCandidates) {
+    const int index = FindJointIndex(names, candidate);
+    if (index >= 0) return index;
+  }
+  return -1;
+}
+
 // 挂件启用判定（纯函数）：逐实例覆盖表优先（按下标），越界/无覆盖
 // 时回退全局开关；供共享模型的多实例差异化装备组合。
 inline bool AttachmentEnabledFor(const std::vector<bool>* overrideFlags,

@@ -23,7 +23,8 @@ float shortestAngleDelta(float from, float to) {
 }  // namespace
 
 void PlayerController::update(Player& player, Vec2 move, float cameraYaw,
-                              float dtSeconds, float speedScale) const {
+                              float dtSeconds, float speedScale,
+                              float turnSpeedScale) const {
   if (!std::isfinite(cameraYaw) || !std::isfinite(dtSeconds) ||
       dtSeconds <= 0.0f) {
     player.moving = false;
@@ -73,9 +74,13 @@ void PlayerController::update(Player& player, Vec2 move, float cameraYaw,
 
   // Player::angle 是绕 3D Y 轴的 yaw。模型局部 +Z 为前方，因此世界
   // (x, z) 速度对应 atan2(x, z)，不是二维数学角 atan2(z, x)。
+  // turnSpeedScale：转身动画播放期间传 0 冻结朝向插值，由动画驱动
+  // 视觉转身；动画结束后传 >1 值快速追回速度方向（与混合转出同步）。
   const float targetAngle =
       std::atan2(player.velocity.x, player.velocity.y);
-  const float maxTurn = std::max(0.0f, config_.turnSpeed * dtSeconds);
+  const float maxTurn = std::max(0.0f, config_.turnSpeed *
+                                           std::max(0.0f, turnSpeedScale) *
+                                           dtSeconds);
   const float turn = std::clamp(shortestAngleDelta(player.angle, targetAngle),
                                 -maxTurn, maxTurn);
   player.angle += turn;

@@ -29,8 +29,12 @@ class PlayerController {
   explicit PlayerController(PlayerControllerConfig config = {})
       : config_(config) {}
 
+  // turnSpeedScale：朝向插值速率倍率。转身动画播放期间传 0 冻结
+  // yaw（由动画驱动视觉转身），动画结束后传 >1 倍率快速追平目标
+  // 朝向，与动画回摆无缝衔接；默认 1 为常规平滑转向。
   void update(Player& player, Vec2 move, float cameraYaw,
-              float dtSeconds, float speedScale = 1.0f) const;
+              float dtSeconds, float speedScale = 1.0f,
+              float turnSpeedScale = 1.0f) const;
 
  private:
   PlayerControllerConfig config_;

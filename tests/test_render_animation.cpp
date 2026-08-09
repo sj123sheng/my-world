@@ -513,6 +513,72 @@ void testDirectionalDodgeClipFollowsRelativeAngle() {
   assert(ResolveClip(noDodge, RenderAnimation::Dodge, 0, 1.0f) == "run");
 }
 
+void testRemadePlayerExplorationAnimationLanguage() {
+  // 主角重制模型探索语言：攀爬/滑翔/转身的意图名与 clip 名。
+  assert(std::string(RenderAnimationName(RenderAnimation::Climb)) == "climb");
+  assert(std::string(RenderAnimationName(RenderAnimation::Glide)) == "glide");
+  assert(std::string(RenderAnimationName(RenderAnimation::Turn)) ==
+         "Turn_180");
+
+  // 重制主角 clip 集（prepare_player_glb.py 产物）：新语言全部命中，
+  // 无 attack/hit/death 时战斗意图回退 idle（刀光/特效承接反馈）。
+  const std::vector<std::string> remade{"idle",  "walk",  "run",
+                                        "Jump_Idle", "glide", "cast",
+                                        "Dive",  "Turn_180", "climb"};
+  assert(ResolveClip(remade, RenderAnimation::Climb) == "climb");
+  assert(ResolveClip(remade, RenderAnimation::Glide) == "glide");
+  assert(ResolveClip(remade, RenderAnimation::Turn) == "Turn_180");
+  assert(ResolveClip(remade, RenderAnimation::Run, 0, 1.0f) == "run");
+  // 低速步态：KayKit Walking_B 缺失时回退重制模型的 walk。
+  assert(ResolveClip(remade, RenderAnimation::Run, 0, 0.2f) == "walk");
+  // 空中：Jump_Start 缺失时回退 Jump_Idle（原地跳跃姿态循环）。
+  assert(ResolveClip(remade, RenderAnimation::Jump, 0, 1.0f, "Jump_Start") ==
+         "Jump_Idle");
+  assert(ResolveClip(remade, RenderAnimation::Land) == "idle");
+  // 闪避：方向闪避 clip 缺失时回退俯冲翻滚 Dive。
+  assert(ResolveClip(remade, RenderAnimation::Dodge, 0, 1.0f,
+                     "Dodge_Left") == "Dive");
+  assert(ResolveClip(remade, RenderAnimation::Dodge) == "Dive");
+  // 施法：三源/终结技统一回退 cast 吟唱。
+  assert(ResolveClip(remade, RenderAnimation::Radiance) == "cast");
+  assert(ResolveClip(remade, RenderAnimation::Current) == "cast");
+  assert(ResolveClip(remade, RenderAnimation::Corruption) == "cast");
+  assert(ResolveClip(remade, RenderAnimation::Ultimate) == "cast");
+  // 战斗意图无对应 clip 时回退 idle。
+  assert(ResolveClip(remade, RenderAnimation::Attack) == "idle");
+  assert(ResolveClip(remade, RenderAnimation::Hit) == "idle");
+  assert(ResolveClip(remade, RenderAnimation::Death) == "idle");
+
+  // KayKit 资产（enemy/boss）无新 clip：按回退链保持升级前行为。
+  const std::vector<std::string> kaykit{"idle",   "run",    "attack",
+                                        "hit",    "death",  "Jump_Idle",
+                                        "Walking_B"};
+  assert(ResolveClip(kaykit, RenderAnimation::Climb) == "run");
+  assert(ResolveClip(kaykit, RenderAnimation::Glide) == "Jump_Idle");
+  assert(ResolveClip(kaykit, RenderAnimation::Turn) == "idle");
+  assert(ResolveClip(kaykit, RenderAnimation::Run, 0, 0.2f) == "Walking_B");
+
+  // 循环分类：walk/glide/cast/Jump_Idle 循环播放；Dive/Turn_180/climb
+  // 一次性钳制尾帧。
+  assert(IsLoopingClip("walk"));
+  assert(IsLoopingClip("glide"));
+  assert(IsLoopingClip("cast"));
+  assert(IsLoopingClip("Jump_Idle"));
+  assert(!IsLoopingClip("Dive"));
+  assert(!IsLoopingClip("Turn_180"));
+  assert(!IsLoopingClip("climb"));
+}
+
+void testWeaponJointFallbackChain() {
+  // handslot.r 优先；自定义骨架回退 R_Hand/RightHand/mixamorig；均无 -1。
+  assert(FindWeaponJointIndex({"Root", "handslot.r", "R_Hand"}) == 1);
+  assert(FindWeaponJointIndex({"Root", "R_Hand"}) == 1);
+  assert(FindWeaponJointIndex({"Root", "RightHand"}) == 1);
+  assert(FindWeaponJointIndex({"Root", "mixamorig:RightHand"}) == 1);
+  assert(FindWeaponJointIndex({"Root", "Hips"}) == -1);
+  assert(FindWeaponJointIndex({}) == -1);
+}
+
 }  // namespace
 
 
@@ -534,6 +600,8 @@ int main() {
   testEnemyWeaponKindMatchesAttackLanguage();
   testJumpAndLandAnimationClips();
   testDirectionalDodgeClipFollowsRelativeAngle();
+  testRemadePlayerExplorationAnimationLanguage();
+  testWeaponJointFallbackChain();
   testAnimationLogOnlyReportsIntentOrResolvedClipChanges();
   testUnavailableRuntimeModelStaysOnFallbackPath();
   testSurfaceStoresLateModelAssetsForContextBoundInitialization();

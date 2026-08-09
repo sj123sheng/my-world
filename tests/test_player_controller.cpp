@@ -105,5 +105,20 @@ int main() {
   controller.update(player, {0, 1}, 0.0f, 0.0f);
   assert(!player.moving);
   assert(player.velocity == Vec2{});
+
+  // turnSpeedScale：转身动画播放期传 0 冻结朝向插值，位移照常；
+  // 恢复默认后角度继续追踪速度方向。
+  player = {};
+  for (int frame = 0; frame < 25; ++frame) {
+    controller.update(player, {0, 1}, 0.0f, 0.016f);
+  }
+  const float frozenAngle = player.angle;
+  // 反向输入 + 冻结朝向：位移方向立即反转，但 angle 保持不变。
+  controller.update(player, {0, -1}, 0.0f, 0.016f, 1.0f, 0.0f);
+  assert(player.velocity.y < 0.0f);
+  assert(close(player.angle, frozenAngle));
+  // 解冻后角度朝新速度方向追赶。
+  controller.update(player, {0, -1}, 0.0f, 0.016f);
+  assert(std::abs(player.angle - frozenAngle) > 0.0f);
   return 0;
 }

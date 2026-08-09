@@ -20,6 +20,11 @@ enum class RenderAnimation {
   Death,
   Jump,
   Land,
+  // 探索运动语言（主角重制模型新增 clip 驱动）：攀爬/滑翔/转身；
+  // 旧资产缺失对应 clip 时 ResolveClip 按回退链退化到既有语言。
+  Climb,
+  Glide,
+  Turn,
 };
 
 enum class ModelKind {
@@ -111,10 +116,14 @@ inline bool ShouldUseWalkClip(float moveRatio) {
 }
 
 // clip 播放模式分类：待机/跑动与持续吟唱（Spellcasting）循环播放；
+// 主角重制模型的 walk/glide/cast/Jump_Idle 同为循环语言（滑翔
+// 空中姿态、施法吟唱、行走步态与空中跳跃姿态均需无缝持续）。
 // 攻击、受击、死亡、闪避、单次施法等一次性 clip 播完后必须钳制
 // 在尾帧，避免尸体倒地动作或攻击挥砍循环重播。
 inline bool IsLoopingClip(const std::string& name) {
-  return name == "idle" || name == "run" || name == "Spellcasting";
+  return name == "idle" || name == "run" || name == "Spellcasting" ||
+         name == "walk" || name == "glide" || name == "cast" ||
+         name == "Jump_Idle";
 }
 
 // 死亡尸体淡出曲线：先保持死亡尾帧 0.35s 让玩家看清倒地结果，
@@ -158,6 +167,12 @@ inline const char* RenderAnimationName(RenderAnimation animation) {
       return "Jump_Idle";
     case RenderAnimation::Land:
       return "Jump_Land";
+    case RenderAnimation::Climb:
+      return "climb";
+    case RenderAnimation::Glide:
+      return "glide";
+    case RenderAnimation::Turn:
+      return "Turn_180";
     case RenderAnimation::Idle:
     default:
       return "idle";
@@ -274,8 +289,10 @@ inline std::string ResolveClip(const std::vector<std::string>& clips,
     candidates.insert(candidates.begin(), preferredAttackClip);
   }
   // 低速步态分层：低幅度输入优先行走 clip（Walking_B），缺失时
-  // 自动回退 run；资产无行走 clip 时行为与升级前完全一致。
+  // 回退主角重制模型的 walk，再缺失时回退 run；资产无行走 clip
+  // 时行为与升级前完全一致。
   if (animation == RenderAnimation::Run && ShouldUseWalkClip(moveRatio)) {
+    candidates.insert(candidates.begin(), "walk");
     candidates.insert(candidates.begin(), "Walking_B");
   }
   // 受击/死亡变体轮换：奇数变体优先选用 B 版 clip，缺失时自动
@@ -293,12 +310,25 @@ inline std::string ResolveClip(const std::vector<std::string>& clips,
     candidates.push_back("idle");
   }
   if (animation == RenderAnimation::Dodge) {
+    // 主角重制模型无方向闪避 clip：回退俯冲翻滚（Dive）作为闪避
+    // 运动语言，再缺失时回退 run（与升级前行为一致）。
+    candidates.push_back("Dive");
     candidates.push_back("run");
   } else if (animation == RenderAnimation::Radiance ||
              animation == RenderAnimation::Current ||
              animation == RenderAnimation::Corruption ||
              animation == RenderAnimation::Ultimate) {
+    // 主角重制模型施法语言：三源施法与终结技统一回退 cast 吟唱
+    // clip，再缺失时回退 attack（KayKit 资产行为不变）。
+    candidates.push_back("cast");
     candidates.push_back("attack");
+  } else if (animation == RenderAnimation::Climb) {
+    // 攀爬回退链：无 climb clip 的资产沿用跑动语言（升级前行为）。
+    candidates.push_back("run");
+  } else if (animation == RenderAnimation::Glide) {
+    // 滑翔回退链：无 glide clip 时回退 KayKit 空中姿态语言。
+    candidates.push_back("Jump_Idle");
+    candidates.push_back("Jump_Full_Short");
   }
   if (animation != RenderAnimation::Idle) candidates.push_back("idle");
 

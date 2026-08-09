@@ -1,8 +1,9 @@
-// test_model_assets.cpp: 角色模型资产清单校验（独立高模资产升级）。
+// test_model_assets.cpp: 角色模型资产清单校验（主角重制模型升级）。
 //
 // 两层校验：
-// 1. 契约层（所有资产必须满足）：引擎加载器硬约束 + gameplay 必需
-//    的动作 clip 与武器挂点契约。资产替换后该层不变。
+// 1. 契约层（所有资产必须满足）：引擎加载器硬约束 + 按资产声明的
+//    gameplay 必需 clip 与武器挂点契约（挂点允许 handslot.r →
+//    R_Hand 回退链，见 FindWeaponJointIndex）。
 // 2. 身份层（按当前资产清单）：当前在库资产的关节数/clip 数/已知
 //    挂件名，防止意外替换或回归。换入新高模资产时只需更新下方
 //    kManifest 对应条目（身份字段置 -1/nullptr 即退化为纯契约校验）。
@@ -26,24 +27,35 @@ struct AssetExpectation {
   const char* identityAttachment;  // nullptr：不做身份层挂件断言
   int identityJointCount;          // -1：不断言精确关节数
   int identityClipCount;           // -1：不断言精确 clip 数
+  // gameplay 必需 clip（nullptr 结尾）：其余变体 clip 缺失时
+  // ResolveClip 自动回退，不在必需集合内。
+  const std::vector<const char*>* requiredClips;
 };
 
-// 当前资产清单：三类主角为 KayKit Adventurers 1.0（身份层锁定）；
+// 当前资产清单：enemy/boss 为 KayKit Adventurers 1.0（身份层锁定）；
 // npc 与 enemy_<archetype> 是独立高模可选槽位，缺失时跳过，注入时
-// 只跑契约层。新高模资产入库时把对应条目改为 required 并填写新身份。
-// player 已替换为独立高模（Midjourney 概念图 + Tripo 出模 + rig_to_kaykit
-// 绑定 KayKit 骨架），无刚性挂件，身份层附件置 nullptr。
+// 按 KayKit 动作契约校验。player 为重制模型（UE 风格 41 骨 +
+// prepare_player_glb.py 补 handslot.r 挂点、9 条语义 clip、剥离根
+// 运动、整体旋转对齐 +Z 前向），动作集与 KayKit 不同，必需 clip
+// 按新语言声明（无 attack/hit/death 时 ResolveClip 回退 idle）。
+const std::vector<const char*> kKayKitRequiredClips = {"idle", "run",
+                                                       "attack", "hit",
+                                                       "death"};
+const std::vector<const char*> kPlayerRequiredClips = {
+    "idle",  "walk",   "run",  "Jump_Idle", "glide",
+    "cast",  "Dive",   "Turn_180", "climb"};
+
 const std::vector<AssetExpectation> kManifest = {
-    {"player", true, nullptr, 41, 76},
-    {"enemy", true, "Mage_Hat", 41, 76},
-    {"boss", true, "Barbarian_Hat", 41, 76},
-    {"npc", false, nullptr, -1, -1},
-    {"enemy_0", false, nullptr, -1, -1},
-    {"enemy_1", false, nullptr, -1, -1},
-    {"enemy_2", false, nullptr, -1, -1},
-    {"enemy_3", false, nullptr, -1, -1},
-    {"enemy_4", false, nullptr, -1, -1},
-    {"enemy_5", false, nullptr, -1, -1},
+    {"player", true, nullptr, 42, 9, &kPlayerRequiredClips},
+    {"enemy", true, "Mage_Hat", 41, 76, &kKayKitRequiredClips},
+    {"boss", true, "Barbarian_Hat", 41, 76, &kKayKitRequiredClips},
+    {"npc", false, nullptr, -1, -1, &kKayKitRequiredClips},
+    {"enemy_0", false, nullptr, -1, -1, &kKayKitRequiredClips},
+    {"enemy_1", false, nullptr, -1, -1, &kKayKitRequiredClips},
+    {"enemy_2", false, nullptr, -1, -1, &kKayKitRequiredClips},
+    {"enemy_3", false, nullptr, -1, -1, &kKayKitRequiredClips},
+    {"enemy_4", false, nullptr, -1, -1, &kKayKitRequiredClips},
+    {"enemy_5", false, nullptr, -1, -1, &kKayKitRequiredClips},
 };
 
 bool fileExists(const std::string& path) {
@@ -79,16 +91,17 @@ void auditAsset(const AssetExpectation& expectation) {
   assert(model.indexCount() > 0);
   assert(model.jointCount() >= 1);
   assert(model.jointCount() <= kMaxSkinJoints);
-  // 关节名与调色板同序且数量一致；右手武器挂点按名挂载，必须存在。
+  // 关节名与调色板同序且数量一致；右手武器挂点按回退链挂载
+  //（handslot.r 优先，自定义骨架回退 R_Hand），必须可解析。
   assert(model.jointNames().size() == model.jointCount());
-  assert(FindJointIndex(model.jointNames(), "handslot.r") >= 0);
+  assert(FindWeaponJointIndex(model.jointNames()) >= 0);
   assert(FindJointIndex(model.jointNames(), "no-such-joint") == -1);
   // 卡通管线依赖内嵌 base color 纹理。
   assert(model.embeddedTextureCount() >= 1);
   assert(model.hasTexture());
-  // gameplay 必需 clip：其余变体 clip 缺失时 ResolveClip 自动回退。
+  // gameplay 必需 clip 按资产声明校验。
   const std::vector<std::string>& clips = model.clipNames();
-  for (const char* requiredClip : {"idle", "run", "attack", "hit", "death"}) {
+  for (const char* requiredClip : *expectation.requiredClips) {
     assert(std::find(clips.begin(), clips.end(), requiredClip) !=
            clips.end());
   }
