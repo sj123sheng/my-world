@@ -30,6 +30,11 @@ enum class ModelKind {
   Npc,
 };
 
+// 敌人原型数量（0=RiftClaw 1=Priest 2=Guard 3=Bruiser 4=Caster
+// 5=Elite）：攻击 clip、武器种类、装备覆盖与独立高模槽位均按该
+// 数量对齐。
+constexpr int kEnemyArchetypeCount = 6;
+
 struct ActorRenderState {
   bool alive = true;
   RenderAnimation action = RenderAnimation::Idle;

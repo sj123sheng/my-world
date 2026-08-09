@@ -6,6 +6,9 @@ export const nativeSetEnvironmentAssets: (outer: ArrayBuffer, center: ArrayBuffe
   backdrop: ArrayBuffer, decoration: ArrayBuffer) => boolean;
 export const nativeSetBlockAsset: (blockId: number, bytes: ArrayBuffer) => boolean;
 export const nativeSetNpcAsset: (bytes: ArrayBuffer) => boolean;
+// 敌人原型独立模型槽位（独立高模资产）：archetype ∈ [0, 6)，
+// 缺失时 native 侧保持共享 enemy.glb 回退。
+export const nativeSetEnemyArchetypeAsset: (archetype: number, bytes: ArrayBuffer) => boolean;
 export const pushInput: (event: {type: number, pointerId: number, x: number, y: number}) => void;
 export const pushAction: (type: number) => void;
 export const startEncounter: (mode: number) => boolean;

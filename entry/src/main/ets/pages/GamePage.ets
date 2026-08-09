@@ -1,4 +1,4 @@
-import { nativeSetEnvironmentAssets, nativeSetModelAssets, nativeSetBlockAsset, nativeSetNpcAsset, nativeStartIfForeground,
+import { nativeSetEnvironmentAssets, nativeSetModelAssets, nativeSetBlockAsset, nativeSetNpcAsset, nativeSetEnemyArchetypeAsset, nativeStartIfForeground,
   nativeStop, pullSnapshot, setAudioEnabled, saveProgress, loadProgress, Snapshot } from '../napi/Bridge';
 import { Hud } from '../ui/Hud';
 import { CombatControls } from '../ui/CombatControls';
@@ -445,6 +445,20 @@ struct GamePage {
             console.error('[Ethelan] Native rejected npc asset; using fallback mesh');
           }
         } catch (npcError) {
+        }
+        // 敌人原型独立模型槽位（独立高模资产）：存在
+        // models/enemy_<archetype>.glb 时逐原型注入，缺失/注入失败
+        // 的原型保持共享 enemy.glb 回退，互不影响。
+        for (let archetype = 0; archetype < 6; ++archetype) {
+          try {
+            const archetypeAsset: Uint8Array =
+              await resourceManager.getRawFileContent(`models/enemy_${archetype}.glb`);
+            if (this.isActiveModelLoad(generation) &&
+              !nativeSetEnemyArchetypeAsset(archetype, archetypeAsset.buffer as ArrayBuffer)) {
+              console.error(`[Ethelan] Native rejected enemy_${archetype} asset; using shared enemy model`);
+            }
+          } catch (archetypeMissing) {
+          }
         }
       } catch (error) {
         if (this.isActiveModelLoad(generation)) {

@@ -1339,5 +1339,28 @@ assert.match(nativeBridge, /"nativeSetNpcAsset", nullptr, NativeSetNpcAsset/,
   'native bridge must export nativeSetNpcAsset');
 assert.match(page, /nativeSetNpcAsset/,
   'GamePage must inject the NPC model asset');
+// ---- 独立高模资产：敌人原型独立模型槽位（缺失回退共享 enemy.glb）----
+assert.match(bridge, /export const nativeSetEnemyArchetypeAsset/,
+  'Bridge must export nativeSetEnemyArchetypeAsset');
+assert.match(declarations,
+  /nativeSetEnemyArchetypeAsset: \(archetype: number, bytes: ArrayBuffer\) => boolean;/,
+  'Index.d.ts must declare nativeSetEnemyArchetypeAsset(archetype, bytes)');
+assert.match(nativeBridge,
+  /"nativeSetEnemyArchetypeAsset", nullptr, NativeSetEnemyArchetypeAsset/,
+  'native bridge must export nativeSetEnemyArchetypeAsset');
+const setEnemyArchetypeAssetBody = functionBody(nativeBridge,
+  'static napi_value NativeSetEnemyArchetypeAsset');
+assert.match(setEnemyArchetypeAssetBody, /argc != 2/,
+  'NativeSetEnemyArchetypeAsset must require exactly two arguments');
+assert.match(setEnemyArchetypeAssetBody, /kEnemyArchetypeCount/,
+  'NativeSetEnemyArchetypeAsset must bound archetype against kEnemyArchetypeCount');
+assert.match(setEnemyArchetypeAssetBody, /CopyArrayBuffer/,
+  'NativeSetEnemyArchetypeAsset must copy ArrayBuffer bytes into owned storage');
+assert.match(setEnemyArchetypeAssetBody, /setEnemyArchetypeAsset/,
+  'NativeSetEnemyArchetypeAsset must commit bytes to the Surface slot');
+assert.match(page, /nativeSetEnemyArchetypeAsset/,
+  'GamePage must inject per-archetype enemy model assets');
+assert.match(page, /enemy_\$\{archetype\}\.glb/,
+  'GamePage must read models/enemy_<archetype>.glb rawfiles');
 assert.match(cmake, /npc_agent\.cpp/,
   'CMake must compile npc_agent.cpp');

@@ -319,6 +319,9 @@ struct Surface {
   // NPC 模型槽位（Phase 4）：第一版由应用层注入 player.glb 占位字节，
   // 缺失时保持静态 Mesh 回退，不影响其余槽位。
   PendingModelAsset npcModelAsset;
+  // 敌人原型独立模型槽位（独立高模资产升级）：enemy_<archetype>.glb
+  // 按需注入，缺失/解析失败时绘制回退共享 enemy.glb。
+  std::array<PendingModelAsset, kEnemyArchetypeCount> enemyArchetypeModelAssets;
   std::array<PendingModelAsset, 4> environmentAssets;
   std::array<StaticModel, 4> environmentModels;
   std::array<EnvironmentBatchStatus, 4> environmentStatuses{
@@ -347,6 +350,9 @@ struct Surface {
   SkinnedModel enemyModel;
   SkinnedModel bossModel;
   SkinnedModel npcModel;
+  // 敌人原型独立模型（下标 = EnemyArchetype）：ready() 时优先于
+  // 共享 enemyModel 绘制；未注入/解析失败保持共享模型回退。
+  std::array<SkinnedModel, kEnemyArchetypeCount> enemyArchetypeModels;
   SkinnedAnimationState playerAnimationState;
   SkinnedAnimationState trainingTargetAnimationState;
   SkinnedAnimationState bossAnimationState;
@@ -438,7 +444,12 @@ struct Surface {
   // 敌人原型装备挂件启用表（下标 = EnemyArchetype 数值，向量与
   // enemyModel.attachmentNames() 同序）：6 类原型共享法师模型，
   // 用装备组合差异化剪影；越界原型回退全局开关。
-  std::array<std::vector<bool>, 6> enemyArchetypeAttachments;
+  std::array<std::vector<bool>, kEnemyArchetypeCount> enemyArchetypeAttachments;
+  // 独立原型模型的挂件启用表（向量与该原型独立模型的
+  // attachmentNames() 同序）：独立资产自带完整剪影，加载时默认
+  // 启用全部挂件；表为空时回退全局开关。
+  std::array<std::vector<bool>, kEnemyArchetypeCount>
+      enemyArchetypeModelAttachments;
   // 首领阶段装备启用表（下标 = BossPhaseAttachmentSetFor 返回值，
   // 向量与 bossModel.attachmentNames() 同序）：随阶段推进卸甲，
   // 剪影与阶段语言同步；表未构建（模型未加载）时回退全局开关。
@@ -465,6 +476,10 @@ struct Surface {
   Mesh clubMesh;
   int enemyWeaponJoint = -1;
   int bossWeaponJoint = -1;
+  // 独立原型模型的武器挂点（下标 = EnemyArchetype）：各自按名查找
+  // handslot.r；-1 表示该原型独立模型无挂点，武器不挂载。
+  std::array<int, kEnemyArchetypeCount> enemyArchetypeWeaponJoints{
+      -1, -1, -1, -1, -1, -1};
   // 主角刀光状态：seconds<0 表示无激活刀光；挥击边沿由 Loop 写入
   // 起点秒数 0 与当时朝向，渲染层按 SlashArcPoseAt 扫掠绘制。
   float playerSlashSeconds = -1.0f;
@@ -653,6 +668,16 @@ struct Surface {
         npcModelAsset.replace(std::move(bytes));
         break;
     }
+  }
+
+  // 注入敌人原型独立模型字节（archetype ∈ [0, kEnemyArchetypeCount)）。
+  // 解析与上传由 current GL context 下的渲染路径完成；缺失时绘制
+  // 保持共享 enemy.glb 回退。
+  void setEnemyArchetypeAsset(int archetype, std::vector<uint8_t> bytes) {
+    if (archetype < 0 || archetype >= kEnemyArchetypeCount) return;
+    std::lock_guard<std::mutex> lock(modelAssetMutex);
+    enemyArchetypeModelAssets[static_cast<std::size_t>(archetype)].replace(
+        std::move(bytes));
   }
 
   void setEnvironmentAsset(EnvironmentBatchKind kind, std::vector<uint8_t> bytes) {

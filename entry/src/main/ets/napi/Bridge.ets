@@ -199,6 +199,10 @@ export const nativeSetBlockAsset = (blockId: number, bytes: ArrayBuffer): boolea
 // 缺失时 native 侧保持静态 Mesh 回退。
 export const nativeSetNpcAsset = (bytes: ArrayBuffer): boolean =>
   native.nativeSetNpcAsset(bytes);
+// 敌人原型独立模型槽位（独立高模资产）：archetype ∈ [0, 6)，
+// 缺失时 native 侧保持共享 enemy.glb 回退。
+export const nativeSetEnemyArchetypeAsset = (archetype: number, bytes: ArrayBuffer): boolean =>
+  native.nativeSetEnemyArchetypeAsset(archetype, bytes);
 export const pushInput = (e: InputEvent): void => native.pushInput(e);
 export const pushAction = (type: number): void => native.pushAction(type);
 export const startEncounter = (mode: number): boolean => native.startEncounter(mode);

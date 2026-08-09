@@ -272,6 +272,47 @@ static napi_value NativeSetNpcAsset(napi_env env, napi_callback_info info) {
   return result;
 }
 
+// 独立高模资产：按原型注入敌人独立模型字节（archetype, ArrayBuffer）。
+// 缺失时渲染保持共享 enemy.glb 回退；字节复制成功后才进入生命周期锁提交。
+static napi_value NativeSetEnemyArchetypeAsset(napi_env env,
+                                               napi_callback_info info) {
+  size_t argc = 2;
+  napi_value args[2] = {nullptr, nullptr};
+  napi_value result = nullptr;
+  if (napi_get_cb_info(env, info, &argc, args, nullptr, nullptr) != napi_ok ||
+      argc != 2) {
+    napi_get_boolean(env, false, &result);
+    return result;
+  }
+  napi_valuetype archetypeType = napi_undefined;
+  double archetypeNumber = 0.0;
+  if (args[0] == nullptr ||
+      napi_typeof(env, args[0], &archetypeType) != napi_ok ||
+      archetypeType != napi_number ||
+      napi_get_value_double(env, args[0], &archetypeNumber) != napi_ok ||
+      !std::isfinite(archetypeNumber)) {
+    napi_get_boolean(env, false, &result);
+    return result;
+  }
+  int32_t archetype = -1;
+  if (!TryConvertInt32(archetypeNumber, archetype) || archetype < 0 ||
+      archetype >= kEnemyArchetypeCount) {
+    napi_get_boolean(env, false, &result);
+    return result;
+  }
+  std::vector<uint8_t> bytes;
+  if (!CopyArrayBuffer(env, args[1], bytes)) {
+    napi_get_boolean(env, false, &result);
+    return result;
+  }
+  g_loop.withLifecycle([archetype, &bytes]() {
+    g_loop.surface.setEnemyArchetypeAsset(archetype,
+                                          std::vector<uint8_t>(bytes));
+  });
+  napi_get_boolean(env, true, &result);
+  return result;
+}
+
 static napi_value NativePushInput(napi_env env, napi_callback_info info) {
   size_t argc = 1;
   napi_value args[1] = {nullptr};
@@ -1478,6 +1519,7 @@ static napi_value Init(napi_env env, napi_value exports) {
     {"nativeSetEnvironmentAssets", nullptr, NativeSetEnvironmentAssets, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"nativeSetBlockAsset", nullptr, NativeSetBlockEnvironmentAsset, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"nativeSetNpcAsset", nullptr, NativeSetNpcAsset, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"nativeSetEnemyArchetypeAsset", nullptr, NativeSetEnemyArchetypeAsset, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pushInput", nullptr, NativePushInput, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pushAction", nullptr, NativePushAction, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"startEncounter", nullptr, NativeStartEncounter, nullptr, nullptr, nullptr, napi_default, nullptr},

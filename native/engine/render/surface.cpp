@@ -1000,6 +1000,14 @@ static bool takePendingModelAsset(Surface& s, ModelKind kind,
   return asset != nullptr && asset->take(bytes);
 }
 
+static bool takePendingEnemyArchetypeAsset(Surface& s, int archetype,
+                                           std::vector<uint8_t>& bytes) {
+  if (archetype < 0 || archetype >= kEnemyArchetypeCount) return false;
+  std::lock_guard<std::mutex> lock(s.modelAssetMutex);
+  return s.enemyArchetypeModelAssets[static_cast<std::size_t>(archetype)]
+      .take(bytes);
+}
+
 // 按名构建挂件启用表（与 attachmentNames() 同序）：未列出的挂件关闭。
 static std::vector<bool> buildAttachmentOverride(
     const SkinnedModel& model,
@@ -1051,6 +1059,32 @@ static const Mesh* enemyWeaponMeshFor(const Surface& s, int archetype) {
     default:
       return &s.staffMesh;
   }
+}
+
+// 敌人原型绘制资产解析（独立高模槽位优先）：原型注入了独立模型且
+// 解析成功时用独立模型（自带挂件全启用、武器挂点独立查找），否则
+// 整体回退共享 enemy.glb（原型装备覆盖表 + 共享武器挂点）。
+// 回退是整体的：模型/挂点/挂件三者必须同源，避免跨模型错位。
+struct EnemyArchetypeDrawAssets {
+  SkinnedModel* model;
+  int weaponJoint;
+  const std::vector<bool>* attachmentOverride;
+};
+
+static EnemyArchetypeDrawAssets enemyArchetypeDrawAssets(Surface& s,
+                                                         int archetype) {
+  if (archetype >= 0 && archetype < kEnemyArchetypeCount) {
+    const std::size_t slot = static_cast<std::size_t>(archetype);
+    if (s.enemyArchetypeModels[slot].ready()) {
+      const std::vector<bool>& overrideFlags =
+          s.enemyArchetypeModelAttachments[slot];
+      return {&s.enemyArchetypeModels[slot],
+              s.enemyArchetypeWeaponJoints[slot],
+              overrideFlags.empty() ? nullptr : &overrideFlags};
+    }
+  }
+  return {&s.enemyModel, s.enemyWeaponJoint,
+          enemyAttachmentOverride(s, archetype)};
 }
 
 static void tryInitializeModelAsset(Surface& s, ModelKind kind,
@@ -1141,11 +1175,49 @@ static void tryInitializeModelAsset(Surface& s, ModelKind kind,
   }
 }
 
+// 敌人原型独立模型初始化（独立高模资产升级）：enemy_<archetype>.glb
+// 解析成功时该原型改用独立模型，失败/清空时保持共享 enemy.glb 回退。
+// 独立资产自带完整剪影：挂件默认全部启用，武器挂点各自按名查找。
+static void tryInitializeEnemyArchetypeAsset(Surface& s, int archetype) {
+  std::vector<uint8_t> bytes;
+  if (!takePendingEnemyArchetypeAsset(s, archetype, bytes)) return;
+  const std::size_t slot = static_cast<std::size_t>(archetype);
+  SkinnedModel& model = s.enemyArchetypeModels[slot];
+  // 替换和清空都必须先在 current context 下释放旧 GPU 资源。
+  model.destroy();
+  s.enemyArchetypeWeaponJoints[slot] = -1;
+  s.enemyArchetypeModelAttachments[slot].clear();
+  if (bytes.empty()) {
+    LOGI("enemy_%{public}d.glb cleared; shared enemy.glb fallback remains "
+         "active",
+         archetype);
+    return;
+  }
+  char assetName[32];
+  std::snprintf(assetName, sizeof(assetName), "enemy_%d.glb", archetype);
+  if (!model.tryInitialize(bytes, assetName)) {
+    LOGE("%{public}s; shared enemy.glb fallback remains active",
+         model.lastError().c_str());
+    return;
+  }
+  s.enemyArchetypeWeaponJoints[slot] =
+      FindJointIndex(model.jointNames(), "handslot.r");
+  s.enemyArchetypeModelAttachments[slot].assign(
+      model.attachmentNames().size(), true);
+  LOGI("enemy archetype %{public}d dedicated model ready: joints=%{public}zu "
+       "attachments=%{public}zu weaponJoint=%{public}d",
+       archetype, model.jointCount(), model.attachmentNames().size(),
+       s.enemyArchetypeWeaponJoints[slot]);
+}
+
 static void tryInitializePendingModelAssets(Surface& s) {
   tryInitializeModelAsset(s, ModelKind::Player, s.playerModel, "player.glb");
   tryInitializeModelAsset(s, ModelKind::Enemy, s.enemyModel, "enemy.glb");
   tryInitializeModelAsset(s, ModelKind::Boss, s.bossModel, "boss.glb");
   tryInitializeModelAsset(s, ModelKind::Npc, s.npcModel, "npc.glb");
+  for (int archetype = 0; archetype < kEnemyArchetypeCount; ++archetype) {
+    tryInitializeEnemyArchetypeAsset(s, archetype);
+  }
 }
 
 static const char* environmentAssetName(size_t index) {
@@ -2696,7 +2768,12 @@ static void draw3DPhase(Surface& s) {
       continue;
     }
     const float enemyFade = DeathFadeAlpha(enemy.deathSeconds);
-    drawActor(s, s.enemyModel, s.enemyMesh, animationState, enemy.animation,
+    // 独立高模槽位：注入 enemy_<archetype>.glb 的原型用独立模型，
+    // 其余原型保持共享 enemy.glb（含原型装备覆盖）。
+    const EnemyArchetypeDrawAssets archetypeAssets =
+        enemyArchetypeDrawAssets(s, enemy.archetype);
+    drawActor(s, *archetypeAssets.model, s.enemyMesh, animationState,
+              enemy.animation,
               actorModelMatrix(enemyFeet,
                                windupInflate(s, s.enemyAssetProfile.scale,
                                              enemy.alive && enemy.windingUp),
@@ -2723,9 +2800,9 @@ static void draw3DPhase(Surface& s) {
               enemy.id == s.targetMarker3d.targetId,
               enemyFade, 1.0f,
               "enemy", enemyWeaponMeshFor(s, enemy.archetype),
-              s.enemyWeaponJoint,
-              enemyAttachmentOverride(s, enemy.archetype));
-    }
+              archetypeAssets.weaponJoint,
+              archetypeAssets.attachmentOverride);
+  }
   // 野外敌人（Phase 3.2/3.3）：复用同一 drawActor 路径与动画状态表
   // （id 从 5000 起无冲突），按原型缩放与色调区分。
   for (const WildEnemy3DRenderState& enemy : s.wildEnemies3d) {
@@ -2741,7 +2818,10 @@ static void draw3DPhase(Surface& s) {
       continue;
     }
     const float wildFade = DeathFadeAlpha(enemy.deathSeconds);
-    drawActor(s, s.enemyModel, s.enemyMesh, animationState, enemy.animation,
+    const EnemyArchetypeDrawAssets archetypeAssets =
+        enemyArchetypeDrawAssets(s, enemy.archetype);
+    drawActor(s, *archetypeAssets.model, s.enemyMesh, animationState,
+              enemy.animation,
               actorModelMatrix(enemyFeet,
                                windupInflate(s, s.enemyAssetProfile.scale *
                                                     archetypeScale,
@@ -2763,8 +2843,8 @@ static void draw3DPhase(Surface& s) {
               enemy.id == s.targetMarker3d.targetId,
               wildFade, 1.0f,
               "enemy", enemyWeaponMeshFor(s, enemy.archetype),
-              s.enemyWeaponJoint,
-              enemyAttachmentOverride(s, enemy.archetype));
+              archetypeAssets.weaponJoint,
+              archetypeAssets.attachmentOverride);
   }
 
   // NPC（Phase 4）：复用骨骼角色绘制路径，仅 idle/walk 动画，无血条。
@@ -3325,6 +3405,7 @@ static void destroy3DResource(Surface& s, SurfaceGlResource resource) {
       s.enemyModel.destroy();
       s.bossModel.destroy();
       s.npcModel.destroy();
+      for (SkinnedModel& model : s.enemyArchetypeModels) model.destroy();
       break;
     case SurfaceGlResource::StaticEnvironmentModels:
       for (StaticModel& model : s.environmentModels) model.destroy();
@@ -3366,6 +3447,9 @@ static void destroy3DResource(Surface& s, SurfaceGlResource resource) {
         s.enemyModelAsset.markDirtyForContextRebuild();
         s.bossModelAsset.markDirtyForContextRebuild();
         s.npcModelAsset.markDirtyForContextRebuild();
+        for (PendingModelAsset& asset : s.enemyArchetypeModelAssets) {
+          asset.markDirtyForContextRebuild();
+        }
         for (PendingModelAsset& asset : s.environmentAssets) {
           asset.markDirtyForContextRebuild();
         }
@@ -3392,6 +3476,9 @@ static void abandon3DResources(Surface& s) {
   s.enemyModel.abandonGpuResources();
   s.bossModel.abandonGpuResources();
   s.npcModel.abandonGpuResources();
+  for (SkinnedModel& model : s.enemyArchetypeModels) {
+    model.abandonGpuResources();
+  }
   for (StaticModel& model : s.environmentModels) model.abandonGpuResources();
   for (auto& entry : s.blockEnvironmentModels) {
     entry.second.abandonGpuResources();
@@ -3438,6 +3525,9 @@ static void abandon3DResources(Surface& s) {
     s.enemyModelAsset.markDirtyForContextRebuild();
     s.bossModelAsset.markDirtyForContextRebuild();
     s.npcModelAsset.markDirtyForContextRebuild();
+    for (PendingModelAsset& asset : s.enemyArchetypeModelAssets) {
+      asset.markDirtyForContextRebuild();
+    }
     for (PendingModelAsset& asset : s.environmentAssets) {
       asset.markDirtyForContextRebuild();
     }
@@ -3456,6 +3546,9 @@ static void clearModelAssets(Surface& s) {
   s.enemyModelAsset.clear();
   s.bossModelAsset.clear();
   s.npcModelAsset.clear();
+  for (PendingModelAsset& asset : s.enemyArchetypeModelAssets) {
+    asset.clear();
+  }
   for (size_t index = 0; index < s.environmentAssets.size(); ++index) {
     s.environmentAssets[index].clear();
     s.environmentStatuses[index] = EnvironmentBatchStatus::Empty;
