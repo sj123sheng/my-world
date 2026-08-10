@@ -128,9 +128,14 @@ int main() {
     }
     assert(state.height > climbed);
     assert(state.stamina < motion.config().maxStamina);
-    // 停止移动：退出攀爬回到站立。
+    // 停止移动：攀爬中途脚下悬空 → 坠落而非瞬移回地面；落地后站立。
     state = motion.update(state, MotionInput{}, flat, 0.5f, 0.45f, 0.016f);
+    assert(state.state == MotionState::Airborne);
+    for (int i = 0; i < 120 && state.state != MotionState::Grounded; ++i) {
+      state = motion.update(state, MotionInput{}, flat, 0.5f, 0.45f, 0.016f);
+    }
     assert(state.state == MotionState::Grounded);
+    assert(state.height == 0.0f);
     // 体力耗尽不能进入攀爬。
     ExplorationMotionState exhausted = motion.reset(0.0f);
     exhausted.stamina = 0.0f;

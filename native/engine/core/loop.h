@@ -33,6 +33,7 @@
 #include "../../gameplay/world/exploration_feedback.h"
 #include "../../gameplay/world/npc_agent.h"
 #include "../../gameplay/world/world_terrain.h"
+#include "../../gameplay/world/terrain_wall_collision.h"
 #include "../../gameplay/quest/quest_system.h"
 #include "../../gameplay/quest/side_quests.h"
 #include "../../gameplay/quest/daily_quest.h"

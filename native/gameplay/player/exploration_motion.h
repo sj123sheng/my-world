@@ -31,6 +31,10 @@ struct ExplorationMotionConfig {
   float staminaRegenPerSecond = 14.0f;
   // 停止消耗后的恢复延迟，避免频繁抖动消耗/恢复。
   float staminaRegenDelaySeconds = 0.7f;
+  // 地面高度单帧向下台阶上限：超过即视为走离悬崖边缘，进入坠落
+  // 而不是贴地瞬移（原神式走离台阶下落）。可行走坡度（< 攀爬阈值）
+  // 在正常移速下的单帧下降远小于该值，不会误触发。
+  float maxStepDown = 0.008f;
   // 自动疾跑（原神式）：地面持续移动达阈值后加速并消耗体力。
   float sprintActivateSeconds = 1.5f;
   float sprintStaminaPerSecond = 9.0f;
@@ -57,6 +61,10 @@ struct MotionInput {
   // 正贴着建筑墙面朝墙移动：与地形陡坡等价地进入攀爬，
   // 持续消耗体力并按 wallClimbSpeed 抬升高度，可攀登城墙等建筑。
   bool wallClimbing = false;
+  // 正贴着地形墙体（悬崖/mesa 壁等陡坡）朝墙移动：与建筑墙面攀爬
+  // 同语言——按 wallClimbSpeed 限速上升而不是地面高度瞬移吸附，
+  // 登顶前宿主层持续阻挡水平位移，登顶后阻挡自然解除走上台地。
+  bool terrainClimbing = false;
 };
 
 // 宿主层地面高度覆盖：站在建筑盒顶等场景下，地面高度不再等于

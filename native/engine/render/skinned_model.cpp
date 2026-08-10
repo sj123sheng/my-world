@@ -1153,10 +1153,11 @@ SkinPalette SkinnedModel::update(SkinnedAnimationState& animation,
   }
   const float dt = std::max(dtSeconds, 0.0f);
   const RenderAnimation requestedAnimation = ChooseAnimation(actor);
-  // 跑动步频随输入幅度缩放，与地面移速匹配；其余动作保持原速率。
+  // 跑动步频随输入幅度缩放，与地面移速匹配；locomotionRateScale
+  // 逐角色调参（主角放大模型整体放慢）；其余动作保持原速率。
   const float playbackRate =
       requestedAnimation == RenderAnimation::Run
-          ? RunPlaybackRate(actor.moveRatio)
+          ? RunPlaybackRate(actor.moveRatio) * actor.locomotionRateScale
           : 1.0f;
   const std::string desiredName = ResolveClip(
       impl_->data.clipNames, requestedAnimation, actor.variant,

@@ -2122,6 +2122,9 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       turnSpeedScale = 0.0f;
     }
   }
+  // 地形墙探测必须使用控制器积分前的位置；若在 update 之后才取样，
+  // 本帧位移恒为零，正面阻挡和攀爬入口均不会触发，只剩嵌入推出兜底。
+  const Vec2 playerPosBeforeController{surface.player.x, surface.player.y};
   playerController.update(surface.player, intent.move, camera.yaw(),
                           dtSeconds,
                           motionState.sprinting
@@ -2134,6 +2137,37 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   const BuildingContact wallContact = resolvePlayerWorldCollision(
       surface.player.x, surface.player.y, playerCollisionRadius,
       motionState.height);
+
+  // 地形墙碰撞（原神式悬崖语言）：特征层生成的 mesa 壁/回廊悬崖/
+  // 劣地脊线/边缘山脊此前没有水平阻挡，角色直接穿墙而过。现在与
+  // 建筑碰撞同语言：陡坡墙阻挡 + 沿墙滑动，接触信息驱动真地形攀爬；
+  // 游泳中地形墙不参与（水域边缘为缓坡入水）。
+  TerrainWallContact terrainWall;
+  if (motionState.state != MotionState::Swimming) {
+    const Vec2 prevPlayerPos = playerPosBeforeController;
+    const Vec2 moveDelta{surface.player.x - prevPlayerPos.x,
+                         surface.player.y - prevPlayerPos.y};
+    if (moveDelta.length() > 1e-6f) {
+      // 探测距离 = 碰撞半径 + 本帧位移 + 余量：在撞墙前拦截。
+      const float terrainProbeDistance =
+          playerCollisionRadius + moveDelta.length() + 0.001f;
+      terrainWall = terrainWallContact(terrain, prevPlayerPos.x,
+                                       prevPlayerPos.y, motionState.height,
+                                       moveDelta, terrainProbeDistance);
+      if (terrainWall.blocked) {
+        const Vec2 slide =
+            slideAlongTerrainWall(moveDelta, terrainWall.normal);
+        surface.player.x = prevPlayerPos.x + slide.x;
+        surface.player.y = prevPlayerPos.y + slide.y;
+      }
+    }
+    // 嵌入兜底：被击退/传送送进墙体时沿下坡方向推出。
+    const Vec2 fixedPos = depenetrateTerrainWall(
+        terrain, surface.player.x, surface.player.y, motionState.height,
+        playerCollisionRadius);
+    surface.player.x = fixedPos.x;
+    surface.player.y = fixedPos.y;
+  }
 
   // ---- 开放世界探索（阶段一）----
   // 性能降级联动视距（Phase 5 接入 viewDistanceScale）：档位越低
@@ -2157,6 +2191,15 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     motionInput.jumpPressed = jumpQueued;
     motionInput.glideHeld = glideHeld;
     motionInput.moving = surface.player.moving;
+    // 地形攀爬：被可攀爬地形墙阻挡且仍在朝墙推进时进入真攀爬
+    //（按攀爬速度限速上升、播放攀爬动画）；爬到墙顶后阻挡自动
+    // 解除（高度已可跨越），行走接管站上墙顶。
+    motionInput.terrainClimbing =
+        terrainWall.blocked && terrainWall.climbable &&
+        surface.player.moving &&
+        (motionState.state == MotionState::Grounded ||
+         motionState.state == MotionState::Climbing) &&
+        motionState.stamina > 0.0f;
     // 墙面攀爬：贴墙朝墙推进且尚未登顶时，与地形陡坡同等进入攀爬，
     // 消耗体力并按固定速度上升；登顶后由地面覆盖接管站上墙头。
     motionInput.wallClimbing =
@@ -3644,6 +3687,9 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   // 动画步频同比缩放才能消除半推摇杆时的滑步。
   surface.player3dAnimation.moveRatio =
       std::clamp(intent.move.length(), 0.0f, 1.0f);
+  // 主角移动动画放慢：模型放大后原步频相对体量过快，跑动/行走
+  // 播放速率统一降为 65%（仅主角，敌人/NPC 保持原步频）。
+  surface.player3dAnimation.locomotionRateScale = 0.65f;
   surface.trainingTarget3dAnimation.alive = surface.trainingTarget.alive;
   // 野外敌人先发布：publish3DEncounterState 的共享状态表清理依赖它已填充。
   publishWildEnemies3d(surface, wildSpawn, dtSeconds);

@@ -45,6 +45,21 @@ void testClipResolutionFallsBackToIdle() {
   assert(ResolveClip({"idle", "run"}, RenderAnimation::Dodge) == "run");
 }
 
+void testAttackFallsBackToCastForRemadePlayer() {
+  // 重制主角 clip 集无 attack：普攻回退施法语言 cast（与技能
+  // 释放同语言），cast 也缺失时由 idle 兜底。
+  const std::vector<std::string> playerClips{
+      "idle", "walk", "run", "Jump_Idle", "glide",
+      "cast", "Dive", "Turn_180", "climb"};
+  assert(ResolveClip(playerClips, RenderAnimation::Attack) == "cast");
+  // 连段段数偏好 clip 缺失时同样回退 cast。
+  assert(ResolveClip(playerClips, RenderAnimation::Attack, 0, 1.0f,
+                     "1H_Melee_Attack_Slice_Diagonal") == "cast");
+  // KayKit 资产有 attack：行为不变，attack 优先于 cast。
+  assert(ResolveClip({"idle", "run", "attack", "cast"},
+                     RenderAnimation::Attack) == "attack");
+}
+
 void testDedicatedActionClipNames() {
   assert(std::string(RenderAnimationName(RenderAnimation::Dodge)) ==
          "Dodge_Forward");
@@ -521,7 +536,8 @@ void testRemadePlayerExplorationAnimationLanguage() {
          "Turn_180");
 
   // 重制主角 clip 集（prepare_player_glb.py 产物）：新语言全部命中，
-  // 无 attack/hit/death 时战斗意图回退 idle（刀光/特效承接反馈）。
+  // 无 attack 时普攻回退施法语言 cast（与技能释放同语言），
+  // 无 hit/death 时回退 idle（刀光/特效承接反馈）。
   const std::vector<std::string> remade{"idle",  "walk",  "run",
                                         "Jump_Idle", "glide", "cast",
                                         "Dive",  "Turn_180", "climb"};
@@ -544,8 +560,10 @@ void testRemadePlayerExplorationAnimationLanguage() {
   assert(ResolveClip(remade, RenderAnimation::Current) == "cast");
   assert(ResolveClip(remade, RenderAnimation::Corruption) == "cast");
   assert(ResolveClip(remade, RenderAnimation::Ultimate) == "cast");
-  // 战斗意图无对应 clip 时回退 idle。
-  assert(ResolveClip(remade, RenderAnimation::Attack) == "idle");
+  // 普攻：重制模型无 attack clip，回退 cast 施法语言。
+  assert(ResolveClip(remade, RenderAnimation::Attack) == "cast");
+  // cast 也缺失时才继续回退 idle。
+  assert(ResolveClip({"idle", "run"}, RenderAnimation::Attack) == "idle");
   assert(ResolveClip(remade, RenderAnimation::Hit) == "idle");
   assert(ResolveClip(remade, RenderAnimation::Death) == "idle");
 
@@ -585,6 +603,7 @@ void testWeaponJointFallbackChain() {
 int main() {
   testAnimationPriority();
   testClipResolutionFallsBackToIdle();
+  testAttackFallsBackToCastForRemadePlayer();
   testDedicatedActionClipNames();
   testDedicatedActionClipFallbacks();
   testExplicitActionPriority();

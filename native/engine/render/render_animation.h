@@ -47,6 +47,9 @@ struct ActorRenderState {
   bool moving = false;
   // 归一化移动输入幅度（0..1）：驱动跑动步频缩放，与地面移速匹配。
   float moveRatio = 1.0f;
+  // 移动（跑/走）播放速率乘数：逐角色调参。主角模型放大后原步频
+  // 相对体量过快，由发布侧降速；默认 1 保持其余角色原步频。
+  float locomotionRateScale = 1.0f;
   // 受击/死亡动画变体索引：按奇偶在 hit/Hit_B、death/Death_B 之间
   // 轮换，打破连续受击与群体死亡的重复感。
   uint8_t variant = 0;
@@ -329,6 +332,12 @@ inline std::string ResolveClip(const std::vector<std::string>& clips,
     // 滑翔回退链：无 glide clip 时回退 KayKit 空中姿态语言。
     candidates.push_back("Jump_Idle");
     candidates.push_back("Jump_Full_Short");
+  }
+  if (animation == RenderAnimation::Attack) {
+    // 主角重制模型无 attack clip：普攻回退施法语言 cast（与技能
+    // 释放同语言），再缺失时由下方 idle 兜底；KayKit 资产有
+    // attack 不受影响。
+    candidates.push_back("cast");
   }
   if (animation != RenderAnimation::Idle) candidates.push_back("idle");
 

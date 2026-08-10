@@ -17,6 +17,7 @@ ExplorationMotion::ExplorationMotion(ExplorationMotionConfig config)
   if (config_.jumpVelocity <= 0.0f) config_.jumpVelocity = 0.55f;
   if (config_.gravity <= 0.0f) config_.gravity = 1.7f;
   if (config_.glideFallSpeed <= 0.0f) config_.glideFallSpeed = 0.09f;
+  if (config_.maxStepDown <= 0.0f) config_.maxStepDown = 0.008f;
 }
 
 ExplorationMotionState ExplorationMotion::reset(float groundHeight) const {
@@ -61,9 +62,6 @@ ExplorationMotionState ExplorationMotion::update(
 
   switch (state.state) {
     case MotionState::Grounded: {
-      // 贴地：地面高度连续跟随，避免悬空或陷入地形。
-      state.height = ground;
-      state.verticalVelocity = 0.0f;
       if (inWater) {
         // 走入水域：进入游泳，高度吸附到水面。
         state.state = MotionState::Swimming;
@@ -77,10 +75,21 @@ ExplorationMotionState ExplorationMotion::update(
         consumed = true;
         break;
       }
+      // 走离悬崖边缘：地面单帧下降超过台阶上限时进入坠落，而不是
+      // 贴地瞬移滑下崖壁（与地形墙阻挡配套，补全悬崖的碰撞语言）。
+      if (state.height - ground > config_.maxStepDown) {
+        state.state = MotionState::Airborne;
+        state.verticalVelocity = 0.0f;
+        break;
+      }
+      // 贴地：地面高度连续跟随，避免悬空或陷入地形。
+      state.height = ground;
+      state.verticalVelocity = 0.0f;
       // 陡坡/墙面攀爬：在可攀爬面上移动或正贴墙朝墙推进即进入攀爬，
       // 持续消耗体力；体力耗尽后退回站立，允许缓慢挪过陡坡但不能持续攀行。
       if (motionInput.moving &&
-          (terrain.climbableAt(x, y) || motionInput.wallClimbing) &&
+          (terrain.climbableAt(x, y) || motionInput.wallClimbing ||
+           motionInput.terrainClimbing) &&
           state.stamina > 0.0f) {
         state.state = MotionState::Climbing;
         state.sprinting = false;
@@ -107,16 +116,28 @@ ExplorationMotionState ExplorationMotion::update(
     case MotionState::Climbing: {
       const bool stillClimbing = motionInput.moving &&
                                  (terrain.climbableAt(x, y) ||
-                                  motionInput.wallClimbing) &&
+                                  motionInput.wallClimbing ||
+                                  motionInput.terrainClimbing) &&
                                  !inWater && state.stamina > 0.0f;
       if (!stillClimbing) {
-        state.state = inWater ? MotionState::Swimming : MotionState::Grounded;
-        state.height = inWater ? waterLevel : ground;
+        if (inWater) {
+          state.state = MotionState::Swimming;
+          state.height = waterLevel;
+        } else if (ground < state.height - config_.maxStepDown) {
+          // 攀爬中途体力耗尽（或离开墙面）且脚下远低于当前高度：
+          // 从墙上坠落而不是瞬移回地面。
+          state.state = MotionState::Airborne;
+          state.verticalVelocity = 0.0f;
+        } else {
+          state.state = MotionState::Grounded;
+          state.height = ground;
+        }
         break;
       }
-      if (motionInput.wallClimbing) {
-        // 墙面攀爬：匀速上升；爬到盒顶后宿主层的地面覆盖会接管，
-        // 切换到站立并站上墙头。地形攀爬仍沿坡面贴合地面。
+      if (motionInput.wallClimbing || motionInput.terrainClimbing) {
+        // 墙面攀爬：匀速上升；爬到盒顶/墙顶后宿主层的地面覆盖或
+        // 阻挡解除会接管，切换到站立并站上墙头。水平方向由宿主层
+        // 阻挡在墙面，不会穿墙。
         state.height = std::max(ground,
                                 state.height + wallClimbSpeed() * dtSeconds);
       } else {

@@ -5,7 +5,9 @@ AssetProfile AssetProfile::forModel(ModelKind kind) {
     case ModelKind::Player:
       // 主角盔甲：高光最强最锐利，作为画面焦点。卡通阴影取冷紫调，
       // 受光面保持盔甲固有色；描边最粗一档，主角是画面焦点。
-      return {0.05f / 3.0f, 0.0f, {0.16f, 0.24f, 0.27f},
+      // 模型为原始 5 倍（0.05f→0.25f，曾放大 20 倍后缩回 1/4）：
+      // VFX 经 VfxSizeRatio 自动跟随。
+      return {0.25f / 3.0f, 0.0f, {0.16f, 0.24f, 0.27f},
               {0.31f, 0.84f, 0.75f}, 0.75f, 0, 0.42f, 32.0f,
               true, {0.74f, 0.70f, 0.86f}, 0.16f, 0.09f, 0.00038f};
     case ModelKind::Enemy:
