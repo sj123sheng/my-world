@@ -249,6 +249,87 @@ static napi_value NativeSetBlockEnvironmentAsset(napi_env env,
   return result;
 }
 
+static napi_value NativeSetTerrainAssets(napi_env env,
+                                         napi_callback_info info) {
+  size_t argc = 2;
+  napi_value args[2] = {nullptr, nullptr};
+  napi_value result = nullptr;
+  if (napi_get_cb_info(env, info, &argc, args, nullptr, nullptr) != napi_ok ||
+      argc != 2) {
+    napi_get_boolean(env, false, &result);
+    return result;
+  }
+  std::vector<uint8_t> atlas;
+  std::vector<uint8_t> control;
+  if (!CopyArrayBuffer(env, args[0], atlas) ||
+      !CopyArrayBuffer(env, args[1], control)) {
+    napi_get_boolean(env, false, &result);
+    return result;
+  }
+  g_loop.withLifecycle([&atlas, &control]() {
+    g_loop.surface.setTerrainMaterialAssets(std::move(atlas),
+                                            std::move(control));
+  });
+  napi_get_boolean(env, true, &result);
+  return result;
+}
+
+static napi_value NativeSetFoliageAtlas(napi_env env,
+                                        napi_callback_info info) {
+  size_t argc = 1;
+  napi_value args[1] = {nullptr};
+  napi_value result = nullptr;
+  if (napi_get_cb_info(env, info, &argc, args, nullptr, nullptr) != napi_ok ||
+      argc != 1) {
+    napi_get_boolean(env, false, &result);
+    return result;
+  }
+  std::vector<uint8_t> bytes;
+  if (!CopyArrayBuffer(env, args[0], bytes)) {
+    napi_get_boolean(env, false, &result);
+    return result;
+  }
+  g_loop.withLifecycle([&bytes]() {
+    g_loop.surface.setFoliageAtlasAsset(std::move(bytes));
+  });
+  napi_get_boolean(env, true, &result);
+  return result;
+}
+
+static napi_value NativeSetVisualTerrainAsset(napi_env env,
+                                              napi_callback_info info) {
+  size_t argc = 3;
+  napi_value args[3] = {nullptr, nullptr, nullptr};
+  napi_value result = nullptr;
+  if (napi_get_cb_info(env, info, &argc, args, nullptr, nullptr) != napi_ok ||
+      argc != 3) {
+    napi_get_boolean(env, false, &result);
+    return result;
+  }
+  double blockNumber = 0.0;
+  double lodNumber = 0.0;
+  int32_t blockId = -1;
+  int32_t lod = -1;
+  if (napi_get_value_double(env, args[0], &blockNumber) != napi_ok ||
+      napi_get_value_double(env, args[1], &lodNumber) != napi_ok ||
+      !TryConvertInt32(blockNumber, blockId) ||
+      !TryConvertInt32(lodNumber, lod) || blockId < 0 ||
+      blockId >= kEnvironmentBlockCount || lod < 0 || lod > 2) {
+    napi_get_boolean(env, false, &result);
+    return result;
+  }
+  std::vector<uint8_t> bytes;
+  if (!CopyArrayBuffer(env, args[2], bytes)) {
+    napi_get_boolean(env, false, &result);
+    return result;
+  }
+  g_loop.withLifecycle([blockId, lod, &bytes]() {
+    g_loop.surface.setVisualTerrainAsset(blockId, lod, std::move(bytes));
+  });
+  napi_get_boolean(env, true, &result);
+  return result;
+}
+
 // Phase 4：注入 NPC 模型字节（ArrayBuffer）。缺失时渲染保持静态 Mesh
 // 回退，不影响其余槽位；字节复制成功后才进入生命周期锁提交。
 static napi_value NativeSetNpcAsset(napi_env env, napi_callback_info info) {
@@ -1518,6 +1599,9 @@ static napi_value Init(napi_env env, napi_value exports) {
     {"nativeSetModelAssets", nullptr, NativeSetModelAssets, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"nativeSetEnvironmentAssets", nullptr, NativeSetEnvironmentAssets, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"nativeSetBlockAsset", nullptr, NativeSetBlockEnvironmentAsset, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"nativeSetTerrainAssets", nullptr, NativeSetTerrainAssets, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"nativeSetFoliageAtlas", nullptr, NativeSetFoliageAtlas, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"nativeSetVisualTerrainAsset", nullptr, NativeSetVisualTerrainAsset, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"nativeSetNpcAsset", nullptr, NativeSetNpcAsset, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"nativeSetEnemyArchetypeAsset", nullptr, NativeSetEnemyArchetypeAsset, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pushInput", nullptr, NativePushInput, nullptr, nullptr, nullptr, napi_default, nullptr},

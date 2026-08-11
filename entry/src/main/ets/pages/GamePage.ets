@@ -1,5 +1,7 @@
-import { nativeSetEnvironmentAssets, nativeSetModelAssets, nativeSetBlockAsset, nativeSetNpcAsset, nativeSetEnemyArchetypeAsset, nativeStartIfForeground,
+import { nativeSetEnvironmentAssets, nativeSetModelAssets, nativeSetBlockAsset, nativeSetTerrainAssets, nativeSetFoliageAtlas, nativeSetVisualTerrainAsset, nativeSetNpcAsset, nativeSetEnemyArchetypeAsset, nativeStartIfForeground,
   nativeStop, pullSnapshot, setAudioEnabled, saveProgress, loadProgress, Snapshot } from '../napi/Bridge';
+import { TERRAIN_ATLAS_ASSET, TERRAIN_CONTROL_ASSET, FOLIAGE_ATLAS_ASSET,
+  VISUAL_TERRAIN_RESOURCES } from '../generated/EnvironmentVisualManifest';
 import { Hud } from '../ui/Hud';
 import { CombatControls } from '../ui/CombatControls';
 import { Joystick } from '../ui/Joystick';
@@ -416,6 +418,27 @@ struct GamePage {
     this.loadEnvironmentBlocks(this.neighborBlockIds(blockId));
   }
 
+  private async loadVisualTerrainSliceAssets(generation: number): Promise<void> {
+    const resourceManager = getContext(this).resourceManager;
+    for (const resource of VISUAL_TERRAIN_RESOURCES) {
+      const blockId: number = resource.blockId;
+      for (let lod = 0; lod < resource.lodAssets.length; ++lod) {
+        try {
+          const bytes = await resourceManager.getRawFileContent(
+            resource.lodAssets[lod]);
+          if (!this.isActiveModelLoad(generation)) {
+            return;
+          }
+          if (!nativeSetVisualTerrainAsset(blockId, lod, bytes.buffer as ArrayBuffer)) {
+            console.error(`[Ethelan] Native rejected visual terrain block ${blockId} LOD ${lod}`);
+          }
+        } catch (error) {
+          console.error(`[Ethelan] Visual terrain block ${blockId} LOD ${lod} unavailable`);
+        }
+      }
+    }
+  }
+
   private async loadModelAssets(generation: number): Promise<void> {
     try {
       const resourceManager = getContext(this).resourceManager;
@@ -486,6 +509,35 @@ struct GamePage {
             JSON.stringify(error));
         }
       }
+      try {
+        const terrainAssets: Uint8Array[] = await Promise.all([
+          resourceManager.getRawFileContent(TERRAIN_ATLAS_ASSET),
+          resourceManager.getRawFileContent(TERRAIN_CONTROL_ASSET)
+        ]);
+        if (this.isActiveModelLoad(generation) &&
+          !nativeSetTerrainAssets(terrainAssets[0].buffer as ArrayBuffer,
+            terrainAssets[1].buffer as ArrayBuffer)) {
+          console.error('[Ethelan] Native rejected terrain material assets');
+        }
+      } catch (error) {
+        if (this.isActiveModelLoad(generation)) {
+          console.error('[Ethelan] Failed to load terrain visual assets: ' + JSON.stringify(error));
+        }
+      }
+      try {
+        const foliageAtlas: Uint8Array =
+          await resourceManager.getRawFileContent(FOLIAGE_ATLAS_ASSET);
+        if (this.isActiveModelLoad(generation) &&
+          !nativeSetFoliageAtlas(foliageAtlas.buffer as ArrayBuffer)) {
+          console.error('[Ethelan] Native rejected foliage atlas');
+        }
+      } catch (error) {
+        if (this.isActiveModelLoad(generation)) {
+          console.error('[Ethelan] Failed to load foliage atlas: ' + JSON.stringify(error));
+        }
+      }
+      // 手工地貌独立加载：地表贴图缺失时仍允许视觉 GLB 使用回退材质。
+      await this.loadVisualTerrainSliceAssets(generation);
       // Phase 2：预取出生点（0.5, 0.12）所在区块一圈；缺失文件静默跳过。
       this.loadEnvironmentBlocks(
         this.neighborBlockIds(this.environmentBlockIdAt(0.5, 0.12)));

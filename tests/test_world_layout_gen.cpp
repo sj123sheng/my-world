@@ -247,5 +247,59 @@ int main() {
     assert(fromMatched && toMatched);
   }
 
+  // ---- 单区环境视觉配置 ----
+  static_assert(WL::kVisualTerrainCellCount == 3,
+                "spawn-to-corridor slice needs three authored cells");
+  std::set<int32_t> visualBlocks;
+  for (const auto& cell : WL::kVisualTerrainCells) {
+    assert(cell.blockId >= 0 && cell.blockId < 64);
+    assert(visualBlocks.insert(cell.blockId).second);
+    assert(!cell.nearAsset.empty() && !cell.midAsset.empty() &&
+           !cell.farAsset.empty());
+    assert(cell.boundsMinX < cell.boundsMaxX);
+    assert(cell.boundsMinY < cell.boundsMaxY);
+    assert(cell.maxWalkableDeviation > 0.0f &&
+           cell.maxWalkableDeviation <= 0.01f);
+    assert(cell.collisionPolicy == 0);
+  }
+  assert(visualBlocks.count(4) == 1);
+  assert(visualBlocks.count(12) == 1);
+  assert(visualBlocks.count(20) == 1);
+
+  static_assert(WL::kFoliageLayerCount == 5,
+                "slice needs grass/shrub/tree/flower/rock layers");
+  for (const auto& layer : WL::kFoliageLayers) {
+    assert(layer.kind >= 0 && layer.kind <= 4);
+    assert(!layer.assetId.empty());
+    assert(layer.density > 0.0f);
+    assert(layer.minScale > 0.0f && layer.maxScale >= layer.minScale);
+    assert(layer.maxSlope > 0.0f);
+    assert(layer.routeClearance >= 0.0f);
+  }
+
+  static_assert(WL::kWaterBodyCount == 1,
+                "the vertical slice world has one intentional lake");
+  assert(WL::kWaterBodies[0].halfExtentX > 0.0f);
+  assert(WL::kWaterBodies[0].halfExtentY > 0.0f);
+  assert(WL::kWaterBodies[0].level < 0.0f);
+  assert(WL::kWaterBodies[0].shoreWidth > 0.0f);
+
+  static_assert(WL::kEnvironmentValidationCameraCount == 5,
+                "visual acceptance uses five fixed viewpoints");
+  for (const auto& camera : WL::kEnvironmentValidationCameras) {
+    assert(!camera.cameraId.empty());
+    assert(InBounds(camera.x) && InBounds(camera.y));
+    assert(camera.pitch < 0.0f);
+    assert(camera.distance > 0.0f);
+  }
+
+  assert(!WL::kTerrainMaterialSet.atlasAsset.empty());
+  assert(!WL::kTerrainMaterialSet.controlAsset.empty());
+  assert(!WL::kFoliageAtlasAsset.empty());
+  assert(WL::kTerrainMaterialSet.layerCount == 4);
+  assert(WL::kTerrainMaterialSet.macroScale > 0.0f);
+  assert(WL::kTerrainMaterialSet.detailScale >
+         WL::kTerrainMaterialSet.macroScale);
+
   return 0;
 }

@@ -138,6 +138,27 @@ struct WorldRouteDef {
   float fromX; float fromY; float toX; float toY;
 };
 
+struct WorldTerrainMaterialSetDef {
+  std::string_view atlasAsset; std::string_view controlAsset; int32_t layerCount;
+  float macroScale; float detailScale; float triplanarSharpness; float paintedControlStrength;
+};
+struct WorldVisualTerrainCellDef {
+  int32_t blockId; std::string_view nearAsset; std::string_view midAsset; std::string_view farAsset;
+  float boundsMinX; float boundsMinY; float boundsMaxX; float boundsMaxY;
+  float maxWalkableDeviation; int32_t collisionPolicy;
+};
+struct WorldFoliageLayerDef {
+  int32_t kind; std::string_view assetId; float density; float minScale; float maxScale; float minHeight; float maxHeight;
+  float maxSlope; float waterClearance; float routeClearance; bool castsShadow;
+};
+struct WorldWaterBodyDef {
+  std::string_view waterId; float centerX; float centerY; float halfExtentX; float halfExtentY;
+  float level; float shoreWidth; std::string_view preset;
+};
+struct WorldEnvironmentValidationCameraDef {
+  std::string_view cameraId; float x; float y; float yaw; float pitch; float distance;
+};
+
 constexpr std::size_t kDistrictCount = 6;
 constexpr std::array<WorldDistrictDef, kDistrictCount> kDistricts{{
     {
@@ -574,6 +595,46 @@ constexpr std::array<WorldRouteDef, kRouteCount> kRoutes{{
     {60, 63, 0.52f, 0.16f, 0.5f, 0.34f},
     {60, 61, 0.52f, 0.16f, 0.18f, 0.28f},
     {60, 62, 0.52f, 0.16f, 0.7f, 0.22f},
+}};
+
+constexpr std::string_view kFoliageAtlasAsset = "environment/foliage_atlas.png"sv;
+
+constexpr WorldTerrainMaterialSetDef kTerrainMaterialSet{
+    "environment/terrain_material_atlas.png"sv, "environment/terrain_control_spawn.png"sv, 4,
+    6.5f, 90.0f, 4.0f, 0.85f,
+};
+
+constexpr std::size_t kVisualTerrainCellCount = 3;
+constexpr std::array<WorldVisualTerrainCellDef, kVisualTerrainCellCount> kVisualTerrainCells{{
+    {4, "environment/visual_terrain/block_4_lod0.glb"sv, "environment/visual_terrain/block_4_lod1.glb"sv, "environment/visual_terrain/block_4_lod2.glb"sv,
+     0.5f, 0.0f, 0.625f, 0.125f, 0.006f, 0},
+    {12, "environment/visual_terrain/block_12_lod0.glb"sv, "environment/visual_terrain/block_12_lod1.glb"sv, "environment/visual_terrain/block_12_lod2.glb"sv,
+     0.5f, 0.125f, 0.625f, 0.25f, 0.006f, 0},
+    {20, "environment/visual_terrain/block_20_lod0.glb"sv, "environment/visual_terrain/block_20_lod1.glb"sv, "environment/visual_terrain/block_20_lod2.glb"sv,
+     0.5f, 0.25f, 0.625f, 0.375f, 0.006f, 0},
+}};
+
+constexpr std::size_t kFoliageLayerCount = 5;
+constexpr std::array<WorldFoliageLayerDef, kFoliageLayerCount> kFoliageLayers{{
+    {0, "foliage_grass_cross"sv, 500.0f, 0.75f, 1.25f, -0.035f, 0.08f, 0.45f, 0.008f, 0.016f, false},
+    {1, "foliage_shrub_round"sv, 180.0f, 0.7f, 1.3f, -0.025f, 0.09f, 0.38f, 0.012f, 0.022f, false},
+    {2, "foliage_tree_conifer"sv, 70.0f, 0.85f, 1.35f, -0.015f, 0.09f, 0.32f, 0.018f, 0.032f, true},
+    {3, "foliage_flower_cross"sv, 260.0f, 0.65f, 1.1f, -0.025f, 0.07f, 0.3f, 0.012f, 0.014f, false},
+    {4, "foliage_rock_lowpoly"sv, 110.0f, 0.55f, 1.5f, -0.03f, 0.11f, 0.7f, 0.006f, 0.012f, true},
+}};
+
+constexpr std::size_t kWaterBodyCount = 1;
+constexpr std::array<WorldWaterBodyDef, kWaterBodyCount> kWaterBodies{{
+    {"gimmer_lake"sv, 0.745f, 0.265f, 0.07f, 0.055f, -0.045f, 0.012f, "gimmer_shallow"sv},
+}};
+
+constexpr std::size_t kEnvironmentValidationCameraCount = 5;
+constexpr std::array<WorldEnvironmentValidationCameraDef, kEnvironmentValidationCameraCount> kEnvironmentValidationCameras{{
+    {"spawn_overlook"sv, 0.5f, 0.1f, 0.0f, -0.3f, 0.32f},
+    {"main_route_mid"sv, 0.5f, 0.2f, 0.0f, -0.26f, 0.3f},
+    {"corridor_gate"sv, 0.5f, 0.34f, 3.141593f, -0.24f, 0.28f},
+    {"cliff_profile"sv, 0.58f, 0.28f, -1.2f, -0.22f, 0.34f},
+    {"distant_landmark"sv, 0.48f, 0.15f, 0.08f, -0.18f, 0.42f},
 }};
 
 }  // namespace WorldLayout

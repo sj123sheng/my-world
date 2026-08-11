@@ -195,6 +195,12 @@ export const nativeSetEnvironmentAssets = (outer: ArrayBuffer, center: ArrayBuff
   native.nativeSetEnvironmentAssets(outer, center, backdrop, decoration);
 export const nativeSetBlockAsset = (blockId: number, bytes: ArrayBuffer): boolean =>
   native.nativeSetBlockAsset(blockId, bytes);
+export const nativeSetTerrainAssets = (atlas: ArrayBuffer, control: ArrayBuffer): boolean =>
+  native.nativeSetTerrainAssets(atlas, control);
+export const nativeSetFoliageAtlas = (atlas: ArrayBuffer): boolean =>
+  native.nativeSetFoliageAtlas(atlas);
+export const nativeSetVisualTerrainAsset = (blockId: number, lod: number,
+  bytes: ArrayBuffer): boolean => native.nativeSetVisualTerrainAsset(blockId, lod, bytes);
 // NPC 模型槽位（Phase 4）：第一版由 GamePage 注入 player.glb 占位字节，
 // 缺失时 native 侧保持静态 Mesh 回退。
 export const nativeSetNpcAsset = (bytes: ArrayBuffer): boolean =>

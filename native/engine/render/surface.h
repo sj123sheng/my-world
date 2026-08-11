@@ -38,8 +38,11 @@ inline constexpr EGLContext EGL_NO_CONTEXT = nullptr;
 #include "native/engine/render/bloom_pass.h"
 #include "native/engine/render/skinned_model.h"
 #include "native/engine/render/static_model.h"
+#include "native/engine/render/texture_asset.h"
+#include "native/engine/render/foliage_renderer.h"
 #include "native/engine/render/environment.h"
 #include "native/engine/world/terrain_heightfield.h"
+#include "native/engine/world/weather_system.h"
 #include <glm/vec3.hpp>
 
 class StreamScheduler;
@@ -275,6 +278,7 @@ struct Surface {
   glm::vec3 lightDir{0.35f, 0.85f, 0.25f};
   glm::vec3 lightColor{0.8f, 0.8f, 0.75f};
   glm::vec3 ambient{0.25f, 0.25f, 0.3f};
+  EnvironmentState environmentState;
   std::vector<Enemy3DRenderState> enemies3d;
   // 野外敌人渲染列表（Phase 3.2/3.3），与 enemies3d 共用绘制/状态表。
   std::vector<WildEnemy3DRenderState> wildEnemies3d;
@@ -336,6 +340,25 @@ struct Surface {
   std::unordered_map<int32_t, PendingModelAsset> blockEnvironmentAssets;
   std::unordered_map<int32_t, StaticModel> blockEnvironmentModels;
   std::unordered_map<int32_t, EnvironmentBatchStatus> blockEnvironmentStatuses;
+  PendingModelAsset terrainMaterialAtlasAsset;
+  PendingModelAsset terrainControlMapAsset;
+  PendingModelAsset foliageAtlasAsset;
+  TextureAsset terrainMaterialAtlas;
+  TextureAsset terrainControlMap;
+  TextureAsset foliageAtlas;
+  bool terrainMaterialReady = false;
+  bool foliageAtlasReady = false;
+  std::unordered_map<int32_t, PendingModelAsset> visualTerrainAssets;
+  std::unordered_map<int32_t, StaticModel> visualTerrainModels;
+  std::unordered_map<int32_t, EnvironmentBatchStatus> visualTerrainStatuses;
+  FoliageRenderer foliageRenderer;
+  std::vector<FoliageInstance> foliageInstances;
+  bool foliageScatterBuilt = false;
+  GLuint directionalShadowFramebuffer = 0;
+  GLuint directionalShadowDepthTexture = 0;
+  int32_t directionalShadowSize = 0;
+  glm::mat4 directionalShadowLightViewProjection{1.0f};
+  bool directionalShadowReady = false;
   EnvironmentController environmentController;
   EnvironmentComposition environmentComposition =
       EnvironmentController::defaultComposition();
@@ -347,6 +370,10 @@ struct Surface {
   bool environmentReady = false;
   uint32_t environmentDrawCalls = 0;
   uint32_t environmentTriangles = 0;
+  uint32_t environmentShadowDrawCalls = 0;
+  uint32_t environmentShadowTriangles = 0;
+  uint32_t environmentWeatherDrawCalls = 0;
+  uint32_t environmentWeatherTriangles = 0;
   int32_t environmentPerfLevel = 0;
   StaticTextureTier loggedEnvironmentTextureTier = StaticTextureTier::Full;
   SkinnedModel playerModel;
@@ -699,6 +726,28 @@ struct Surface {
     std::lock_guard<std::mutex> lock(modelAssetMutex);
     blockEnvironmentAssets[blockId].replace(std::move(bytes));
     blockEnvironmentStatuses[blockId] = EnvironmentBatchStatus::Pending;
+  }
+
+  void setTerrainMaterialAssets(std::vector<uint8_t> atlas,
+                                std::vector<uint8_t> control) {
+    std::lock_guard<std::mutex> lock(modelAssetMutex);
+    terrainMaterialAtlasAsset.replace(std::move(atlas));
+    terrainControlMapAsset.replace(std::move(control));
+  }
+
+  void setFoliageAtlasAsset(std::vector<uint8_t> atlas) {
+    std::lock_guard<std::mutex> lock(modelAssetMutex);
+    foliageAtlasAsset.replace(std::move(atlas));
+  }
+
+  void setVisualTerrainAsset(int32_t blockId, int32_t lod,
+                             std::vector<uint8_t> bytes) {
+    if (blockId < 0 || blockId >= kEnvironmentBlockCount || lod < 0 || lod > 2) {
+      return;
+    }
+    const int32_t key = blockId * 3 + lod;
+    std::lock_guard<std::mutex> lock(modelAssetMutex);
+    visualTerrainAssets[key].replace(std::move(bytes));
   }
 
   bool shouldDrawEnvironmentFallback() const {

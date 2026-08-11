@@ -4,6 +4,8 @@ import fs from 'node:fs';
 const bridge = fs.readFileSync('entry/src/main/ets/napi/Bridge.ets', 'utf8');
 const declarations = fs.readFileSync('entry/src/main/cpp/types/libnative_game/Index.d.ts', 'utf8');
 const page = fs.readFileSync('entry/src/main/ets/pages/GamePage.ets', 'utf8');
+const environmentManifest = fs.readFileSync(
+  'entry/src/main/ets/generated/EnvironmentVisualManifest.ets', 'utf8');
 const hud = fs.readFileSync('entry/src/main/ets/ui/Hud.ets', 'utf8');
 const ability = fs.readFileSync('entry/src/main/ets/EntryAbility.ets', 'utf8');
 const nativeBridge = fs.readFileSync('entry/src/main/cpp/native_bridge.cpp', 'utf8');
@@ -457,6 +459,35 @@ assert.match(loadModelAssetsBody,
   /nativeSetModelAssets[\s\S]*?try[\s\S]*?nativeSetEnvironmentAssets[\s\S]*?catch/,
   'character and environment assets must use separate failure domains');
 
+// ---- Environment vertical slice: terrain textures and authored visual terrain ----
+assert.match(bridge, /export const nativeSetTerrainAssets/,
+  'Bridge must export terrain material asset upload');
+assert.match(bridge, /export const nativeSetVisualTerrainAsset/,
+  'Bridge must export authored visual terrain upload');
+assert.match(declarations,
+  /nativeSetTerrainAssets: \(atlas: ArrayBuffer, control: ArrayBuffer\) => boolean;/,
+  'native declarations must expose the terrain atlas/control pair');
+assert.match(declarations,
+  /nativeSetVisualTerrainAsset: \(blockId: number, lod: number, bytes: ArrayBuffer\) => boolean;/,
+  'native declarations must expose block and LOD addressed visual terrain');
+assert.match(nativeBridge, /"nativeSetTerrainAssets", nullptr, NativeSetTerrainAssets/);
+assert.match(nativeBridge, /"nativeSetFoliageAtlas", nullptr, NativeSetFoliageAtlas/);
+assert.match(nativeBridge, /"nativeSetVisualTerrainAsset", nullptr, NativeSetVisualTerrainAsset/);
+assert.match(page, /TERRAIN_ATLAS_ASSET/,
+  'GamePage must load the schema-generated terrain atlas path');
+assert.match(page, /TERRAIN_CONTROL_ASSET/,
+  'GamePage must load the schema-generated control map path');
+assert.match(page, /FOLIAGE_ATLAS_ASSET/,
+  'GamePage must load the schema-generated foliage atlas path');
+assert.match(page, /VISUAL_TERRAIN_RESOURCES/,
+  'GamePage must load schema-generated visual terrain block/LOD resources');
+assert.match(environmentManifest, /blockId: 4/);
+assert.match(environmentManifest, /environment\/visual_terrain\/block_20_lod2\.glb/);
+const loadVisualTerrainBody = functionBody(page,
+  'private async loadVisualTerrainSliceAssets(generation: number)');
+assert.match(loadVisualTerrainBody, /this\.isActiveModelLoad\(generation\)/,
+  'late visual terrain reads must not commit after the page generation is invalidated');
+
 // ---- Stage 8: cooldown totals in snapshot, haptics and hit feedback ----
 const gameSnapshot = fs.readFileSync('native/engine/core/game_snapshot.h', 'utf8');
 const combatController = fs.readFileSync('native/gameplay/combat/combat_controller.cpp', 'utf8');
@@ -541,6 +572,19 @@ const surfaceHeader = fs.readFileSync('native/engine/render/surface.h', 'utf8');
 const surfaceImpl = fs.readFileSync('native/engine/render/surface.cpp', 'utf8');
 const comboCounter = fs.existsSync('entry/src/main/ets/ui/ComboCounter.ets')
   ? fs.readFileSync('entry/src/main/ets/ui/ComboCounter.ets', 'utf8') : '';
+
+const shadowTargetBody = functionBody(surfaceImpl,
+  'static bool ensureDirectionalShadowTarget(Surface& s, int32_t size)');
+assert.match(shadowTargetBody, /GL_FRAMEBUFFER_BINDING/,
+  'shadow target creation must preserve the caller framebuffer');
+assert.match(shadowTargetBody,
+  /glBindFramebuffer\(GL_FRAMEBUFFER, static_cast<GLuint>\(previousFramebuffer\)\)/,
+  'shadow target creation must restore bloom/default framebuffer');
+assert.doesNotMatch(surfaceHeader,
+  /setVisualTerrainAsset[\s\S]{0,500}visualTerrainStatuses\[key\]/,
+  'bridge thread must not mutate the renderer-owned visual status map');
+assert.match(loop, /EffectiveEnvironmentQualityLevel\(/,
+  'manual and automatic quality must produce one effective environment level');
 
 assert.match(surfaceHeader, /struct TargetMarkerRenderState/,
   'Surface must declare TargetMarkerRenderState');
@@ -927,8 +971,10 @@ assert.match(audioBridgeHeader, /void setAmbientRegion\(int32_t region\);/,
   'AudioBridge must expose setAmbientRegion');
 assert.match(loop, /audioBridge\.setAmbientRegion\(region\)/,
   'Loop must notify the audio bridge on music region change');
-assert.match(loop, /WeatherSystem::weatherAt\(timeOfDaySeconds\)\.lightScale/,
-  'Loop must modulate daylight by weather');
+assert.match(loop, /WeatherSystem::environmentAt\(totalGameSeconds, hour\)/,
+  'Loop must derive one complete daylight and weather environment state');
+assert.match(loop, /surface\.lightColor\s*=\s*surface\.environmentState\.lightColor/,
+  'Loop must drive render lighting from the unified environment state');
 const cmake = fs.readFileSync('entry/src/main/cpp/CMakeLists.txt', 'utf8');
 assert.match(cmake, /weather_system\.cpp/,
   'CMake must compile weather_system.cpp');

@@ -27,16 +27,20 @@ namespace {
     "uniform mat4 uMVP;\n"
     "uniform mat4 uModel;\n"
     "uniform bool uSkinned;\n"
+    "uniform bool uInstanced;\n"
+    "uniform mat4 uLightViewProjection;\n"
     "uniform mat4 uJoints[64];\n"
     "layout(location = 0) in vec3 aPosition;\n"
     "layout(location = 1) in vec3 aNormal;\n"
     "layout(location = 2) in vec2 aUV;\n"
     "layout(location = 3) in uvec4 aJoints;\n"
     "layout(location = 4) in vec4 aWeights;\n"
+    "layout(location = 5) in mat4 aInstanceModel;\n"
     "uniform float uOutlineWidth;\n"
     "out vec3 vNormal;\n"
     "out vec2 vUV;\n"
     "out vec3 vWorldPos;\n"
+    "out vec4 vShadowPos;\n"
     "void main() {\n"
     "  mat4 skin = uJoints[aJoints.x] * aWeights.x +\n"
     "              uJoints[aJoints.y] * aWeights.y +\n"
@@ -49,9 +53,12 @@ namespace {
     "  if (uOutlineWidth > 0.0) {\n"
     "    localPosition.xyz += normalize(localNormal) * uOutlineWidth;\n"
     "  }\n"
-    "  gl_Position = uMVP * localPosition;\n"
-    "  vNormal = mat3(uModel) * localNormal;\n"
-    "  vWorldPos = (uModel * localPosition).xyz;\n"
+    "  mat4 instanceModel = mat4(1.0);\n"
+    "  if (uInstanced) { instanceModel = aInstanceModel; }\n"
+    "  gl_Position = uMVP * instanceModel * localPosition;\n"
+    "  vNormal = mat3(uModel * instanceModel) * localNormal;\n"
+    "  vWorldPos = (uModel * instanceModel * localPosition).xyz;\n"
+    "  vShadowPos = uLightViewProjection * uModel * instanceModel * localPosition;\n"
     "  vUV = aUV;\n"
     "}\n";
 
@@ -97,14 +104,38 @@ namespace {
     "uniform vec4 uRouteSegments[8];\n"
     "uniform int uRouteCount;\n"
     "uniform float uTerrainWaterLevel;\n"
+    "uniform sampler2D uTerrainAtlas;\n"
+    "uniform sampler2D uTerrainControl;\n"
+    "uniform int uTerrainMaterialEnabled;\n"
+    "uniform float uTerrainMacroScale;\n"
+    "uniform float uTerrainDetailScale;\n"
+    "uniform float uTerrainControlStrength;\n"
+    "uniform int uTerrainDetailNormals;\n"
+    "uniform float uTerrainTriplanarSharpness;\n"
+    "uniform int uFoliageMaterialEnabled;\n"
+    "uniform int uFoliageAtlasRegion;\n"
     "uniform vec3 uWaterColor;\n"
     "uniform float uWaterAlpha;\n"
     "uniform float uTime;\n"
     "uniform vec3 uSkyTop;\n"
     "uniform vec3 uSkyHorizon;\n"
+    "uniform float uCloudCoverage;\n"
+    "uniform float uWindStrength;\n"
+    "uniform float uDaylight;\n"
+    "uniform int uProceduralClouds;\n"
+    "uniform int uLocalWaterBody;\n"
+    "uniform float uShoreWidth;\n"
+    "uniform float uWaterRoughness;\n"
+    "uniform int uShoreFoam;\n"
+    "uniform int uWaterWaveOctaves;\n"
+    "uniform sampler2D uShadowMap;\n"
+    "uniform int uShadowEnabled;\n"
+    "uniform float uShadowTexel;\n"
+    "uniform int uShadowPass;\n"
     "in vec3 vNormal;\n"
     "in vec2 vUV;\n"
     "in vec3 vWorldPos;\n"
+    "in vec4 vShadowPos;\n"
     "out vec4 fragColor;\n"
     "float hash21(vec2 p) {\n"
     "  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);\n"
@@ -119,7 +150,46 @@ namespace {
     "  float d = hash21(i + vec2(1.0, 1.0));\n"
     "  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);\n"
     "}\n"
+    "vec3 terrainAtlasLayer(int layer, vec2 uv) {\n"
+    "  vec2 offset = layer == 0 ? vec2(0.0, 0.0) :\n"
+    "                (layer == 1 ? vec2(0.5, 0.0) :\n"
+    "                (layer == 2 ? vec2(0.0, 0.5) : vec2(0.5, 0.5)));\n"
+    "  return texture(uTerrainAtlas, offset + vec2(0.004) + fract(uv) * 0.492).rgb;\n"
+    "}\n"
+    "vec4 foliageAtlasSample() {\n"
+    "  int region = clamp(uFoliageAtlasRegion, 0, 3);\n"
+    "  vec2 offset = region == 0 ? vec2(0.0, 0.0) :\n"
+    "                (region == 1 ? vec2(0.5, 0.0) :\n"
+    "                (region == 2 ? vec2(0.0, 0.5) : vec2(0.5, 0.5)));\n"
+    "  vec2 localUv = fract(vUV);\n"
+    "  localUv.y = 1.0 - localUv.y;\n"
+    "  return texture(uTexture, offset + vec2(0.004) + localUv * 0.492);\n"
+    "}\n"
+    "float shadowVisibility(vec3 normal, vec3 lightDir) {\n"
+    "  if (uShadowEnabled == 0 || vShadowPos.w <= 0.0) return 1.0;\n"
+    "  vec3 projected = vShadowPos.xyz / vShadowPos.w * 0.5 + 0.5;\n"
+    "  if (projected.x < 0.0 || projected.x > 1.0 || projected.y < 0.0 ||\n"
+    "      projected.y > 1.0 || projected.z > 1.0) return 1.0;\n"
+    "  float bias = max(0.0015 * (1.0 - dot(normal, lightDir)), 0.00035);\n"
+    "  float visible = 0.0;\n"
+    "  for (int y = -1; y <= 1; ++y) {\n"
+    "    for (int x = -1; x <= 1; ++x) {\n"
+    "      float depth = texture(uShadowMap, projected.xy + vec2(x, y) * uShadowTexel).r;\n"
+    "      visible += projected.z - bias <= depth ? 1.0 : 0.42;\n"
+    "    }\n"
+    "  }\n"
+    "  return visible / 9.0;\n"
+    "}\n"
     "void main() {\n"
+    "  vec4 foliageSample = vec4(1.0);\n"
+    "  if (uFoliageMaterialEnabled == 1) {\n"
+    "    foliageSample = foliageAtlasSample();\n"
+    "    float chroma = max(foliageSample.r, max(foliageSample.g, foliageSample.b)) -\n"
+    "                   min(foliageSample.r, min(foliageSample.g, foliageSample.b));\n"
+    "    float brightness = dot(foliageSample.rgb, vec3(0.299, 0.587, 0.114));\n"
+    "    if (foliageSample.a < 0.35 || (chroma < 0.075 && brightness > 0.72)) discard;\n"
+    "  }\n"
+    "  if (uShadowPass == 1) { fragColor = vec4(1.0); return; }\n"
     // 描边 pass：输出纯色轮廓线，不参与光照/雾计算。
     "  if (uOutlinePass == 1) {\n"
     "    fragColor = vec4(uOutlineColor, uAlpha);\n"
@@ -130,8 +200,21 @@ namespace {
     "  if (uSurfaceMode == 3) {\n"
     // 天空穹顶：视线仰角驱动天顶→地平线渐变，地平线色与雾色一致，
     "  // 远山融入天际时无接缝；不受光照与额外雾混合影响。\n"
-    "  float h = clamp(V.y, 0.0, 1.0);\n"
+    "  vec3 skyRay = normalize(vWorldPos - uCameraPos);\n"
+    "  float h = clamp(skyRay.y, 0.0, 1.0);\n"
     "  vec3 sky = mix(uSkyHorizon, uSkyTop, pow(h, 0.6));\n"
+    "  vec3 sunDir = normalize(vec3(0.35, 0.62, 0.24));\n"
+    "  float sun = smoothstep(0.992, 0.999, dot(skyRay, sunDir));\n"
+    "  sky += vec3(1.0, 0.76, 0.45) * sun * uDaylight;\n"
+    "  if (uProceduralClouds == 1 && skyRay.y > 0.02) {\n"
+    "    vec2 cloudUv = skyRay.xz / (skyRay.y + 0.35) * 1.8 +\n"
+    "                   vec2(uTime * 0.006 * uWindStrength, uTime * 0.003);\n"
+    "    float cloudNoise = vnoise(cloudUv) * 0.65 + vnoise(cloudUv * 2.1) * 0.35;\n"
+    "    float cloud = smoothstep(1.0 - uCloudCoverage,\n"
+    "                             1.12 - uCloudCoverage, cloudNoise);\n"
+    "    vec3 cloudColor = mix(vec3(0.48, 0.52, 0.58), vec3(0.94), uDaylight);\n"
+    "    sky = mix(sky, cloudColor, cloud * (0.48 + uCloudCoverage * 0.25));\n"
+    "  }\n"
     "  fragColor = vec4(sky, uAlpha);\n"
     "  return;\n"
     "}\n"
@@ -167,6 +250,14 @@ namespace {
     "  float noise = (vnoise(vUV * 90.0) * 0.6 + vnoise(vUV * 23.0) * 0.4) - 0.5;\n"
     "  float macro = vnoise(vUV * 6.5) - 0.5;\n"
     "  float slope = 1.0 - clamp(N.y, 0.0, 1.0);\n"
+    "  if (uTerrainDetailNormals == 1) {\n"
+    "    vec2 detailUv = vWorldPos.xz * uTerrainDetailScale;\n"
+    "    float centerNoise = vnoise(detailUv);\n"
+    "    float dx = vnoise(detailUv + vec2(0.07, 0.0)) - centerNoise;\n"
+    "    float dz = vnoise(detailUv + vec2(0.0, 0.07)) - centerNoise;\n"
+    "    N = normalize(N + vec3(-dx, 0.0, -dz) * 0.42);\n"
+    "    slope = 1.0 - clamp(N.y, 0.0, 1.0);\n"
+    "  }\n"
     "  float shore = clamp((vWorldPos.y - uTerrainWaterLevel) / 0.022 +\n"
     "                      noise * 0.5, 0.0, 1.0);\n"
     "  float wet = 1.0 - smoothstep(0.0, 0.008,\n"
@@ -178,6 +269,26 @@ namespace {
     "  float cap = smoothstep(0.062, 0.088, vWorldPos.y);\n"
     "  rock = mix(rock, vec3(0.60, 0.60, 0.64), cap * 0.55);\n"
     "  vec3 terrainColor = mix(mix(sand, grass, shore), rock, rockMix);\n"
+    "  if (uTerrainMaterialEnabled == 1) {\n"
+    "    vec4 fallbackWeights = vec4((1.0 - shore) * (1.0 - rockMix),\n"
+    "                                shore * (1.0 - rockMix), rockMix, 0.0);\n"
+    "    vec4 painted = texture(uTerrainControl, vec2(vUV.x, 1.0 - vUV.y));\n"
+    "    painted /= max(dot(painted, vec4(1.0)), 0.0001);\n"
+    "    vec4 weights = mix(fallbackWeights, painted, uTerrainControlStrength);\n"
+    "    weights /= max(dot(weights, vec4(1.0)), 0.0001);\n"
+    "    vec2 macroUv = vWorldPos.xz * uTerrainMacroScale;\n"
+    "    vec3 grassTex = terrainAtlasLayer(0, macroUv);\n"
+    "    vec3 soilTex = terrainAtlasLayer(1, macroUv * 1.08);\n"
+    "    vec3 pathTex = terrainAtlasLayer(3, macroUv * 0.92);\n"
+    "    vec3 blendAxis = pow(abs(N), vec3(uTerrainTriplanarSharpness));\n"
+    "    blendAxis /= max(dot(blendAxis, vec3(1.0)), 0.0001);\n"
+    "    vec3 rockTex = terrainAtlasLayer(2, vWorldPos.zy * uTerrainMacroScale) * blendAxis.x +\n"
+    "                   terrainAtlasLayer(2, vWorldPos.xz * uTerrainMacroScale) * blendAxis.y +\n"
+    "                   terrainAtlasLayer(2, vWorldPos.xy * uTerrainMacroScale) * blendAxis.z;\n"
+    "    vec3 layered = grassTex * weights.r + soilTex * weights.g +\n"
+    "                   rockTex * weights.b + pathTex * weights.a;\n"
+    "    terrainColor = layered * mix(vec3(1.0), terrainColor, 0.30);\n"
+    "  }\n"
     "  terrainColor *= 1.0 + macro * 0.09 + noise * 0.07;\n"
     "  float pathDist = 1000.0;\n"
     "  for (int i = 0; i < 8; ++i) {\n"
@@ -194,38 +305,46 @@ namespace {
     "                     terrainColor * vec3(0.82, 0.78, 0.70), path * 0.55);\n"
     "  baseColor = vec4(clamp(terrainColor, 0.0, 1.0), 1.0);\n"
     "} else if (uSurfaceMode == 2) {\n"
+    "  float waterRadius = length((vUV - vec2(0.5)) * 2.0);\n"
+    "  if (uLocalWaterBody == 1 && waterRadius > 1.0) { discard; }\n"
     // 水面：双频涟漪扰动颜色与法线，菲涅尔掠射增浓，日光高光闪点。
     "  float ripple = sin(vWorldPos.x * 120.0 + uTime * 1.6) *\n"
     "                 sin(vWorldPos.z * 105.0 - uTime * 1.2) * 0.5 + 0.5;\n"
     "  float ripple2 = sin(vWorldPos.x * 57.0 - uTime * 0.9 + 1.7) *\n"
     "                  sin(vWorldPos.z * 49.0 + uTime * 0.7) * 0.5 + 0.5;\n"
-    "  float wave = ripple * 0.6 + ripple2 * 0.4;\n"
-    "  N = normalize(N + vec3(sin(vWorldPos.z * 90.0 + uTime) * 0.06 +\n"
-    "                           sin(vWorldPos.z * 41.0 - uTime * 0.6) * 0.03,\n"
+    "  float wave = uWaterWaveOctaves > 1 ? ripple * 0.6 + ripple2 * 0.4 : ripple;\n"
+    "  float roughnessScale = mix(0.55, 1.45, uWaterRoughness);\n"
+    "  N = normalize(N + vec3((sin(vWorldPos.z * 90.0 + uTime) * 0.06 +\n"
+    "                           sin(vWorldPos.z * 41.0 - uTime * 0.6) * 0.03) * roughnessScale,\n"
     "                           0.0,\n"
-    "                           cos(vWorldPos.x * 80.0 - uTime * 0.8) * 0.06 +\n"
-    "                           cos(vWorldPos.x * 37.0 + uTime * 0.5) * 0.03));\n"
+    "                          (cos(vWorldPos.x * 80.0 - uTime * 0.8) * 0.06 +\n"
+    "                           cos(vWorldPos.x * 37.0 + uTime * 0.5) * 0.03) * roughnessScale));\n"
     "  float fresnel = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.0);\n"
     "  vec3 waterHalf = normalize(normalize(uLightDir) + V);\n"
     "  float glint = pow(max(dot(N, waterHalf), 0.0), 90.0) * 0.35;\n"
-    "  baseColor = vec4(uWaterColor + wave * 0.07 + glint,\n"
+    "  float foam = uShoreFoam == 1 ? smoothstep(1.0 - uShoreWidth, 1.0, waterRadius) : 0.0;\n"
+    "  vec3 waterSurface = mix(uWaterColor + wave * 0.07 + glint, vec3(0.86, 0.94, 0.94), foam * 0.68);\n"
+    "  baseColor = vec4(waterSurface,\n"
     "                   mix(uWaterAlpha, 0.92, fresnel));\n"
     "} else {\n"
-    "  baseColor = uHasTexture ? texture(uTexture, vUV) : vec4(1.0);\n"
+    "  baseColor = uFoliageMaterialEnabled == 1 ? foliageSample :\n"
+    "              (uHasTexture ? texture(uTexture, vUV) : vec4(1.0));\n"
     "}\n"
     "  vec3 L = normalize(uLightDir);\n"
     "  float diff = max(dot(N, L), 0.0);\n"
+    "  float shadow = (uSurfaceMode == 2 || uSurfaceMode == 3) ? 1.0 :\n"
+    "                 shadowVisibility(N, L);\n"
     "  vec3 lit;\n"
     "  if (uToon == 1) {\n"
     // 卡通着色：漫反射量化为明暗两段，暗部乘以角色专属阴影色，
     // 过渡宽度 uToonSoftness 控制阴影边缘软硬；亮部保持固有色全光照。
     "    float band = smoothstep(uToonEdge - uToonSoftness,\n"
     "                            uToonEdge + uToonSoftness, dot(N, L));\n"
-    "    vec3 bright = baseColor.rgb * (uAmbient + uLightColor);\n"
+    "    vec3 bright = baseColor.rgb * (uAmbient + uLightColor * shadow);\n"
     "    vec3 shadowed = baseColor.rgb * uShadowColor;\n"
     "    lit = mix(shadowed, bright, band);\n"
     "  } else {\n"
-    "    lit = baseColor.rgb * (uAmbient + uLightColor * diff);\n"
+    "    lit = baseColor.rgb * (uAmbient + uLightColor * diff * shadow);\n"
     "  }\n"
     "  vec3 H = normalize(L + V);\n"
     "  float spec = pow(max(dot(N, H), 0.0), max(uShininess, 1.0)) *\n"
@@ -236,11 +355,17 @@ namespace {
     "  vec3 finalColor = mix(lit, uEnvironmentTint, uEnvironmentTintStrength);\n"
     "  float fogDistance = length(uCameraPos - vWorldPos);\n"
     "  float fogFactor = clamp(1.0 - exp(-uFogDensity * fogDistance), 0.0, 1.0);\n"
+    "  float groundMist = (1.0 - smoothstep(0.015, 0.11, vWorldPos.y)) *\n"
+    "                     smoothstep(0.04, 0.30, fogDistance) * 0.13;\n"
+    "  fogFactor = clamp(fogFactor + groundMist, 0.0, 1.0);\n"
     "  finalColor = mix(finalColor, uFogColor, fogFactor);\n"
     "  fragColor = vec4(finalColor, baseColor.a * uAlpha);\n"
     "}\n";
 
 }  // namespace
+
+const char* Shader3DVertexSourceForValidation() { return kVertexShaderSrc; }
+const char* Shader3DFragmentSourceForValidation() { return kFragmentShaderSrc; }
 
 bool Shader3D::init() {
 #ifdef OHOS_PLATFORM
@@ -321,6 +446,12 @@ bool Shader3D::init() {
       glGetUniformLocation(program_, "uEnvironmentTintStrength");
   locSkinned_ = glGetUniformLocation(program_, "uSkinned");
   locJoints_ = glGetUniformLocation(program_, "uJoints");
+  locInstanced_ = glGetUniformLocation(program_, "uInstanced");
+  locLightViewProjection_ = glGetUniformLocation(program_, "uLightViewProjection");
+  locShadowMap_ = glGetUniformLocation(program_, "uShadowMap");
+  locShadowEnabled_ = glGetUniformLocation(program_, "uShadowEnabled");
+  locShadowTexel_ = glGetUniformLocation(program_, "uShadowTexel");
+  locShadowPass_ = glGetUniformLocation(program_, "uShadowPass");
   locAlpha_ = glGetUniformLocation(program_, "uAlpha");
   locCameraPos_ = glGetUniformLocation(program_, "uCameraPos");
   locRimColor_ = glGetUniformLocation(program_, "uRimColor");
@@ -348,15 +479,44 @@ bool Shader3D::init() {
   locRouteSegments_ = glGetUniformLocation(program_, "uRouteSegments");
   locRouteCount_ = glGetUniformLocation(program_, "uRouteCount");
   locTerrainWaterLevel_ = glGetUniformLocation(program_, "uTerrainWaterLevel");
+  locTerrainAtlas_ = glGetUniformLocation(program_, "uTerrainAtlas");
+  locTerrainControl_ = glGetUniformLocation(program_, "uTerrainControl");
+  locTerrainMaterialEnabled_ = glGetUniformLocation(program_, "uTerrainMaterialEnabled");
+  locTerrainMacroScale_ = glGetUniformLocation(program_, "uTerrainMacroScale");
+  locTerrainDetailScale_ = glGetUniformLocation(program_, "uTerrainDetailScale");
+  locTerrainControlStrength_ = glGetUniformLocation(program_, "uTerrainControlStrength");
+  locTerrainDetailNormals_ = glGetUniformLocation(program_, "uTerrainDetailNormals");
+  locTerrainTriplanarSharpness_ =
+      glGetUniformLocation(program_, "uTerrainTriplanarSharpness");
+  locFoliageMaterialEnabled_ =
+      glGetUniformLocation(program_, "uFoliageMaterialEnabled");
+  locFoliageAtlasRegion_ = glGetUniformLocation(program_, "uFoliageAtlasRegion");
   locWaterColor_ = glGetUniformLocation(program_, "uWaterColor");
   locWaterAlpha_ = glGetUniformLocation(program_, "uWaterAlpha");
   locTime_ = glGetUniformLocation(program_, "uTime");
   locSkyTop_ = glGetUniformLocation(program_, "uSkyTop");
   locSkyHorizon_ = glGetUniformLocation(program_, "uSkyHorizon");
+  locCloudCoverage_ = glGetUniformLocation(program_, "uCloudCoverage");
+  locWindStrength_ = glGetUniformLocation(program_, "uWindStrength");
+  locDaylight_ = glGetUniformLocation(program_, "uDaylight");
+  locProceduralClouds_ = glGetUniformLocation(program_, "uProceduralClouds");
+  locLocalWaterBody_ = glGetUniformLocation(program_, "uLocalWaterBody");
+  locShoreWidth_ = glGetUniformLocation(program_, "uShoreWidth");
+  locWaterRoughness_ = glGetUniformLocation(program_, "uWaterRoughness");
+  locShoreFoam_ = glGetUniformLocation(program_, "uShoreFoam");
+  locWaterWaveOctaves_ = glGetUniformLocation(program_, "uWaterWaveOctaves");
   // uniform 默认值为 0：显式把 uAlpha 初置为 1，避免未调用 setAlpha
   // 的既有绘制路径被透明化；轮廓光/高光/雾强度置 0，保持未配置时与升级前等价。
   glUseProgram(program_);
   glUniform1f(locAlpha_, 1.0f);
+  glUniform1i(locInstanced_, 0);
+  const glm::mat4 identityLightViewProjection(1.0f);
+  glUniformMatrix4fv(locLightViewProjection_, 1, GL_FALSE,
+                     &identityLightViewProjection[0][0]);
+  glUniform1i(locShadowMap_, 4);
+  glUniform1i(locShadowEnabled_, 0);
+  glUniform1f(locShadowTexel_, 1.0f / 1024.0f);
+  glUniform1i(locShadowPass_, 0);
   glUniform1f(locRimStrength_, 0.0f);
   glUniform1f(locSpecularStrength_, 0.0f);
   glUniform1f(locShininess_, 32.0f);
@@ -376,11 +536,31 @@ bool Shader3D::init() {
   glUniform3f(locColorGrass_, 0.32f, 0.52f, 0.30f);
   glUniform3f(locColorRock_, 0.42f, 0.42f, 0.46f);
   glUniform1f(locTerrainWaterLevel_, -0.012f);
+  glUniform1i(locTerrainAtlas_, 2);
+  glUniform1i(locTerrainControl_, 3);
+  glUniform1i(locTerrainMaterialEnabled_, 0);
+  glUniform1f(locTerrainMacroScale_, 6.5f);
+  glUniform1f(locTerrainDetailScale_, 90.0f);
+  glUniform1f(locTerrainControlStrength_, 0.85f);
+  glUniform1i(locTerrainDetailNormals_, 0);
+  glUniform1f(locTerrainTriplanarSharpness_, 4.0f);
+  glUniform1i(locFoliageMaterialEnabled_, 0);
+  glUniform1i(locFoliageAtlasRegion_, 0);
+  glUniform1i(locTexture_, 0);
   glUniform3f(locWaterColor_, 0.16f, 0.38f, 0.47f);
   glUniform1f(locWaterAlpha_, 0.72f);
   glUniform1f(locTime_, 0.0f);
   glUniform3f(locSkyTop_, 0.20f, 0.32f, 0.52f);
   glUniform3f(locSkyHorizon_, 0.55f, 0.58f, 0.65f);
+  glUniform1f(locCloudCoverage_, 0.1f);
+  glUniform1f(locWindStrength_, 0.1f);
+  glUniform1f(locDaylight_, 1.0f);
+  glUniform1i(locProceduralClouds_, 0);
+  glUniform1i(locLocalWaterBody_, 0);
+  glUniform1f(locShoreWidth_, 0.08f);
+  glUniform1f(locWaterRoughness_, 0.2f);
+  glUniform1i(locShoreFoam_, 0);
+  glUniform1i(locWaterWaveOctaves_, 2);
   glUseProgram(0);
   LOGI_3D("3D program linked: mvp=%{public}d model=%{public}d lightDir=%{public}d "
           "lightColor=%{public}d ambient=%{public}d hasTexture=%{public}d texture=%{public}d",
@@ -408,6 +588,12 @@ void Shader3D::destroy() {
     locEnvironmentTintStrength_ = -1;
     locSkinned_ = -1;
     locJoints_ = -1;
+    locInstanced_ = -1;
+    locLightViewProjection_ = -1;
+    locShadowMap_ = -1;
+    locShadowEnabled_ = -1;
+    locShadowTexel_ = -1;
+    locShadowPass_ = -1;
     locAlpha_ = -1;
     locCameraPos_ = -1;
     locRimColor_ = -1;
@@ -428,25 +614,66 @@ void Shader3D::destroy() {
     locColorGrass_ = -1;
     locColorRock_ = -1;
     locTerrainWaterLevel_ = -1;
+    locTerrainAtlas_ = -1;
+    locTerrainControl_ = -1;
+    locTerrainMaterialEnabled_ = -1;
+    locTerrainMacroScale_ = -1;
+    locTerrainDetailScale_ = -1;
+    locTerrainControlStrength_ = -1;
+    locTerrainDetailNormals_ = -1;
+    locTerrainTriplanarSharpness_ = -1;
+    locFoliageMaterialEnabled_ = -1;
+    locFoliageAtlasRegion_ = -1;
     locWaterColor_ = -1;
     locWaterAlpha_ = -1;
     locTime_ = -1;
     locSkyTop_ = -1;
     locSkyHorizon_ = -1;
+    locCloudCoverage_ = -1;
+    locWindStrength_ = -1;
+    locDaylight_ = -1;
+    locProceduralClouds_ = -1;
+    locLocalWaterBody_ = -1;
+    locShoreWidth_ = -1;
+    locWaterRoughness_ = -1;
+    locShoreFoam_ = -1;
+    locWaterWaveOctaves_ = -1;
   }
 #endif
   skinPaletteValid_ = false;
   skinningEnabled_ = false;
+  instancingEnabled_ = false;
+  shadowSamplingEnabled_ = false;
+  shadowPassEnabled_ = false;
   toonEnabled_ = false;
   outlineWidth_ = 0.0f;
+  terrainMaterialEnabled_ = false;
+  terrainDetailNormalsEnabled_ = false;
+  foliageMaterialEnabled_ = false;
+  foliageAtlasRegion_ = 0;
+  cloudCoverage_ = 0.0f;
+  proceduralCloudsEnabled_ = false;
+  localWaterBodyEnabled_ = false;
+  shoreFoamEnabled_ = false;
 }
 
 void Shader3D::abandonGpuResources() {
   program_ = 0;
   skinPaletteValid_ = false;
   skinningEnabled_ = false;
+  instancingEnabled_ = false;
+  shadowSamplingEnabled_ = false;
+  shadowPassEnabled_ = false;
   toonEnabled_ = false;
   outlineWidth_ = 0.0f;
+  terrainMaterialEnabled_ = false;
+  terrainDetailNormalsEnabled_ = false;
+  foliageMaterialEnabled_ = false;
+  foliageAtlasRegion_ = 0;
+  cloudCoverage_ = 0.0f;
+  proceduralCloudsEnabled_ = false;
+  localWaterBodyEnabled_ = false;
+  shoreFoamEnabled_ = false;
 #ifdef OHOS_PLATFORM
   locMVP_ = -1;
   locModel_ = -1;
@@ -459,6 +686,12 @@ void Shader3D::abandonGpuResources() {
   locEnvironmentTintStrength_ = -1;
   locSkinned_ = -1;
   locJoints_ = -1;
+  locInstanced_ = -1;
+  locLightViewProjection_ = -1;
+  locShadowMap_ = -1;
+  locShadowEnabled_ = -1;
+  locShadowTexel_ = -1;
+  locShadowPass_ = -1;
   locAlpha_ = -1;
   locCameraPos_ = -1;
   locRimColor_ = -1;
@@ -479,11 +712,30 @@ void Shader3D::abandonGpuResources() {
   locColorGrass_ = -1;
   locColorRock_ = -1;
   locTerrainWaterLevel_ = -1;
+  locTerrainAtlas_ = -1;
+  locTerrainControl_ = -1;
+  locTerrainMaterialEnabled_ = -1;
+  locTerrainMacroScale_ = -1;
+  locTerrainDetailScale_ = -1;
+  locTerrainControlStrength_ = -1;
+  locTerrainDetailNormals_ = -1;
+  locTerrainTriplanarSharpness_ = -1;
+  locFoliageMaterialEnabled_ = -1;
+  locFoliageAtlasRegion_ = -1;
   locWaterColor_ = -1;
   locWaterAlpha_ = -1;
   locTime_ = -1;
   locSkyTop_ = -1;
   locSkyHorizon_ = -1;
+  locCloudCoverage_ = -1;
+  locWindStrength_ = -1;
+  locDaylight_ = -1;
+  locProceduralClouds_ = -1;
+  locLocalWaterBody_ = -1;
+  locShoreWidth_ = -1;
+  locWaterRoughness_ = -1;
+  locShoreFoam_ = -1;
+  locWaterWaveOctaves_ = -1;
 #endif
 }
 
@@ -742,6 +994,56 @@ void Shader3D::setTerrainWaterLevel(float level) const {
 #endif
 }
 
+void Shader3D::setTerrainMaterial(bool enabled, float macroScale,
+                                  float detailScale,
+                                  float paintedControlStrength,
+                                  bool detailNormals,
+                                  float triplanarSharpness) {
+  terrainMaterialEnabled_ = enabled;
+  terrainDetailNormalsEnabled_ = enabled && detailNormals;
+#ifdef OHOS_PLATFORM
+  if (locTerrainMaterialEnabled_ != -1) {
+    glUniform1i(locTerrainMaterialEnabled_, enabled ? 1 : 0);
+  }
+  if (locTerrainMacroScale_ != -1) {
+    glUniform1f(locTerrainMacroScale_, std::max(macroScale, 0.01f));
+  }
+  if (locTerrainDetailScale_ != -1) {
+    glUniform1f(locTerrainDetailScale_, std::max(detailScale, 0.01f));
+  }
+  if (locTerrainControlStrength_ != -1) {
+    glUniform1f(locTerrainControlStrength_,
+                std::clamp(paintedControlStrength, 0.0f, 1.0f));
+  }
+  if (locTerrainDetailNormals_ != -1) {
+    glUniform1i(locTerrainDetailNormals_,
+                terrainDetailNormalsEnabled_ ? 1 : 0);
+  }
+  if (locTerrainTriplanarSharpness_ != -1) {
+    glUniform1f(locTerrainTriplanarSharpness_,
+                std::clamp(triplanarSharpness, 1.0f, 16.0f));
+  }
+#else
+  (void)macroScale;
+  (void)detailScale;
+  (void)paintedControlStrength;
+  (void)triplanarSharpness;
+#endif
+}
+
+void Shader3D::setFoliageMaterial(bool enabled, int atlasRegion) {
+  foliageMaterialEnabled_ = enabled;
+  foliageAtlasRegion_ = std::clamp(atlasRegion, 0, 3);
+#ifdef OHOS_PLATFORM
+  if (locFoliageMaterialEnabled_ != -1) {
+    glUniform1i(locFoliageMaterialEnabled_, enabled ? 1 : 0);
+  }
+  if (locFoliageAtlasRegion_ != -1) {
+    glUniform1i(locFoliageAtlasRegion_, foliageAtlasRegion_);
+  }
+#endif
+}
+
 void Shader3D::setWaterColor(const glm::vec3& color, float alpha) const {
 #ifdef OHOS_PLATFORM
   if (locWaterColor_ != -1) {
@@ -781,6 +1083,56 @@ void Shader3D::setSkyColors(const glm::vec3& top,
 #endif
 }
 
+void Shader3D::setSkyEnvironment(float cloudCoverage, float windStrength,
+                                 float daylight, bool proceduralClouds) {
+  cloudCoverage_ = std::clamp(cloudCoverage, 0.0f, 1.0f);
+  proceduralCloudsEnabled_ = proceduralClouds;
+#ifdef OHOS_PLATFORM
+  if (locCloudCoverage_ != -1) glUniform1f(locCloudCoverage_, cloudCoverage_);
+  if (locWindStrength_ != -1) {
+    glUniform1f(locWindStrength_, std::clamp(windStrength, 0.0f, 1.0f));
+  }
+  if (locDaylight_ != -1) {
+    glUniform1f(locDaylight_, std::clamp(daylight, 0.0f, 1.0f));
+  }
+  if (locProceduralClouds_ != -1) {
+    glUniform1i(locProceduralClouds_, proceduralClouds ? 1 : 0);
+  }
+#else
+  (void)windStrength;
+  (void)daylight;
+#endif
+}
+
+void Shader3D::setLocalWaterBody(bool enabled, float normalizedShoreWidth,
+                                 float roughness, bool shoreFoam,
+                                 int waveOctaves) {
+  localWaterBodyEnabled_ = enabled;
+  shoreFoamEnabled_ = enabled && shoreFoam;
+#ifdef OHOS_PLATFORM
+  if (locLocalWaterBody_ != -1) {
+    glUniform1i(locLocalWaterBody_, enabled ? 1 : 0);
+  }
+  if (locShoreWidth_ != -1) {
+    glUniform1f(locShoreWidth_,
+                std::clamp(normalizedShoreWidth, 0.001f, 1.0f));
+  }
+  if (locWaterRoughness_ != -1) {
+    glUniform1f(locWaterRoughness_, std::clamp(roughness, 0.0f, 1.0f));
+  }
+  if (locShoreFoam_ != -1) {
+    glUniform1i(locShoreFoam_, shoreFoamEnabled_ ? 1 : 0);
+  }
+  if (locWaterWaveOctaves_ != -1) {
+    glUniform1i(locWaterWaveOctaves_, std::clamp(waveOctaves, 1, 2));
+  }
+#else
+  (void)normalizedShoreWidth;
+  (void)roughness;
+  (void)waveOctaves;
+#endif
+}
+
 void Shader3D::setSkinPalette(const SkinPalette& palette) {
   skinPaletteValid_ = !palette.matrices.empty() &&
                       palette.matrices.size() <= kMaxSkinJoints;
@@ -809,5 +1161,41 @@ void Shader3D::setSkinned(bool skinned) {
   }
 #else
   (void)skinned;
+#endif
+}
+
+void Shader3D::setInstanced(bool instanced) {
+  instancingEnabled_ = instanced;
+#ifdef OHOS_PLATFORM
+  if (program_ != 0u && locInstanced_ != -1) {
+    glUniform1i(locInstanced_, instanced ? 1 : 0);
+  }
+#endif
+}
+
+void Shader3D::setShadowSampling(
+    bool enabled, const glm::mat4& lightViewProjection, float texelSize) {
+  shadowSamplingEnabled_ = enabled;
+#ifdef OHOS_PLATFORM
+  if (locLightViewProjection_ != -1) {
+    glUniformMatrix4fv(locLightViewProjection_, 1, GL_FALSE,
+                       &lightViewProjection[0][0]);
+  }
+  if (locShadowEnabled_ != -1) {
+    glUniform1i(locShadowEnabled_, enabled ? 1 : 0);
+  }
+  if (locShadowTexel_ != -1) {
+    glUniform1f(locShadowTexel_, std::max(texelSize, 0.000001f));
+  }
+#else
+  (void)lightViewProjection;
+  (void)texelSize;
+#endif
+}
+
+void Shader3D::setShadowPass(bool enabled) {
+  shadowPassEnabled_ = enabled;
+#ifdef OHOS_PLATFORM
+  if (locShadowPass_ != -1) glUniform1i(locShadowPass_, enabled ? 1 : 0);
 #endif
 }

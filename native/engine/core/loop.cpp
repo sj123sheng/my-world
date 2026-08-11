@@ -1033,7 +1033,9 @@ void ApplyGrowthSnapshot(GameSnapshot& output, const Loop& loop) {
   output.dayNightHour = loop.timeOfDaySeconds / 10.0f;
   output.qualityPreset = loop.qualityPreset;
   output.gachaPoolKind = loop.gachaPoolKind;
-  output.weatherId = WeatherSystem::weatherAt(loop.timeOfDaySeconds).id;
+  output.weatherId = WeatherSystem::weatherAt(
+      static_cast<float>(loop.gameDayCount) * 240.0f +
+      loop.timeOfDaySeconds).id;
   output.musicRegionId = loop.musicRegionId;
   // NPC 任务发布（Phase 4）：快照尾部纯追加 2 字段。
   output.npcOfferQuestId = loop.npcOfferQuestId;
@@ -1926,9 +1928,11 @@ void Loop::tickOnce(int64_t elapsedMs) {
   surface.renderSeconds +=
       static_cast<float>(elapsedMs > 0 ? elapsedMs : 0) / 1000.0f;
   if (surface.renderSeconds > 3600.0f) surface.renderSeconds -= 3600.0f;
-  surface.environmentPerfLevel = performanceGuard.level();
-  // bloom 后处理仅高画质预设启用（低画质设备跳过整条管线）。
-  surface.bloomEnabled = qualityPreset == 0;
+  const int32_t effectiveEnvironmentLevel = EffectiveEnvironmentQualityLevel(
+      performanceGuard.level(), qualityPreset == 1);
+  surface.environmentPerfLevel = effectiveEnvironmentLevel;
+  // 后处理与阴影、植被、地表、云、水面消费同一个有效环境档。
+  surface.bloomEnabled = effectiveEnvironmentLevel <= 1;
   surface_draw(surface);
   surface_swap(surface);
 #endif
@@ -1949,11 +1953,15 @@ void Loop::tickOnce(int64_t elapsedMs) {
                          worldGrid.pendingUnloads().size());
     LOGI("PROFILE fps=%{public}.1f perf_level=%{public}d environment_ready=%{public}d "
          "environment_draw_calls=%{public}u environment_triangles=%{public}u "
+         "environment_shadow_draw_calls=%{public}u environment_shadow_triangles=%{public}u "
+         "environment_weather_draw_calls=%{public}u environment_weather_triangles=%{public}u "
          "environment_texture_tier=%{public}s encounter_mode=%{public}d "
          "active_chunks=%{public}d streaming_pending=%{public}d "
          "wild_enemies=%{public}d",
          fps, performanceGuard.level(), static_cast<int>(surface.environmentReady),
          surface.environmentDrawCalls, surface.environmentTriangles,
+         surface.environmentShadowDrawCalls, surface.environmentShadowTriangles,
+         surface.environmentWeatherDrawCalls, surface.environmentWeatherTriangles,
          performanceGuard.level() >= 4 ? "half" : "full",
          static_cast<int>(encounter.snapshot().mode),
          activeChunkCount, streamingPendingCount, wildEnemyCount);
@@ -2428,20 +2436,13 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   }
   {
     const float hour = timeOfDaySeconds / (kSecondsPerGameDay / 24.0f);
-    // 亮度曲线：正午最高、午夜最低，用余弦平滑过渡。
-    constexpr float kPi = 3.14159265358979323846f;
-    const float brightness =
-        0.5f + 0.5f * std::cos((hour - 12.0f) / 24.0f * 2.0f * kPi);
-    const float dayBoost = 0.35f + 0.65f * brightness;
-    const float nightBoost = 0.55f + 0.45f * brightness;
-    // 天气（阶段四）：由时钟确定性推导，叠乘光照衰减。
-    const float weatherScale =
-        WeatherSystem::weatherAt(timeOfDaySeconds).lightScale;
-    surface.lightColor = glm::vec3(0.8f * dayBoost * weatherScale,
-                                   0.8f * dayBoost * weatherScale,
-                                   0.75f * dayBoost * weatherScale);
-    surface.ambient = glm::vec3(0.25f * nightBoost, 0.25f * nightBoost,
-                                0.3f * nightBoost);
+    const float totalGameSeconds =
+        static_cast<float>(gameDayCount) * kSecondsPerGameDay +
+        timeOfDaySeconds;
+    surface.environmentState =
+        WeatherSystem::environmentAt(totalGameSeconds, hour);
+    surface.lightColor = surface.environmentState.lightColor;
+    surface.ambient = surface.environmentState.ambientColor;
   }
 
   // ---- BGM 区域切换（阶段四）：按纬度三分世界，跨界重启环境垫底 ----

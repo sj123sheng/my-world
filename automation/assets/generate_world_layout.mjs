@@ -325,6 +325,47 @@ export function validateWorldLayout(world, schema) {
     }
   }
 
+  const visual = world.environmentVisual;
+  if (visual) {
+    const material = visual.terrainMaterial;
+    if (material && material.detailScale <= material.macroScale) {
+      errors.push('environmentVisual.terrainMaterial: detailScale must exceed macroScale');
+    }
+    const seenBlocks = new Set();
+    for (const cell of visual.visualTerrainCells ?? []) {
+      if (seenBlocks.has(cell.blockId)) {
+        errors.push(`environmentVisual: duplicate visual terrain block ${cell.blockId}`);
+      }
+      seenBlocks.add(cell.blockId);
+      if (cell.bounds?.length === 4 &&
+          (cell.bounds[0] >= cell.bounds[2] || cell.bounds[1] >= cell.bounds[3])) {
+        errors.push(`environmentVisual block ${cell.blockId}: bounds must be ordered`);
+      }
+    }
+    for (const layer of visual.foliageLayers ?? []) {
+      if (layer.maxScale < layer.minScale) {
+        errors.push(`environmentVisual foliage ${layer.kind}: maxScale must be >= minScale`);
+      }
+      if (layer.maxHeight < layer.minHeight) {
+        errors.push(`environmentVisual foliage ${layer.kind}: maxHeight must be >= minHeight`);
+      }
+    }
+    const seenWater = new Set();
+    for (const body of visual.waterBodies ?? []) {
+      if (seenWater.has(body.waterId)) {
+        errors.push(`environmentVisual: duplicate waterId ${body.waterId}`);
+      }
+      seenWater.add(body.waterId);
+    }
+    const seenCameras = new Set();
+    for (const camera of visual.validationCameras ?? []) {
+      if (seenCameras.has(camera.cameraId)) {
+        errors.push(`environmentVisual: duplicate cameraId ${camera.cameraId}`);
+      }
+      seenCameras.add(camera.cameraId);
+    }
+  }
+
   return errors;
 }
 
@@ -503,6 +544,27 @@ export function generateWorldLayoutHeader(world) {
   emit('  float fromX; float fromY; float toX; float toY;');
   emit('};');
   emit();
+  emit('struct WorldTerrainMaterialSetDef {');
+  emit('  std::string_view atlasAsset; std::string_view controlAsset; int32_t layerCount;');
+  emit('  float macroScale; float detailScale; float triplanarSharpness; float paintedControlStrength;');
+  emit('};');
+  emit('struct WorldVisualTerrainCellDef {');
+  emit('  int32_t blockId; std::string_view nearAsset; std::string_view midAsset; std::string_view farAsset;');
+  emit('  float boundsMinX; float boundsMinY; float boundsMaxX; float boundsMaxY;');
+  emit('  float maxWalkableDeviation; int32_t collisionPolicy;');
+  emit('};');
+  emit('struct WorldFoliageLayerDef {');
+  emit('  int32_t kind; std::string_view assetId; float density; float minScale; float maxScale; float minHeight; float maxHeight;');
+  emit('  float maxSlope; float waterClearance; float routeClearance; bool castsShadow;');
+  emit('};');
+  emit('struct WorldWaterBodyDef {');
+  emit('  std::string_view waterId; float centerX; float centerY; float halfExtentX; float halfExtentY;');
+  emit('  float level; float shoreWidth; std::string_view preset;');
+  emit('};');
+  emit('struct WorldEnvironmentValidationCameraDef {');
+  emit('  std::string_view cameraId; float x; float y; float yaw; float pitch; float distance;');
+  emit('};');
+  emit();
 
   emit(`constexpr std::size_t kDistrictCount = ${world.districts.length};`);
   emit('constexpr std::array<WorldDistrictDef, kDistrictCount> kDistricts{{');
@@ -631,9 +693,66 @@ export function generateWorldLayoutHeader(world) {
   }
   emit('}};');
   emit();
+  const visual = world.environmentVisual;
+  const material = visual.terrainMaterial;
+  emit(`constexpr std::string_view kFoliageAtlasAsset = ${cxxStringLiteral(visual.foliageAtlasAsset)};`);
+  emit();
+  emit('constexpr WorldTerrainMaterialSetDef kTerrainMaterialSet{');
+  emit(`    ${cxxStringLiteral(material.atlasAsset)}, ${cxxStringLiteral(material.controlAsset)}, ${material.layerCount},`);
+  emit(`    ${floatLiteral(material.macroScale)}, ${floatLiteral(material.detailScale)}, ${floatLiteral(material.triplanarSharpness)}, ${floatLiteral(material.paintedControlStrength)},`);
+  emit('};');
+  emit();
+  const collisionPolicyValue = { visual_only: 0, explicit_obb: 1 };
+  emit(`constexpr std::size_t kVisualTerrainCellCount = ${visual.visualTerrainCells.length};`);
+  emit('constexpr std::array<WorldVisualTerrainCellDef, kVisualTerrainCellCount> kVisualTerrainCells{{');
+  for (const cell of visual.visualTerrainCells) {
+    emit(`    {${cell.blockId}, ${cxxStringLiteral(cell.nearAsset)}, ${cxxStringLiteral(cell.midAsset)}, ${cxxStringLiteral(cell.farAsset)},`);
+    emit(`     ${floatLiteral(cell.bounds[0])}, ${floatLiteral(cell.bounds[1])}, ${floatLiteral(cell.bounds[2])}, ${floatLiteral(cell.bounds[3])}, ${floatLiteral(cell.maxWalkableDeviation)}, ${collisionPolicyValue[cell.collisionPolicy]}},`);
+  }
+  emit('}};');
+  emit();
+  const foliageKindValue = { grass: 0, shrub: 1, tree: 2, flower: 3, rock: 4 };
+  emit(`constexpr std::size_t kFoliageLayerCount = ${visual.foliageLayers.length};`);
+  emit('constexpr std::array<WorldFoliageLayerDef, kFoliageLayerCount> kFoliageLayers{{');
+  for (const layer of visual.foliageLayers) {
+    emit(`    {${foliageKindValue[layer.kind]}, ${cxxStringLiteral(layer.assetId)}, ${floatLiteral(layer.density)}, ${floatLiteral(layer.minScale)}, ${floatLiteral(layer.maxScale)}, ${floatLiteral(layer.minHeight)}, ${floatLiteral(layer.maxHeight)}, ${floatLiteral(layer.maxSlope)}, ${floatLiteral(layer.waterClearance)}, ${floatLiteral(layer.routeClearance)}, ${layer.castsShadow ? 'true' : 'false'}},`);
+  }
+  emit('}};');
+  emit();
+  emit(`constexpr std::size_t kWaterBodyCount = ${visual.waterBodies.length};`);
+  emit('constexpr std::array<WorldWaterBodyDef, kWaterBodyCount> kWaterBodies{{');
+  for (const body of visual.waterBodies) {
+    emit(`    {${cxxStringLiteral(body.waterId)}, ${floatLiteral(body.center[0])}, ${floatLiteral(body.center[1])}, ${floatLiteral(body.halfExtents[0])}, ${floatLiteral(body.halfExtents[1])}, ${floatLiteral(body.level)}, ${floatLiteral(body.shoreWidth)}, ${cxxStringLiteral(body.preset)}},`);
+  }
+  emit('}};');
+  emit();
+  emit(`constexpr std::size_t kEnvironmentValidationCameraCount = ${visual.validationCameras.length};`);
+  emit('constexpr std::array<WorldEnvironmentValidationCameraDef, kEnvironmentValidationCameraCount> kEnvironmentValidationCameras{{');
+  for (const camera of visual.validationCameras) {
+    emit(`    {${cxxStringLiteral(camera.cameraId)}, ${floatLiteral(camera.x)}, ${floatLiteral(camera.y)}, ${floatLiteral(camera.yaw)}, ${floatLiteral(camera.pitch)}, ${floatLiteral(camera.distance)}},`);
+  }
+  emit('}};');
+  emit();
   emit('}  // namespace WorldLayout');
 
   return `${lines.join('\n')}\n`;
+}
+
+export function generateEnvironmentVisualManifest(world) {
+  const visual = world.environmentVisual;
+  const quote = (value) => JSON.stringify(value);
+  const cells = visual.visualTerrainCells.map((cell) =>
+    `  { blockId: ${cell.blockId}, lodAssets: [${quote(cell.nearAsset)}, ${quote(cell.midAsset)}, ${quote(cell.farAsset)}] }`
+  ).join(',\n');
+  return `// AUTO-GENERATED by automation/assets/generate_world_layout.mjs. DO NOT EDIT.\n` +
+    `export interface VisualTerrainResource {\n` +
+    `  blockId: number;\n` +
+    `  lodAssets: string[];\n` +
+    `}\n\n` +
+    `export const TERRAIN_ATLAS_ASSET: string = ${quote(visual.terrainMaterial.atlasAsset)};\n` +
+    `export const TERRAIN_CONTROL_ASSET: string = ${quote(visual.terrainMaterial.controlAsset)};\n` +
+    `export const FOLIAGE_ATLAS_ASSET: string = ${quote(visual.foliageAtlasAsset)};\n` +
+    `export const VISUAL_TERRAIN_RESOURCES: VisualTerrainResource[] = [\n${cells}\n];\n`;
 }
 
 async function main() {
@@ -641,6 +760,7 @@ async function main() {
   const worldPath = join(root, 'assets/world/world.json');
   const schemaPath = join(root, 'config/schema/world.schema.json');
   const outputPath = join(root, 'native/generated/world_layout.gen.h');
+  const etsOutputPath = join(root, 'entry/src/main/ets/generated/EnvironmentVisualManifest.ets');
 
   const world = JSON.parse(await readFile(worldPath, 'utf8'));
   const schema = JSON.parse(await readFile(schemaPath, 'utf8'));
@@ -662,6 +782,18 @@ async function main() {
   }
   if (previous !== header) {
     await writeFile(outputPath, header, 'utf8');
+  }
+
+  const etsManifest = generateEnvironmentVisualManifest(world);
+  await mkdir(dirname(etsOutputPath), { recursive: true });
+  let previousEts = null;
+  try {
+    previousEts = await readFile(etsOutputPath, 'utf8');
+  } catch {
+    previousEts = null;
+  }
+  if (previousEts !== etsManifest) {
+    await writeFile(etsOutputPath, etsManifest, 'utf8');
   }
 
   console.log(`WORLD LAYOUT GEN: ${previous === header ? 'up to date' : 'written'} ${outputPath}`);

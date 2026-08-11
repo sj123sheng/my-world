@@ -3,6 +3,8 @@
 #include "native/engine/render/shader_3d.h"
 
 #include <cassert>
+#include <iostream>
+#include <string>
 
 namespace {
 
@@ -71,12 +73,70 @@ void testToonAndOutlineStateTrackWithoutGlContext() {
   assert(shader.outlineWidth() == 0.0f);
 }
 
+void testTerrainMaterialStateTracksWithoutGlContext() {
+  Shader3D shader;
+  assert(!shader.terrainMaterialEnabled());
+  shader.setTerrainMaterial(true, 6.5f, 90.0f, 0.85f, true);
+  assert(shader.terrainMaterialEnabled());
+  assert(shader.terrainDetailNormalsEnabled());
+  shader.setTerrainMaterial(false, 6.5f, 90.0f, 0.85f, false);
+  assert(!shader.terrainMaterialEnabled());
+  assert(!shader.terrainDetailNormalsEnabled());
+  shader.abandonGpuResources();
+  assert(!shader.terrainMaterialEnabled());
+}
+
+void testFoliageAtlasStateTracksWithoutGlContext() {
+  Shader3D shader;
+  assert(!shader.foliageMaterialEnabled());
+  shader.setFoliageMaterial(true, 3);
+  assert(shader.foliageMaterialEnabled());
+  assert(shader.foliageAtlasRegion() == 3);
+  shader.setFoliageMaterial(false, 0);
+  assert(!shader.foliageMaterialEnabled());
+  const std::string fragment = Shader3DFragmentSourceForValidation();
+  assert(fragment.find("localUv.y = 1.0 - localUv.y") != std::string::npos);
+  assert(fragment.find("uFoliageMaterialEnabled") != std::string::npos);
+}
+
+void testSkyAndLocalWaterStateTrackWithoutGlContext() {
+  Shader3D shader;
+  assert(!shader.instancingEnabled());
+  shader.setInstanced(true);
+  assert(shader.instancingEnabled());
+  shader.setInstanced(false);
+  shader.setShadowSampling(true, glm::mat4(1.0f), 1.0f / 1024.0f);
+  assert(shader.shadowSamplingEnabled());
+  shader.setShadowPass(true);
+  assert(shader.shadowPassEnabled());
+  shader.setShadowPass(false);
+  shader.setSkyEnvironment(0.72f, 0.45f, 0.8f, true);
+  assert(shader.cloudCoverage() == 0.72f);
+  assert(shader.proceduralCloudsEnabled());
+  shader.setLocalWaterBody(true, 0.012f, 0.65f, true);
+  assert(shader.localWaterBodyEnabled());
+  assert(shader.shoreFoamEnabled());
+  shader.setLocalWaterBody(false, 0.0f, 0.2f, false);
+  assert(!shader.localWaterBodyEnabled());
+}
+
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
+  if (argc == 2 && std::string(argv[1]) == "--dump-vertex") {
+    std::cout << Shader3DVertexSourceForValidation();
+    return 0;
+  }
+  if (argc == 2 && std::string(argv[1]) == "--dump-fragment") {
+    std::cout << Shader3DFragmentSourceForValidation();
+    return 0;
+  }
   testSkinPaletteBoundariesAndInvalidation();
   testEnvironmentTintSetterIsSafeWithoutGlContext();
   testPresentationLightingSettersAreSafeWithoutGlContext();
   testToonAndOutlineStateTrackWithoutGlContext();
+  testTerrainMaterialStateTracksWithoutGlContext();
+  testFoliageAtlasStateTracksWithoutGlContext();
+  testSkyAndLocalWaterStateTrackWithoutGlContext();
   return 0;
 }

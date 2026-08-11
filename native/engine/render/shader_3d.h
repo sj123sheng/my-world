@@ -44,6 +44,9 @@ struct TerrainRouteUniforms {
   int count = 0;
 };
 
+const char* Shader3DVertexSourceForValidation();
+const char* Shader3DFragmentSourceForValidation();
+
 class Shader3D {
  public:
   // 编译并链接着色器程序。成功返回 true，失败返回 false（已清理中间资源）。
@@ -130,6 +133,20 @@ class Shader3D {
   // 地形模式的水岸过渡高度：低于该值的区域向沙地色过渡。
   void setTerrainWaterLevel(float level) const;
 
+  // 四层地表图集（草/土/岩/路）与手绘控制图。纹理单元固定为 2/3，
+  // 调用方在绘制地形前完成绑定；detailNormals 由统一环境质量档控制。
+  void setTerrainMaterial(bool enabled, float macroScale, float detailScale,
+                          float paintedControlStrength, bool detailNormals,
+                          float triplanarSharpness = 4.0f);
+  bool terrainMaterialEnabled() const { return terrainMaterialEnabled_; }
+  bool terrainDetailNormalsEnabled() const { return terrainDetailNormalsEnabled_; }
+
+  // 统一植被图集的 2×2 区域（草/灌木/树/花）。生成图没有 Alpha 时，
+  // 片元着色器按低饱和高亮背景做色键裁切；岩石继续使用程序材质。
+  void setFoliageMaterial(bool enabled, int atlasRegion);
+  bool foliageMaterialEnabled() const { return foliageMaterialEnabled_; }
+  int foliageAtlasRegion() const { return foliageAtlasRegion_; }
+
   // 水面模式基础色与透明度（默认 0.72）。
   void setWaterColor(const glm::vec3& color, float alpha) const;
 
@@ -138,12 +155,29 @@ class Shader3D {
 
   // 天空模式配色：天顶色与地平线色（后者建议取雾色保证无缝衔接）。
   void setSkyColors(const glm::vec3& top, const glm::vec3& horizon) const;
+  void setSkyEnvironment(float cloudCoverage, float windStrength,
+                         float daylight, bool proceduralClouds);
+  float cloudCoverage() const { return cloudCoverage_; }
+  bool proceduralCloudsEnabled() const { return proceduralCloudsEnabled_; }
+
+  void setLocalWaterBody(bool enabled, float normalizedShoreWidth,
+                         float roughness, bool shoreFoam,
+                         int waveOctaves = 2);
+  bool localWaterBodyEnabled() const { return localWaterBodyEnabled_; }
+  bool shoreFoamEnabled() const { return shoreFoamEnabled_; }
 
   // 上传骨骼调色板。空调色板或超过 64 个矩阵时拒绝启用蒙皮绘制。
   void setSkinPalette(const SkinPalette& palette);
 
   // 设置 uSkinned。未接受有效调色板时，true 会退化为 false，防止非法骨骼绘制。
   void setSkinned(bool skinned);
+  void setInstanced(bool instanced);
+  bool instancingEnabled() const { return instancingEnabled_; }
+  void setShadowSampling(bool enabled, const glm::mat4& lightViewProjection,
+                         float texelSize);
+  void setShadowPass(bool enabled);
+  bool shadowSamplingEnabled() const { return shadowSamplingEnabled_; }
+  bool shadowPassEnabled() const { return shadowPassEnabled_; }
 
   // 返回最近一次调色板上传是否有效，供宿主机状态测试使用。
   bool skinPaletteValid() const { return skinPaletteValid_; }
@@ -158,8 +192,19 @@ class Shader3D {
   unsigned int program_ = 0;
   bool skinPaletteValid_ = false;
   bool skinningEnabled_ = false;
+  bool instancingEnabled_ = false;
+  bool shadowSamplingEnabled_ = false;
+  bool shadowPassEnabled_ = false;
   bool toonEnabled_ = false;
   float outlineWidth_ = 0.0f;
+  bool terrainMaterialEnabled_ = false;
+  bool terrainDetailNormalsEnabled_ = false;
+  bool foliageMaterialEnabled_ = false;
+  int foliageAtlasRegion_ = 0;
+  float cloudCoverage_ = 0.0f;
+  bool proceduralCloudsEnabled_ = false;
+  bool localWaterBodyEnabled_ = false;
+  bool shoreFoamEnabled_ = false;
 
 #ifdef OHOS_PLATFORM
   GLint locMVP_ = -1;
@@ -173,6 +218,12 @@ class Shader3D {
   GLint locEnvironmentTintStrength_ = -1;
   GLint locSkinned_ = -1;
   GLint locJoints_ = -1;
+  GLint locInstanced_ = -1;
+  GLint locLightViewProjection_ = -1;
+  GLint locShadowMap_ = -1;
+  GLint locShadowEnabled_ = -1;
+  GLint locShadowTexel_ = -1;
+  GLint locShadowPass_ = -1;
   GLint locAlpha_ = -1;
   GLint locCameraPos_ = -1;
   GLint locRimColor_ = -1;
@@ -200,10 +251,29 @@ class Shader3D {
   GLint locRouteSegments_ = -1;
   GLint locRouteCount_ = -1;
   GLint locTerrainWaterLevel_ = -1;
+  GLint locTerrainAtlas_ = -1;
+  GLint locTerrainControl_ = -1;
+  GLint locTerrainMaterialEnabled_ = -1;
+  GLint locTerrainMacroScale_ = -1;
+  GLint locTerrainDetailScale_ = -1;
+  GLint locTerrainControlStrength_ = -1;
+  GLint locTerrainDetailNormals_ = -1;
+  GLint locTerrainTriplanarSharpness_ = -1;
+  GLint locFoliageMaterialEnabled_ = -1;
+  GLint locFoliageAtlasRegion_ = -1;
   GLint locWaterColor_ = -1;
   GLint locWaterAlpha_ = -1;
   GLint locTime_ = -1;
   GLint locSkyTop_ = -1;
   GLint locSkyHorizon_ = -1;
+  GLint locCloudCoverage_ = -1;
+  GLint locWindStrength_ = -1;
+  GLint locDaylight_ = -1;
+  GLint locProceduralClouds_ = -1;
+  GLint locLocalWaterBody_ = -1;
+  GLint locShoreWidth_ = -1;
+  GLint locWaterRoughness_ = -1;
+  GLint locShoreFoam_ = -1;
+  GLint locWaterWaveOctaves_ = -1;
 #endif
 };

@@ -55,6 +55,10 @@ add_library(native_game SHARED
    ${NATIVE_ROOT}/engine/render/terrain_mesh.cpp
    ${NATIVE_ROOT}/engine/render/chunked_terrain.cpp
    ${NATIVE_ROOT}/engine/render/texture.cpp
+   ${NATIVE_ROOT}/engine/render/texture_asset.cpp
+   ${NATIVE_ROOT}/engine/render/environment_quality.cpp
+   ${NATIVE_ROOT}/engine/render/foliage_renderer.cpp
+   ${NATIVE_ROOT}/engine/render/terrain_material.cpp
     ${NATIVE_ROOT}/engine/render/shader_3d.cpp
     ${NATIVE_ROOT}/engine/render/skinned_model.cpp
     ${NATIVE_ROOT}/engine/render/static_model.cpp
@@ -83,6 +87,8 @@ add_library(native_game SHARED
     ${NATIVE_ROOT}/engine/world/stream_scheduler.cpp
     ${NATIVE_ROOT}/engine/world/environment_collision.cpp
     ${NATIVE_ROOT}/engine/world/weather_system.cpp
+    ${NATIVE_ROOT}/engine/world/foliage_system.cpp
+    ${NATIVE_ROOT}/engine/world/water_body.cpp
 
     # gameplay combat
     ${NATIVE_ROOT}/gameplay/combat/source_aura.cpp
