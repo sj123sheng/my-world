@@ -2,6 +2,9 @@
 
 #include "native/engine/math/vec2.h"
 
+#include <algorithm>
+#include <cmath>
+
 struct Player {
   float x = 0.5f;
   float y = 0.5f;
@@ -28,6 +31,11 @@ class PlayerController {
  public:
   explicit PlayerController(PlayerControllerConfig config = {})
       : config_(config) {}
+
+  float speed() const {
+    return std::isfinite(config_.speed) ? std::max(0.0f, config_.speed)
+                                        : 0.0f;
+  }
 
   // turnSpeedScale：朝向插值速率倍率。转身动画播放期间传 0 冻结
   // yaw（由动画驱动视觉转身），动画结束后传 >1 倍率快速追平目标

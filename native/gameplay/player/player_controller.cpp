@@ -40,7 +40,7 @@ void PlayerController::update(Player& player, Vec2 move, float cameraYaw,
         CameraGroundBasisForYaw(cameraYaw);
     // speedScale：疾跑等状态的速度倍率（非法值钳为 0）。
     const float effectiveSpeed =
-        config_.speed * std::max(0.0f, std::isfinite(speedScale) ? speedScale : 1.0f);
+        speed() * std::max(0.0f, std::isfinite(speedScale) ? speedScale : 1.0f);
     targetVelocity =
         (cameraBasis.right * move.x + cameraBasis.forward * move.y) *
         effectiveSpeed;

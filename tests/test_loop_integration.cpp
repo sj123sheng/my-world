@@ -21,6 +21,30 @@ int main() {
   static_assert(std::is_same_v<decltype(&Loop::tickOnce), void (Loop::*)(int64_t)>);
   static_assert(std::is_same_v<decltype(&Loop::updateFixed), void (Loop::*)(Tick, int64_t)>);
 
+  // 动画比例必须跟随控制器平滑后的真实速度，而不是瞬时摇杆幅度。
+  Loop locomotionLoop;
+  isolateWildSpawns(locomotionLoop);
+  locomotionLoop.intent.move = {0.0f, 1.0f};
+  locomotionLoop.updateFixed(1, 16);
+  const float firstRatio = locomotionLoop.surface.player3dAnimation.moveRatio;
+  assert(firstRatio > 0.0f && firstRatio < 0.5f);
+
+  for (Tick tick = 2; tick <= 40; ++tick) {
+    locomotionLoop.updateFixed(tick, 16);
+  }
+  const float settledRatio = locomotionLoop.surface.player3dAnimation.moveRatio;
+  assert(settledRatio > 0.95f && settledRatio <= 1.0f);
+
+  locomotionLoop.intent.move = {};
+  locomotionLoop.updateFixed(41, 16);
+  const float releaseRatio = locomotionLoop.surface.player3dAnimation.moveRatio;
+  assert(releaseRatio > 0.0f && releaseRatio < settledRatio);
+  for (Tick tick = 42; locomotionLoop.surface.player.moving && tick < 100;
+       ++tick) {
+    locomotionLoop.updateFixed(tick, 16);
+  }
+  assert(locomotionLoop.surface.player3dAnimation.moveRatio == 0.0f);
+
   Loop combatLoop;
   combatLoop.surface.width = 1000;
   combatLoop.surface.height = 800;

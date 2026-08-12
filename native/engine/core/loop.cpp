@@ -2133,11 +2133,12 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   // 地形墙探测必须使用控制器积分前的位置；若在 update 之后才取样，
   // 本帧位移恒为零，正面阻挡和攀爬入口均不会触发，只剩嵌入推出兜底。
   const Vec2 playerPosBeforeController{surface.player.x, surface.player.y};
+  const float playerSpeedScale =
+      motionState.sprinting
+          ? explorationMotion.config().sprintSpeedMultiplier
+          : 1.0f;
   playerController.update(surface.player, intent.move, camera.yaw(),
-                          dtSeconds,
-                          motionState.sprinting
-                              ? explorationMotion.config().sprintSpeedMultiplier
-                              : 1.0f,
+                          dtSeconds, playerSpeedScale,
                           turnSpeedScale);
 
   // 建筑碰撞：把主角从城墙/塔楼盒内推出并沿墙滑动，不再穿模；
@@ -3684,10 +3685,14 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   }
   surface.player3dAnimation.hit = surface.playerHitAnimationSeconds > 0.0f;
   surface.player3dAnimation.moving = surface.player.moving;
-  // 摇杆幅度驱动跑动步频缩放：地面移速与输入幅度成正比，
-  // 动画步频同比缩放才能消除半推摇杆时的滑步。
+  // 跑动步频由控制器平滑后的真实速度归一化，起步与停步保持连续。
+  const float maximumPlayerSpeed = playerController.speed() * playerSpeedScale;
+  const float actualPlayerSpeed = surface.player.velocity.length();
   surface.player3dAnimation.moveRatio =
-      std::clamp(intent.move.length(), 0.0f, 1.0f);
+      std::isfinite(actualPlayerSpeed) &&
+              std::isfinite(maximumPlayerSpeed) && maximumPlayerSpeed > 0.0f
+          ? std::clamp(actualPlayerSpeed / maximumPlayerSpeed, 0.0f, 1.0f)
+          : 0.0f;
   // 主角移动动画放慢：模型放大后原步频相对体量过快，跑动/行走
   // 播放速率统一降为 65%（仅主角，敌人/NPC 保持原步频）。
   surface.player3dAnimation.locomotionRateScale = 0.65f;

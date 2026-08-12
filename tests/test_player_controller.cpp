@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <cmath>
+#include <limits>
 
 namespace {
 
@@ -12,6 +13,15 @@ bool close(float actual, float expected, float tolerance = 0.0001f) {
 }  // namespace
 
 int main() {
+  // 基础速度接口与控制器实际采用的安全非负速度一致。
+  PlayerController configured({0.42f, 8.0f, 16.0f, 18.0f});
+  assert(close(configured.speed(), 0.42f));
+  PlayerController negativeSpeed({-2.0f, 8.0f, 16.0f, 18.0f});
+  assert(close(negativeSpeed.speed(), 0.0f));
+  PlayerController invalidSpeed(
+      {std::numeric_limits<float>::infinity(), 8.0f, 16.0f, 18.0f});
+  assert(close(invalidSpeed.speed(), 0.0f));
+
   // 平滑加速：第一帧只达到部分速度，位移小于瞬时满速值。
   Player player;
   PlayerController controller({1.0f, 8.0f, 25.0f, 18.0f});
