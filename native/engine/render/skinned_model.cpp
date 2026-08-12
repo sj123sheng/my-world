@@ -893,6 +893,7 @@ void SkinnedAnimationState::reset() {
   blendElapsed = 0.0f;
   blendDurationSeconds = 0.0f;
   requestedAnimation = RenderAnimation::Idle;
+  locomotionGait = LocomotionGait::Unknown;
   currentRate = 1.0f;
   previousRate = 1.0f;
   logState.reset();
@@ -1153,6 +1154,12 @@ SkinPalette SkinnedModel::update(SkinnedAnimationState& animation,
   }
   const float dt = std::max(dtSeconds, 0.0f);
   const RenderAnimation requestedAnimation = ChooseAnimation(actor);
+  if (requestedAnimation == RenderAnimation::Run) {
+    animation.locomotionGait =
+        ChooseLocomotionGait(animation.locomotionGait, actor.moveRatio);
+  } else if (requestedAnimation == RenderAnimation::Idle) {
+    animation.locomotionGait = LocomotionGait::Unknown;
+  }
   // 跑动步频随输入幅度缩放，与地面移速匹配；locomotionRateScale
   // 逐角色调参（主角放大模型整体放慢）；其余动作保持原速率。
   const float playbackRate =
@@ -1161,11 +1168,17 @@ SkinPalette SkinnedModel::update(SkinnedAnimationState& animation,
           : 1.0f;
   const std::string desiredName = ResolveClip(
       impl_->data.clipNames, requestedAnimation, actor.variant,
-      actor.moveRatio, actor.attackClip);
+      actor.moveRatio, actor.attackClip, animation.locomotionGait);
   const int desiredClip = findClip(impl_->data, desiredName);
   if (desiredClip != animation.currentClip) {
+    const std::string currentName =
+        animation.currentClip >= 0 &&
+                animation.currentClip < static_cast<int>(impl_->data.clips.size())
+            ? impl_->data.clips[animation.currentClip].name
+            : std::string{};
     const float blendSeconds = AnimationBlendSeconds(
-        animation.requestedAnimation, requestedAnimation);
+        animation.requestedAnimation, requestedAnimation, currentName,
+        desiredName);
     if (animation.currentClip >= 0 && desiredClip >= 0 && blendSeconds > 0.0f) {
       // 任意动作转场都走交叉混合，避免上架品质下可见的姿态硬切。
       animation.previousClip = animation.currentClip;

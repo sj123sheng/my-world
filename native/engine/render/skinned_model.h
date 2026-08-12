@@ -56,6 +56,7 @@ struct SkinnedAnimationState {
   float blendElapsed = 0.0f;
   float blendDurationSeconds = 0.0f;
   RenderAnimation requestedAnimation = RenderAnimation::Idle;
+  LocomotionGait locomotionGait = LocomotionGait::Unknown;
   // 当前/上一个 clip 的播放速率（跑动步频缩放），混合期间各自推进。
   float currentRate = 1.0f;
   float previousRate = 1.0f;

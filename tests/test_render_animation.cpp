@@ -344,6 +344,17 @@ void testAnimationBlendDurationsMatchTransitionClasses() {
   // 死亡转场最长，保证倒地动作承接自然。
   assert(close(AnimationBlendSeconds(RenderAnimation::Run, RenderAnimation::Death), 0.25f));
   assert(close(AnimationBlendSeconds(RenderAnimation::Idle, RenderAnimation::Death), 0.25f));
+  // 同一 Run 意图内，只有实际 clip 变化才补 0.15s 混合；主动动作
+  // 缺 clip 回退时仍沿用原先按意图分类的时长。
+  assert(close(AnimationBlendSeconds(RenderAnimation::Run, RenderAnimation::Run,
+                                     "Walking_B", "run"),
+               0.15f));
+  assert(close(AnimationBlendSeconds(RenderAnimation::Run, RenderAnimation::Run,
+                                     "run", "run"),
+               0.0f));
+  assert(close(AnimationBlendSeconds(RenderAnimation::Attack, RenderAnimation::Idle,
+                                     "attack", "idle"),
+               0.2f));
 }
 
 void testRunPlaybackRateTracksInputMagnitude() {
@@ -413,11 +424,39 @@ void testLowSpeedLocomotionPrefersWalkClip() {
   assert(!ShouldUseWalkClip(0.35f));
   assert(!ShouldUseWalkClip(1.0f));
   const std::vector<std::string> clips{"idle", "run", "Walking_B"};
-  assert(ResolveClip(clips, RenderAnimation::Run, 0, 0.2f) == "Walking_B");
-  assert(ResolveClip(clips, RenderAnimation::Run, 0, 0.8f) == "run");
+  assert(ResolveClip(clips, RenderAnimation::Run, 0, 0.35f, {},
+                     LocomotionGait::Walk) == "Walking_B");
+  assert(ResolveClip(clips, RenderAnimation::Run, 0, 0.35f, {},
+                     LocomotionGait::Run) == "run");
   const std::vector<std::string> noWalk{"idle", "run"};
   assert(ResolveClip(noWalk, RenderAnimation::Run, 0, 0.2f) == "run");
   assert(ResolveClip(clips, RenderAnimation::Idle, 0, 0.2f) == "idle");
+}
+
+void testLocomotionGaitUsesHysteresis() {
+  assert(IsLoopingClip("Walking_B"));
+  assert(ChooseLocomotionGait(LocomotionGait::Unknown, 0.20f) ==
+         LocomotionGait::Walk);
+  assert(ChooseLocomotionGait(LocomotionGait::Unknown, 0.35f) ==
+         LocomotionGait::Run);
+  assert(ChooseLocomotionGait(LocomotionGait::Walk, 0.39f) ==
+         LocomotionGait::Walk);
+  assert(ChooseLocomotionGait(LocomotionGait::Walk, 0.40f) ==
+         LocomotionGait::Walk);
+  assert(ChooseLocomotionGait(LocomotionGait::Walk, 0.41f) ==
+         LocomotionGait::Run);
+  assert(ChooseLocomotionGait(LocomotionGait::Run, 0.31f) ==
+         LocomotionGait::Run);
+  assert(ChooseLocomotionGait(LocomotionGait::Run, 0.30f) ==
+         LocomotionGait::Run);
+  assert(ChooseLocomotionGait(LocomotionGait::Run, 0.29f) ==
+         LocomotionGait::Walk);
+
+  const std::vector<std::string> clips{"idle", "run", "Walking_B"};
+  assert(ResolveClip(clips, RenderAnimation::Run, 0, 0.35f, {},
+                     LocomotionGait::Walk) == "Walking_B");
+  assert(ResolveClip(clips, RenderAnimation::Run, 0, 0.35f, {},
+                     LocomotionGait::Run) == "run");
 }
 
 void testAttackClipDifferentiationBySegmentArchetypeVariant() {
@@ -615,6 +654,7 @@ int main() {
   testDeathFadeAlphaHoldsThenFadesToZero();
   testClipVariantsAlternateByVariantIndex();
   testLowSpeedLocomotionPrefersWalkClip();
+  testLocomotionGaitUsesHysteresis();
   testAttackClipDifferentiationBySegmentArchetypeVariant();
   testEnemyWeaponKindMatchesAttackLanguage();
   testJumpAndLandAnimationClips();

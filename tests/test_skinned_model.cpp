@@ -504,6 +504,27 @@ void testLowSpeedMovementSwitchesToWalkClip() {
   assert(fastPose.matrices[0][3].x > slowPose.matrices[0][3].x);
 }
 
+void testWalkRunTransitionBlendsActualClips() {
+  SkinnedModel model;
+  assert(model.tryInitialize(gltf_fixture::makeWalkVariantGlb(), "gait.glb"));
+
+  SkinnedAnimationState animation;
+  ActorRenderState actor;
+  actor.moving = true;
+  actor.moveRatio = 0.20f;
+  model.update(animation, actor, 0.15f);  // idle -> walk 完成
+  const SkinPalette walkBefore = model.update(animation, actor, 0.05f);
+
+  actor.moveRatio = 0.80f;
+  const SkinPalette blendStart = model.update(animation, actor, 0.0f);
+  assert(close(blendStart.matrices[0][3].x,
+               walkBefore.matrices[0][3].x));
+
+  const SkinPalette blendMiddle = model.update(animation, actor, 0.075f);
+  assert(blendMiddle.matrices[0][3].x > 3.18f);
+  assert(blendMiddle.matrices[0][3].x < walkBefore.matrices[0][3].x + 0.10f);
+}
+
 void testJointNamesTrackPaletteAndFindJointIndexHits() {
   // FindJointIndex 纯函数：命中返回下标，未命中/空表返回 -1。
   const std::vector<std::string> names{"root", "hips", "handslot.r"};
@@ -600,6 +621,7 @@ int main() {
   testOneShotClipsHoldFinalFrameInsteadOfLooping();
   testHitVariantSelectsAlternateReactionClip();
   testLowSpeedMovementSwitchesToWalkClip();
+  testWalkRunTransitionBlendsActualClips();
   testDestroyAndAbandonClearAllTracking();
   testWrapAndStepSampling();
   testLinearSampling();

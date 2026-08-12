@@ -3,6 +3,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -34,6 +35,22 @@ enum class ModelKind {
   // NPC（Phase 4）：第一版复用 player.glb 占位，独立槽位供后续替换。
   Npc,
 };
+
+enum class LocomotionGait { Unknown, Walk, Run };
+
+inline LocomotionGait ChooseLocomotionGait(LocomotionGait previous,
+                                           float moveRatio) {
+  const float ratio = std::isfinite(moveRatio)
+                          ? std::clamp(moveRatio, 0.0f, 1.0f)
+                          : 0.0f;
+  if (previous == LocomotionGait::Walk) {
+    return ratio > 0.40f ? LocomotionGait::Run : LocomotionGait::Walk;
+  }
+  if (previous == LocomotionGait::Run) {
+    return ratio < 0.30f ? LocomotionGait::Walk : LocomotionGait::Run;
+  }
+  return ratio < 0.35f ? LocomotionGait::Walk : LocomotionGait::Run;
+}
 
 // 敌人原型数量（0=RiftClaw 1=Priest 2=Guard 3=Bruiser 4=Caster
 // 5=Elite）：攻击 clip、武器种类、装备覆盖与独立高模槽位均按该
@@ -104,6 +121,21 @@ inline float AnimationBlendSeconds(RenderAnimation previous,
   return 0.12f;
 }
 
+// 实际 clip 未变化时不重置播放时间或交叉混合；但 walk/run 同属 Run
+// 意图，切换实际 clip 时仍需补足移动转场的 0.15 秒。其余情形保持
+// 原先按动画意图分类的回退时长，避免主动动作缺 clip 改变既有语义。
+inline float AnimationBlendSeconds(RenderAnimation previousAnimation,
+                                   RenderAnimation requestedAnimation,
+                                   const std::string& previousClip,
+                                   const std::string& requestedClip) {
+  if (previousClip == requestedClip) return 0.0f;
+  if (previousAnimation == RenderAnimation::Run &&
+      requestedAnimation == RenderAnimation::Run) {
+    return 0.15f;
+  }
+  return AnimationBlendSeconds(previousAnimation, requestedAnimation);
+}
+
 // 跑动动画播放速率：按移动输入幅度缩放步频，使脚步节奏与
 // 地面移速匹配，消除半推摇杆时的“滑步”；下限保持步态稳定。
 inline float RunPlaybackRate(float moveRatio) {
@@ -125,7 +157,8 @@ inline bool ShouldUseWalkClip(float moveRatio) {
 // 在尾帧，避免尸体倒地动作或攻击挥砍循环重播。
 inline bool IsLoopingClip(const std::string& name) {
   return name == "idle" || name == "run" || name == "Spellcasting" ||
-         name == "walk" || name == "glide" || name == "cast" ||
+         name == "walk" || name == "Walking_B" || name == "glide" ||
+         name == "cast" ||
          name == "Jump_Idle";
 }
 
@@ -280,7 +313,8 @@ inline const char* BossAttackClipFor(int basicAttackVariant) {
 inline std::string ResolveClip(const std::vector<std::string>& clips,
                                RenderAnimation animation, int variant = 0,
                                float moveRatio = 1.0f,
-                               const std::string& preferredAttackClip = {}) {
+                               const std::string& preferredAttackClip = {},
+                               LocomotionGait gait = LocomotionGait::Unknown) {
   std::vector<std::string> candidates{RenderAnimationName(animation)};
   // 攻击 clip 差异化：发布侧写入的段数/原型/变体 clip 优先，
   // 资产缺失时自动回退通用 attack（候选链后段）；跳跃同机制偏好
@@ -291,12 +325,16 @@ inline std::string ResolveClip(const std::vector<std::string>& clips,
       !preferredAttackClip.empty()) {
     candidates.insert(candidates.begin(), preferredAttackClip);
   }
-  // 低速步态分层：低幅度输入优先行走 clip（Walking_B），缺失时
-  // 回退主角重制模型的 walk，再缺失时回退 run；资产无行走 clip
-  // 时行为与升级前完全一致。
-  if (animation == RenderAnimation::Run && ShouldUseWalkClip(moveRatio)) {
-    candidates.insert(candidates.begin(), "walk");
+  // 步态分层：Walk 优先主角语义 walk、再兼容旧资产 Walking_B，最后
+  // 回退 run；未显式传入 gait 的旧调用以 Unknown 的初始判定保持兼容。
+  const LocomotionGait resolvedGait =
+      gait == LocomotionGait::Unknown
+          ? ChooseLocomotionGait(LocomotionGait::Unknown, moveRatio)
+          : gait;
+  if (animation == RenderAnimation::Run &&
+      resolvedGait == LocomotionGait::Walk) {
     candidates.insert(candidates.begin(), "Walking_B");
+    candidates.insert(candidates.begin(), "walk");
   }
   // 受击/死亡变体轮换：奇数变体优先选用 B 版 clip，缺失时自动
   // 回退主 clip，资产无变体时行为与升级前完全一致。
