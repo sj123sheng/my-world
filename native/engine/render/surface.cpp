@@ -893,9 +893,7 @@ static void drawActor(Surface& s, SkinnedModel& model, const Mesh& fallback,
     s.shader3d.setSkinPalette(palette);
 #ifdef OHOS_PLATFORM
     const RenderAnimation animation = ChooseAnimation(actor);
-    const std::string clip = ResolveClip(model.clipNames(), animation,
-                                         actor.variant, actor.moveRatio,
-                                         actor.attackClip);
+    const std::string clip = model.resolvedClipName(animationState);
     if (animationState.shouldReport(animation, clip)) {
       LOGI("animation actor=%{public}s action=%{public}s clip=%{public}s",
            actorName, RenderAnimationName(animation), clip.c_str());

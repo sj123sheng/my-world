@@ -504,6 +504,24 @@ void testLowSpeedMovementSwitchesToWalkClip() {
   assert(fastPose.matrices[0][3].x > slowPose.matrices[0][3].x);
 }
 
+void testResolvedClipNameFollowsInstanceGaitHysteresis() {
+  SkinnedModel model;
+  assert(model.tryInitialize(gltf_fixture::makeWalkVariantGlb(), "log-gait.glb"));
+
+  SkinnedAnimationState animation;
+  ActorRenderState actor;
+  actor.moving = true;
+  actor.moveRatio = 0.20f;
+  model.update(animation, actor, 0.15f);
+  assert(model.resolvedClipName(animation) == "Walking_B");
+
+  // 已进入 Walk 后，0.35 位于迟滞区，实际 clip 仍是 Walking_B；按无状态
+  // ResolveClip 重算会错误得到 run，因此日志必须消费该实际解析结果。
+  actor.moveRatio = 0.35f;
+  model.update(animation, actor, 0.0f);
+  assert(model.resolvedClipName(animation) == "Walking_B");
+}
+
 void testWalkRunTransitionBlendsActualClips() {
   SkinnedModel model;
   assert(model.tryInitialize(gltf_fixture::makeWalkVariantGlb(), "gait.glb"));
@@ -523,6 +541,28 @@ void testWalkRunTransitionBlendsActualClips() {
   const SkinPalette blendMiddle = model.update(animation, actor, 0.075f);
   assert(blendMiddle.matrices[0][3].x > 3.18f);
   assert(blendMiddle.matrices[0][3].x < walkBefore.matrices[0][3].x + 0.10f);
+}
+
+void testRunWalkTransitionBlendsActualClips() {
+  SkinnedModel model;
+  assert(model.tryInitialize(gltf_fixture::makeWalkVariantGlb(), "reverse-gait.glb"));
+
+  SkinnedAnimationState animation;
+  ActorRenderState actor;
+  actor.moving = true;
+  actor.moveRatio = 0.80f;
+  model.update(animation, actor, 0.15f);  // idle -> run 完成
+  const SkinPalette runBefore = model.update(animation, actor, 0.20f);
+
+  actor.moveRatio = 0.20f;
+  const SkinPalette blendStart = model.update(animation, actor, 0.0f);
+  // 首帧必须保留 run 的实际姿态，杀死目标 walk clip 从 0 帧硬切的 mutation。
+  assert(close(blendStart.matrices[0][3].x, runBefore.matrices[0][3].x));
+
+  const SkinPalette blendMiddle = model.update(animation, actor, 0.075f);
+  // 0.15s 中点应为 run 的既有姿态与 walk 的新姿态混合，不能等于任一端硬切。
+  assert(blendMiddle.matrices[0][3].x > 3.35f);
+  assert(blendMiddle.matrices[0][3].x < runBefore.matrices[0][3].x);
 }
 
 void testJointNamesTrackPaletteAndFindJointIndexHits() {
@@ -621,7 +661,9 @@ int main() {
   testOneShotClipsHoldFinalFrameInsteadOfLooping();
   testHitVariantSelectsAlternateReactionClip();
   testLowSpeedMovementSwitchesToWalkClip();
+  testResolvedClipNameFollowsInstanceGaitHysteresis();
   testWalkRunTransitionBlendsActualClips();
+  testRunWalkTransitionBlendsActualClips();
   testDestroyAndAbandonClearAllTracking();
   testWrapAndStepSampling();
   testLinearSampling();

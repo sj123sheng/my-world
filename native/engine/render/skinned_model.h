@@ -157,6 +157,9 @@ class SkinnedModel {
                      const ActorRenderState& actor, float dtSeconds) const;
   // 保留旧调用签名用于一次性采样；连续播放应显式传入实例状态。
   SkinPalette update(const ActorRenderState& actor, float dtSeconds) const;
+  // 返回该实例状态当前实际播放的 clip 名称。渲染日志等观察者必须消费
+  // 此结果，避免在实例步态迟滞之外重复 ResolveClip 决策。
+  std::string resolvedClipName(const SkinnedAnimationState& animation) const;
   void draw() const;
   void draw(Shader3D& shader) const;
   // 逐实例挂件启用覆盖：attachmentOverride 与 attachmentNames() 同序，

@@ -321,7 +321,7 @@ void testPatrolAndCandidates() {
   const std::vector<TargetCandidate> candidates = wild.candidates();
   assert(candidates.size() == 1);
   assert(candidates.front().id == static_cast<int32_t>(WildSpawnSystem::kIdBase));
-  // 默认构造：消费 WorldLayout::kSpawnZones（8 区），全激活下注册 ≤ 24。
+  // 默认构造：消费 WorldLayout::kSpawnZones（7 区），全激活下注册 ≤ 24。
   WildSpawnSystem worldDefault;
   worldDefault.update(makeInput(kStepMs, kFarPlayer));
   assert(worldDefault.registeredCount() > 0);

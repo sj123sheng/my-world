@@ -428,6 +428,10 @@ void testLowSpeedLocomotionPrefersWalkClip() {
                      LocomotionGait::Walk) == "Walking_B");
   assert(ResolveClip(clips, RenderAnimation::Run, 0, 0.35f, {},
                      LocomotionGait::Run) == "run");
+  // 主角语义 clip 与兼容旧资产的 Walking_B 同时存在时，前者必须优先。
+  assert(ResolveClip({"idle", "run", "walk", "Walking_B"},
+                     RenderAnimation::Run, 0, 0.2f, {},
+                     LocomotionGait::Walk) == "walk");
   const std::vector<std::string> noWalk{"idle", "run"};
   assert(ResolveClip(noWalk, RenderAnimation::Run, 0, 0.2f) == "run");
   assert(ResolveClip(clips, RenderAnimation::Idle, 0, 0.2f) == "idle");

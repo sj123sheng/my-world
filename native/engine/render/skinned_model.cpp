@@ -1227,6 +1227,17 @@ SkinPalette SkinnedModel::update(const ActorRenderState& actor,
   return update(animation, actor, dtSeconds);
 }
 
+std::string SkinnedModel::resolvedClipName(
+    const SkinnedAnimationState& animation) const {
+  if (!impl_->ready || animation.owner != this ||
+      animation.assetRevision != impl_->assetRevision ||
+      animation.currentClip < 0 ||
+      animation.currentClip >= static_cast<int>(impl_->data.clips.size())) {
+    return {};
+  }
+  return impl_->data.clips[animation.currentClip].name;
+}
+
 void SkinnedModel::draw() const { drawInternal(nullptr); }
 
 void SkinnedModel::draw(Shader3D& shader) const { drawInternal(&shader); }

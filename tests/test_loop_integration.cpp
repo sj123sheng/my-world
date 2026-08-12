@@ -10,9 +10,8 @@
 
 namespace {
 
-// 毫秒级时序/软锁定场景只验证 Loop 与训练脉冲行为：出生点侦察敌
-// （sz_spawn_scout，id 5000）在出生点感知半径内会立即仇恨攻击
-// 玩家并抢占软锁定，干扰纯时序断言；清空野外刷怪区隔离之。
+// 毫秒级时序/软锁定场景只验证 Loop 与训练脉冲行为：排除野外刷怪对
+// 时序场景的干扰，清空野外刷怪区隔离之。
 void isolateWildSpawns(Loop& loop) { loop.wildSpawn.resetZones({}); }
 
 }  // namespace
