@@ -107,7 +107,11 @@ int main() {
   static_assert(WL::kSpawnZoneCount >= 6 && WL::kSpawnZoneCount <= 10,
                 "spawn zone count out of design range");
   std::set<std::string_view> zoneIds;
+  bool hasSpawnScout = false;
+  bool hasWestPack = false;
   for (const auto& zone : WL::kSpawnZones) {
+    hasSpawnScout = hasSpawnScout || zone.zoneId == "sz_spawn_scout";
+    hasWestPack = hasWestPack || zone.zoneId == "sz_west_pack";
     assert(!zone.zoneId.empty());
     assert(zoneIds.insert(zone.zoneId).second && "duplicate zoneId");
     assert(!zone.aggroGroup.empty());
@@ -125,6 +129,9 @@ int main() {
                         zone.positionX[i], zone.positionY[i]));
     }
   }
+  assert(!hasSpawnScout);
+  assert(hasWestPack);
+  assert(WL::kSpawnZoneCount == 7);
 
   // ---- chests / collectibles：id≥32、坐标界内、落在声明 district ----
   static_assert(WL::kChestCount >= 1, "needs chests");

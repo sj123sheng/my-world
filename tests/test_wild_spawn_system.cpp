@@ -329,6 +329,21 @@ void testPatrolAndCandidates() {
   std::printf("testPatrolAndCandidates ok\n");
 }
 
+void testGeneratedLayoutKeepsSpawnPlateauSafe() {
+  std::vector<WorldLayout::WorldSpawnZoneDef> zones(
+      WorldLayout::kSpawnZones.begin(), WorldLayout::kSpawnZones.end());
+  WildSpawnSystem wild(zones);
+  const std::vector<int32_t> spawnChunk{4};
+  const Vec2 player{0.50f, 0.12f};
+  wild.update(makeInput(kStepMs, player, &spawnChunk));
+
+  for (const WildEnemySnapshot& enemy : wild.snapshot()) {
+    assert((enemy.position - player).length() >= 0.15f);
+  }
+  assert(wild.snapshot().empty());
+  std::printf("testGeneratedLayoutKeepsSpawnPlateauSafe ok\n");
+}
+
 }  // namespace
 
 int main() {
@@ -339,6 +354,7 @@ int main() {
   testAggroGroupLink();
   testDistanceLod();
   testPatrolAndCandidates();
+  testGeneratedLayoutKeepsSpawnPlateauSafe();
   std::printf("test_wild_spawn_system all passed\n");
   return 0;
 }

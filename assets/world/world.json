@@ -122,16 +122,6 @@
   ],
   "spawnZones": [
     {
-      "zoneId": "sz_spawn_scout",
-      "districtId": "spawn_plateau",
-      "archetype": "RiftClaw",
-      "count": 1,
-      "positions": [[0.58, 0.08]],
-      "patrolCenter": [0.58, 0.08],
-      "aggroGroup": "spawn_scout",
-      "respawnMs": 30000
-    },
-    {
       "zoneId": "sz_west_pack",
       "districtId": "westlands",
       "archetype": "RiftClaw",

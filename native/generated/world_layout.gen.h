@@ -269,15 +269,8 @@ constexpr std::array<WorldNpcDef, kNpcCount> kNpcs{{
     },
 }};
 
-constexpr std::size_t kSpawnZoneCount = 8;
+constexpr std::size_t kSpawnZoneCount = 7;
 constexpr std::array<WorldSpawnZoneDef, kSpawnZoneCount> kSpawnZones{{
-    {
-        "sz_spawn_scout"sv, "spawn_plateau"sv, "spawn_scout"sv,
-        SpawnArchetype::RiftClaw, 1, 30000,
-        0.58f, 0.08f,
-        {0.58f, 0.0f, 0.0f},
-        {0.08f, 0.0f, 0.0f},
-    },
     {
         "sz_west_pack"sv, "westlands"sv, "west_pack"sv,
         SpawnArchetype::RiftClaw, 3, 45000,
