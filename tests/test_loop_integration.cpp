@@ -292,6 +292,23 @@ int main() {
   assert(targetingLoop.snapshot().targetId ==
          static_cast<int32_t>(CombatController::kTrainingTargetId));
 
+  targetingLoop.surface.player.angle = 1.5707963f;
+  targetingLoop.surface.player.velocity = {};
+  targetingLoop.surface.player.moving = false;
+  const float facingBeforeOrbit = targetingLoop.surface.player.angle;
+  const float yawBeforeOrbit = targetingLoop.camera.yaw();
+
+  assert(targetingLoop.enqueueInput(InputAction::PointerDown, 90,
+                                    700.0f, 400.0f));
+  assert(targetingLoop.enqueueInput(InputAction::PointerMove, 90,
+                                    780.0f, 400.0f));
+  targetingLoop.tickOnce(16);
+  assert(targetingLoop.camera.yaw() != yawBeforeOrbit);
+  assert(std::abs(targetingLoop.surface.player.angle - facingBeforeOrbit) <
+         0.0001f);
+  assert(targetingLoop.snapshot().targetId ==
+         static_cast<int32_t>(CombatController::kTrainingTargetId));
+
   Loop enemyEncounterLoop;
   isolateWildSpawns(enemyEncounterLoop);
   enemyEncounterLoop.surface.width = 1000;

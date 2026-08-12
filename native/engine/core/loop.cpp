@@ -2456,19 +2456,6 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     }
   }
 
-  // 朝向锁定：仅在主角停步时平滑转向软锁定目标，保持面对面对峙姿态；
-  // 跑动中不覆盖朝向，脸部始终跟随移动方向（由 PlayerController 驱动）。
-  if (!surface.player.moving && currentTarget.has_value() &&
-      currentTarget->direction.length() > 0.0f) {
-    const Vec2 facing = currentTarget->direction;
-    const float targetAngle = std::atan2(facing.x, facing.y);
-    constexpr float kTwoPi = 6.2831853071795864769f;
-    const float maxTurn = 8.0f * dtSeconds;
-    float delta = std::remainder(targetAngle - surface.player.angle, kTwoPi);
-    delta = std::clamp(delta, -maxTurn, maxTurn);
-    surface.player.angle += delta;
-  }
-
   // 仅在摇杆有有效输入时发射脚步粒子，避免减速滑行期间误发。
   particleEmitTimer += dtSeconds;
   if (surface.player.moving && intent.move.length() > 0.0f &&
