@@ -4,10 +4,20 @@
 #include <cstdio>
 #include <fstream>
 
+namespace {
+
+void assertLegacyWorldDefaults(const SaveState& state) {
+  assert(state.worldSeed == 1);
+  assert(state.playerChunkX == 0 && state.playerChunkY == 0);
+  assert(state.playerLocalX == 0.5f && state.playerLocalY == 0.12f);
+}
+
+}  // namespace
+
 int main() {
   Save save;
 
-  // v6 写读往返：全部进度与养成字段保持。
+  // V10 写读往返：全部进度、养成字段与世界位置保持。
   SaveState state;
   state.campLevel = 2;
   state.relics = 3;
@@ -27,6 +37,11 @@ int main() {
   state.sideQuestMask = 0b101;
   state.collectRespawnMs = 45000;
   state.weaponTriples = {4, 3, 1, 5, 1, 0};
+  state.worldSeed = 998877665544332211ULL;
+  state.playerChunkX = -4000000000LL;
+  state.playerChunkY = 5000000000LL;
+  state.playerLocalX = 0.125f;
+  state.playerLocalY = 0.875f;
   assert(save.write(state, "/tmp/save_progress.dat"));
   SaveState loaded;
   assert(save.read(loaded, "/tmp/save_progress.dat"));
@@ -48,6 +63,20 @@ int main() {
   assert(loaded.sideQuestMask == 0b101);
   assert(loaded.collectRespawnMs == 45000);
   assert(loaded.weaponTriples == state.weaponTriples);
+  assert(loaded.worldSeed == 998877665544332211ULL);
+  assert(loaded.playerChunkX == -4000000000LL);
+  assert(loaded.playerChunkY == 5000000000LL);
+  assert(loaded.playerLocalX == 0.125f && loaded.playerLocalY == 0.875f);
+
+  // v6 兼容：旧版最后字段为 weaponTriples，世界位置迁移到出生点。
+  {
+    std::ofstream v6file("/tmp/save_v6.dat");
+    v6file << "V6 1 0 0 3 4 7 6 10 200 5 1 20 3 0 0 5 45000 0\n";
+  }
+  SaveState v6State;
+  assert(save.read(v6State, "/tmp/save_v6.dat"));
+  assert(v6State.collectRespawnMs == 45000);
+  assertLegacyWorldDefaults(v6State);
 
   // v5 兼容：无武器三元组的存档仍可读取，武器取默认值。
   {
@@ -59,6 +88,7 @@ int main() {
   assert(v5State.completedQuestCount == 3);
   assert(v5State.collectRespawnMs == 45000);
   assert(v5State.weaponTriples.empty());
+  assertLegacyWorldDefaults(v5State);
 
   // v4 兼容：无重生倒计时的存档仍可读取，倒计时取默认值。
   {
@@ -70,6 +100,7 @@ int main() {
   assert(v4State.completedQuestCount == 3);
   assert(v4State.sideQuestMask == 5);
   assert(v4State.collectRespawnMs == 0);
+  assertLegacyWorldDefaults(v4State);
 
   // v3 兼容：无支线掩码的旧存档仍可读取，掩码取默认值。
   {
@@ -81,6 +112,7 @@ int main() {
   assert(v3State.completedQuestCount == 3);
   assert(v3State.rosterTriples.size() == 3);
   assert(v3State.sideQuestMask == 0);
+  assertLegacyWorldDefaults(v3State);
 
   // v2 兼容：旧进度格式仍可读取，养成字段取默认值。
   {
@@ -93,6 +125,7 @@ int main() {
   assert(v2State.activeQuestId == 5);
   assert(v2State.fateCount == 0);
   assert(v2State.rosterTriples.empty());
+  assertLegacyWorldDefaults(v2State);
 
   // v1 兼容：旧三字段格式仍可读取，进度字段取默认值。
   {
@@ -107,6 +140,7 @@ int main() {
   assert(legacyState.completedQuestCount == 0);
   assert(legacyState.activeQuestId == -1);
   assert(legacyState.unlockedAnchorMask == 0);
+  assertLegacyWorldDefaults(legacyState);
 
   // 空文件读取失败。
   { std::ofstream empty("/tmp/save_empty.dat"); }

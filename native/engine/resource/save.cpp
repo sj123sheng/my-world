@@ -1,9 +1,52 @@
 #include "save.h"
+#include <cerrno>
+#include <charconv>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <fstream>
+#include <iomanip>
+#include <limits>
+#include <utility>
+
+namespace {
+
+bool validLocalPosition(float value) {
+  return std::isfinite(value) && !std::signbit(value) && value >= 0.0f &&
+         value < 1.0f;
+}
+
+template <typename Integer>
+bool parseIntegerToken(const std::string& token, Integer& value) {
+  const char* begin = token.data();
+  const char* end = begin + token.size();
+  const auto result = std::from_chars(begin, end, value, 10);
+  return result.ec == std::errc{} && result.ptr == end;
+}
+
+bool parseLocalToken(const std::string& token, float& value) {
+  errno = 0;
+  char* end = nullptr;
+  const float parsed = std::strtof(token.c_str(), &end);
+  if (errno == ERANGE || end != token.c_str() + token.size() ||
+      !validLocalPosition(parsed)) {
+    return false;
+  }
+  value = parsed;
+  return true;
+}
+
+}  // namespace
+
 bool Save::write(const SaveState& s, const char* path){
+  if (!validLocalPosition(s.playerLocalX) ||
+      !validLocalPosition(s.playerLocalY)) {
+    return false;
+  }
   std::ofstream tmp(std::string(path)+".tmp");
-  // v9 格式：v8 全字段 + 垂直切片探索状态（只追加，不重排旧字段）。
-  tmp << "V9 " << s.campLevel << " " << s.relics << " " << s.regionProgress
+  // V10 格式：完整 V9 字段后追加世界种子、区块坐标与局部坐标。
+  tmp << std::setprecision(std::numeric_limits<float>::max_digits10);
+  tmp << "V10 " << s.campLevel << " " << s.relics << " " << s.regionProgress
       << " " << s.completedQuestCount << " " << s.activeQuestId << " "
       << s.unlockedAnchorMask << " " << s.consumedInteractableMask << " "
       << s.fateCount << " " << s.goldCount << " " << s.expCount << " "
@@ -39,26 +82,33 @@ bool Save::write(const SaveState& s, const char* path){
   tmp << " " << s.explorationPoiMask << " " << s.explorationPuzzleMask
       << " " << s.explorationRewardMask << " " << s.explorationGateMask
       << " " << s.explorationTraversalMask;
+  tmp << " " << (s.worldSeed == 0 ? 1 : s.worldSeed)
+      << " " << s.playerChunkX << " " << s.playerChunkY
+      << " " << s.playerLocalX << " " << s.playerLocalY;
   tmp << "\n";
   tmp.flush();
   std::rename((std::string(path)+".tmp").c_str(), path); // 原子替换
   return true;
 }
-bool Save::read(SaveState& o, const char* path){
+bool Save::read(SaveState& out, const char* path){
   std::ifstream f(path); if(!f) return false;
   std::string first;
   f >> first;
   if (f.fail()) return false;
-  // 旧版本没有垂直切片字段，避免把调用方对象中的旧值带入新会话。
-  o.explorationPoiMask = 0;
-  o.explorationPuzzleMask = 0;
-  o.explorationRewardMask = 0;
-  o.explorationGateMask = 0;
-  o.explorationTraversalMask = 0;
+  // 全程解析到临时状态，失败时不部分污染调用方对象。
+  SaveState o;
+  auto commit = [&]() {
+    if (f.fail()) return false;
+    f >> std::ws;
+    if (f.peek() != std::char_traits<char>::eof() || f.bad()) return false;
+    f.clear();
+    out = std::move(o);
+    return true;
+  };
   if (first == "V2") {
     f >> o.campLevel >> o.relics >> o.regionProgress >> o.completedQuestCount
         >> o.activeQuestId >> o.unlockedAnchorMask >> o.consumedInteractableMask;
-    return !f.fail();
+    return commit();
   }
   if (first == "V3") {
     f >> o.campLevel >> o.relics >> o.regionProgress >> o.completedQuestCount
@@ -73,7 +123,7 @@ bool Save::read(SaveState& o, const char* path){
     for (size_t i = 0; i < rosterValues; ++i) {
       f >> o.rosterTriples[i];
     }
-    return !f.fail();
+    return commit();
   }
   if (first == "V4") {
     f >> o.campLevel >> o.relics >> o.regionProgress >> o.completedQuestCount
@@ -89,7 +139,7 @@ bool Save::read(SaveState& o, const char* path){
       f >> o.rosterTriples[i];
     }
     f >> o.sideQuestMask;
-    return !f.fail();
+    return commit();
   }
   if (first == "V5") {
     f >> o.campLevel >> o.relics >> o.regionProgress >> o.completedQuestCount
@@ -105,7 +155,7 @@ bool Save::read(SaveState& o, const char* path){
       f >> o.rosterTriples[i];
     }
     f >> o.sideQuestMask >> o.collectRespawnMs;
-    return !f.fail();
+    return commit();
   }
   if (first == "V6") {
     f >> o.campLevel >> o.relics >> o.regionProgress >> o.completedQuestCount
@@ -129,7 +179,7 @@ bool Save::read(SaveState& o, const char* path){
     for (size_t i = 0; i < weaponValues; ++i) {
       f >> o.weaponTriples[i];
     }
-    return !f.fail();
+    return commit();
   }
   if (first == "V7") {
     f >> o.campLevel >> o.relics >> o.regionProgress >> o.completedQuestCount
@@ -184,9 +234,9 @@ bool Save::read(SaveState& o, const char* path){
     for (size_t i = 0; i < claimedCount; ++i) {
       f >> o.claimedRanks[i];
     }
-    return !f.fail();
+    return commit();
   }
-  if (first == "V8" || first == "V9") {
+  if (first == "V8" || first == "V9" || first == "V10") {
     f >> o.campLevel >> o.relics >> o.regionProgress >> o.completedQuestCount
         >> o.activeQuestId >> o.unlockedAnchorMask >> o.consumedInteractableMask
         >> o.fateCount >> o.goldCount >> o.expCount >> o.ascensionCount
@@ -242,15 +292,32 @@ bool Save::read(SaveState& o, const char* path){
     // V8 字段：开放世界支线完成掩码与接取任务 id。
     f >> o.openWorldQuestMask >> o.openWorldQuestActiveId;
     if (f.fail()) return false;
-    if (first == "V9") {
+    if (first == "V9" || first == "V10") {
       f >> o.explorationPoiMask >> o.explorationPuzzleMask
           >> o.explorationRewardMask >> o.explorationGateMask
           >> o.explorationTraversalMask;
     }
-    return !f.fail();
+    if (f.fail()) return false;
+    if (first == "V10") {
+      std::string seedToken;
+      std::string chunkXToken;
+      std::string chunkYToken;
+      std::string localXToken;
+      std::string localYToken;
+      f >> seedToken >> chunkXToken >> chunkYToken >> localXToken >> localYToken;
+      if (f.fail() || !parseIntegerToken(seedToken, o.worldSeed) ||
+          !parseIntegerToken(chunkXToken, o.playerChunkX) ||
+          !parseIntegerToken(chunkYToken, o.playerChunkY) ||
+          !parseLocalToken(localXToken, o.playerLocalX) ||
+          !parseLocalToken(localYToken, o.playerLocalY)) {
+        return false;
+      }
+      if (o.worldSeed == 0) o.worldSeed = 1;
+    }
+    return commit();
   }
   // v1 兼容：首 token 即 campLevel，后续两个字段。
-  o.campLevel = std::stoi(first);
+  if (!parseIntegerToken(first, o.campLevel)) return false;
   f >> o.relics >> o.regionProgress;
-  return !f.fail();
+  return commit();
 }
