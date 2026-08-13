@@ -76,6 +76,11 @@ int main() {
       assert(vertex.normal.y > 0.0f);
     }
   }
+  const TerrainChunkCpuMesh rebuilt = chunked.buildChunkMesh(coord, segments);
+  assert(sameVertices(built.mesh, rebuilt.mesh));
+  const TerrainChunkCpuMesh otherUvChunk =
+      chunked.buildChunkMesh({coord.x + 1, coord.y}, segments);
+  assert(mesh.vertices.front().uv != otherUvChunk.mesh.vertices.front().uv);
 
   // ---- 侧裙布局：顶环 + 下沉环，下沉固定深度，法线水平朝外。----
   const float skirtDepth = chunked.config().skirtDepth;
@@ -91,15 +96,35 @@ int main() {
     assert(std::abs(length - 1.0f) < 1e-4f);
   }
 
-  // ---- 相邻分块边界高度一致（共享边界采样同一高度场）。----
-  const Mesh leftMesh = chunked.buildChunkMesh({0, 0}, segments).mesh;
-  const Mesh rightMesh = chunked.buildChunkMesh({1, 0}, segments).mesh;
+  // ---- 相邻分块四向边界高度一致（共享边界采样同一高度场）。----
+  const Mesh centerMesh = chunked.buildChunkMesh({0, 0}, segments).mesh;
+  const Mesh eastMesh = chunked.buildChunkMesh({1, 0}, segments).mesh;
+  const Mesh westMesh = chunked.buildChunkMesh({-1, 0}, segments).mesh;
+  const Mesh northMesh = chunked.buildChunkMesh({0, 1}, segments).mesh;
+  const Mesh southMesh = chunked.buildChunkMesh({0, -1}, segments).mesh;
   for (uint32_t j = 0; j < rows; ++j) {
-    const Vertex& east = leftMesh.vertices[j * rows + segments];
-    const Vertex& west = rightMesh.vertices[j * rows];
+    const Vertex& east = centerMesh.vertices[j * rows + segments];
+    const Vertex& west = eastMesh.vertices[j * rows];
     assert(east.position.x == 1.0f);
     assert(west.position.x == 0.0f);
     assert(east.position.y == west.position.y);
+    const Vertex& centerWest = centerMesh.vertices[j * rows];
+    const Vertex& neighborEast = westMesh.vertices[j * rows + segments];
+    assert(centerWest.position.x == 0.0f);
+    assert(neighborEast.position.x == 1.0f);
+    assert(centerWest.position.y == neighborEast.position.y);
+  }
+  for (uint32_t i = 0; i < rows; ++i) {
+    const Vertex& north = centerMesh.vertices[segments * rows + i];
+    const Vertex& south = northMesh.vertices[i];
+    assert(north.position.z == 1.0f);
+    assert(south.position.z == 0.0f);
+    assert(north.position.y == south.position.y);
+    const Vertex& centerSouth = centerMesh.vertices[i];
+    const Vertex& neighborNorth = southMesh.vertices[segments * rows + i];
+    assert(centerSouth.position.z == 0.0f);
+    assert(neighborNorth.position.z == 1.0f);
+    assert(centerSouth.position.y == neighborNorth.position.y);
   }
 
   // ---- requestLoads/requestUnloads：无限坐标、去重、缓存键与卸载。----

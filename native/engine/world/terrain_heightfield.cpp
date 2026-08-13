@@ -7,6 +7,7 @@ namespace {
 
 constexpr double kTwoPi = 6.283185307179586476925286766559;
 constexpr double kCoreTransitionWidth = 0.08;
+constexpr int64_t kBasePeriodChunks = 5;
 
 float smoothstep01(float edge, float value) {
   if (edge <= 0.0f) return value >= edge ? 1.0f : 0.0f;
@@ -14,36 +15,72 @@ float smoothstep01(float edge, float value) {
   return t * t * (3.0f - 2.0f * t);
 }
 
-// 先按波长把世界坐标约减到有限区间，再送入三角函数。这样不会把
-// 1e18 乃至更大的世界坐标直接乘频率，超远正负坐标仍有限且确定。
-double periodicAngle(double coordinate, double frequency,
+// 基础波以 5 个整数分块为公共空间周期；频率量化为每周期的整数谐波，
+// 默认 2/3/2/1.6 cycles-per-chunk 分别对应谐波 10/15/10/8。
+double periodicAngle(double reducedCoordinate, double frequency,
                      double phase = 0.0) {
-  if (!std::isfinite(coordinate) || !std::isfinite(frequency) ||
+  if (!std::isfinite(reducedCoordinate) || !std::isfinite(frequency) ||
       !std::isfinite(phase) || frequency == 0.0) {
     return phase;
   }
-  const double wavelength = 1.0 / std::abs(frequency);
-  if (!std::isfinite(wavelength) || wavelength == 0.0) return phase;
-  const double reduced = std::remainder(coordinate, wavelength);
-  return kTwoPi * frequency * reduced + phase;
+  const double harmonic =
+      std::round(frequency * static_cast<double>(kBasePeriodChunks));
+  if (!std::isfinite(harmonic)) return phase;
+  const double cycles =
+      harmonic * reducedCoordinate / static_cast<double>(kBasePeriodChunks);
+  return kTwoPi * std::remainder(cycles, 1.0) + phase;
 }
 
-float continuousBaseHeight(const TerrainConfig& config, double worldX,
-                           double worldY) {
+double reducedWorldCoordinate(double worldCoordinate) {
+  if (!std::isfinite(worldCoordinate)) return 0.0;
+  double reduced =
+      std::fmod(worldCoordinate, static_cast<double>(kBasePeriodChunks));
+  if (reduced < 0.0) reduced += static_cast<double>(kBasePeriodChunks);
+  return reduced;
+}
+
+double reducedChunkCoordinate(int64_t chunk, float local) {
+  if (!std::isfinite(local)) local = 0.0f;
+  const int64_t chunkRemainder = chunk % kBasePeriodChunks;
+  double reduced = std::fmod(static_cast<double>(chunkRemainder) +
+                                 static_cast<double>(local),
+                             static_cast<double>(kBasePeriodChunks));
+  if (reduced < 0.0) reduced += static_cast<double>(kBasePeriodChunks);
+  return reduced;
+}
+
+float continuousBaseHeight(const TerrainConfig& config, double reducedX,
+                           double reducedY) {
   const double primary =
       static_cast<double>(config.amplitude) *
-      std::sin(periodicAngle(worldX, config.frequency)) *
-      std::sin(periodicAngle(worldY, config.frequency));
+      std::sin(periodicAngle(reducedX, config.frequency)) *
+      std::sin(periodicAngle(reducedY, config.frequency));
   const double detail =
       static_cast<double>(config.detailAmplitude) *
-      std::sin(periodicAngle(worldX, config.detailFrequency, 1.3)) *
-      std::cos(periodicAngle(worldY, config.detailFrequency, 0.7));
+      std::sin(periodicAngle(reducedX, config.detailFrequency, 1.3)) *
+      std::cos(periodicAngle(reducedY, config.detailFrequency, 0.7));
   const double ridge =
       static_cast<double>(config.ridgeAmplitude) *
-      std::sin(periodicAngle(worldX, config.ridgeFrequency, 2.1)) *
-      std::sin(periodicAngle(worldY, config.ridgeFrequency * 0.8, 0.4));
+      std::sin(periodicAngle(reducedX, config.ridgeFrequency, 2.1)) *
+      std::sin(periodicAngle(reducedY, config.ridgeFrequency * 0.8, 0.4));
   const double height = primary + detail + ridge;
   return std::isfinite(height) ? static_cast<float>(height) : 0.0f;
+}
+
+bool coreCoordinate(ChunkCoord chunk, float localX, float localY,
+                    double* coreX, double* coreY) {
+  if (chunk.x < -1 || chunk.x > 1 || chunk.y < -1 || chunk.y > 1 ||
+      !std::isfinite(localX) || !std::isfinite(localY)) {
+    return false;
+  }
+  const double worldX = static_cast<double>(chunk.x) + localX;
+  const double worldY = static_cast<double>(chunk.y) + localY;
+  if (worldX < 0.0 || worldX > 1.0 || worldY < 0.0 || worldY > 1.0) {
+    return false;
+  }
+  *coreX = worldX;
+  *coreY = worldY;
+  return true;
 }
 
 float coreContributionWeight(double worldX, double worldY) {
@@ -74,7 +111,8 @@ TerrainHeightfield::TerrainHeightfield(TerrainConfig config,
 float TerrainHeightfield::heightAt(double worldX, double worldY) const {
   if (!std::isfinite(worldX)) worldX = 0.0;
   if (!std::isfinite(worldY)) worldY = 0.0;
-  const float base = continuousBaseHeight(config_, worldX, worldY);
+  const float base = continuousBaseHeight(
+      config_, reducedWorldCoordinate(worldX), reducedWorldCoordinate(worldY));
   const float coreWeight = coreContributionWeight(worldX, worldY);
   if (coreWeight <= 0.0f || features_.empty()) return base;
 
@@ -117,9 +155,48 @@ float TerrainHeightfield::heightAt(double worldX, double worldY) const {
 
 float TerrainHeightfield::heightAt(ChunkCoord chunk, float localX,
                                    float localY) const {
-  const double worldX = static_cast<double>(chunk.x) + localX;
-  const double worldY = static_cast<double>(chunk.y) + localY;
-  return heightAt(worldX, worldY);
+  const float base = continuousBaseHeight(
+      config_, reducedChunkCoordinate(chunk.x, localX),
+      reducedChunkCoordinate(chunk.y, localY));
+  double coreX = 0.0;
+  double coreY = 0.0;
+  if (!coreCoordinate(chunk, localX, localY, &coreX, &coreY)) return base;
+  const float coreWeight = coreContributionWeight(coreX, coreY);
+  if (coreWeight <= 0.0f || features_.empty()) return base;
+
+  float sculpted = base;
+  const float x = static_cast<float>(coreX);
+  const float y = static_cast<float>(coreY);
+  for (const TerrainFeature& feature : features_) {
+    const float mask = featureMask(feature, x, y);
+    if (mask <= 0.0f) continue;
+    switch (feature.kind) {
+      case TerrainFeatureKind::Hill:
+        sculpted += mask * feature.amplitude;
+        break;
+      case TerrainFeatureKind::Basin:
+        sculpted += mask * (feature.targetHeight - sculpted);
+        break;
+      case TerrainFeatureKind::Terrace:
+        sculpted += mask * std::max(0.0f, feature.targetHeight - sculpted);
+        break;
+      case TerrainFeatureKind::Ridge: {
+        const float cosAngle = std::cos(feature.angleRadians);
+        const float sinAngle = std::sin(feature.angleRadians);
+        const float rotatedU = x * cosAngle + y * sinAngle;
+        const float rotatedV = -x * sinAngle + y * cosAngle;
+        const float ridgeValue =
+            std::sin(static_cast<float>(kTwoPi) * feature.frequency * rotatedU +
+                     2.1f) *
+            std::sin(static_cast<float>(kTwoPi) * feature.frequency * 0.7f *
+                         rotatedV +
+                     0.4f);
+        sculpted += mask * feature.amplitude * ridgeValue;
+        break;
+      }
+    }
+  }
+  return base + coreWeight * (sculpted - base);
 }
 
 float TerrainHeightfield::slopeAt(double worldX, double worldY) const {
@@ -135,9 +212,14 @@ float TerrainHeightfield::slopeAt(double worldX, double worldY) const {
 
 float TerrainHeightfield::slopeAt(ChunkCoord chunk, float localX,
                                   float localY) const {
-  const double worldX = static_cast<double>(chunk.x) + localX;
-  const double worldY = static_cast<double>(chunk.y) + localY;
-  return slopeAt(worldX, worldY);
+  const float step = config_.slopeSampleStep;
+  const float hx = heightAt(chunk, localX + step, localY) -
+                   heightAt(chunk, localX - step, localY);
+  const float hy = heightAt(chunk, localX, localY + step) -
+                   heightAt(chunk, localX, localY - step);
+  const float gx = hx / (2.0f * step);
+  const float gy = hy / (2.0f * step);
+  return std::sqrt(gx * gx + gy * gy);
 }
 
 bool TerrainHeightfield::climbableAt(double worldX, double worldY) const {

@@ -102,6 +102,24 @@ int main() {
       {std::numeric_limits<int64_t>::max(),
        std::numeric_limits<int64_t>::min()},
       0.5f, 0.5f)));
+  // 2^53 以后不能先把 chunk+local 合成 double：块内 1/8 单位仍须可见。
+  const ChunkCoord beyondDouble{9007199254740992LL, 3};
+  assert(base.heightAt(beyondDouble, 0.0f, 0.37f) !=
+         base.heightAt(beyondDouble, 0.125f, 0.37f));
+  const ChunkCoord positiveExtreme{std::numeric_limits<int64_t>::max(),
+                                   std::numeric_limits<int64_t>::min()};
+  const ChunkCoord negativeExtreme{std::numeric_limits<int64_t>::min(),
+                                   std::numeric_limits<int64_t>::max()};
+  for (const ChunkCoord extreme : {positiveExtreme, negativeExtreme}) {
+    const float h0 = base.heightAt(extreme, 0.0f, 0.37f);
+    const float h1 = base.heightAt(extreme, 0.125f, 0.37f);
+    const float slope = base.slopeAt(extreme, 0.5f, 0.5f);
+    assert(std::isfinite(h0) && std::isfinite(h1));
+    assert(h0 != h1);
+    assert(std::isfinite(slope) && slope > 0.0001f && slope < 0.45f);
+  }
+  assert(base.heightAt(negativeExtreme, 0.375f, 0.625f) ==
+         base.heightAt(negativeExtreme, 0.375f, 0.625f));
 
   // 基础八度压缓不变量：无特征时不产生悬崖或边缘山墙，水面压低后
   // 基础层不再随处积水。
@@ -120,12 +138,34 @@ int main() {
          base.config().detailAmplitude + 0.001f);
 
   // 相邻分块使用同一世界坐标相位，四向边界高度完全一致。
-  assert(close(base.heightAt({0, 0}, 1.0f, 0.25f),
-               base.heightAt({1, 0}, 0.0f, 0.25f)));
-  assert(close(base.heightAt({-1, 3}, 1.0f, 0.75f),
-               base.heightAt({0, 3}, 0.0f, 0.75f)));
-  assert(close(base.heightAt({4, -2}, 0.6f, 1.0f),
-               base.heightAt({4, -1}, 0.6f, 0.0f)));
+  assert(base.heightAt({0, 0}, 1.0f, 0.25f) ==
+         base.heightAt({1, 0}, 0.0f, 0.25f));
+  assert(base.heightAt({-1, 3}, 1.0f, 0.75f) ==
+         base.heightAt({0, 3}, 0.0f, 0.75f));
+  assert(base.heightAt({4, -2}, 0.6f, 1.0f) ==
+         base.heightAt({4, -1}, 0.6f, 0.0f));
+  assert(base.heightAt({4, -1}, 0.6f, 0.0f) ==
+         base.heightAt({4, -2}, 0.6f, 1.0f));
+  assert(base.heightAt({0, 0}, 0.0f, 0.25f) ==
+         base.heightAt({-1, 0}, 1.0f, 0.25f));
+  assert(base.heightAt({0, 0}, 0.6f, 0.0f) ==
+         base.heightAt({0, -1}, 0.6f, 1.0f));
+  // int64 极值无法再表示“外侧相邻块”，但所有可表示相邻边界必须逐位一致。
+  const int64_t boundaryChunks[] = {
+      std::numeric_limits<int64_t>::min(),
+      std::numeric_limits<int64_t>::min() + 1,
+      -9007199254740993LL,
+      -1,
+      0,
+      9007199254740992LL,
+      std::numeric_limits<int64_t>::max() - 1,
+  };
+  for (const int64_t chunkValue : boundaryChunks) {
+    assert(base.heightAt({chunkValue, -7}, 1.0f, 0.375f) ==
+           base.heightAt({chunkValue + 1, -7}, 0.0f, 0.375f));
+    assert(base.heightAt({-7, chunkValue}, 0.375f, 1.0f) ==
+           base.heightAt({-7, chunkValue + 1}, 0.375f, 0.0f));
+  }
   assert(!close(base.heightAt(1.125, 0.37), base.heightAt(1.0, 0.37)));
   assert(base.slopeAt({9, -4}, 0.5f, 0.5f) <
          base.config().climbSlopeThreshold);
@@ -179,14 +219,14 @@ int main() {
   // 核心手工贡献在四边精确衰减为零，因此与四个外围块无缝相接。
   for (int i = 0; i <= 16; ++i) {
     const float t = static_cast<float>(i) / 16.0f;
-    assert(close(terrain.heightAt({0, 0}, 0.0f, t),
-                 terrain.heightAt({-1, 0}, 1.0f, t)));
-    assert(close(terrain.heightAt({0, 0}, 1.0f, t),
-                 terrain.heightAt({1, 0}, 0.0f, t)));
-    assert(close(terrain.heightAt({0, 0}, t, 0.0f),
-                 terrain.heightAt({0, -1}, t, 1.0f)));
-    assert(close(terrain.heightAt({0, 0}, t, 1.0f),
-                 terrain.heightAt({0, 1}, t, 0.0f)));
+    assert(terrain.heightAt({0, 0}, 0.0f, t) ==
+           terrain.heightAt({-1, 0}, 1.0f, t));
+    assert(terrain.heightAt({0, 0}, 1.0f, t) ==
+           terrain.heightAt({1, 0}, 0.0f, t));
+    assert(terrain.heightAt({0, 0}, t, 0.0f) ==
+           terrain.heightAt({0, -1}, t, 1.0f));
+    assert(terrain.heightAt({0, 0}, t, 1.0f) ==
+           terrain.heightAt({0, 1}, t, 0.0f));
   }
 
   // 确定性：两次构造结果逐点一致。

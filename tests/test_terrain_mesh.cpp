@@ -74,11 +74,13 @@ int main() {
     assert(again.vertices[i].normal == mesh.vertices[i].normal);
   }
 
-  // 边缘山脊体现于网格：角落顶点显著高于出生点顶点。
+  // 无限基础层没有遮挡旧世界边界的山墙；角落与中心都保持连续缓坡。
   const float cornerHeight = mesh.vertices.front().position.y;
   const float spawnHeight =
       mesh.vertices[(segments / 2u) * rows + segments / 2u].position.y;
-  assert(cornerHeight > spawnHeight + 0.02f);
+  assert(std::abs(cornerHeight) <= 0.025f);
+  assert(std::abs(spawnHeight) <= 0.025f);
+  assert(std::abs(cornerHeight - spawnHeight) < 0.02f);
 
   return 0;
 }
