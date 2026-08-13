@@ -32,11 +32,31 @@ void testNormalizationRejectsNonFiniteCoordinates() {
 }
 
 void testNormalizationRejectsChunkCarryOutsideInt64Range() {
-  const WorldPosition invalid = NormalizeWorldPosition(
+  const WorldPosition maximum = NormalizeWorldPosition(
+      {std::numeric_limits<int64_t>::max(), 0}, 0.0, 0.0);
+  assert(maximum.chunk ==
+         (ChunkCoord{std::numeric_limits<int64_t>::max(), 0}));
+  assert(close(maximum.local.x, 0.0f));
+  assert(close(maximum.local.y, 0.0f));
+
+  const WorldPosition invalidMaximum = NormalizeWorldPosition(
       {std::numeric_limits<int64_t>::max(), 0}, 1.0, 0.0);
-  assert(invalid.chunk == (ChunkCoord{0, 0}));
-  assert(close(invalid.local.x, 0.0f));
-  assert(close(invalid.local.y, 0.0f));
+  assert(invalidMaximum.chunk == (ChunkCoord{0, 0}));
+  assert(close(invalidMaximum.local.x, 0.0f));
+  assert(close(invalidMaximum.local.y, 0.0f));
+
+  const WorldPosition invalidMinimum = NormalizeWorldPosition(
+      {std::numeric_limits<int64_t>::min(), 0}, -0.5, 0.0);
+  assert(invalidMinimum.chunk == (ChunkCoord{0, 0}));
+  assert(close(invalidMinimum.local.x, 0.0f));
+  assert(close(invalidMinimum.local.y, 0.0f));
+
+  const WorldPosition minimum = NormalizeWorldPosition(
+      {std::numeric_limits<int64_t>::min(), 0}, 0.0, 0.0);
+  assert(minimum.chunk ==
+         (ChunkCoord{std::numeric_limits<int64_t>::min(), 0}));
+  assert(close(minimum.local.x, 0.0f));
+  assert(close(minimum.local.y, 0.0f));
 }
 
 void testRelativePositionPreservesNearbyLargeChunkOffsets() {

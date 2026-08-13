@@ -25,21 +25,23 @@ uint64_t UnsignedBits(int64_t value) noexcept {
 bool NormalizeAxis(int64_t chunk, double local, int64_t* normalizedChunk,
                    float* normalizedLocal) noexcept {
   const double offset = std::floor(local);
-  const long double offsetWide = static_cast<long double>(offset);
-  constexpr long double kMinInt64 =
-      static_cast<long double>(std::numeric_limits<int64_t>::min());
-  constexpr long double kPastMaxInt64 = 9223372036854775808.0L;
-  if (!std::isfinite(local) || offsetWide < kMinInt64 ||
-      offsetWide >= kPastMaxInt64) {
+  const double minInt64 =
+      static_cast<double>(std::numeric_limits<int64_t>::min());
+  const double pastMaxInt64 = -minInt64;
+  if (!std::isfinite(local) || offset < minInt64 ||
+      offset >= pastMaxInt64) {
     return false;
   }
 
-  const long double summed = static_cast<long double>(chunk) + offsetWide;
-  if (summed < kMinInt64 || summed >= kPastMaxInt64) {
+  const int64_t integerOffset = static_cast<int64_t>(offset);
+  if ((integerOffset > 0 &&
+       chunk > std::numeric_limits<int64_t>::max() - integerOffset) ||
+      (integerOffset < 0 &&
+       chunk < std::numeric_limits<int64_t>::min() - integerOffset)) {
     return false;
   }
 
-  *normalizedChunk = static_cast<int64_t>(summed);
+  *normalizedChunk = chunk + integerOffset;
   *normalizedLocal = static_cast<float>(local - offset);
   return true;
 }
