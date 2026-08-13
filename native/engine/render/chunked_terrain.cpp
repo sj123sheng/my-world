@@ -9,15 +9,26 @@
 #include "native/engine/render/chunked_terrain.h"
 
 #include "native/engine/world/terrain_heightfield.h"
-#include "native/engine/world/world_grid.h"
 
 #include <algorithm>
-#include <cmath>
 
 namespace {
 
 int32_t clampInt(int32_t value, int32_t lo, int32_t hi) {
   return value < lo ? lo : (value > hi ? hi : value);
+}
+
+uint64_t unsignedDistance(int64_t lhs, int64_t rhs) noexcept {
+  return lhs >= rhs ? static_cast<uint64_t>(lhs) - static_cast<uint64_t>(rhs)
+                    : static_cast<uint64_t>(rhs) - static_cast<uint64_t>(lhs);
+}
+
+glm::vec2 terrainUvOffset(ChunkCoord coord) noexcept {
+  const uint64_t xHash = StableChunkHash(0x7b8733d5ULL, coord, 0x51ed270bULL);
+  const uint64_t yHash = StableChunkHash(0x7b8733d5ULL, coord, 0x9e3779b9ULL);
+  constexpr float kScale = 1.0f / 65536.0f;
+  return {static_cast<float>(xHash & 0xffffU) * kScale,
+          static_cast<float>(yHash & 0xffffU) * kScale};
 }
 
 // 侧裙四边约定（按序：北/东/南/西），每边 rows 个顶点。
@@ -43,8 +54,8 @@ ChunkLodConfig ChunkLodConfig::forPerfLevel(int32_t lodLevel) {
 }
 
 ChunkedTerrain::ChunkedTerrain(const TerrainHeightfield& terrain,
-                               const WorldGrid& grid, ChunkLodConfig config)
-    : terrain_(&terrain), grid_(&grid), config_(config) {
+                               ChunkLodConfig config)
+    : terrain_(&terrain), config_(config) {
   if (config_.skirtDepth < 0.0f) config_.skirtDepth = 0.0f;
   if (config_.nearRingMax < 0) config_.nearRingMax = 0;
   if (config_.midRingMax < config_.nearRingMax) {
@@ -52,44 +63,39 @@ ChunkedTerrain::ChunkedTerrain(const TerrainHeightfield& terrain,
   }
 }
 
-TerrainChunkRect ChunkedTerrain::chunkRect(int32_t chunkId) const {
-  const int32_t count = grid_->chunkCount();
-  const int32_t id = clampInt(chunkId, 0, count - 1);
-  const int32_t cx = grid_->chunkXOf(id);
-  const int32_t cy = grid_->chunkYOf(id);
-  TerrainChunkRect rect;
-  rect.x0 = static_cast<float>(cx) * grid_->chunkSizeX();
-  rect.x1 = static_cast<float>(cx + 1) * grid_->chunkSizeX();
-  rect.y0 = static_cast<float>(cy) * grid_->chunkSizeY();
-  rect.y1 = static_cast<float>(cy + 1) * grid_->chunkSizeY();
-  return rect;
-}
-
-uint32_t ChunkedTerrain::segmentsFor(int32_t chunkId, int32_t playerChunkId,
+uint32_t ChunkedTerrain::segmentsFor(ChunkCoord coord,
+                                     ChunkCoord playerChunk,
                                      int32_t perfLodLevel) const {
   const ChunkLodConfig effective = ChunkLodConfig::forPerfLevel(perfLodLevel);
-  const int32_t count = grid_->chunkCount();
-  const int32_t id = clampInt(chunkId, 0, count - 1);
-  const int32_t player = clampInt(playerChunkId, 0, count - 1);
-  const int32_t chebyshev =
-      std::max(std::abs(grid_->chunkXOf(id) - grid_->chunkXOf(player)),
-               std::abs(grid_->chunkYOf(id) - grid_->chunkYOf(player)));
-  if (chebyshev <= effective.nearRingMax) return config_.nearSegments;
-  if (chebyshev <= effective.midRingMax) return config_.midSegments;
+  const uint64_t chebyshev =
+      std::max(unsignedDistance(coord.x, playerChunk.x),
+               unsignedDistance(coord.y, playerChunk.y));
+  if (chebyshev <= static_cast<uint64_t>(effective.nearRingMax)) {
+    return config_.nearSegments;
+  }
+  if (chebyshev <= static_cast<uint64_t>(effective.midRingMax)) {
+    return config_.midSegments;
+  }
   return config_.farSegments;
 }
 
-Mesh ChunkedTerrain::buildChunkMesh(int32_t chunkId, uint32_t segments) const {
-  Mesh mesh;
-  if (segments < 1u || terrain_ == nullptr || grid_ == nullptr) return mesh;
-  if (chunkId < 0 || chunkId >= grid_->chunkCount()) return mesh;
+TerrainChunkCpuMesh ChunkedTerrain::buildChunkMesh(ChunkCoord coord,
+                                                   uint32_t segments) const {
+  TerrainChunkCpuMesh entry;
+  entry.coord = coord;
+  entry.segments = segments;
+  if (segments < 1u || terrain_ == nullptr) return entry;
 
   // 表面网格：与整世界地形同一采样约定。
-  mesh = createTerrainChunkMesh(*terrain_, chunkRect(chunkId), segments);
-  if (mesh.vertices.empty()) return mesh;
+  entry.mesh = createTerrainChunkMesh(*terrain_, coord, segments,
+                                      terrainUvOffset(coord));
+  Mesh& mesh = entry.mesh;
+  if (mesh.vertices.empty()) return entry;
 
   const uint32_t rows = segments + 1u;
   const uint32_t base = static_cast<uint32_t>(mesh.vertices.size());
+  entry.gridVertexCount = rows * rows;
+  entry.skirtVertexCount = 8u * rows;
 
   // 四边顶环顶点序（网格内索引）：北(+Z)沿 x 递增、东(+X)沿 z 递增、
   // 南(-Z)沿 x 递减、西(-X)沿 z 递减，保证裙边三角形卷绕朝外。
@@ -146,53 +152,46 @@ Mesh ChunkedTerrain::buildChunkMesh(int32_t chunkId, uint32_t segments) const {
     }
   }
 
-  return mesh;
+  return entry;
 }
 
-void ChunkedTerrain::requestLoads(const std::vector<int32_t>& chunkIds,
-                                  int32_t playerChunkId,
+void ChunkedTerrain::requestLoads(const std::vector<ChunkCoord>& coords,
+                                  ChunkCoord playerChunk,
                                   int32_t perfLodLevel) {
-  std::vector<int32_t> sorted(chunkIds);
+  std::vector<ChunkCoord> sorted(coords);
   std::sort(sorted.begin(), sorted.end());
   sorted.erase(std::unique(sorted.begin(), sorted.end()), sorted.end());
-  for (const int32_t chunkId : sorted) {
-    if (chunkId < 0 || chunkId >= grid_->chunkCount()) continue;
-    if (chunks_.count(chunkId) > 0) continue;
-    const uint32_t segments = segmentsFor(chunkId, playerChunkId, perfLodLevel);
-    TerrainChunkCpuMesh entry;
-    entry.segments = segments;
-    entry.mesh = buildChunkMesh(chunkId, segments);
-    const uint32_t rows = segments + 1u;
-    entry.gridVertexCount = rows * rows;
-    entry.skirtVertexCount = 8u * rows;
-    chunks_.emplace(chunkId, std::move(entry));
+  for (const ChunkCoord coord : sorted) {
+    if (chunks_.count(coord) > 0) continue;
+    const uint32_t segments = segmentsFor(coord, playerChunk, perfLodLevel);
+    chunks_.emplace(coord, buildChunkMesh(coord, segments));
   }
 }
 
-bool ChunkedTerrain::storeChunk(int32_t chunkId, TerrainChunkCpuMesh entry) {
-  if (chunkId < 0 || chunkId >= grid_->chunkCount()) return false;
-  if (chunks_.count(chunkId) > 0) return false;
-  chunks_.emplace(chunkId, std::move(entry));
+bool ChunkedTerrain::storeChunk(ChunkCoord coord, TerrainChunkCpuMesh entry) {
+  if (chunks_.count(coord) > 0) return false;
+  entry.coord = coord;
+  chunks_.emplace(coord, std::move(entry));
   return true;
 }
 
-void ChunkedTerrain::requestUnloads(const std::vector<int32_t>& chunkIds) {
-  std::vector<int32_t> sorted(chunkIds);
+void ChunkedTerrain::requestUnloads(const std::vector<ChunkCoord>& coords) {
+  std::vector<ChunkCoord> sorted(coords);
   std::sort(sorted.begin(), sorted.end());
   sorted.erase(std::unique(sorted.begin(), sorted.end()), sorted.end());
-  for (const int32_t chunkId : sorted) {
-    chunks_.erase(chunkId);
+  for (const ChunkCoord coord : sorted) {
+    chunks_.erase(coord);
   }
 }
 
-const TerrainChunkCpuMesh* ChunkedTerrain::chunkAt(int32_t chunkId) const {
-  const auto found = chunks_.find(chunkId);
+const TerrainChunkCpuMesh* ChunkedTerrain::chunkAt(ChunkCoord coord) const {
+  const auto found = chunks_.find(coord);
   return found == chunks_.end() ? nullptr : &found->second;
 }
 
-std::vector<int32_t> ChunkedTerrain::chunkIds() const {
-  std::vector<int32_t> ids;
-  ids.reserve(chunks_.size());
-  for (const auto& entry : chunks_) ids.push_back(entry.first);
-  return ids;
+std::vector<ChunkCoord> ChunkedTerrain::chunkCoords() const {
+  std::vector<ChunkCoord> coords;
+  coords.reserve(chunks_.size());
+  for (const auto& entry : chunks_) coords.push_back(entry.first);
+  return coords;
 }
