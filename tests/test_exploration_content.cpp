@@ -6,8 +6,8 @@ int main() {
   ExplorationContent content = ExplorationContent::verticalSlice();
 
   assert(content.pointsOfInterest().size() >= 4);
-  assert(content.puzzles().size() >= 3);
-  assert(content.gates().size() >= 2);
+  assert(content.naturalNodes().size() == 4);
+  assert(content.regionTriggers().size() == 4);
   assert(content.rewards().size() >= 4);
 
   const ExplorationTarget first = content.nearestTarget({0.52f, 0.16f}, 0.03f);
@@ -18,18 +18,30 @@ int main() {
   assert(!content.discoverPoint(60));
   assert(content.isPointDiscovered(60));
 
-  // The lake puzzle requires swimming; being nearby is insufficient.
-  assert(!content.activatePuzzle(71, MotionState::Grounded));
-  assert(content.activatePuzzle(71, MotionState::Swimming));
-  assert(content.isPuzzleActivated(71));
-  assert(content.isGateOpen(81));
+  // 区域只能在前置自然节点已激活且玩家真正进入半径后完成。
+  assert(!content.enterRegion(81, {0.70f, 0.20f}));
+  assert(!content.activateNaturalNode(71, MotionState::Swimming));
+  assert(content.activateNaturalNode(71, MotionState::Grounded));
+  assert(content.isNaturalNodeActivated(71));
+  assert(!content.enterRegion(81, {0.90f, 0.20f}));
+  assert(content.enterRegion(81, {0.70f, 0.20f}));
+  assert(content.isRegionCompleted(81));
+  assert(content.regionById(81) != nullptr);
+  assert(content.regionById(999) == nullptr);
+  assert(content.openGateMask() == (1 << 1));
 
-  // The hidden route requires gliding and only rewards the first claim.
-  assert(!content.activatePuzzle(72, MotionState::Grounded));
-  assert(content.activatePuzzle(72, MotionState::Gliding));
-  assert(content.isGateOpen(82));
+  // 岩台风脉需要滑翔，奖励仍只可领取一次。
+  assert(!content.activateNaturalNode(72, MotionState::Grounded));
+  assert(content.activateNaturalNode(72, MotionState::Gliding));
   assert(content.claimReward(92));
   assert(!content.claimReward(92));
+
+  // V9 第四个磁盘掩码槽继续按原 80..83 声明位序恢复区域状态。
+  ExplorationContent restored = ExplorationContent::verticalSlice();
+  restored.restoreMasks(0, 0, 0, content.openGateMask(), 0);
+  assert(restored.isRegionCompleted(81));
+  assert(!restored.isRegionCompleted(80));
+  assert(!restored.isRegionCompleted(82));
 
   content.recordTraversal(TraversalAbility::Jump);
   content.recordTraversal(TraversalAbility::Sprint);
@@ -49,7 +61,7 @@ int main() {
   assert(progress.discoveredPoiCount == 1);
   assert(progress.activatedPuzzleCount == 2);
   assert(progress.claimedRewardCount == 1);
-  assert(progress.openGateCount == 2);
+  assert(progress.openGateCount == 1);
   assert(progress.completedTraversalCount == 5);
   return 0;
 }

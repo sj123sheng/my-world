@@ -69,6 +69,13 @@ export function validateAgainstSchema(value, schema, path = '$') {
         errors.push(...validateAgainstSchema(value[key], propertySchema, `${path}.${key}`));
       }
     }
+    if (schema.additionalProperties === false) {
+      for (const key of Object.keys(value)) {
+        if (!(key in (schema.properties ?? {}))) {
+          errors.push(`${path}: unexpected property "${key}"`);
+        }
+      }
+    }
   }
   return errors;
 }
@@ -78,6 +85,17 @@ export function validateAgainstSchema(value, schema, path = '$') {
 export function validateWorldLayout(world, schema) {
   const errors = validateAgainstSchema(world, schema);
   if (errors.length > 0) return errors;
+
+  // 人工结构字段必须从事实源消失，不能以空数组或隐藏模型保留旧契约。
+  for (const key of ['environmentBatches', 'visualTerrainBlocks',
+                     'traversalGates', 'puzzles']) {
+    if (Object.hasOwn(world, key)) {
+      errors.push(`forbidden artificial top-level field: ${key}`);
+    }
+  }
+  if (Object.hasOwn(world.environmentVisual ?? {}, 'visualTerrainCells')) {
+    errors.push('forbidden artificial field: environmentVisual.visualTerrainCells');
+  }
 
   const countX = world.grid.countX;
   const countY = world.grid.countY;
@@ -228,36 +246,30 @@ export function validateWorldLayout(world, schema) {
     }
     inDeclaredDistrict(`pointOfInterest ${poi.id}`, poi.districtId, poi.x, poi.y);
   }
-  const gateIds = new Set(world.traversalGates.map((gate) => gate.id));
   const rewardIds = new Set(world.explorationRewards.map((reward) => reward.id));
-  for (const puzzle of world.puzzles) {
-    claimExplorationId('puzzle', puzzle.id);
-    if (!coordInBounds(puzzle.x) || !coordInBounds(puzzle.y)) {
-      errors.push(`puzzle ${puzzle.id}: coordinates out of [0.02, 0.98]`);
+  const naturalNodeIds = new Set(world.naturalNodes.map((node) => node.id));
+  for (const node of world.naturalNodes) {
+    claimExplorationId('naturalNode', node.id);
+    if (!coordInBounds(node.x) || !coordInBounds(node.y)) {
+      errors.push(`naturalNode ${node.id}: coordinates out of [0.02, 0.98]`);
     }
-    if (!motionStates.has(puzzle.requiredMotion)) {
-      errors.push(`puzzle ${puzzle.id}: unknown requiredMotion ${puzzle.requiredMotion}`);
+    if (!motionStates.has(node.requiredMotion)) {
+      errors.push(`naturalNode ${node.id}: unknown requiredMotion ${node.requiredMotion}`);
     }
-    if (!gateIds.has(puzzle.opensGateId)) errors.push(`puzzle ${puzzle.id}: unknown gate ${puzzle.opensGateId}`);
-    if (!rewardIds.has(puzzle.rewardId)) errors.push(`puzzle ${puzzle.id}: unknown reward ${puzzle.rewardId}`);
+    if (!rewardIds.has(node.rewardId)) {
+      errors.push(`naturalNode ${node.id}: unknown reward ${node.rewardId}`);
+    }
   }
-  for (const gate of world.traversalGates) {
-    claimExplorationId('traversalGate', gate.id);
-    if (!coordInBounds(gate.x) || !coordInBounds(gate.y)) {
-      errors.push(`traversalGate ${gate.id}: coordinates out of [0.02, 0.98]`);
+  for (const region of world.regionTriggers) {
+    claimExplorationId('regionTrigger', region.id);
+    if (!coordInBounds(region.x) || !coordInBounds(region.y)) {
+      errors.push(`regionTrigger ${region.id}: coordinates out of [0.02, 0.98]`);
     }
-    if (!motionStates.has(gate.requiredMotion)) {
-      errors.push(`traversalGate ${gate.id}: unknown requiredMotion ${gate.requiredMotion}`);
+    if (!Number.isFinite(region.radius) || region.radius <= 0 || region.radius > 0.15) {
+      errors.push(`regionTrigger ${region.id}: radius must be finite and in (0, 0.15]`);
     }
-    if (!Array.isArray(gate.halfExtents) || gate.halfExtents.length !== 2 ||
-        gate.halfExtents.some((value) => !Number.isFinite(value) || value <= 0 || value > 0.15)) {
-      errors.push(`traversalGate ${gate.id}: halfExtents must contain two finite values in (0, 0.15]`);
-    }
-    if (!Number.isFinite(gate.yaw)) {
-      errors.push(`traversalGate ${gate.id}: yaw must be finite`);
-    }
-    if (!Number.isFinite(gate.top) || gate.top <= 0 || gate.top > 0.5) {
-      errors.push(`traversalGate ${gate.id}: top must be finite and in (0, 0.5]`);
+    if (!naturalNodeIds.has(region.prerequisiteNodeId)) {
+      errors.push(`regionTrigger ${region.id}: unknown prerequisite node ${region.prerequisiteNodeId}`);
     }
   }
   for (const reward of world.explorationRewards) {
@@ -330,17 +342,6 @@ export function validateWorldLayout(world, schema) {
     const material = visual.terrainMaterial;
     if (material && material.detailScale <= material.macroScale) {
       errors.push('environmentVisual.terrainMaterial: detailScale must exceed macroScale');
-    }
-    const seenBlocks = new Set();
-    for (const cell of visual.visualTerrainCells ?? []) {
-      if (seenBlocks.has(cell.blockId)) {
-        errors.push(`environmentVisual: duplicate visual terrain block ${cell.blockId}`);
-      }
-      seenBlocks.add(cell.blockId);
-      if (cell.bounds?.length === 4 &&
-          (cell.bounds[0] >= cell.bounds[2] || cell.bounds[1] >= cell.bounds[3])) {
-        errors.push(`environmentVisual block ${cell.blockId}: bounds must be ordered`);
-      }
     }
     for (const layer of visual.foliageLayers ?? []) {
       if (layer.maxScale < layer.minScale) {
@@ -510,14 +511,14 @@ export function generateWorldLayoutHeader(world) {
   emit('};');
   emit();
   emit('enum class TraversalMotion : int32_t { Grounded = 0, Airborne = 1, Gliding = 2, Climbing = 3, Swimming = 4 };');
-  emit('struct WorldPuzzleNodeDef {');
+  emit('struct WorldNaturalNodeDef {');
   emit('  int32_t id; float x; float y; std::string_view label;');
-  emit('  TraversalMotion requiredMotion; int32_t opensGateId; int32_t rewardId;');
+  emit('  TraversalMotion requiredMotion; int32_t rewardId;');
   emit('};');
   emit();
-  emit('struct WorldTraversalGateDef {');
-  emit('  int32_t id; float x; float y; std::string_view label; TraversalMotion requiredMotion;');
-  emit('  float halfExtents[2]; float yaw; float top;');
+  emit('struct WorldRegionTriggerDef {');
+  emit('  int32_t id; float x; float y; float radius;');
+  emit('  std::string_view label; int32_t prerequisiteNodeId;');
   emit('};');
   emit();
   emit('struct WorldExplorationRewardDef {');
@@ -547,11 +548,6 @@ export function generateWorldLayoutHeader(world) {
   emit('struct WorldTerrainMaterialSetDef {');
   emit('  std::string_view atlasAsset; std::string_view controlAsset; int32_t layerCount;');
   emit('  float macroScale; float detailScale; float triplanarSharpness; float paintedControlStrength;');
-  emit('};');
-  emit('struct WorldVisualTerrainCellDef {');
-  emit('  int32_t blockId; std::string_view nearAsset; std::string_view midAsset; std::string_view farAsset;');
-  emit('  float boundsMinX; float boundsMinY; float boundsMaxX; float boundsMaxY;');
-  emit('  float maxWalkableDeviation; int32_t collisionPolicy;');
   emit('};');
   emit('struct WorldFoliageLayerDef {');
   emit('  int32_t kind; std::string_view assetId; float density; float minScale; float maxScale; float minHeight; float maxHeight;');
@@ -647,17 +643,17 @@ export function generateWorldLayoutHeader(world) {
   emit('}};');
   emit();
   const motionLiteral = (value) => `TraversalMotion::${value}`;
-  emit(`constexpr std::size_t kPuzzleNodeCount = ${world.puzzles.length};`);
-  emit('constexpr std::array<WorldPuzzleNodeDef, kPuzzleNodeCount> kPuzzleNodes{{');
-  for (const puzzle of world.puzzles) {
-    emit(`    {${puzzle.id}, ${floatLiteral(puzzle.x)}, ${floatLiteral(puzzle.y)}, ${cxxStringLiteral(puzzle.label)}, ${motionLiteral(puzzle.requiredMotion)}, ${puzzle.opensGateId}, ${puzzle.rewardId}},`);
+  emit(`constexpr std::size_t kNaturalNodeCount = ${world.naturalNodes.length};`);
+  emit('constexpr std::array<WorldNaturalNodeDef, kNaturalNodeCount> kNaturalNodes{{');
+  for (const node of world.naturalNodes) {
+    emit(`    {${node.id}, ${floatLiteral(node.x)}, ${floatLiteral(node.y)}, ${cxxStringLiteral(node.label)}, ${motionLiteral(node.requiredMotion)}, ${node.rewardId}},`);
   }
   emit('}};');
   emit();
-  emit(`constexpr std::size_t kTraversalGateCount = ${world.traversalGates.length};`);
-  emit('constexpr std::array<WorldTraversalGateDef, kTraversalGateCount> kTraversalGates{{');
-  for (const gate of world.traversalGates) {
-    emit(`    {${gate.id}, ${floatLiteral(gate.x)}, ${floatLiteral(gate.y)}, ${cxxStringLiteral(gate.label)}, ${motionLiteral(gate.requiredMotion)}, {${floatLiteral(gate.halfExtents[0])}, ${floatLiteral(gate.halfExtents[1])}}, ${floatLiteral(gate.yaw)}, ${floatLiteral(gate.top)}},`);
+  emit(`constexpr std::size_t kRegionTriggerCount = ${world.regionTriggers.length};`);
+  emit('constexpr std::array<WorldRegionTriggerDef, kRegionTriggerCount> kRegionTriggers{{');
+  for (const region of world.regionTriggers) {
+    emit(`    {${region.id}, ${floatLiteral(region.x)}, ${floatLiteral(region.y)}, ${floatLiteral(region.radius)}, ${cxxStringLiteral(region.label)}, ${region.prerequisiteNodeId}},`);
   }
   emit('}};');
   emit();
@@ -702,15 +698,6 @@ export function generateWorldLayoutHeader(world) {
   emit(`    ${floatLiteral(material.macroScale)}, ${floatLiteral(material.detailScale)}, ${floatLiteral(material.triplanarSharpness)}, ${floatLiteral(material.paintedControlStrength)},`);
   emit('};');
   emit();
-  const collisionPolicyValue = { visual_only: 0, explicit_obb: 1 };
-  emit(`constexpr std::size_t kVisualTerrainCellCount = ${visual.visualTerrainCells.length};`);
-  emit('constexpr std::array<WorldVisualTerrainCellDef, kVisualTerrainCellCount> kVisualTerrainCells{{');
-  for (const cell of visual.visualTerrainCells) {
-    emit(`    {${cell.blockId}, ${cxxStringLiteral(cell.nearAsset)}, ${cxxStringLiteral(cell.midAsset)}, ${cxxStringLiteral(cell.farAsset)},`);
-    emit(`     ${floatLiteral(cell.bounds[0])}, ${floatLiteral(cell.bounds[1])}, ${floatLiteral(cell.bounds[2])}, ${floatLiteral(cell.bounds[3])}, ${floatLiteral(cell.maxWalkableDeviation)}, ${collisionPolicyValue[cell.collisionPolicy]}},`);
-  }
-  emit('}};');
-  emit();
   const foliageKindValue = { grass: 0, shrub: 1, tree: 2, flower: 3, rock: 4 };
   emit(`constexpr std::size_t kFoliageLayerCount = ${visual.foliageLayers.length};`);
   emit('constexpr std::array<WorldFoliageLayerDef, kFoliageLayerCount> kFoliageLayers{{');
@@ -741,9 +728,6 @@ export function generateWorldLayoutHeader(world) {
 export function generateEnvironmentVisualManifest(world) {
   const visual = world.environmentVisual;
   const quote = (value) => JSON.stringify(value);
-  const cells = visual.visualTerrainCells.map((cell) =>
-    `  { blockId: ${cell.blockId}, lodAssets: [${quote(cell.nearAsset)}, ${quote(cell.midAsset)}, ${quote(cell.farAsset)}] }`
-  ).join(',\n');
   return `// AUTO-GENERATED by automation/assets/generate_world_layout.mjs. DO NOT EDIT.\n` +
     `export interface VisualTerrainResource {\n` +
     `  blockId: number;\n` +
@@ -752,7 +736,7 @@ export function generateEnvironmentVisualManifest(world) {
     `export const TERRAIN_ATLAS_ASSET: string = ${quote(visual.terrainMaterial.atlasAsset)};\n` +
     `export const TERRAIN_CONTROL_ASSET: string = ${quote(visual.terrainMaterial.controlAsset)};\n` +
     `export const FOLIAGE_ATLAS_ASSET: string = ${quote(visual.foliageAtlasAsset)};\n` +
-    `export const VISUAL_TERRAIN_RESOURCES: VisualTerrainResource[] = [\n${cells}\n];\n`;
+    `export const VISUAL_TERRAIN_RESOURCES: VisualTerrainResource[] = [];\n`;
 }
 
 async function main() {

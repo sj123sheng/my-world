@@ -7,8 +7,4 @@ export interface VisualTerrainResource {
 export const TERRAIN_ATLAS_ASSET: string = "environment/terrain_material_atlas.png";
 export const TERRAIN_CONTROL_ASSET: string = "environment/terrain_control_spawn.png";
 export const FOLIAGE_ATLAS_ASSET: string = "environment/foliage_atlas.png";
-export const VISUAL_TERRAIN_RESOURCES: VisualTerrainResource[] = [
-  { blockId: 4, lodAssets: ["environment/visual_terrain/block_4_lod0.glb", "environment/visual_terrain/block_4_lod1.glb", "environment/visual_terrain/block_4_lod2.glb"] },
-  { blockId: 12, lodAssets: ["environment/visual_terrain/block_12_lod0.glb", "environment/visual_terrain/block_12_lod1.glb", "environment/visual_terrain/block_12_lod2.glb"] },
-  { blockId: 20, lodAssets: ["environment/visual_terrain/block_20_lod0.glb", "environment/visual_terrain/block_20_lod1.glb", "environment/visual_terrain/block_20_lod2.glb"] }
-];
+export const VISUAL_TERRAIN_RESOURCES: VisualTerrainResource[] = [];

@@ -23,37 +23,14 @@ bool close(float lhs, float rhs, float tolerance = 1e-6f) {
   return std::abs(lhs - rhs) <= tolerance;
 }
 
-// 内容点位坡度/干地断言的豁免名单：这两个点位按设计必须在水中
-// （湖畔浮桥机关与湖心浮桥，Swimming 玩法）。
-bool isIntendedWaterPoint(float x, float y) {
-  for (const WL::WorldPuzzleNodeDef& puzzle : WL::kPuzzleNodes) {
-    if (puzzle.id == 71 && std::abs(puzzle.x - x) < 1e-6f &&
-        std::abs(puzzle.y - y) < 1e-6f) {
-      return true;
-    }
-  }
-  for (const WL::WorldTraversalGateDef& gate : WL::kTraversalGates) {
-    if (gate.id == 81 && std::abs(gate.x - x) < 1e-6f &&
-        std::abs(gate.y - y) < 1e-6f) {
-      return true;
-    }
-  }
-  return false;
-}
-
 void checkContentPoint(const TerrainHeightfield& terrain, const char* label,
                        float x, float y) {
-  const bool intendedWater = isIntendedWaterPoint(x, y);
   const bool wet = terrain.waterAt(x, y);
-  if (!intendedWater) {
-    if (wet) {
-      std::printf("content point underwater: %s (%.2f, %.2f) h=%.4f\n", label,
-                  x, y, terrain.heightAt(x, y));
-    }
-    assert(!wet);
+  if (wet) {
+    std::printf("content point underwater: %s (%.2f, %.2f) h=%.4f\n", label,
+                x, y, terrain.heightAt(x, y));
   }
-  // 水中点位（浮桥/游泳机关）不做坡度可行走断言：玩家在该点游泳。
-  if (intendedWater) return;
+  assert(!wet);
   const float slope = terrain.slopeAt(x, y);
   if (slope >= kWalkableSlope) {
     std::printf("content point not walkable: %s (%.2f, %.2f) slope=%.3f\n",
@@ -239,15 +216,13 @@ int main() {
     }
   }
 
-  // 辉光湖：机关与浮桥点位必须在水下，湖心深度留足游泳余量。
-  assert(terrain.waterAt(0.74f, 0.25f));
-  assert(terrain.waterAt(0.78f, 0.28f));
+  // 辉光湖保留可游泳水域，但自然节点与区域触发都位于干燥湖湾。
   assert(terrain.heightAt(0.745f, 0.265f) < -0.06f);
   // 湖岸内容点不被湖水淹没。
   assert(!terrain.waterAt(0.8f, 0.25f));   // 东部施法者出生点
-  assert(!terrain.waterAt(0.7f, 0.2f));    // 湖畔渔夫/渡口
+  assert(!terrain.waterAt(0.7f, 0.2f));    // 湖畔渔夫/湖湾节点
 
-  // 湖心残塔 mesa：顶面平整（basin 目标高度），四壁可攀爬。
+  // 湖心岩台：顶面平整（basin 目标高度），四壁可攀爬。
   assert(std::abs(terrain.heightAt(0.86f, 0.12f) - 0.055f) < 0.004f);
   bool mesaClimbable = false;
   for (int i = 0; i <= 20; ++i) {
@@ -259,7 +234,7 @@ int main() {
   }
   assert(mesaClimbable);
 
-  // 回廊攀爬悬崖：升降机关旁存在可攀爬坡面。
+  // 中枢岩脊攀爬悬崖：晶簇旁存在可攀爬坡面。
   bool corridorClimbable = false;
   for (int i = 0; i <= 20; ++i) {
     for (int j = 0; j <= 20; ++j) {
@@ -275,7 +250,7 @@ int main() {
   assert(std::abs(terrain.heightAt(0.5f, 0.5f)) < 0.009f);
   assert(terrain.slopeAt(0.5f, 0.48f) < kWalkableSlope);
 
-  // 圣所高地整体高于低地：高原台地地貌成立。
+  // 岚冠高地整体高于低地：高原台地地貌成立。
   assert(terrain.heightAt(0.8f, 0.8f) > terrain.heightAt(0.15f, 0.15f) + 0.02f);
 
   // 全部内容点位：干地（豁免名单除外）且坡度可行走。
@@ -304,11 +279,11 @@ int main() {
   for (const WL::WorldPointOfInterestDef& poi : WL::kPointsOfInterest) {
     checkContentPoint(terrain, "poi", poi.x, poi.y);
   }
-  for (const WL::WorldPuzzleNodeDef& puzzle : WL::kPuzzleNodes) {
-    checkContentPoint(terrain, "puzzle", puzzle.x, puzzle.y);
+  for (const WL::WorldNaturalNodeDef& node : WL::kNaturalNodes) {
+    checkContentPoint(terrain, "natural-node", node.x, node.y);
   }
-  for (const WL::WorldTraversalGateDef& gate : WL::kTraversalGates) {
-    checkContentPoint(terrain, "gate", gate.x, gate.y);
+  for (const WL::WorldRegionTriggerDef& region : WL::kRegionTriggers) {
+    checkContentPoint(terrain, "region-trigger", region.x, region.y);
   }
 
   // 主干道：至少一条路线段存在且端点可行走。

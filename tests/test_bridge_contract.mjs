@@ -540,7 +540,7 @@ assert.match(loadModelAssetsBody,
   /nativeSetModelAssets[\s\S]*?try[\s\S]*?nativeSetEnvironmentAssets[\s\S]*?catch/,
   'character and environment assets must use separate failure domains');
 
-// ---- Environment vertical slice: terrain textures and authored visual terrain ----
+// ---- Environment vertical slice: natural terrain textures, no authored structures ----
 assert.match(bridge, /export const nativeSetTerrainAssets/,
   'Bridge must export terrain material asset upload');
 assert.match(bridge, /export const nativeSetVisualTerrainAsset/,
@@ -562,8 +562,11 @@ assert.match(page, /FOLIAGE_ATLAS_ASSET/,
   'GamePage must load the schema-generated foliage atlas path');
 assert.match(page, /VISUAL_TERRAIN_RESOURCES/,
   'GamePage must load schema-generated visual terrain block/LOD resources');
-assert.match(environmentManifest, /blockId: 4/);
-assert.match(environmentManifest, /environment\/visual_terrain\/block_20_lod2\.glb/);
+assert.match(environmentManifest,
+  /VISUAL_TERRAIN_RESOURCES: VisualTerrainResource\[\] = \[\];/,
+  'natural world manifest must publish no authored structure resources');
+assert.doesNotMatch(environmentManifest, /\.glb/,
+  'natural world manifest must not reference artificial GLBs');
 const loadVisualTerrainBody = functionBody(page,
   'private async loadVisualTerrainSliceAssets(generation: number)');
 assert.match(loadVisualTerrainBody, /this\.isActiveModelLoad\(generation\)/,
