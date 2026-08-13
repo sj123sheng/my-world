@@ -1,56 +1,44 @@
 #pragma once
 
 #include "native/engine/math/vec2.h"
+#include "native/engine/world/world_position.h"
 
 #include <cstdint>
 #include <vector>
 
-// 世界分块流式加载系统（开放世界探索基础）。
-// 世界为 [0,1]x[0,1] 的逻辑平面，被均匀切分为 countX*countY 个分块。
-// 按玩家所在分块与流式半径维护激活分块集合：进入半径的分块请求
-// 加载，离开半径的分块请求卸载。所有序列按分块 id 升序确定性排序，
-// 同输入下加/卸载顺序可重现，便于回归测试与资产提交校验。
+// 无限世界活动网格配置。活动区负责当前可交互分块，缓存区在活动区外
+// 额外保留若干圈，避免玩家在边缘移动时立即卸载刚离开的分块。
 struct WorldGridConfig {
-  int32_t countX = 8;
-  int32_t countY = 8;
-  // 流式半径（分块数）：激活集合为曼哈顿邻域近似——
-  // 玩家所在分块向四周扩展 radius 的矩形窗口。
-  int32_t streamingRadius = 2;
+  int32_t activeRadius = 4;
+  int32_t cacheRings = 2;
 };
 
 struct WorldGrid {
   explicit WorldGrid(WorldGridConfig config = {});
 
-  // 按玩家位置更新激活分块集合。返回 true 表示集合发生变化。
-  bool updateStreaming(Vec2 playerPosition);
+  // 更新玩家所在无限分块及加载方向。返回 true 表示活动区或缓存区变化。
+  // 加载顺序固定为中心、切比雪夫圈、合成前向、坐标。
+  bool updateStreaming(ChunkCoord playerChunk, Vec2 cameraForward,
+                       Vec2 movement);
 
-  // 动态调整流式半径（性能降级时缩小激活窗口）；非法值被钳制。
-  // 返回 true 表示半径发生变化。
-  bool setStreamingRadius(int32_t radius);
-
-  // 本帧需要新加载的分块 id（升序）。仅在 updateStreaming 返回 true
-  // 后的当帧有效。
-  const std::vector<int32_t>& pendingLoads() const { return pendingLoads_; }
-  // 本帧需要卸载的分块 id（升序）。
-  const std::vector<int32_t>& pendingUnloads() const {
+  const std::vector<ChunkCoord>& pendingLoads() const {
+    return pendingLoads_;
+  }
+  const std::vector<ChunkCoord>& pendingUnloads() const {
     return pendingUnloads_;
   }
-  // 当前激活的分块 id（升序）。
-  const std::vector<int32_t>& activeChunks() const { return active_; }
+  const std::vector<ChunkCoord>& activeChunks() const { return active_; }
+  const std::vector<ChunkCoord>& cachedChunks() const { return cached_; }
 
-  int32_t chunkIndexAt(Vec2 position) const;
-  // 分块 id 的网格坐标（id = y * countX + x），供流式调度器计算
-  // 切比雪夫距离；非法 id 钳制到有效范围。
-  int32_t chunkXOf(int32_t chunkId) const;
-  int32_t chunkYOf(int32_t chunkId) const;
-  int32_t chunkCount() const { return config_.countX * config_.countY; }
-  float chunkSizeX() const { return 1.0f / static_cast<float>(config_.countX); }
-  float chunkSizeY() const { return 1.0f / static_cast<float>(config_.countY); }
+  // 质量档位：0=高、1=中、2及以上=低；未知负值按高画质处理。
+  static int32_t ActiveRadiusForQuality(int32_t qualityPreset);
+
   const WorldGridConfig& config() const { return config_; }
 
  private:
   WorldGridConfig config_;
-  std::vector<int32_t> active_;
-  std::vector<int32_t> pendingLoads_;
-  std::vector<int32_t> pendingUnloads_;
+  std::vector<ChunkCoord> active_;
+  std::vector<ChunkCoord> cached_;
+  std::vector<ChunkCoord> pendingLoads_;
+  std::vector<ChunkCoord> pendingUnloads_;
 };

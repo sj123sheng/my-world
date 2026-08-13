@@ -1,90 +1,166 @@
 #include "native/engine/world/world_grid.h"
 
+#include <algorithm>
 #include <cassert>
-#include <cmath>
+#include <cstdint>
+#include <limits>
+#include <vector>
 
-int main() {
-  // 初始状态：无激活分块；首次更新触发加载。
-  WorldGrid grid{WorldGridConfig{8, 8, 2}};
+namespace {
+
+bool Contains(const std::vector<ChunkCoord>& chunks, ChunkCoord expected) {
+  return std::find(chunks.begin(), chunks.end(), expected) != chunks.end();
+}
+
+long double ChebyshevDistance(ChunkCoord lhs, ChunkCoord rhs) {
+  const long double dx =
+      static_cast<long double>(lhs.x) - static_cast<long double>(rhs.x);
+  const long double dy =
+      static_cast<long double>(lhs.y) - static_cast<long double>(rhs.y);
+  return std::max(dx < 0 ? -dx : dx, dy < 0 ? -dy : dy);
+}
+
+void TestQualityPresetsKeepRequiredActiveAreas() {
+  assert(WorldGrid::ActiveRadiusForQuality(0) == 4);
+  assert(WorldGrid::ActiveRadiusForQuality(1) == 3);
+  assert(WorldGrid::ActiveRadiusForQuality(2) == 2);
+  assert(WorldGrid::ActiveRadiusForQuality(-1) == 4);
+  assert(WorldGrid::ActiveRadiusForQuality(3) == 2);
+
+  WorldGrid medium({WorldGrid::ActiveRadiusForQuality(1), 2});
+  assert(medium.updateStreaming({0, 0}, {}, {}));
+  assert(medium.activeChunks().size() == 49);
+  assert(medium.cachedChunks().size() == 121);
+
+  WorldGrid low({WorldGrid::ActiveRadiusForQuality(2), 2});
+  assert(low.updateStreaming({0, 0}, {}, {}));
+  assert(low.activeChunks().size() == 25);
+  assert(low.cachedChunks().size() == 81);
+}
+
+void TestInitialUpdateBuildsActiveAndCachedSquares() {
+  WorldGrid grid({4, 2});
   assert(grid.activeChunks().empty());
-  assert(grid.chunkCount() == 64);
-  assert(grid.chunkIndexAt({0.0f, 0.0f}) == 0);
-  assert(grid.chunkIndexAt({0.999f, 0.999f}) == 63);
-  assert(grid.chunkIndexAt({0.125f, 0.0f}) == 1);
-  // 越界/非法输入钳制到有效分块：(-1, 2) → (0, 1) → 末行首列。
-  assert(grid.chunkIndexAt({-1.0f, 2.0f}) == 7 * 8);
-  assert(grid.chunkIndexAt({std::nanf(""), std::nanf("")}) == 0);
+  assert(grid.cachedChunks().empty());
 
-  // 中心出生：加载 5x5 窗口 = 25 个分块（半径 2 不触及边界）。
-  const bool first = grid.updateStreaming({0.5f, 0.5f});
-  assert(first);
-  assert(grid.activeChunks().size() == 25);
-  assert(grid.pendingLoads().size() == 25);
+  assert(grid.updateStreaming({0, 0}, {1.0f, 0.0f}, {1.0f, 0.0f}));
+  assert(grid.activeChunks().size() == 81);
+  assert(grid.cachedChunks().size() == 169);
+  assert(grid.pendingLoads().size() == 81);
   assert(grid.pendingUnloads().empty());
-  // 激活与加载序列均升序。
-  for (size_t i = 1; i < grid.activeChunks().size(); ++i) {
-    assert(grid.activeChunks()[i] > grid.activeChunks()[i - 1]);
-  }
+  assert(grid.pendingLoads().front() == (ChunkCoord{0, 0}));
+  assert(grid.pendingLoads()[1] == (ChunkCoord{1, 0}));
 
-  // 原地重复更新：无变化。
-  assert(!grid.updateStreaming({0.51f, 0.51f}));
+  for (const ChunkCoord coord : grid.activeChunks()) {
+    assert(ChebyshevDistance(coord, {0, 0}) <= 4);
+  }
+  for (const ChunkCoord coord : grid.cachedChunks()) {
+    assert(ChebyshevDistance(coord, {0, 0}) <= 6);
+  }
+}
+
+void TestLoadOrderUsesRingThenCombinedForwardThenCoordinates() {
+  WorldGrid diagonal({2, 2});
+  assert(diagonal.updateStreaming({100, -200}, {0.0f, 1.0f},
+                                  {1.0f, 0.0f}));
+  const std::vector<ChunkCoord> expectedPrefix{
+      {100, -200}, {101, -199}, {101, -200}, {100, -199}};
+  assert(diagonal.pendingLoads().size() == 25);
+  assert(std::equal(expectedPrefix.begin(), expectedPrefix.end(),
+                    diagonal.pendingLoads().begin()));
+  for (size_t i = 1; i < 9; ++i) {
+    assert(ChebyshevDistance(diagonal.pendingLoads()[i], {100, -200}) ==
+           1);
+  }
+  assert(ChebyshevDistance(diagonal.pendingLoads()[9], {100, -200}) == 2);
+
+  WorldGrid degenerate({1, 2});
+  assert(degenerate.updateStreaming({0, 0}, {1.0f, 0.0f},
+                                    {-1.0f, 0.0f}));
+  const std::vector<ChunkCoord> expectedCoordinateOrder{
+      {0, 0}, {-1, -1}, {0, -1}, {1, -1}, {-1, 0},
+      {1, 0}, {-1, 1},  {0, 1},  {1, 1}};
+  assert(degenerate.pendingLoads() == expectedCoordinateOrder);
+}
+
+void TestLoadOrderDoesNotDependOnPriorCandidateHistory() {
+  WorldGrid fromWest({2, 2});
+  WorldGrid fromSouth({2, 2});
+  assert(fromWest.updateStreaming({-1000, 0}, {1.0f, 0.0f}, {}));
+  assert(fromSouth.updateStreaming({0, -1000}, {1.0f, 0.0f}, {}));
+
+  const ChunkCoord destination{5000, -5000};
+  assert(fromWest.updateStreaming(destination, {0.0f, 1.0f}, {}));
+  assert(fromSouth.updateStreaming(destination, {0.0f, 1.0f}, {}));
+  assert(fromWest.pendingLoads() == fromSouth.pendingLoads());
+  assert(fromWest.activeChunks() == fromSouth.activeChunks());
+  assert(fromWest.cachedChunks() == fromSouth.cachedChunks());
+}
+
+void TestRepeatedAndAdjacentUpdatesExposeOnlyDeltas() {
+  WorldGrid grid({4, 2});
+  assert(grid.updateStreaming({0, 0}, {1.0f, 0.0f}, {}));
+
+  assert(!grid.updateStreaming({0, 0}, {-1.0f, 0.0f}, {1.0f, 0.0f}));
   assert(grid.pendingLoads().empty());
   assert(grid.pendingUnloads().empty());
 
-  // 小幅移动不跨分块边界：仍无变化（0.5 在分块 4,4；0.55 也在 4,4）。
-  assert(!grid.updateStreaming({0.55f, 0.55f}));
-
-  // 大幅移动到角落：窗口收缩到边界，集合变化。
-  const bool moved = grid.updateStreaming({0.01f, 0.01f});
-  assert(moved);
-  // 角落窗口 3x3 = 9 个分块（半径 2 被世界边界钳制）。
-  assert(grid.activeChunks().size() == 9);
-  assert(!grid.pendingLoads().empty());
-  assert(!grid.pendingUnloads().empty());
-  // 差集不相交：新加载的分块不应出现在卸载列表。
-  for (int32_t load : grid.pendingLoads()) {
-    for (int32_t unload : grid.pendingUnloads()) {
-      assert(load != unload);
-    }
+  assert(grid.updateStreaming({1, 0}, {1.0f, 0.0f}, {}));
+  assert(grid.activeChunks().size() == 81);
+  assert(grid.cachedChunks().size() == 169);
+  assert(grid.pendingLoads().size() == 9);
+  assert(grid.pendingUnloads().size() == 13);
+  assert(!Contains(grid.pendingUnloads(), {-4, 0}));
+  for (const ChunkCoord coord : grid.pendingLoads()) {
+    assert(ChebyshevDistance(coord, {1, 0}) <= 4);
   }
-  // 角落激活集合应为 3x3 窗口 {0,1,2,8,9,10,16,17,18}。
-  const std::vector<int32_t> expectedCorner{0, 1, 2, 8, 9, 10, 16, 17, 18};
-  assert(grid.activeChunks() == expectedCorner);
+  for (const ChunkCoord coord : grid.pendingUnloads()) {
+    assert(ChebyshevDistance(coord, {1, 0}) > 6);
+  }
+}
 
-  // 确定性：同一轨迹在两个全新实例上产生相同序列。
-  WorldGrid replay{WorldGridConfig{8, 8, 2}};
-  replay.updateStreaming({0.5f, 0.5f});
-  replay.updateStreaming({0.01f, 0.01f});
-  assert(replay.activeChunks() == grid.activeChunks());
-  assert(replay.pendingLoads() == grid.pendingLoads());
-  assert(replay.pendingUnloads() == grid.pendingUnloads());
+void TestNegativeAndFarCoordinatesRemainDeterministic() {
+  WorldGrid grid({4, 2});
+  assert(grid.updateStreaming({50, -50}, {-1.0f, 0.0f},
+                              {-1.0f, 0.0f}));
+  assert(grid.pendingLoads()[1] == (ChunkCoord{49, -50}));
 
-  // 退化配置：半径 0 只保留玩家所在分块。
-  WorldGrid single{WorldGridConfig{4, 4, 0}};
-  single.updateStreaming({0.3f, 0.3f});
-  assert(single.activeChunks().size() == 1);
-  assert(single.activeChunks()[0] == single.chunkIndexAt({0.3f, 0.3f}));
+  assert(grid.updateStreaming({-4000000000000LL, 7000000000000LL},
+                              {0.0f, -1.0f}, {}));
+  assert(grid.activeChunks().size() == 81);
+  assert(grid.cachedChunks().size() == 169);
+  for (const ChunkCoord coord : grid.pendingUnloads()) {
+    assert(ChebyshevDistance(
+               coord, {-4000000000000LL, 7000000000000LL}) > 6);
+  }
 
-  // 非法配置被规范化。
-  WorldGrid degenerate{WorldGridConfig{0, -3, -5}};
-  assert(degenerate.chunkCount() >= 1);
-  degenerate.updateStreaming({0.5f, 0.5f});
-  assert(degenerate.activeChunks().size() == 1);
+  WorldGrid nearMaximum({4, 2});
+  const ChunkCoord maximumSafe{
+      std::numeric_limits<int64_t>::max() - 6,
+      std::numeric_limits<int64_t>::min() + 6};
+  assert(nearMaximum.updateStreaming(maximumSafe, {1.0f, 0.0f}, {}));
+  assert(nearMaximum.activeChunks().size() == 81);
+  assert(nearMaximum.cachedChunks().size() == 169);
+  assert(nearMaximum.pendingLoads().front() == maximumSafe);
 
-  // 动态半径：缩小后激活窗口收缩并触发卸载。
-  WorldGrid dynamic{WorldGridConfig{8, 8, 2}};
-  dynamic.updateStreaming({0.5f, 0.5f});
-  assert(dynamic.activeChunks().size() == 25);
-  assert(dynamic.setStreamingRadius(1));
-  assert(dynamic.updateStreaming({0.5f, 0.5f}));
-  assert(dynamic.activeChunks().size() == 9);
-  assert(!dynamic.pendingUnloads().empty());
-  assert(dynamic.pendingLoads().empty());
-  // 相同半径重复设置不视为变化。
-  assert(!dynamic.setStreamingRadius(1));
-  // 负半径钳制为 0。
-  assert(dynamic.setStreamingRadius(-4));
-  dynamic.updateStreaming({0.5f, 0.5f});
-  assert(dynamic.activeChunks().size() == 1);
+  WorldGrid atMaximum({4, 2});
+  const ChunkCoord maximum{std::numeric_limits<int64_t>::max(),
+                           std::numeric_limits<int64_t>::max()};
+  assert(atMaximum.updateStreaming(maximum, {1.0f, 0.0f}, {}));
+  assert(atMaximum.activeChunks().size() == 25);
+  assert(atMaximum.cachedChunks().size() == 49);
+  assert(atMaximum.pendingLoads().front() == maximum);
+  assert(!atMaximum.updateStreaming(maximum, {1.0f, 0.0f}, {}));
+}
+
+}  // namespace
+
+int main() {
+  TestQualityPresetsKeepRequiredActiveAreas();
+  TestInitialUpdateBuildsActiveAndCachedSquares();
+  TestLoadOrderUsesRingThenCombinedForwardThenCoordinates();
+  TestLoadOrderDoesNotDependOnPriorCandidateHistory();
+  TestRepeatedAndAdjacentUpdatesExposeOnlyDeltas();
+  TestNegativeAndFarCoordinatesRemainDeterministic();
   return 0;
 }

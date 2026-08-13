@@ -2,86 +2,141 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace {
 
-int32_t clampInt(int32_t value, int32_t lo, int32_t hi) {
-  return value < lo ? lo : (value > hi ? hi : value);
+bool TryOffset(int64_t value, int64_t offset, int64_t* result) noexcept {
+  if ((offset > 0 &&
+       value > std::numeric_limits<int64_t>::max() - offset) ||
+      (offset < 0 &&
+       value < std::numeric_limits<int64_t>::min() - offset)) {
+    return false;
+  }
+  *result = value + offset;
+  return true;
+}
+
+std::vector<ChunkCoord> BuildSquare(ChunkCoord center, int64_t radius) {
+  std::vector<ChunkCoord> chunks;
+  const uint64_t side = static_cast<uint64_t>(radius) * 2U + 1U;
+  if (side <= std::numeric_limits<size_t>::max() / side) {
+    chunks.reserve(static_cast<size_t>(side * side));
+  }
+
+  for (int64_t dy = -radius; dy <= radius; ++dy) {
+    int64_t y = 0;
+    if (!TryOffset(center.y, dy, &y)) continue;
+    for (int64_t dx = -radius; dx <= radius; ++dx) {
+      int64_t x = 0;
+      if (TryOffset(center.x, dx, &x)) chunks.push_back({x, y});
+    }
+  }
+  std::sort(chunks.begin(), chunks.end());
+  return chunks;
+}
+
+uint64_t UnsignedDistance(int64_t lhs, int64_t rhs) noexcept {
+  return lhs >= rhs ? static_cast<uint64_t>(lhs) - static_cast<uint64_t>(rhs)
+                    : static_cast<uint64_t>(rhs) - static_cast<uint64_t>(lhs);
+}
+
+long double SignedDelta(int64_t value, int64_t origin) noexcept {
+  const long double magnitude =
+      static_cast<long double>(UnsignedDistance(value, origin));
+  return value < origin ? -magnitude : magnitude;
+}
+
+struct LoadOrder {
+  ChunkCoord center;
+  long double forwardX = 0.0L;
+  long double forwardY = 0.0L;
+
+  bool operator()(ChunkCoord lhs, ChunkCoord rhs) const noexcept {
+    const uint64_t lhsDistance =
+        std::max(UnsignedDistance(lhs.x, center.x),
+                 UnsignedDistance(lhs.y, center.y));
+    const uint64_t rhsDistance =
+        std::max(UnsignedDistance(rhs.x, center.x),
+                 UnsignedDistance(rhs.y, center.y));
+    if (lhsDistance != rhsDistance) return lhsDistance < rhsDistance;
+
+    const long double lhsDx = SignedDelta(lhs.x, center.x);
+    const long double lhsDy = SignedDelta(lhs.y, center.y);
+    const long double rhsDx = SignedDelta(rhs.x, center.x);
+    const long double rhsDy = SignedDelta(rhs.y, center.y);
+    const long double lhsLength = std::hypotl(lhsDx, lhsDy);
+    const long double rhsLength = std::hypotl(rhsDx, rhsDy);
+    const long double lhsForward =
+        lhsLength > 0.0L
+            ? (lhsDx * forwardX + lhsDy * forwardY) / lhsLength
+            : 0.0L;
+    const long double rhsForward =
+        rhsLength > 0.0L
+            ? (rhsDx * forwardX + rhsDy * forwardY) / rhsLength
+            : 0.0L;
+    if (lhsForward != rhsForward) return lhsForward > rhsForward;
+    if (lhs.y != rhs.y) return lhs.y < rhs.y;
+    return lhs.x < rhs.x;
+  }
+};
+
+LoadOrder MakeLoadOrder(ChunkCoord center, Vec2 cameraForward,
+                        Vec2 movement) noexcept {
+  LoadOrder order;
+  order.center = center;
+  const long double x = static_cast<long double>(cameraForward.x) +
+                        static_cast<long double>(movement.x);
+  const long double y = static_cast<long double>(cameraForward.y) +
+                        static_cast<long double>(movement.y);
+  const long double length = std::hypotl(x, y);
+  if (std::isfinite(length) && length > 0.0L) {
+    order.forwardX = x / length;
+    order.forwardY = y / length;
+  }
+  return order;
 }
 
 }  // namespace
 
 WorldGrid::WorldGrid(WorldGridConfig config) : config_(config) {
-  if (config_.countX < 1) config_.countX = 1;
-  if (config_.countY < 1) config_.countY = 1;
-  if (config_.streamingRadius < 0) config_.streamingRadius = 0;
+  config_.activeRadius = std::max(config_.activeRadius, 0);
+  config_.cacheRings = std::max(config_.cacheRings, 0);
 }
 
-int32_t WorldGrid::chunkIndexAt(Vec2 position) const {
-  float px = position.x;
-  float py = position.y;
-  if (!std::isfinite(px)) px = 0.0f;
-  if (!std::isfinite(py)) py = 0.0f;
-  px = std::clamp(px, 0.0f, 1.0f);
-  py = std::clamp(py, 0.0f, 1.0f);
-  int32_t cx = static_cast<int32_t>(px * static_cast<float>(config_.countX));
-  int32_t cy = static_cast<int32_t>(py * static_cast<float>(config_.countY));
-  cx = clampInt(cx, 0, config_.countX - 1);
-  cy = clampInt(cy, 0, config_.countY - 1);
-  return cy * config_.countX + cx;
+int32_t WorldGrid::ActiveRadiusForQuality(int32_t qualityPreset) {
+  if (qualityPreset <= 0) return 4;
+  return qualityPreset == 1 ? 3 : 2;
 }
 
-int32_t WorldGrid::chunkXOf(int32_t chunkId) const {
-  const int32_t id = clampInt(chunkId, 0, chunkCount() - 1);
-  return id % config_.countX;
-}
+bool WorldGrid::updateStreaming(ChunkCoord playerChunk, Vec2 cameraForward,
+                                Vec2 movement) {
+  const int64_t activeRadius = config_.activeRadius;
+  const int64_t cachedRadius =
+      activeRadius + static_cast<int64_t>(config_.cacheRings);
+  std::vector<ChunkCoord> desiredActive =
+      BuildSquare(playerChunk, activeRadius);
+  std::vector<ChunkCoord> desiredCached =
+      BuildSquare(playerChunk, cachedRadius);
 
-int32_t WorldGrid::chunkYOf(int32_t chunkId) const {
-  const int32_t id = clampInt(chunkId, 0, chunkCount() - 1);
-  return id / config_.countX;
-}
-
-bool WorldGrid::setStreamingRadius(int32_t radius) {
-  const int32_t clamped = std::max(radius, 0);
-  if (clamped == config_.streamingRadius) return false;
-  config_.streamingRadius = clamped;
-  return true;
-}
-
-bool WorldGrid::updateStreaming(Vec2 playerPosition) {
-  const int32_t current = chunkIndexAt(playerPosition);
-  const int32_t cx = current % config_.countX;
-  const int32_t cy = current / config_.countX;
-  const int32_t r = config_.streamingRadius;
-
-  // 期望激活集合：玩家所在分块向外扩展 radius 的矩形窗口，
-  // 按行主序 id 天然升序生成。
-  std::vector<int32_t> desired;
-  desired.reserve((2 * r + 1) * (2 * r + 1));
-  for (int32_t y = cy - r; y <= cy + r; ++y) {
-    for (int32_t x = cx - r; x <= cx + r; ++x) {
-      const int32_t clampedX = clampInt(x, 0, config_.countX - 1);
-      const int32_t clampedY = clampInt(y, 0, config_.countY - 1);
-      desired.push_back(clampedY * config_.countX + clampedX);
-    }
-  }
-  std::sort(desired.begin(), desired.end());
-  desired.erase(std::unique(desired.begin(), desired.end()), desired.end());
-
-  if (desired == active_) {
+  if (desiredActive == active_ && desiredCached == cached_) {
     pendingLoads_.clear();
     pendingUnloads_.clear();
     return false;
   }
 
-  // 差集计算：两个输入均升序，std::set_difference 输出亦升序，
-  // 保证加/卸载请求序列确定性。
   pendingLoads_.clear();
   pendingUnloads_.clear();
-  std::set_difference(desired.begin(), desired.end(), active_.begin(),
-                      active_.end(), std::back_inserter(pendingLoads_));
-  std::set_difference(active_.begin(), active_.end(), desired.begin(),
-                      desired.end(), std::back_inserter(pendingUnloads_));
-  active_ = std::move(desired);
+  std::set_difference(desiredActive.begin(), desiredActive.end(),
+                      active_.begin(), active_.end(),
+                      std::back_inserter(pendingLoads_));
+  std::set_difference(cached_.begin(), cached_.end(), desiredCached.begin(),
+                      desiredCached.end(),
+                      std::back_inserter(pendingUnloads_));
+  std::sort(pendingLoads_.begin(), pendingLoads_.end(),
+            MakeLoadOrder(playerChunk, cameraForward, movement));
+
+  active_ = std::move(desiredActive);
+  cached_ = std::move(desiredCached);
   return true;
 }
