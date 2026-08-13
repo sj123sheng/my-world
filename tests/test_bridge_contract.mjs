@@ -1,6 +1,53 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
+function allMatches(source, pattern) {
+  const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+  return [...source.matchAll(new RegExp(pattern.source, flags))];
+}
+
+function assertSourceSequence(
+  source, startPattern, endPattern, expressions, fieldReferencePattern) {
+  const start = source.search(startPattern);
+  assert.notEqual(start, -1, 'source sequence start marker must exist');
+  const tail = source.slice(start);
+  const end = tail.search(endPattern);
+  assert.ok(end > 0, 'source sequence end marker must follow its start');
+  const section = tail.slice(0, end);
+  let previousEnd = 0;
+  for (const { name, pattern } of expressions) {
+    const matches = allMatches(section, pattern);
+    assert.equal(matches.length, 1,
+      `${name} expression must appear exactly once in its source section`);
+    const match = matches[0];
+    assert.ok(match.index >= previousEnd,
+      `${name} expression must follow the preceding expression`);
+    assert.doesNotMatch(section.slice(previousEnd, match.index),
+      fieldReferencePattern,
+      `${name} must directly follow the preceding field expression`);
+    previousEnd = match.index + match[0].length;
+  }
+  assert.doesNotMatch(section.slice(previousEnd), fieldReferencePattern,
+    'source section must not contain an unexpected trailing field expression');
+}
+
+const sequenceFixture = 'BEGIN out << state.a; out << state.b; END';
+const sequenceExpressions = [
+  { name: 'a', pattern: /out\s*<<\s*state\.a/ },
+  { name: 'b', pattern: /out\s*<<\s*state\.b/ },
+];
+assert.doesNotThrow(() => assertSourceSequence(
+  sequenceFixture, /BEGIN/, /END/, sequenceExpressions, /\bstate\.\w+\b/));
+assert.throws(() => assertSourceSequence(
+  'BEGIN out << state.a; out << state.a; out << state.b; END',
+  /BEGIN/, /END/, sequenceExpressions, /\bstate\.\w+\b/));
+assert.throws(() => assertSourceSequence(
+  'BEGIN out << state.b; out << state.a; END',
+  /BEGIN/, /END/, sequenceExpressions, /\bstate\.\w+\b/));
+assert.throws(() => assertSourceSequence(
+  'BEGIN out << state.a; END', /BEGIN/, /END/, sequenceExpressions,
+  /\bstate\.\w+\b/));
+
 const bridge = fs.readFileSync('entry/src/main/ets/napi/Bridge.ets', 'utf8');
 const declarations = fs.readFileSync('entry/src/main/cpp/types/libnative_game/Index.d.ts', 'utf8');
 const page = fs.readFileSync('entry/src/main/ets/pages/GamePage.ets', 'utf8');
@@ -1030,40 +1077,66 @@ assert.match(loop, /sideQuests\.restoreMask\(state\.sideQuestMask\)/,
 const saveImpl = fs.readFileSync('native/engine/resource/save.cpp', 'utf8');
 assert.match(saveImpl, /tmp\s*<<\s*"V10 "/,
   'save writer must emit V10');
-// 从 V8 尾字段开始按源码索引锁序，不依赖换行和缩进。
-const saveWriter = saveImpl.slice(
-  saveImpl.indexOf('bool Save::write'), saveImpl.indexOf('bool Save::read'));
-const saveTail = saveWriter.slice(saveWriter.indexOf('s.openWorldQuestMask'));
-const orderedV10Tail = [
-  's.openWorldQuestMask', 's.openWorldQuestActiveId',
-  's.explorationPoiMask', 's.explorationPuzzleMask',
-  's.explorationRewardMask', 's.explorationGateMask',
-  's.explorationTraversalMask', 's.worldSeed', 's.playerChunkX',
-  's.playerChunkY', 's.playerLocalX', 's.playerLocalY',
+// 精确锁定 V8 尾字段、V9 五探索字段及其后唯一的 V10 五世界字段。
+const writerTailExpressions = [
+  { name: 'openWorldQuestMask', pattern: /s\.openWorldQuestMask/ },
+  { name: 'openWorldQuestActiveId', pattern: /s\.openWorldQuestActiveId/ },
+  { name: 'explorationPoiMask', pattern: /s\.explorationPoiMask/ },
+  { name: 'explorationPuzzleMask', pattern: /s\.explorationPuzzleMask/ },
+  { name: 'explorationRewardMask', pattern: /s\.explorationRewardMask/ },
+  { name: 'explorationGateMask', pattern: /s\.explorationGateMask/ },
+  { name: 'explorationTraversalMask', pattern: /s\.explorationTraversalMask/ },
+  {
+    name: 'worldSeed',
+    pattern: /\(s\.worldSeed\s*==\s*0\s*\?\s*1\s*:\s*s\.worldSeed\)/,
+  },
+  { name: 'playerChunkX', pattern: /s\.playerChunkX/ },
+  { name: 'playerChunkY', pattern: /s\.playerChunkY/ },
+  { name: 'playerLocalX', pattern: /s\.playerLocalX/ },
+  { name: 'playerLocalY', pattern: /s\.playerLocalY/ },
 ];
-let previousSaveField = -1;
-for (const field of orderedV10Tail) {
-  const fieldIndex = saveTail.indexOf(field);
-  assert.ok(fieldIndex > previousSaveField,
-    `save V10 must append ${field} after the preceding V8/V9 field`);
-  previousSaveField = fieldIndex;
-}
-const worldTail = saveTail.slice(
-  saveTail.indexOf('s.explorationTraversalMask') +
-    's.explorationTraversalMask'.length,
-  saveTail.indexOf('tmp << "\\n"'));
-assert.deepEqual([...new Set([...worldTail.matchAll(/s\.(\w+)/g)]
-  .map((match) => match[1]))],
-['worldSeed', 'playerChunkX', 'playerChunkY', 'playerLocalX', 'playerLocalY'],
-'V10 must append only seed, chunk X/Y, and local X/Y after the V9 fields');
+assertSourceSequence(saveImpl,
+  /s\.openWorldQuestMask/, /tmp\s*<<\s*"\\n"/, writerTailExpressions,
+  /\bs\.\w+\b/);
 assert.match(saveImpl,
   /first\s*==\s*"V8"\s*\|\|\s*first\s*==\s*"V9"\s*\|\|\s*first\s*==\s*"V10"/,
   'save reader must share the complete V8/V9/V10 body');
-assert.match(saveImpl,
-  /first\s*==\s*"V9"\s*\|\|\s*first\s*==\s*"V10"[\s\S]*?explorationPoiMask/,
-  'V9 and V10 must restore all five exploration fields before V10 fields');
-assert.match(saveImpl, /if\s*\(first\s*==\s*"V10"\)/,
-  'save reader must parse the five V10-only world fields separately');
+const readerExplorationExpressions = [
+  { name: 'explorationPoiMask', pattern: /f\s*>>\s*o\.explorationPoiMask/ },
+  { name: 'explorationPuzzleMask', pattern: />>\s*o\.explorationPuzzleMask/ },
+  { name: 'explorationRewardMask', pattern: />>\s*o\.explorationRewardMask/ },
+  { name: 'explorationGateMask', pattern: />>\s*o\.explorationGateMask/ },
+  { name: 'explorationTraversalMask', pattern: />>\s*o\.explorationTraversalMask/ },
+];
+assertSourceSequence(saveImpl,
+  /if\s*\(first\s*==\s*"V9"\s*\|\|\s*first\s*==\s*"V10"\)/,
+  /if\s*\(f\.fail\(\)\)\s*return\s+false/,
+  readerExplorationExpressions, /\bo\.\w+\b/);
+const readerWorldExpressions = [
+  {
+    name: 'worldSeed',
+    pattern: /parseIntegerToken\(seedToken,\s*o\.worldSeed\)/,
+  },
+  {
+    name: 'playerChunkX',
+    pattern: /parseIntegerToken\(chunkXToken,\s*o\.playerChunkX\)/,
+  },
+  {
+    name: 'playerChunkY',
+    pattern: /parseIntegerToken\(chunkYToken,\s*o\.playerChunkY\)/,
+  },
+  {
+    name: 'playerLocalX',
+    pattern: /parseLocalToken\(localXToken,\s*o\.playerLocalX\)/,
+  },
+  {
+    name: 'playerLocalY',
+    pattern: /parseLocalToken\(localYToken,\s*o\.playerLocalY\)/,
+  },
+];
+assertSourceSequence(saveImpl, /if\s*\(first\s*==\s*"V10"\)/,
+  /if\s*\(o\.worldSeed\s*==\s*0\)/, readerWorldExpressions,
+  /\bo\.\w+\b/);
 for (let version = 2; version <= 7; version += 1) {
   assert.match(saveImpl, new RegExp(`if\\s*\\(first\\s*==\\s*"V${version}"\\)`),
     `V${version} saves must remain readable`);
