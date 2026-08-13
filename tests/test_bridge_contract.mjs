@@ -48,6 +48,40 @@ assert.throws(() => assertSourceSequence(
   'BEGIN out << state.a; END', /BEGIN/, /END/, sequenceExpressions,
   /\bstate\.\w+\b/));
 
+const tokenParseExpressions = [
+  { name: 'seed parse', pattern: /parse\(seedToken,\s*o\.seed\)/ },
+  { name: 'chunk X parse', pattern: /parse\(chunkXToken,\s*o\.chunkX\)/ },
+  { name: 'chunk Y parse', pattern: /parse\(chunkYToken,\s*o\.chunkY\)/ },
+  { name: 'local X parse', pattern: /parse\(localXToken,\s*o\.localX\)/ },
+  { name: 'local Y parse', pattern: /parse\(localYToken,\s*o\.localY\)/ },
+];
+const tokenReadExpressions = [
+  { name: 'seed token read', pattern: /f\s*>>\s*seedToken/ },
+  { name: 'chunk X token read', pattern: />>\s*chunkXToken/ },
+  { name: 'chunk Y token read', pattern: />>\s*chunkYToken/ },
+  { name: 'local X token read', pattern: />>\s*localXToken/ },
+  { name: 'local Y token read', pattern: />>\s*localYToken/ },
+];
+function assertReaderWorldFixture(source) {
+  assertSourceSequence(source, /BEGIN/, /parse\(/, tokenReadExpressions,
+    /\b(?:seed|chunkX|chunkY|localX|localY)Token\b/);
+  assertSourceSequence(source, /BEGIN/, /END/, tokenParseExpressions,
+    /\bo\.\w+\b/);
+}
+const correctReaderFixture = `BEGIN
+  f >> seedToken >> chunkXToken >> chunkYToken >> localXToken >> localYToken;
+  parse(seedToken, o.seed); parse(chunkXToken, o.chunkX);
+  parse(chunkYToken, o.chunkY); parse(localXToken, o.localX);
+  parse(localYToken, o.localY);
+END`;
+assert.doesNotThrow(() => assertReaderWorldFixture(correctReaderFixture));
+assert.throws(() => assertReaderWorldFixture(correctReaderFixture.replace(
+  'seedToken >> chunkXToken', 'chunkXToken >> seedToken')));
+assert.throws(() => assertReaderWorldFixture(correctReaderFixture.replace(
+  'chunkYToken >> localXToken', 'chunkYToken >> chunkYToken >> localXToken')));
+assert.throws(() => assertReaderWorldFixture(correctReaderFixture.replace(
+  ' >> localXToken', '')));
+
 const bridge = fs.readFileSync('entry/src/main/ets/napi/Bridge.ets', 'utf8');
 const declarations = fs.readFileSync('entry/src/main/cpp/types/libnative_game/Index.d.ts', 'utf8');
 const page = fs.readFileSync('entry/src/main/ets/pages/GamePage.ets', 'utf8');
@@ -1134,6 +1168,16 @@ const readerWorldExpressions = [
     pattern: /parseLocalToken\(localYToken,\s*o\.playerLocalY\)/,
   },
 ];
+const readerWorldTokenExpressions = [
+  { name: 'seedToken', pattern: /f\s*>>\s*seedToken/ },
+  { name: 'chunkXToken', pattern: />>\s*chunkXToken/ },
+  { name: 'chunkYToken', pattern: />>\s*chunkYToken/ },
+  { name: 'localXToken', pattern: />>\s*localXToken/ },
+  { name: 'localYToken', pattern: />>\s*localYToken/ },
+];
+assertSourceSequence(saveImpl, /f\s*>>\s*seedToken/,
+  /if\s*\(f\.fail\(\)/, readerWorldTokenExpressions,
+  /\b(?:seed|chunkX|chunkY|localX|localY)Token\b/);
 assertSourceSequence(saveImpl, /if\s*\(first\s*==\s*"V10"\)/,
   /if\s*\(o\.worldSeed\s*==\s*0\)/, readerWorldExpressions,
   /\bo\.\w+\b/);
