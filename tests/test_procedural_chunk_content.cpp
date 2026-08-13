@@ -9,11 +9,17 @@
 #include <cstdint>
 #include <limits>
 #include <set>
+#include <type_traits>
 #include <vector>
 
 namespace {
 
 constexpr uint64_t kSeed = 0x8d12f4a3bc567890ULL;
+
+using ProductionGenerateProceduralChunk = ProceduralChunkContent (*) (
+    uint64_t, ChunkCoord, const TerrainHeightfield&);
+static_assert(std::is_same_v<decltype(&GenerateProceduralChunk),
+                             ProductionGenerateProceduralChunk>);
 
 bool samePosition(LocalPosition lhs, LocalPosition rhs) {
   return lhs.x == rhs.x && lhs.y == rhs.y;
@@ -124,8 +130,10 @@ void testReplayCoreAndSaltIsolation() {
   assert(core.enemies.empty());
   assert(core.collectibles.empty());
 
+  testing::ProceduralGenerationSalts salts;
+  salts.foliageSalt = 0x21ULL;
   const ProceduralChunkContent changedFoliage =
-      GenerateProceduralChunk(kSeed, coord, terrain, 0x21ULL);
+      testing::GenerateProceduralChunkForTesting(kSeed, coord, terrain, salts);
   assert(sameEnemiesAndCollectibles(first, changedFoliage));
   assert(first.foliage.size() != changedFoliage.foliage.size() ||
          !std::equal(first.foliage.begin(), first.foliage.end(),
@@ -135,6 +143,30 @@ void testReplayCoreAndSaltIsolation() {
                        return samePosition(lhs.position, rhs.position) &&
                               lhs.kind == rhs.kind && lhs.scale == rhs.scale;
                      }));
+}
+
+void testStableIdsUseFullHashAcrossBoundedLargeSample() {
+  const TerrainHeightfield terrain;
+  std::set<uint64_t> ids;
+  for (int64_t x = -125; x < 125; ++x) {
+    for (int64_t y = -100; y < 100; ++y) {
+      const ChunkCoord coord{x, y};
+      if (coord == ChunkCoord{0, 0}) continue;
+      const ProceduralChunkContent first =
+          GenerateProceduralChunk(kSeed, coord, terrain);
+      const ProceduralChunkContent replay =
+          GenerateProceduralChunk(kSeed, coord, terrain);
+      assert(sameContent(first, replay));
+      for (const ProceduralEnemySpawn& spawn : first.enemies) {
+        assert(ids.insert(spawn.stableId).second);
+      }
+      for (const ProceduralCollectibleSpawn& spawn : first.collectibles) {
+        assert(ids.insert(spawn.stableId).second);
+      }
+    }
+  }
+  // 默认平缓地形的每个外围块都会产生 3 个敌人与 4 个采集物。
+  assert(ids.size() == (250U * 200U - 1U) * 7U);
 }
 
 void testTerrainConstraintsAcrossNegativeAndDistantChunks() {
@@ -165,4 +197,5 @@ void testTerrainConstraintsAcrossNegativeAndDistantChunks() {
 int main() {
   testReplayCoreAndSaltIsolation();
   testTerrainConstraintsAcrossNegativeAndDistantChunks();
+  testStableIdsUseFullHashAcrossBoundedLargeSample();
 }

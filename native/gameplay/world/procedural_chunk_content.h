@@ -31,7 +31,18 @@ struct ProceduralChunkContent {
   std::vector<ProceduralCollectibleSpawn> collectibles;
 };
 
-// foliageSalt 仅用于确定性隔离测试；生产调用保持默认固定盐 0x20。
 ProceduralChunkContent GenerateProceduralChunk(
+    uint64_t worldSeed, ChunkCoord coord, const TerrainHeightfield& terrain);
+
+namespace testing {
+
+// 只允许测试改变植被盐，敌人和采集物始终使用生产固定盐。
+struct ProceduralGenerationSalts {
+  uint64_t foliageSalt = 0x20ULL;
+};
+
+ProceduralChunkContent GenerateProceduralChunkForTesting(
     uint64_t worldSeed, ChunkCoord coord, const TerrainHeightfield& terrain,
-    uint64_t foliageSalt = 0x20ULL);
+    ProceduralGenerationSalts salts);
+
+}  // namespace testing

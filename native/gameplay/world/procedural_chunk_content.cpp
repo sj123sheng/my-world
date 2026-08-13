@@ -56,12 +56,12 @@ bool IsValidPosition(const TerrainHeightfield& terrain, ChunkCoord coord,
 
 uint64_t StableSpawnId(uint64_t worldSeed, ChunkCoord coord,
                        uint64_t contentSalt, uint32_t slot) noexcept {
-  // 类别与槽位写入低 16 位，令当前块的敌人与采集物即便哈希高位相同也
-  // 保持可重复的无冲突 ID；高位仍由世界种子和块坐标决定。
-  const uint64_t hash = StableChunkHash(worldSeed, coord, contentSalt);
-  return (hash & ~0xffffULL) |
-         ((contentSalt & 0xffULL) << 8U) |
-         (static_cast<uint64_t>(slot) & 0xffULL);
+  // 用完整 64 位将类别与候选槽位混入 salt，随后以 seed 和完整 chunk
+  // 坐标参与 StableChunkHash；不截断哈希熵，也无需全局冲突表。
+  const uint64_t slotSalt = Mix64(contentSalt ^
+                                  (static_cast<uint64_t>(slot) *
+                                   0x9e3779b97f4a7c15ULL));
+  return StableChunkHash(worldSeed, coord, slotSalt);
 }
 
 EnemyArchetype OrdinaryArchetype(uint64_t hash) noexcept {
@@ -76,11 +76,9 @@ bool IsCoreChunk(ChunkCoord coord) noexcept {
   return coord == ChunkCoord{0, 0};
 }
 
-}  // namespace
-
-ProceduralChunkContent GenerateProceduralChunk(uint64_t worldSeed, ChunkCoord coord,
-                                                const TerrainHeightfield& terrain,
-                                                uint64_t foliageSalt) {
+ProceduralChunkContent GenerateProceduralChunkInternal(
+    uint64_t worldSeed, ChunkCoord coord, const TerrainHeightfield& terrain,
+    uint64_t foliageSalt) {
   ProceduralChunkContent content;
   if (IsCoreChunk(coord)) return content;
 
@@ -130,3 +128,21 @@ ProceduralChunkContent GenerateProceduralChunk(uint64_t worldSeed, ChunkCoord co
             });
   return content;
 }
+
+}  // namespace
+
+ProceduralChunkContent GenerateProceduralChunk(uint64_t worldSeed, ChunkCoord coord,
+                                                const TerrainHeightfield& terrain) {
+  return GenerateProceduralChunkInternal(worldSeed, coord, terrain, 0x20ULL);
+}
+
+namespace testing {
+
+ProceduralChunkContent GenerateProceduralChunkForTesting(
+    uint64_t worldSeed, ChunkCoord coord, const TerrainHeightfield& terrain,
+    ProceduralGenerationSalts salts) {
+  return GenerateProceduralChunkInternal(worldSeed, coord, terrain,
+                                         salts.foliageSalt);
+}
+
+}  // namespace testing
