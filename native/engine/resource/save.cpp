@@ -1,12 +1,11 @@
 #include "save.h"
-#include <cerrno>
 #include <charconv>
 #include <cmath>
 #include <cstdio>
-#include <cstdlib>
 #include <fstream>
 #include <iomanip>
 #include <limits>
+#include <locale>
 #include <utility>
 
 namespace {
@@ -25,10 +24,12 @@ bool parseIntegerToken(const std::string& token, Integer& value) {
 }
 
 bool parseLocalToken(const std::string& token, float& value) {
-  errno = 0;
-  char* end = nullptr;
-  const float parsed = std::strtof(token.c_str(), &end);
-  if (errno == ERANGE || end != token.c_str() + token.size() ||
+  float parsed = 0.0f;
+  const char* begin = token.data();
+  const char* end = begin + token.size();
+  const auto result = std::from_chars(begin, end, parsed,
+                                      std::chars_format::general);
+  if (result.ec != std::errc{} || result.ptr != end ||
       !validLocalPosition(parsed)) {
     return false;
   }
@@ -44,6 +45,7 @@ bool Save::write(const SaveState& s, const char* path){
     return false;
   }
   std::ofstream tmp(std::string(path)+".tmp");
+  tmp.imbue(std::locale::classic());
   // V10 格式：完整 V9 字段后追加世界种子、区块坐标与局部坐标。
   tmp << std::setprecision(std::numeric_limits<float>::max_digits10);
   tmp << "V10 " << s.campLevel << " " << s.relics << " " << s.regionProgress

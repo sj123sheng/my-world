@@ -1028,28 +1028,49 @@ assert.match(loop, /sideQuests\.completedMask\(\)/,
 assert.match(loop, /sideQuests\.restoreMask\(state\.sideQuestMask\)/,
   'loadProgress must restore the side quest mask');
 const saveImpl = fs.readFileSync('native/engine/resource/save.cpp', 'utf8');
-assert.match(saveImpl, /"V9 "/,
-  'save format must be V9 with open world quest and exploration fields');
-// V9 只追加不重排：写入追加开放世界任务与垂直切片探索字段，
-// 且保留 V8/V7 读取分支兼容旧存档。
-assert.match(saveImpl, /s\.openWorldQuestMask << " " << s\.openWorldQuestActiveId/,
-  'save V9 must append open world quest fields');
-for (const field of ['explorationPoiMask', 'explorationPuzzleMask',
-  'explorationRewardMask', 'explorationGateMask',
-  'explorationTraversalMask']) {
-  assert.match(saveImpl, new RegExp(`s\\.${field}`),
-    `save V9 must append ${field}`);
+assert.match(saveImpl, /tmp\s*<<\s*"V10 "/,
+  'save writer must emit V10');
+// 从 V8 尾字段开始按源码索引锁序，不依赖换行和缩进。
+const saveWriter = saveImpl.slice(
+  saveImpl.indexOf('bool Save::write'), saveImpl.indexOf('bool Save::read'));
+const saveTail = saveWriter.slice(saveWriter.indexOf('s.openWorldQuestMask'));
+const orderedV10Tail = [
+  's.openWorldQuestMask', 's.openWorldQuestActiveId',
+  's.explorationPoiMask', 's.explorationPuzzleMask',
+  's.explorationRewardMask', 's.explorationGateMask',
+  's.explorationTraversalMask', 's.worldSeed', 's.playerChunkX',
+  's.playerChunkY', 's.playerLocalX', 's.playerLocalY',
+];
+let previousSaveField = -1;
+for (const field of orderedV10Tail) {
+  const fieldIndex = saveTail.indexOf(field);
+  assert.ok(fieldIndex > previousSaveField,
+    `save V10 must append ${field} after the preceding V8/V9 field`);
+  previousSaveField = fieldIndex;
 }
-assert.match(saveImpl, /if \(first == "V8" \|\| first == "V9"\)/,
-  'save reader must keep the V8/V9 shared compatibility branch');
-assert.match(saveImpl, /if \(first == "V9"\) \{[\s\S]*explorationPoiMask/,
-  'save reader must restore V9 exploration fields');
-assert.match(saveImpl, /if \(first == "V7"\)/,
-  'save reader must keep the V7 backward-compatible branch');
-assert.match(saveImpl, /if \(first == "V6"\)/,
-  'V6 saves must remain readable');
-assert.match(saveImpl, /if \(first == "V5"\)/,
-  'V5 saves must remain readable');
+const worldTail = saveTail.slice(
+  saveTail.indexOf('s.explorationTraversalMask') +
+    's.explorationTraversalMask'.length,
+  saveTail.indexOf('tmp << "\\n"'));
+assert.deepEqual([...new Set([...worldTail.matchAll(/s\.(\w+)/g)]
+  .map((match) => match[1]))],
+['worldSeed', 'playerChunkX', 'playerChunkY', 'playerLocalX', 'playerLocalY'],
+'V10 must append only seed, chunk X/Y, and local X/Y after the V9 fields');
+assert.match(saveImpl,
+  /first\s*==\s*"V8"\s*\|\|\s*first\s*==\s*"V9"\s*\|\|\s*first\s*==\s*"V10"/,
+  'save reader must share the complete V8/V9/V10 body');
+assert.match(saveImpl,
+  /first\s*==\s*"V9"\s*\|\|\s*first\s*==\s*"V10"[\s\S]*?explorationPoiMask/,
+  'V9 and V10 must restore all five exploration fields before V10 fields');
+assert.match(saveImpl, /if\s*\(first\s*==\s*"V10"\)/,
+  'save reader must parse the five V10-only world fields separately');
+for (let version = 2; version <= 7; version += 1) {
+  assert.match(saveImpl, new RegExp(`if\\s*\\(first\\s*==\\s*"V${version}"\\)`),
+    `V${version} saves must remain readable`);
+}
+assert.match(saveImpl,
+  /parseIntegerToken\(first,\s*o\.campLevel\)[\s\S]*?o\.relics[\s\S]*?o\.regionProgress/,
+  'unversioned V1 saves must remain readable');
 const interactableHeader = fs.readFileSync('native/gameplay/world/interactable.h', 'utf8');
 assert.match(interactableHeader, /Dungeon = 3/,
   'InteractableKind must include Dungeon entrances');

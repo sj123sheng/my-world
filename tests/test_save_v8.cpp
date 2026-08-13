@@ -3,12 +3,19 @@
 #include "../native/gameplay/quest/quest_system.h"
 
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 #include <fstream>
 #include <limits>
+#include <locale>
 #include <string>
 
 namespace {
+
+class CommaDecimalPoint : public std::numpunct<char> {
+ protected:
+  char do_decimal_point() const override { return ','; }
+};
 
 void writeV10Fixture(const char* path, const std::string& worldFields) {
   std::ofstream file(path);
@@ -109,6 +116,39 @@ int main() {
   assert(out.playerChunkY == 987654321012LL);
   assert(out.playerLocalX == 0.25f && out.playerLocalY == 0.75f);
 
+  // int64 两端与所有可写合法 float 边界必须精确闭环。
+  SaveState edgeValues;
+  edgeValues.playerChunkX = std::numeric_limits<int64_t>::min();
+  edgeValues.playerChunkY = std::numeric_limits<int64_t>::max();
+  edgeValues.playerLocalX = std::numeric_limits<float>::denorm_min();
+  edgeValues.playerLocalY = std::nextafter(1.0f, 0.0f);
+  assert(save.write(edgeValues, "/tmp/save_v10_edges.dat"));
+  SaveState loadedEdges;
+  assert(save.read(loadedEdges, "/tmp/save_v10_edges.dat"));
+  assert(loadedEdges.playerChunkX == std::numeric_limits<int64_t>::min());
+  assert(loadedEdges.playerChunkY == std::numeric_limits<int64_t>::max());
+  assert(loadedEdges.playerLocalX == std::numeric_limits<float>::denorm_min());
+  assert(loadedEdges.playerLocalY == std::nextafter(1.0f, 0.0f));
+
+  // 全局 locale 改用逗号小数点时，存档文本仍固定使用 classic locale。
+  const std::locale previousLocale = std::locale();
+  std::locale::global(std::locale(previousLocale, new CommaDecimalPoint));
+  SaveState localeState;
+  localeState.playerLocalX = 0.25f;
+  localeState.playerLocalY = 0.75f;
+  assert(save.write(localeState, "/tmp/save_v10_locale.dat"));
+  SaveState loadedLocale;
+  assert(save.read(loadedLocale, "/tmp/save_v10_locale.dat"));
+  assert(loadedLocale.playerLocalX == 0.25f);
+  assert(loadedLocale.playerLocalY == 0.75f);
+  std::locale::global(previousLocale);
+  {
+    std::ifstream localeFile("/tmp/save_v10_locale.dat");
+    const std::string contents((std::istreambuf_iterator<char>(localeFile)),
+                               std::istreambuf_iterator<char>());
+    assert(contents.find(" 0.25 0.75") != std::string::npos);
+  }
+
   {
     std::ifstream written("/tmp/save_v8.dat");
     std::string version;
@@ -157,6 +197,25 @@ int main() {
   assert(v9State.explorationTraversalMask == 5);
   assertLegacyWorldDefaults(v9State);
 
+  const std::string invalidV9Fixtures[] = {
+      // roster 数量越界。
+      "V9 7 8 9 0 -1 0 0 0 0 0 0 0 0 0 1025\n",
+      // 缺失最后一个 explorationTraversalMask。
+      "V9 7 8 9 0 -1 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 "
+      "0 0 0 0 -1 1 2 3 4\n",
+      // 合法 V9 之后追加未知字段。
+      "V9 7 8 9 0 -1 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 "
+      "0 0 0 0 -1 1 2 3 4 5 trailing\n",
+  };
+  for (size_t i = 0; i < std::size(invalidV9Fixtures); ++i) {
+    const std::string path = "/tmp/save_v9_invalid_" + std::to_string(i) + ".dat";
+    std::ofstream(path) << invalidV9Fixtures[i];
+    SaveState unchanged = sentinelState();
+    assert(!save.read(unchanged, path.c_str()));
+    assertSentinelUnchanged(unchanged);
+    std::remove(path.c_str());
+  }
+
   // V8 仍可读，V9 探索字段及 V10 世界字段使用默认值。
   {
     std::ofstream v8("/tmp/save_v8_legacy.dat");
@@ -175,6 +234,7 @@ int main() {
   const std::string invalidWorldFields[] = {
       "1 0 0 nan 0.5",          "1 0 0 inf 0.5",
       "1 0 0 -inf 0.5",         "1 0 0 -0 0.5",
+      "1 0 0 1e999 0.5",
       "1 0 0 -0.01 0.5",        "1 0 0 1.0 0.5",
       "1 0 0 0.5 1.0",          "-1 0 0 0.5 0.5",
       "18446744073709551616 0 0 0.5 0.5",
@@ -251,6 +311,8 @@ int main() {
   assert(!done.accept(202));
 
   std::remove("/tmp/save_v8.dat");
+  std::remove("/tmp/save_v10_edges.dat");
+  std::remove("/tmp/save_v10_locale.dat");
   std::remove("/tmp/save_v10_seed0.dat");
   std::remove("/tmp/save_v10_seed0_fixture.dat");
   std::remove("/tmp/save_v10_invalid_write.dat");
