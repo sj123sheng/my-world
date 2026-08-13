@@ -27,75 +27,43 @@ uint64_t unsignedDistance(int64_t lhs, int64_t rhs) noexcept {
                     : static_cast<uint64_t>(rhs) - static_cast<uint64_t>(lhs);
 }
 
-bool tryOffset(int64_t value, int64_t offset, int64_t *result) noexcept {
-  if ((offset > 0 && value > std::numeric_limits<int64_t>::max() - offset) ||
-      (offset < 0 && value < std::numeric_limits<int64_t>::min() - offset)) {
-    return false;
-  }
-  *result = value + offset;
-  return true;
-}
-
 std::vector<ChunkCoord> safeRingCoords(ChunkCoord center) {
+  const int64_t minSafe = std::numeric_limits<int64_t>::min() + 1;
+  const int64_t maxSafe = std::numeric_limits<int64_t>::max() - 1;
+  center.x = std::clamp(center.x, minSafe, maxSafe);
+  center.y = std::clamp(center.y, minSafe, maxSafe);
   std::vector<ChunkCoord> coords;
   coords.reserve(9);
   coords.push_back(center);
   for (int64_t dy = -1; dy <= 1; ++dy) {
-    int64_t y = 0;
-    if (!tryOffset(center.y, dy, &y))
-      continue;
     for (int64_t dx = -1; dx <= 1; ++dx) {
       if (dx == 0 && dy == 0)
         continue;
-      int64_t x = 0;
-      if (tryOffset(center.x, dx, &x))
-        coords.push_back({x, y});
+      coords.push_back({center.x + dx, center.y + dy});
     }
   }
   return coords;
-}
-
-TerrainChunkCpuMesh buildFlatFallback(ChunkCoord coord, uint32_t segments) {
-  TerrainChunkCpuMesh entry;
-  entry.coord = coord;
-  entry.segments = std::max(segments, 1u);
-  const uint32_t rows = entry.segments + 1u;
-  entry.gridVertexCount = rows * rows;
-  entry.mesh.vertices.reserve(entry.gridVertexCount);
-  entry.mesh.indices.reserve(static_cast<size_t>(entry.segments) *
-                             entry.segments * 6u);
-
-  for (uint32_t y = 0; y < rows; ++y) {
-    const float fy = static_cast<float>(y) / entry.segments;
-    for (uint32_t x = 0; x < rows; ++x) {
-      const float fx = static_cast<float>(x) / entry.segments;
-      entry.mesh.vertices.push_back(
-          {{fx, 0.0f, fy}, {0.0f, 1.0f, 0.0f}, {fx, fy}});
-    }
-  }
-  for (uint32_t y = 0; y < entry.segments; ++y) {
-    for (uint32_t x = 0; x < entry.segments; ++x) {
-      const uint32_t a = y * rows + x;
-      const uint32_t b = a + 1u;
-      const uint32_t c = a + rows;
-      const uint32_t d = c + 1u;
-      entry.mesh.indices.insert(entry.mesh.indices.end(), {a, c, b, b, c, d});
-    }
-  }
-  return entry;
 }
 
 } // namespace
 
 StreamScheduler::StreamScheduler(const TerrainHeightfield &terrain,
                                  const WorldGrid &grid,
-                                 StreamSchedulerConfig config)
-    : chunkedTerrain_(terrain), config_(config) {
+                                 StreamSchedulerConfig config,
+                                 ChunkBuilder chunkBuilder)
+    : chunkedTerrain_(terrain), chunkBuilder_(std::move(chunkBuilder)),
+      config_(config) {
   (void)grid;
   setKeepRadius(config_.activeRadius, config_.cacheRings);
   if (config_.drainBudgetMs < 0)
     config_.drainBudgetMs = 0;
   worker_ = std::thread([this] { workerLoop(); });
+}
+
+TerrainChunkCpuMesh StreamScheduler::buildChunk(ChunkCoord coord,
+                                                uint32_t segments) const {
+  return chunkBuilder_ ? chunkBuilder_(coord, segments)
+                       : chunkedTerrain_.buildChunkMesh(coord, segments);
 }
 
 StreamScheduler::~StreamScheduler() { stopWorker(true); }
@@ -203,7 +171,7 @@ void StreamScheduler::executeTask(const LoadTask &task) {
   if (needsGeneration) {
     const uint32_t segments = chunkedTerrain_.segmentsFor(
         task.coord, task.playerChunk, task.perfLodLevel);
-    built = chunkedTerrain_.buildChunkMesh(task.coord, segments);
+    built = buildChunk(task.coord, segments);
   }
 
   std::lock_guard<std::mutex> lock(mutex_);
@@ -378,11 +346,10 @@ StreamScheduler::loadSafeRingSync(ChunkCoord landingChunk,
   for (const LoadTask &task : tasks) {
     const uint32_t segments =
         chunkedTerrain_.segmentsFor(task.coord, landingChunk, perfLodLevel);
-    TerrainChunkCpuMesh entry =
-        chunkedTerrain_.buildChunkMesh(task.coord, segments);
+    TerrainChunkCpuMesh entry = buildChunk(task.coord, segments);
     if (entry.mesh.vertices.empty()) {
-      entry =
-          buildFlatFallback(task.coord, chunkedTerrain_.config().farSegments);
+      entry = chunkedTerrain_.buildFlatFallbackChunk(
+          task.coord, chunkedTerrain_.config().farSegments);
     }
     built.emplace_back(task, std::move(entry));
   }
@@ -426,6 +393,11 @@ size_t StreamScheduler::readyCount() const {
 size_t StreamScheduler::pendingLoadCount() const {
   std::lock_guard<std::mutex> lock(mutex_);
   return pendingLoads_.size();
+}
+
+size_t StreamScheduler::cachedChunkCount() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return chunkedTerrain_.chunkCount();
 }
 
 std::vector<ChunkCoord> StreamScheduler::activeChunkIds() const {

@@ -5,6 +5,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -26,8 +27,11 @@ struct StreamSchedulerConfig {
 
 class StreamScheduler {
 public:
+  using ChunkBuilder = std::function<TerrainChunkCpuMesh(ChunkCoord, uint32_t)>;
+
   StreamScheduler(const TerrainHeightfield &terrain, const WorldGrid &grid,
-                  StreamSchedulerConfig config = {});
+                  StreamSchedulerConfig config = {},
+                  ChunkBuilder chunkBuilder = {});
   ~StreamScheduler();
   StreamScheduler(const StreamScheduler &) = delete;
   StreamScheduler &operator=(const StreamScheduler &) = delete;
@@ -70,6 +74,7 @@ public:
   size_t activeCount() const;
   size_t readyCount() const;
   size_t pendingLoadCount() const;
+  size_t cachedChunkCount() const;
   std::vector<ChunkCoord> activeChunkIds() const;
   const TerrainChunkCpuMesh *activeChunkMesh(ChunkCoord coord) const;
   const ChunkedTerrain &chunkedTerrain() const { return chunkedTerrain_; }
@@ -96,8 +101,10 @@ private:
   bool tokenIsCurrentLocked(const LoadTask &task) const;
   void releaseTokenLocked(const LoadTask &task);
   void unloadLocked(ChunkCoord coord);
+  TerrainChunkCpuMesh buildChunk(ChunkCoord coord, uint32_t segments) const;
 
   ChunkedTerrain chunkedTerrain_;
+  ChunkBuilder chunkBuilder_;
   StreamSchedulerConfig config_;
 
   mutable std::mutex mutex_;

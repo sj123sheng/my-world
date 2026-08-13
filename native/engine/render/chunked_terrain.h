@@ -69,6 +69,10 @@ class ChunkedTerrain {
   // 生成分块网格（含侧裙）；segments < 1 返回空网格记录。
   TerrainChunkCpuMesh buildChunkMesh(ChunkCoord coord,
                                      uint32_t segments) const;
+  // 生成与普通块相同表面/四边侧裙拓扑的平坦兜底网格。segments < 1
+  // 返回空记录；其余元数据、法线、UV 和索引均满足标准分块契约。
+  TerrainChunkCpuMesh buildFlatFallbackChunk(ChunkCoord coord,
+                                             uint32_t segments) const;
   // 给定玩家分块与 LOD 档位，该分块应使用的分段数（确定性）。
   uint32_t segmentsFor(ChunkCoord coord, ChunkCoord playerChunk,
                        int32_t perfLodLevel) const;

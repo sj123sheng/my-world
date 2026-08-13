@@ -36,6 +36,73 @@ struct SkirtEdge {
   glm::vec3 outwardNormal;
 };
 
+void appendStandardSkirts(TerrainChunkCpuMesh* entry, float skirtDepth) {
+  Mesh& mesh = entry->mesh;
+  const uint32_t segments = entry->segments;
+  if (segments < 1u || mesh.vertices.empty()) return;
+
+  const uint32_t rows = segments + 1u;
+  const uint32_t base = static_cast<uint32_t>(mesh.vertices.size());
+  entry->gridVertexCount = rows * rows;
+  entry->skirtVertexCount = 8u * rows;
+
+  std::vector<uint32_t> edgeIndices;
+  edgeIndices.reserve(static_cast<size_t>(4u) * rows);
+  // 四边顶环顶点序（网格内索引）：北(+Z)沿 x 递增、东(+X)沿 z 递增、
+  // 南(-Z)沿 x 递减、西(-X)沿 z 递减，保证裙边三角形卷绕朝外。
+  for (uint32_t i = 0; i < rows; ++i) {
+    edgeIndices.push_back(segments * rows + i);  // 北：j = segments
+  }
+  for (uint32_t j = 0; j < rows; ++j) {
+    edgeIndices.push_back(j * rows + segments);  // 东：i = segments
+  }
+  for (uint32_t k = rows; k-- > 0;) {
+    edgeIndices.push_back(k);  // 南：j = 0，x 递减
+  }
+  for (uint32_t k = rows; k-- > 0;) {
+    edgeIndices.push_back(k * rows);  // 西：i = 0，z 递减
+  }
+
+  const SkirtEdge edges[4] = {
+      {{0.0f, 0.0f, 1.0f}},
+      {{1.0f, 0.0f, 0.0f}},
+      {{0.0f, 0.0f, -1.0f}},
+      {{-1.0f, 0.0f, 0.0f}},
+  };
+
+  // 先追加 4*rows 个顶环顶点，再追加 4*rows 个下沉顶点；
+  // 下沉顶点法线保持水平朝外，避免光照在裙边产生亮边。
+  mesh.vertices.reserve(base + static_cast<size_t>(8u) * rows);
+  for (size_t index = 0; index < edgeIndices.size(); ++index) {
+    const Vertex& top = mesh.vertices[edgeIndices[index]];
+    const glm::vec3 outward = edges[index / rows].outwardNormal;
+    mesh.vertices.push_back({top.position, outward, top.uv});
+  }
+  for (size_t index = 0; index < edgeIndices.size(); ++index) {
+    const Vertex& top = mesh.vertices[edgeIndices[index]];
+    const glm::vec3 outward = edges[index / rows].outwardNormal;
+    glm::vec3 bottom = top.position;
+    bottom.y -= skirtDepth;
+    mesh.vertices.push_back({bottom, outward, top.uv});
+  }
+
+  // 裙边三角形：每边 (rows-1) 个四边形、2 个三角形。
+  const uint32_t topBase = base;
+  const uint32_t bottomBase = base + 4u * rows;
+  mesh.indices.reserve(mesh.indices.size() +
+                       static_cast<size_t>(4u) * (rows - 1u) * 6u);
+  for (uint32_t edge = 0; edge < 4u; ++edge) {
+    for (uint32_t k = 0; k + 1u < rows; ++k) {
+      const uint32_t topA = topBase + edge * rows + k;
+      const uint32_t topB = topA + 1u;
+      const uint32_t bottomA = bottomBase + edge * rows + k;
+      const uint32_t bottomB = bottomA + 1u;
+      mesh.indices.insert(mesh.indices.end(),
+                          {topA, bottomA, topB, topB, bottomA, bottomB});
+    }
+  }
+}
+
 }  // namespace
 
 ChunkLodConfig ChunkLodConfig::forPerfLevel(int32_t lodLevel) {
@@ -89,69 +156,38 @@ TerrainChunkCpuMesh ChunkedTerrain::buildChunkMesh(ChunkCoord coord,
   // 表面网格：与整世界地形同一采样约定。
   entry.mesh = createTerrainChunkMesh(*terrain_, coord, segments,
                                       terrainUvOffset(coord));
-  Mesh& mesh = entry.mesh;
-  if (mesh.vertices.empty()) return entry;
+  appendStandardSkirts(&entry, config_.skirtDepth);
+  return entry;
+}
+
+TerrainChunkCpuMesh ChunkedTerrain::buildFlatFallbackChunk(
+    ChunkCoord coord, uint32_t segments) const {
+  TerrainChunkCpuMesh entry;
+  entry.coord = coord;
+  entry.segments = segments;
+  if (segments < 1u) return entry;
 
   const uint32_t rows = segments + 1u;
-  const uint32_t base = static_cast<uint32_t>(mesh.vertices.size());
-  entry.gridVertexCount = rows * rows;
-  entry.skirtVertexCount = 8u * rows;
-
-  // 四边顶环顶点序（网格内索引）：北(+Z)沿 x 递增、东(+X)沿 z 递增、
-  // 南(-Z)沿 x 递减、西(-X)沿 z 递减，保证裙边三角形卷绕朝外。
-  std::vector<uint32_t> edgeIndices;
-  edgeIndices.reserve(static_cast<size_t>(4u) * rows);
-  for (uint32_t i = 0; i < rows; ++i) {
-    edgeIndices.push_back(segments * rows + i);  // 北：j = segments
-  }
-  for (uint32_t j = 0; j < rows; ++j) {
-    edgeIndices.push_back(j * rows + segments);  // 东：i = segments
-  }
-  for (uint32_t k = rows; k-- > 0;) {
-    edgeIndices.push_back(k);  // 南：j = 0，x 递减
-  }
-  for (uint32_t k = rows; k-- > 0;) {
-    edgeIndices.push_back(k * rows);  // 西：i = 0，z 递减
-  }
-
-  const SkirtEdge edges[4] = {
-      {{0.0f, 0.0f, 1.0f}},
-      {{1.0f, 0.0f, 0.0f}},
-      {{0.0f, 0.0f, -1.0f}},
-      {{-1.0f, 0.0f, 0.0f}},
-  };
-
-  // 先追加 4*rows 个顶环顶点，再追加 4*rows 个下沉顶点；
-  // 下沉顶点法线保持水平朝外，避免光照在裙边产生亮边。
-  mesh.vertices.reserve(base + static_cast<size_t>(8u) * rows);
-  for (size_t index = 0; index < edgeIndices.size(); ++index) {
-    const Vertex& top = mesh.vertices[edgeIndices[index]];
-    const glm::vec3 outward = edges[index / rows].outwardNormal;
-    mesh.vertices.push_back({top.position, outward, top.uv});
-  }
-  for (size_t index = 0; index < edgeIndices.size(); ++index) {
-    const Vertex& top = mesh.vertices[edgeIndices[index]];
-    const glm::vec3 outward = edges[index / rows].outwardNormal;
-    glm::vec3 bottom = top.position;
-    bottom.y -= config_.skirtDepth;
-    mesh.vertices.push_back({bottom, outward, top.uv});
-  }
-
-  // 裙边三角形：每边 (rows-1) 个四边形、2 个三角形。
-  const uint32_t topBase = base;
-  const uint32_t bottomBase = base + 4u * rows;
-  mesh.indices.reserve(mesh.indices.size() +
-                       static_cast<size_t>(4u) * (rows - 1u) * 6u);
-  for (uint32_t e = 0; e < 4u; ++e) {
-    for (uint32_t k = 0; k + 1u < rows; ++k) {
-      const uint32_t ta = topBase + e * rows + k;
-      const uint32_t tb = ta + 1u;
-      const uint32_t ba = bottomBase + e * rows + k;
-      const uint32_t bb = ba + 1u;
-      mesh.indices.insert(mesh.indices.end(), {ta, ba, tb, tb, ba, bb});
+  entry.mesh.vertices.reserve(static_cast<size_t>(rows) * rows);
+  entry.mesh.indices.reserve(static_cast<size_t>(segments) * segments * 6u);
+  for (uint32_t y = 0; y < rows; ++y) {
+    const float localY = static_cast<float>(y) / segments;
+    for (uint32_t x = 0; x < rows; ++x) {
+      const float localX = static_cast<float>(x) / segments;
+      entry.mesh.vertices.push_back(
+          {{localX, 0.0f, localY}, {0.0f, 1.0f, 0.0f}, {localX, localY}});
     }
   }
-
+  for (uint32_t y = 0; y < segments; ++y) {
+    for (uint32_t x = 0; x < segments; ++x) {
+      const uint32_t a = y * rows + x;
+      const uint32_t b = a + 1u;
+      const uint32_t c = a + rows;
+      const uint32_t d = c + 1u;
+      entry.mesh.indices.insert(entry.mesh.indices.end(), {a, c, b, b, c, d});
+    }
+  }
+  appendStandardSkirts(&entry, config_.skirtDepth);
   return entry;
 }
 
