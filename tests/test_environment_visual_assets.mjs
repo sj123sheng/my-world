@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFile, stat } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { access, readFile, stat } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 
 import { generateControlMapPng, terrainControlPixel } from
   '../automation/assets/generate_environment_visuals.mjs';
@@ -36,6 +39,10 @@ assert.ok(!('visualTerrainCells' in world.environmentVisual));
 const generatedManifest = await readFile(new URL(
   '../entry/src/main/ets/generated/EnvironmentVisualManifest.ets', import.meta.url),
   'utf8');
+assert.ok(!generatedManifest.includes('VisualTerrainResource'),
+  'runtime manifest must not retain the old visual terrain resource type');
+assert.ok(!generatedManifest.includes('VISUAL_TERRAIN_RESOURCES'),
+  'runtime manifest must not retain the old visual terrain resource constant');
 assert.ok(!generatedManifest.includes('.glb'),
   'runtime visual manifest must not reference authored structure GLBs');
 const generatedHeader = await readFile(new URL(
@@ -57,9 +64,54 @@ const artificialField = structuredClone(world);
 artificialField.traversalGates = [];
 assert.ok(validateWorldLayout(artificialField, schema).some((error) =>
   error.includes('forbidden artificial top-level field: traversalGates')));
+for (const key of ['environmentBatches', 'visualTerrainBlocks', 'puzzles']) {
+  const invalidTopLevel = structuredClone(world);
+  invalidTopLevel[key] = [];
+  assert.ok(validateWorldLayout(invalidTopLevel, schema).some((error) =>
+    error.includes(`forbidden artificial top-level field: ${key}`)), key);
+}
+for (const [collection, field, value] of [
+  ['naturalNodes', 'halfExtents', [0.01, 0.01]],
+  ['naturalNodes', 'yaw', 0],
+  ['naturalNodes', 'top', 0.5],
+  ['regionTriggers', 'halfExtents', [0.01, 0.01]],
+  ['regionTriggers', 'yaw', 0],
+  ['regionTriggers', 'top', 0.5],
+]) {
+  const invalidNaturalObjective = structuredClone(world);
+  invalidNaturalObjective[collection][0][field] = value;
+  assert.ok(validateWorldLayout(invalidNaturalObjective, schema).some((error) =>
+    error.includes(`unexpected property \"${field}\"`)), `${collection}.${field}`);
+}
 
 const rawEnvironment = new URL(
   '../entry/src/main/resources/rawfile/environment/', import.meta.url);
+const artificialResources = [
+  'outer_ring.glb', 'center_rift.glb', 'backdrop.glb', 'decoration.glb',
+  ...[9, 11, 12, 14, 18, 19, 21, 28, 34, 41, 44, 54].map((id) =>
+    `block_${id}.glb`),
+  ...[4, 12, 20].flatMap((id) => [0, 1, 2].map((lod) =>
+    `visual_terrain/block_${id}_lod${lod}.glb`)),
+];
+for (const resource of artificialResources) {
+  await assert.rejects(access(new URL(resource, rawEnvironment)),
+    { code: 'ENOENT' }, `${resource} must not ship in rawfile`);
+}
+for (const removedInput of [
+  '../assets/environment/manifest.json',
+  '../automation/assets/fetch_environment_assets.mjs',
+  '../automation/assets/validate_environment_assets.mjs',
+]) {
+  await assert.rejects(access(new URL(removedInput, import.meta.url)),
+    { code: 'ENOENT' }, `${removedInput} must not recreate artificial GLBs`);
+}
+const visualGenerator = await readFile(new URL(
+  '../automation/assets/generate_environment_visuals.mjs', import.meta.url), 'utf8');
+for (const obsoleteToken of ['writeGlb', 'visualTerrainCells',
+  'buildVisualTerrainCellGlb']) {
+  assert.ok(!visualGenerator.includes(obsoleteToken),
+    `natural visual generator must not retain ${obsoleteToken}`);
+}
 const resourceUrls = [
   new URL('terrain_material_atlas.png', rawEnvironment),
   new URL('terrain_control_spawn.png', rawEnvironment),
@@ -71,5 +123,27 @@ let resourceBytes = 0;
 for (const resource of resourceUrls) resourceBytes += (await stat(resource)).size;
 assert.ok(resourceBytes <= 80 * 1024 * 1024,
   'single-zone environment visual resources must stay within the 80 MiB ceiling');
+
+const generatedOutputs = [
+  new URL('../native/generated/world_layout.gen.h', import.meta.url),
+  new URL('../entry/src/main/ets/generated/EnvironmentVisualManifest.ets', import.meta.url),
+  new URL('../entry/src/main/resources/rawfile/environment/terrain_control_spawn.png',
+    import.meta.url),
+];
+const beforeGeneration = await Promise.all(generatedOutputs.map((path) => readFile(path)));
+const runGenerator = promisify(execFile);
+const root = fileURLToPath(new URL('..', import.meta.url));
+await runGenerator(process.execPath, ['automation/assets/generate_world_layout.mjs'], { cwd: root });
+await runGenerator(process.execPath,
+  ['automation/assets/generate_environment_visuals.mjs'], { cwd: root });
+const afterFirstGeneration = await Promise.all(generatedOutputs.map((path) => readFile(path)));
+await runGenerator(process.execPath, ['automation/assets/generate_world_layout.mjs'], { cwd: root });
+await runGenerator(process.execPath,
+  ['automation/assets/generate_environment_visuals.mjs'], { cwd: root });
+const afterSecondGeneration = await Promise.all(generatedOutputs.map((path) => readFile(path)));
+assert.deepEqual(afterFirstGeneration, beforeGeneration,
+  'first generator run must leave tracked outputs byte-identical');
+assert.deepEqual(afterSecondGeneration, afterFirstGeneration,
+  'second generator run must be byte-identical to the first');
 
 console.log('test_environment_visual_assets ok');

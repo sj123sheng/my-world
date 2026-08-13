@@ -519,11 +519,8 @@ assert.match(nativeBridge,
   /CopyAndCommitModelAssets[\s\S]*?g_loop\.withLifecycle[\s\S]*?setModelAsset\(ModelKind::Player[\s\S]*?setModelAsset\(ModelKind::Enemy[\s\S]*?setModelAsset\(ModelKind::Boss/,
   'all copies must finish before one lifecycle-held, three-asset commit');
 
-// ---- M4 Task 2: four-batch environment bridge ----
-for (const batch of ['outer_ring', 'center_rift', 'backdrop', 'decoration']) {
-  assert.match(page,
-    new RegExp(`getRawFileContent\\(['"]environment/${batch}\\.glb['"]\\)`));
-}
+// Task 8 会移除 GamePage/Bridge/Surface 中遗留的人工环境消费者；本任务不再
+// 用测试锁定已经从 rawfile 删除的四批人工 GLB。
 assert.match(bridge, /export const nativeSetEnvironmentAssets/);
 assert.match(declarations,
   /nativeSetEnvironmentAssets: \(outer: ArrayBuffer, center: ArrayBuffer,[\s\S]*?backdrop: ArrayBuffer, decoration: ArrayBuffer\) => boolean;/);
@@ -560,11 +557,10 @@ assert.match(page, /TERRAIN_CONTROL_ASSET/,
   'GamePage must load the schema-generated control map path');
 assert.match(page, /FOLIAGE_ATLAS_ASSET/,
   'GamePage must load the schema-generated foliage atlas path');
-assert.match(page, /VISUAL_TERRAIN_RESOURCES/,
-  'GamePage must load schema-generated visual terrain block/LOD resources');
-assert.match(environmentManifest,
-  /VISUAL_TERRAIN_RESOURCES: VisualTerrainResource\[\] = \[\];/,
-  'natural world manifest must publish no authored structure resources');
+assert.doesNotMatch(environmentManifest, /\bVisualTerrainResource\b/,
+  'natural world manifest must remove the old visual terrain resource type');
+assert.doesNotMatch(environmentManifest, /\bVISUAL_TERRAIN_RESOURCES\b/,
+  'natural world manifest must remove the old visual terrain resource constant');
 assert.doesNotMatch(environmentManifest, /\.glb/,
   'natural world manifest must not reference artificial GLBs');
 const loadVisualTerrainBody = functionBody(page,
