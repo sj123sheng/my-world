@@ -82,6 +82,7 @@ add_library(native_game SHARED
     ${NATIVE_ROOT}/engine/resource/save.cpp
 
     # engine world (开放世界探索基础)
+    ${NATIVE_ROOT}/engine/world/world_position.cpp
     ${NATIVE_ROOT}/engine/world/world_grid.cpp
     ${NATIVE_ROOT}/engine/world/terrain_heightfield.cpp
     ${NATIVE_ROOT}/engine/world/stream_scheduler.cpp
