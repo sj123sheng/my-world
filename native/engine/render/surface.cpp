@@ -1,6 +1,7 @@
 #include "surface.h"
 #include "native/engine/render/combat_vfx.h"
 #include "native/engine/render/digit_atlas.h"
+#include "native/engine/render/environment.h"
 #include "native/engine/render/terrain_biome.h"
 #include "native/engine/render/terrain_mesh.h"
 #include "native/engine/render/environment_quality.h"
@@ -1278,18 +1279,33 @@ static void tryInitializePendingFoliageAtlas(Surface& s) {
   }
 }
 
-static void buildFoliageScatter(Surface& s) {
-  // Loop 按活动 proceduralChunks 注入并在回收时替换该有界列表。
-  s.foliageScatterBuilt = true;
+// 展平按 ChunkCoord 键控的植被批次到渲染空间：块内局部坐标叠加
+// 相对原点平移（ChunkRenderTranslation），与地形分块网格同一渲染空间。
+static std::vector<FoliageInstance> flattenFoliageBatches(const Surface& s) {
+  std::vector<FoliageInstance> instances;
+  if (s.foliageChunkBatches.empty()) return instances;
+  size_t total = 0;
+  for (const auto& entry : s.foliageChunkBatches) total += entry.second.size();
+  instances.reserve(total);
+  const LocalPosition originLocal{s.player.x, s.player.y};
+  for (const auto& entry : s.foliageChunkBatches) {
+    const glm::vec3 translation =
+        ChunkRenderTranslation(entry.first, s.renderOriginChunk, originLocal);
+    for (FoliageInstance instance : entry.second) {
+      instance.position += translation;
+      instances.push_back(instance);
+    }
+  }
+  return instances;
 }
 
 static void drawFoliage(Surface& s, const glm::mat4& vp) {
-  buildFoliageScatter(s);
-  if (s.foliageInstances.empty()) return;
+  const std::vector<FoliageInstance> instances = flattenFoliageBatches(s);
+  if (instances.empty()) return;
   const EnvironmentQualityProfile quality =
       EnvironmentQualityProfileFor(s.environmentPerfLevel);
   const std::vector<FoliageRenderBatch> batches = BuildFoliageRenderBatches(
-      s.foliageInstances, {s.camera3d.position.x, s.camera3d.position.z},
+      instances, {s.camera3d.position.x, s.camera3d.position.z},
       quality);
   if (batches.empty()) return;
   s.shader3d.setSurfaceMode(SurfaceMode::Normal);
@@ -1406,7 +1422,15 @@ static void renderDirectionalShadow(Surface& s,
     s.environmentShadowTriangles +=
         static_cast<uint32_t>(s.terrainMesh.indices.size() / 3u);
   } else {
+    // 分块地形阴影：与主通道同一相对原点平移，逐块写入模型矩阵。
+    const LocalPosition shadowOriginLocal{s.player.x, s.player.y};
     for (const auto& terrain : s.terrainChunkMeshes) {
+      const glm::mat4 chunkModel = glm::translate(
+          glm::mat4(1.0f),
+          ChunkRenderTranslation(terrain.first, s.renderOriginChunk,
+                                 shadowOriginLocal));
+      s.shader3d.setModel(chunkModel);
+      s.shader3d.setMVP(lightVp * chunkModel);
       terrain.second.draw();
       ++s.environmentShadowDrawCalls;
       s.environmentShadowTriangles +=
@@ -1414,9 +1438,9 @@ static void renderDirectionalShadow(Surface& s,
     }
   }
 
-  buildFoliageScatter(s);
+  const std::vector<FoliageInstance> shadowFoliage = flattenFoliageBatches(s);
   const std::vector<FoliageRenderBatch> foliage = BuildFoliageRenderBatches(
-      s.foliageInstances, {s.player.x, s.player.y}, quality,
+      shadowFoliage, {s.player.x, s.player.y}, quality,
       {lightPosition.x, lightPosition.z});
   if (s.foliageAtlasReady) s.foliageAtlas.bind(0u);
   glDisable(GL_CULL_FACE);
@@ -2193,8 +2217,7 @@ static void drawTerrainFallback(Surface& s, const glm::mat4& vp) {
 // 高度场取 min/max，再叠加保守余量覆盖采样间隙——特征层里窄于
 // 采样间距的地貌（悬崖 rx0.05、mesa r0.085、湖盆）可能整体落在
 // 两个采样点之间，余量取其最大抬升/下切幅度。
-static void terrainChunkHeightRange(const Surface& s,
-                                    const TerrainChunkRect& rect,
+static void terrainChunkHeightRange(const Surface& s, ChunkCoord coord,
                                     float& outMin, float& outMax) {
   // 基础八度幅宽 + 特征层最大单点偏离（mesa 平顶 +0.055、悬崖
   // +0.045、天际线峰 +0.05、湖盆下切 -0.075）的保守上界。
@@ -2205,11 +2228,9 @@ static void terrainChunkHeightRange(const Surface& s,
   bool sampled = false;
   for (int iy = 0; iy <= 2; ++iy) {
     for (int ix = 0; ix <= 2; ++ix) {
-      const float x = rect.x0 +
-                      (rect.x1 - rect.x0) * static_cast<float>(ix) * 0.5f;
-      const float y = rect.y0 +
-                      (rect.y1 - rect.y0) * static_cast<float>(iy) * 0.5f;
-      const float height = s.terrain->heightAt(x, y);
+      const float height = s.terrain->heightAt(
+          coord, static_cast<float>(ix) * 0.5f,
+          static_cast<float>(iy) * 0.5f);
       if (!sampled) {
         minHeight = height;
         maxHeight = height;
@@ -2224,32 +2245,58 @@ static void terrainChunkHeightRange(const Surface& s,
   outMax = maxHeight + kAmplitudeMargin;
 }
 
-// 分块地形流式绘制：每帧先执行卸载回调（渲染线程释放退出滞后带
-// 分块的 GPU 资源），再从调度器取最多 1 个就绪分块上传（默认 2ms
-// 预算，超时推下帧），随后绘制全部已上传分块。无任何分块就绪时
-// 回退整世界网格，保证启动不黑屏。
+// 分块地形 GPU 同步（无限自然世界 Task 9）：Loop 拥有调度器生命周期
+//（drainReady/applyUnloads 在 syncInfiniteWorld 消费），渲染线程只把
+// CPU 状态镜像到 GPU——离开 CPU 缓存（isLoaded 失败）的块按同一回收
+// 差量同步释放地形网格与植被批次键；活动半径内的缺失网格按每帧上限
+// 上传。超出活动半径的残留 Active 块不提交（ChunkRenderCommittable）。
+static void syncTerrainChunkGpuResources(Surface& s) {
+  StreamScheduler& scheduler = *s.streamScheduler;
+  std::vector<ChunkCoord> unloaded;
+  for (const auto& entry : s.terrainChunkMeshes) {
+    if (!scheduler.isLoaded(entry.first)) unloaded.push_back(entry.first);
+  }
+  for (const auto& entry : s.foliageChunkBatches) {
+    if (!scheduler.isLoaded(entry.first) &&
+        !std::binary_search(unloaded.begin(), unloaded.end(), entry.first)) {
+      unloaded.push_back(entry.first);
+    }
+  }
+  if (!unloaded.empty()) {
+    std::sort(unloaded.begin(), unloaded.end());
+    for (const ChunkCoord coord : unloaded) {
+      const auto found = s.terrainChunkMeshes.find(coord);
+      if (found != s.terrainChunkMeshes.end()) found->second.destroy();
+    }
+    EraseUnloadedChunkResources(unloaded, s.terrainChunkMeshes);
+    EraseUnloadedChunkResources(unloaded, s.foliageChunkBatches);
+  }
+  constexpr int32_t kUploadBudgetPerFrame = 9;  // 对齐传送 burst 峰值。
+  int32_t budget = kUploadBudgetPerFrame;
+  const int32_t activeRadius = scheduler.config().activeRadius;
+  for (const ChunkCoord coord : scheduler.activeChunkIds()) {
+    if (budget <= 0) break;
+    if (!ChunkRenderCommittable(coord, s.renderOriginChunk, activeRadius)) {
+      continue;
+    }
+    if (s.terrainChunkMeshes.count(coord) != 0) continue;
+    const TerrainChunkCpuMesh* cpuMesh = scheduler.activeChunkMesh(coord);
+    if (cpuMesh == nullptr || cpuMesh->mesh.vertices.empty()) continue;
+    Mesh uploaded = cpuMesh->mesh;
+    uploaded.upload();
+    s.terrainChunkMeshes.emplace(coord, std::move(uploaded));
+    --budget;
+  }
+}
+
+// 分块地形流式绘制：先同步 GPU 资源（回收差量 + 活动半径内上传），
+// 再以玩家分块为相对原点逐块平移绘制；无任何分块就绪时回退整世界
+// 网格，保证启动不黑屏。
 static void drawTerrainChunks(Surface& s, const glm::mat4& vp,
                               const FrustumPlanes& frustum) {
 #ifdef OHOS_PLATFORM
   if (s.streamScheduler != nullptr) {
-    for (const int32_t chunkId : s.streamScheduler->applyUnloads()) {
-      const auto found = s.terrainChunkMeshes.find(chunkId);
-      if (found != s.terrainChunkMeshes.end()) {
-        found->second.destroy();
-        s.terrainChunkMeshes.erase(found);
-      }
-    }
-    // 按配额上传就绪分块（正常每帧 1 块，传送 burst 窗口内放宽）。
-    for (const int32_t readyChunk : s.streamScheduler->drainReady()) {
-      if (s.terrainChunkMeshes.count(readyChunk) != 0) continue;
-      const TerrainChunkCpuMesh* cpuMesh =
-          s.streamScheduler->activeChunkMesh(readyChunk);
-      if (cpuMesh != nullptr && !cpuMesh->mesh.vertices.empty()) {
-        Mesh uploaded = cpuMesh->mesh;
-        uploaded.upload();
-        s.terrainChunkMeshes.emplace(readyChunk, std::move(uploaded));
-      }
-    }
+    syncTerrainChunkGpuResources(s);
   }
 #endif
   if (s.terrainChunkMeshes.empty()) {
@@ -2265,28 +2312,31 @@ static void drawTerrainChunks(Surface& s, const glm::mat4& vp,
   s.shader3d.setTerrainWaterLevel(
       s.terrain != nullptr ? s.terrain->config().waterLevel : -0.045f);
   configureTerrainMaterial(s);
-  const glm::mat4 model(1.0f);
-  s.shader3d.setMVP(vp * model);
-  s.shader3d.setModel(model);
   s.shader3d.setSkinned(false);
   s.shader3d.setHasTexture(false);
   s.shader3d.setLight(glm::normalize(s.lightDir), s.lightColor, s.ambient);
   s.shader3d.setEnvironmentTint(glm::vec3(0.0f), 0.0f);
+  const LocalPosition originLocal{s.player.x, s.player.y};
   for (auto& entry : s.terrainChunkMeshes) {
-    // 视锥剔除（Phase 5）：按分块矩形 + 估计高度范围构造 AABB，
-    // 整体在视锥外时跳过绘制；无调度器（理论上不会发生）时全绘。
-    if (s.streamScheduler != nullptr && s.terrain != nullptr) {
-      const TerrainChunkRect rect =
-          s.streamScheduler->chunkedTerrain().chunkRect(entry.first);
+    const glm::vec3 translation =
+        ChunkRenderTranslation(entry.first, s.renderOriginChunk, originLocal);
+    // 视锥剔除（Phase 5）：按分块单位矩形 + 估计高度范围构造渲染空间
+    // AABB，整体在视锥外时跳过绘制；无高度场时全绘。
+    if (s.terrain != nullptr) {
       float minHeight = 0.0f;
       float maxHeight = 0.0f;
-      terrainChunkHeightRange(s, rect, minHeight, maxHeight);
-      if (!FrustumContainsAabb(frustum,
-                               glm::vec3(rect.x0, minHeight, rect.y0),
-                               glm::vec3(rect.x1, maxHeight, rect.y1))) {
+      terrainChunkHeightRange(s, entry.first, minHeight, maxHeight);
+      if (!FrustumContainsAabb(
+              frustum,
+              glm::vec3(translation.x, minHeight, translation.z),
+              glm::vec3(translation.x + 1.0f, maxHeight,
+                        translation.z + 1.0f))) {
         continue;
       }
     }
+    const glm::mat4 model = glm::translate(glm::mat4(1.0f), translation);
+    s.shader3d.setMVP(vp * model);
+    s.shader3d.setModel(model);
     entry.second.draw();
     ++s.environmentDrawCalls;
     s.environmentTriangles +=
@@ -3659,8 +3709,7 @@ static void clearModelAssets(Surface& s) {
   s.foliageAtlas.clear();
   s.terrainMaterialReady = false;
   s.foliageAtlasReady = false;
-  s.foliageInstances.clear();
-  s.foliageScatterBuilt = false;
+  s.foliageChunkBatches.clear();
   s.environmentReady = false;
   s.environmentDrawCalls = 0;
   s.environmentTriangles = 0;

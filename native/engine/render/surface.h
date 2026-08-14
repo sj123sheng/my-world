@@ -21,6 +21,7 @@ inline constexpr EGLContext EGL_NO_CONTEXT = nullptr;
 #include <algorithm>
 #include <random>
 #include <cstdint>
+#include <map>
 #include <mutex>
 #include <unordered_map>
 #include <utility>
@@ -260,11 +261,16 @@ struct Surface {
   Mesh terrainMesh;
   Mesh waterMesh;
   Mesh skyMesh;
-  // 分块地形流式渲染：调度器由 Loop 注入（只读消费），
-  // terrainChunkMeshes 为已上传 GPU 的分块网格（chunk id → Mesh），
-  // 卸载路径沿用 abandonGpuResources/destroy 模式。
+  // 分块地形流式渲染（无限自然世界）：调度器由 Loop 注入（只读消费），
+  // 其生命周期（drainReady/applyUnloads）由 Loop 独占；渲染线程按
+  // CPU 缓存状态镜像 GPU 资源。terrainChunkMeshes 为已上传 GPU 的
+  // 分块网格（ChunkCoord → Mesh，网格保持块内局部坐标），绘制时按
+  // ChunkRenderTranslation 相对 renderOriginChunk 平移。
   StreamScheduler* streamScheduler = nullptr;
-  std::unordered_map<int32_t, Mesh> terrainChunkMeshes;
+  std::map<ChunkCoord, Mesh> terrainChunkMeshes;
+  // 渲染原点（玩家所在分块）：由 Loop 每帧同步；地形/植被的相对
+  // 原点平移与视锥剔除 AABB 都以该分块角点为渲染空间原点。
+  ChunkCoord renderOriginChunk{0, 0};
   // 逻辑层高度场只读指针：由 Loop 注入，渲染层据此贴地采样。
   const TerrainHeightfield* terrain = nullptr;
   // 主角脚底 3D 高度：逻辑层每帧写入（motionState.height），
@@ -336,8 +342,10 @@ struct Surface {
   bool terrainMaterialReady = false;
   bool foliageAtlasReady = false;
   FoliageRenderer foliageRenderer;
-  std::vector<FoliageInstance> foliageInstances;
-  bool foliageScatterBuilt = false;
+  // 外围程序植被按 ChunkCoord 分块持有（块内局部坐标，由 Loop 按活动
+  // proceduralChunks 重建）；绘制时逐块叠加 ChunkRenderTranslation，
+  // 区块离开两圈缓存后与地形网格共用同一回收差量移除键。
+  std::map<ChunkCoord, std::vector<FoliageInstance>> foliageChunkBatches;
   GLuint directionalShadowFramebuffer = 0;
   GLuint directionalShadowDepthTexture = 0;
   int32_t directionalShadowSize = 0;

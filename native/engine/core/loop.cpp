@@ -1036,6 +1036,9 @@ void Loop::publishExplorationFeedback(ExplorationFeedbackType type, int32_t id,
 }
 
 void Loop::rebuildProceduralRuntime() {
+  // 渲染原点同步到玩家当前分块：渲染层据此把分块局部坐标平移回
+  // 玩家相对空间（ChunkRenderTranslation），植被/地形同一约定。
+  surface.renderOriginChunk = playerWorldPosition.chunk;
   const std::vector<ChunkCoord>& cached = worldGrid.cachedChunks();
   for (auto it = proceduralChunks.begin(); it != proceduralChunks.end();) {
     if (!std::binary_search(cached.begin(), cached.end(), it->first)) {
@@ -1086,26 +1089,29 @@ void Loop::rebuildProceduralRuntime() {
     it->second.active =
         std::binary_search(active.begin(), active.end(), coord);
   }
-  surface.foliageInstances.clear();
+  surface.foliageChunkBatches.clear();
   proceduralCollectibles.clear();
   for (const auto& entry : proceduralChunks) {
     if (!entry.second.active) continue;
+    // 植被批次按 ChunkCoord 键控，位置为块内局部坐标；渲染层统一
+    // 叠加相对原点平移（ChunkRenderTranslation）回到玩家相对空间。
+    std::vector<FoliageInstance> batch;
+    batch.reserve(entry.second.content.foliage.size());
     for (const ProceduralFoliageSpawn& spawn : entry.second.content.foliage) {
       FoliageInstance instance;
-      instance.position = {
-          static_cast<float>(entry.first.x - playerWorldPosition.chunk.x) +
-              spawn.position.x,
-          terrain.heightAt(entry.first, spawn.position.x, spawn.position.y),
-          static_cast<float>(entry.first.y - playerWorldPosition.chunk.y) +
-              spawn.position.y};
+      instance.position = {spawn.position.x,
+                           terrain.heightAt(entry.first, spawn.position.x,
+                                            spawn.position.y),
+                           spawn.position.y};
       instance.scale = spawn.scale;
       instance.kind = static_cast<FoliageKind>(
           std::min<uint8_t>(spawn.kind,
                             static_cast<uint8_t>(FoliageKind::Rock)));
       instance.castsShadow = instance.kind == FoliageKind::Tree ||
                              instance.kind == FoliageKind::Rock;
-      surface.foliageInstances.push_back(instance);
+      batch.push_back(instance);
     }
+    surface.foliageChunkBatches.emplace(entry.first, std::move(batch));
     for (const ProceduralCollectibleSpawn& spawn :
          entry.second.content.collectibles) {
       if (entry.second.collectedIds.count(spawn.stableId) > 0) continue;
@@ -1122,7 +1128,6 @@ void Loop::rebuildProceduralRuntime() {
               spawn.itemId});
     }
   }
-  surface.foliageScatterBuilt = true;
 }
 
 void Loop::syncInfiniteWorld(Vec2 cameraForward, Vec2 movement) {

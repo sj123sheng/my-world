@@ -87,8 +87,8 @@ int main() {
          expectedRestoredPosition.local.y);
   std::remove(savePath.c_str());
 
-  // 活动 procedural chunk 的植被必须投影到玩家局部坐标；缓存块卸载后
-  // Surface 不得继续持有旧块实例。
+  // 活动 procedural chunk 的植被必须按 ChunkCoord 分块投影到块内局部
+  // 坐标；缓存块卸载后 Surface 不得继续持有旧块批次。
   Loop foliageRuntimeLoop;
   isolateWildSpawns(foliageRuntimeLoop);
   foliageRuntimeLoop.streamScheduler.setSyncMode(true);
@@ -104,8 +104,23 @@ int main() {
     }
   }
   assert(expectedActiveFoliage > 0);
-  assert(foliageRuntimeLoop.surface.foliageInstances.size() ==
-         expectedActiveFoliage);
+  std::size_t surfaceFoliageCount = 0;
+  for (const auto& batch : foliageRuntimeLoop.surface.foliageChunkBatches) {
+    surfaceFoliageCount += batch.second.size();
+    // 批次内实例必须是块内局部坐标（[0,1]），渲染层统一加相对原点平移。
+    for (const FoliageInstance& instance : batch.second) {
+      assert(instance.position.x >= 0.0f && instance.position.x <= 1.0f);
+      assert(instance.position.z >= 0.0f && instance.position.z <= 1.0f);
+    }
+  }
+  assert(surfaceFoliageCount == expectedActiveFoliage);
+  // 植被批次键必须恰好等于活动 procedural 块；渲染原点同步到玩家分块。
+  assert(foliageRuntimeLoop.surface.renderOriginChunk ==
+         foliageRuntimeLoop.playerWorldPosition.chunk);
+  for (const auto& entry : foliageRuntimeLoop.proceduralChunks) {
+    assert(foliageRuntimeLoop.surface.foliageChunkBatches.count(entry.first) ==
+           (entry.second.active ? 1u : 0u));
+  }
   std::size_t expectedActiveCollectibles = 0;
   for (const auto& entry : foliageRuntimeLoop.proceduralChunks) {
     if (entry.second.active) {
