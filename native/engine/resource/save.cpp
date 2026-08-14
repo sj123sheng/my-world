@@ -1,11 +1,13 @@
 #include "save.h"
 #include <charconv>
 #include <cmath>
+#include <cctype>
 #include <cstdio>
 #include <fstream>
 #include <iomanip>
 #include <limits>
 #include <locale>
+#include <sstream>
 #include <utility>
 
 namespace {
@@ -24,13 +26,35 @@ bool parseIntegerToken(const std::string& token, Integer& value) {
 }
 
 bool parseLocalToken(const std::string& token, float& value) {
+  // OHOS BiSheng libc++ 未实现浮点 std::from_chars（仅整数版可用），
+  // 改用注入 classic locale 的 istringstream 解析，保证与写侧
+  // setprecision(max_digits10) 的十进制往返一致且不受设备区域影响。
+  // 与 from_chars 同语义：不跳过前导空白，首字符为空白即拒绝。
+  if (token.empty() ||
+      std::isspace(static_cast<unsigned char>(token.front())) != 0) {
+    return false;
+  }
+  std::istringstream stream(token);
+  stream.imbue(std::locale::classic());
   float parsed = 0.0f;
-  const char* begin = token.data();
-  const char* end = begin + token.size();
-  const auto result = std::from_chars(begin, end, parsed,
-                                      std::chars_format::general);
-  if (result.ec != std::errc{} || result.ptr != end ||
-      !validLocalPosition(parsed)) {
+  stream >> parsed;
+  // 与 from_chars 同语义：整个 token 必须被完全消费，不允许尾随字符。
+  if (!stream.eof()) {
+    return false;
+  }
+  // failbit 有两种来源：token 根本不是数字（如单独的 "+"），或数值
+  // 上溢/下溢置 ERANGE（denorm_min 会被正确解析但置 failbit）。
+  // 用 double 复探区分：double 范围更宽，若仍失败则不是合法数字。
+  if (stream.fail()) {
+    std::istringstream probe(token);
+    probe.imbue(std::locale::classic());
+    double probed = 0.0;
+    probe >> probed;
+    if (probe.fail()) {
+      return false;
+    }
+  }
+  if (!validLocalPosition(parsed)) {
     return false;
   }
   value = parsed;
