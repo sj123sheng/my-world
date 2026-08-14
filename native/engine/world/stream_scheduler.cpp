@@ -132,7 +132,14 @@ void StreamScheduler::workerLoop() {
       task = std::move(pendingLoads_.front());
       pendingLoads_.erase(pendingLoads_.begin());
     }
-    executeTask(task);
+    try {
+      executeTask(task);
+    } catch (...) {
+      // 自定义 builder 属于调度器边界外代码；异常不得逃出 worker 触发
+      // std::terminate。网格尚未提交，只需释放本次 token 允许重试。
+      std::lock_guard<std::mutex> lock(mutex_);
+      releaseTokenLocked(task);
+    }
   }
 }
 
@@ -343,15 +350,21 @@ StreamScheduler::loadSafeRingSync(ChunkCoord landingChunk,
 
   std::vector<std::pair<LoadTask, TerrainChunkCpuMesh>> built;
   built.reserve(tasks.size());
-  for (const LoadTask &task : tasks) {
-    const uint32_t segments =
-        chunkedTerrain_.segmentsFor(task.coord, landingChunk, perfLodLevel);
-    TerrainChunkCpuMesh entry = buildChunk(task.coord, segments);
-    if (entry.mesh.vertices.empty()) {
-      entry = chunkedTerrain_.buildFlatFallbackChunk(
-          task.coord, chunkedTerrain_.config().farSegments);
+  try {
+    for (const LoadTask &task : tasks) {
+      const uint32_t segments =
+          chunkedTerrain_.segmentsFor(task.coord, landingChunk, perfLodLevel);
+      TerrainChunkCpuMesh entry = buildChunk(task.coord, segments);
+      if (entry.mesh.vertices.empty()) {
+        entry = chunkedTerrain_.buildFlatFallbackChunk(
+            task.coord, chunkedTerrain_.config().farSegments);
+      }
+      built.emplace_back(task, std::move(entry));
     }
-    built.emplace_back(task, std::move(entry));
+  } catch (...) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const LoadTask& task : tasks) releaseTokenLocked(task);
+    throw;
   }
 
   std::vector<ChunkCoord> committed;
@@ -363,10 +376,12 @@ StreamScheduler::loadSafeRingSync(ChunkCoord landingChunk,
       continue;
     }
     chunkedTerrain_.storeChunk(task.coord, std::move(item.second));
-    ready_.push_back(task.coord);
     committed.push_back(task.coord);
     releaseTokenLocked(task);
   }
+  // 传送安全圈必须先于旧位置遗留的普通 Ready 队列激活；否则即使 burst
+  // 配额为 9，也可能持续消费旧块而让遮罩提前超时或长期不恢复。
+  ready_.insert(ready_.begin(), committed.begin(), committed.end());
   return committed;
 }
 

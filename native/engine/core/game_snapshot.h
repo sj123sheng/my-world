@@ -11,6 +11,10 @@ struct GameSnapshot {
   FixedPoint poise = fp(100);
   float playerX = 0.5f;
   float playerY = 0.5f;
+  int64_t playerChunkX = 0;
+  int64_t playerChunkY = 0;
+  float playerLocalX = 0.5f;
+  float playerLocalY = 0.5f;
   float fps = 0.0f;
   bool moving = false;
   int32_t targetId = 0;
@@ -87,7 +91,8 @@ struct GameSnapshot {
   float playerHeight = 0.0f;
   // 当前激活分块数与累计流式加载次数，供调试 HUD 与验收。
   int32_t activeChunkCount = 0;
-  int32_t chunkLoadCount = 0;
+  int32_t cachedChunkCount = 0;
+  int32_t streamingPendingCount = 0;
   // 交互目标（传送锚点等）：id >= 0 表示范围内可交互。
   int32_t interactionAnchorId = -1;
   bool interactionUnlocked = false;
@@ -207,10 +212,6 @@ struct GameSnapshot {
   int32_t explorationCurrentPoiId = -1;
   std::string explorationCurrentTargetLabel;
   std::string explorationCurrentTargetDistrict;
-  // 玩家接近关闭的路径门时发布阻挡原因；离开或开门后恢复默认值。
-  int32_t explorationBlockedGateId = -1;
-  std::string explorationBlockedGateLabel;
-  std::string explorationBlockedByPuzzleLabel;
   int32_t explorationFeedbackType = 0;
   int32_t explorationFeedbackId = -1;
   std::string explorationFeedbackTitle;

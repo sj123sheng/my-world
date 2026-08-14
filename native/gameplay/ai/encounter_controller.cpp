@@ -417,8 +417,7 @@ void EncounterController::update(const EncounterFrameInput& input) {
     const Tick basicCastBefore = boss_.snapshot().basicAttackCastRemainingMs;
     boss_.update({tick, dtMs, combat_.snapshot().resonance > 0,
                   ultimateUsed, nextSequence_, input.playerPosition,
-                  combat_.snapshot().playerHp > 0,
-                  input.positionResolver});
+                  combat_.snapshot().playerHp > 0});
     // 首领普攻挥击落地：冷却/前摇驱动的周期性近战结算，
     // 闪避无敌帧同样可规避（applyEnemyHit 内部判定）。
     if (basicCastBefore > 0 &&
@@ -602,11 +601,6 @@ void EncounterController::update(const EncounterFrameInput& input) {
     const Vec2 previous = slot->enemy.position;
     slot->enemy.position =
         advancePosition(previous, result.movement, dtMs, region);
-    // 宿主层碰撞解算：把敌人从建筑等障碍内推出并沿墙滑动，
-    // 位置修正回写权威逻辑位置，战斗距离判定与渲染严格一致。
-    if (input.positionResolver) {
-      input.positionResolver(slot->enemy.position, kEnemyCollisionRadius);
-    }
     const Vec2 facing = input.playerPosition - slot->enemy.position;
     const float length = facing.length();
     if (facing.finite() && std::isfinite(length) && length > 0.0f) {

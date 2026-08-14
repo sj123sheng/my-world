@@ -81,8 +81,13 @@ export interface Snapshot {
   explorationStamina: number;
   motionState: number;
   playerHeight: number;
+  playerChunkX: number;
+  playerChunkY: number;
+  playerLocalX: number;
+  playerLocalY: number;
   activeChunkCount: number;
-  chunkLoadCount: number;
+  cachedChunkCount: number;
+  streamingPendingCount: number;
   interactionAnchorId: number;
   interactionUnlocked: boolean;
   interactionLabel: string;
@@ -175,9 +180,6 @@ export interface Snapshot {
   explorationCurrentPoiId: number;
   explorationCurrentTargetLabel: string;
   explorationCurrentTargetDistrict: string;
-  explorationBlockedGateId: number;
-  explorationBlockedGateLabel: string;
-  explorationBlockedByPuzzleLabel: string;
   explorationFeedbackType: number;
   explorationFeedbackId: number;
   explorationFeedbackTitle: string;
@@ -190,17 +192,10 @@ export const nativeStop = (): void => native.nativeStop();
 export const nativeStartIfForeground = (): void => native.nativeStartIfForeground();
 export const nativeSetModelAssets = (player: ArrayBuffer, enemy: ArrayBuffer,
   boss: ArrayBuffer): boolean => native.nativeSetModelAssets(player, enemy, boss);
-export const nativeSetEnvironmentAssets = (outer: ArrayBuffer, center: ArrayBuffer,
-  backdrop: ArrayBuffer, decoration: ArrayBuffer): boolean =>
-  native.nativeSetEnvironmentAssets(outer, center, backdrop, decoration);
-export const nativeSetBlockAsset = (blockId: number, bytes: ArrayBuffer): boolean =>
-  native.nativeSetBlockAsset(blockId, bytes);
 export const nativeSetTerrainAssets = (atlas: ArrayBuffer, control: ArrayBuffer): boolean =>
   native.nativeSetTerrainAssets(atlas, control);
 export const nativeSetFoliageAtlas = (atlas: ArrayBuffer): boolean =>
   native.nativeSetFoliageAtlas(atlas);
-export const nativeSetVisualTerrainAsset = (blockId: number, lod: number,
-  bytes: ArrayBuffer): boolean => native.nativeSetVisualTerrainAsset(blockId, lod, bytes);
 // NPC 模型槽位（Phase 4）：第一版由 GamePage 注入 player.glb 占位字节，
 // 缺失时 native 侧保持静态 Mesh 回退。
 export const nativeSetNpcAsset = (bytes: ArrayBuffer): boolean =>

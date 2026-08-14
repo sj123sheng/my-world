@@ -1,7 +1,7 @@
-import { nativeSetEnvironmentAssets, nativeSetModelAssets, nativeSetBlockAsset, nativeSetTerrainAssets, nativeSetFoliageAtlas, nativeSetVisualTerrainAsset, nativeSetNpcAsset, nativeSetEnemyArchetypeAsset, nativeStartIfForeground,
+import { nativeSetModelAssets, nativeSetTerrainAssets, nativeSetFoliageAtlas, nativeSetNpcAsset, nativeSetEnemyArchetypeAsset, nativeStartIfForeground,
   nativeStop, pullSnapshot, setAudioEnabled, saveProgress, loadProgress, Snapshot } from '../napi/Bridge';
-import { TERRAIN_ATLAS_ASSET, TERRAIN_CONTROL_ASSET, FOLIAGE_ATLAS_ASSET,
-  VISUAL_TERRAIN_RESOURCES } from '../generated/EnvironmentVisualManifest';
+import { TERRAIN_ATLAS_ASSET, TERRAIN_CONTROL_ASSET,
+  FOLIAGE_ATLAS_ASSET } from '../generated/EnvironmentVisualManifest';
 import { Hud } from '../ui/Hud';
 import { CombatControls } from '../ui/CombatControls';
 import { Joystick } from '../ui/Joystick';
@@ -49,7 +49,8 @@ struct GamePage {
     bossRingBroken: false,
     inputEventCount: 0,
     explorationStamina: 100, motionState: 0, playerHeight: 0,
-    activeChunkCount: 0, chunkLoadCount: 0,
+    playerChunkX: 0, playerChunkY: 0, playerLocalX: 0.5, playerLocalY: 0.5,
+    activeChunkCount: 0, cachedChunkCount: 0, streamingPendingCount: 0,
     interactionAnchorId: -1, interactionUnlocked: false, interactionLabel: '',
     unlockedAnchorCount: 0, cameraExploration: false, teleportFlashMs: 0,
     minimapAnchorX: [], minimapAnchorY: [], minimapAnchorUnlocked: [],
@@ -86,8 +87,6 @@ struct GamePage {
     explorationRewardCount: 0, explorationGateCount: 0,
     explorationTraversalMask: 0, explorationCurrentPoiId: -1,
     explorationCurrentTargetLabel: '', explorationCurrentTargetDistrict: '',
-    explorationBlockedGateId: -1, explorationBlockedGateLabel: '',
-    explorationBlockedByPuzzleLabel: '',
     explorationFeedbackType: 0, explorationFeedbackId: -1,
     explorationFeedbackTitle: '', explorationFeedbackSubtitle: '',
     explorationFeedbackRemainingMs: 0
@@ -165,8 +164,13 @@ struct GamePage {
   @State explorationStamina: number = 100;
   @State motionState: number = 0;
   @State playerHeight: number = 0;
+  @State playerChunkX: number = 0;
+  @State playerChunkY: number = 0;
+  @State playerLocalX: number = 0.5;
+  @State playerLocalY: number = 0.5;
   @State activeChunkCount: number = 0;
-  @State chunkLoadCount: number = 0;
+  @State cachedChunkCount: number = 0;
+  @State streamingPendingCount: number = 0;
   @State interactionAnchorId: number = -1;
   @State interactionUnlocked: boolean = false;
   @State interactionLabel: string = '';
@@ -198,9 +202,6 @@ struct GamePage {
   @State explorationCurrentPoiId: number = -1;
   @State explorationCurrentTargetLabel: string = '';
   @State explorationCurrentTargetDistrict: string = '';
-  @State explorationBlockedGateId: number = -1;
-  @State explorationBlockedGateLabel: string = '';
-  @State explorationBlockedByPuzzleLabel: string = '';
   @State explorationFeedbackType: number = 0;
   @State explorationFeedbackId: number = -1;
   @State explorationFeedbackTitle: string = '';
@@ -280,8 +281,6 @@ struct GamePage {
   private pageActive: boolean = false;
   private modelLoadGeneration: number = 0;
   // Phase 2 区块环境批次懒加载：已尝试（含失败）的区块不重复读取。
-  private lastEnvironmentBlockId: number = -1;
-  private loadedEnvironmentBlocks: number[] = [];
   // 快照边沿检测上一帧采样值，用于触发触感反馈。
   private prevHpForHaptics: number = 100;
   private prevInsightMs: number = 0;
@@ -364,81 +363,6 @@ struct GamePage {
     return this.pageActive && generation === this.modelLoadGeneration;
   }
 
-  // 8×8 区块 id（与 C++ 分块约定一致：row * 8 + col，[0,1] 世界坐标）。
-  private environmentBlockIdAt(x: number, y: number): number {
-    const col = Math.min(7, Math.max(0, Math.floor(x * 8)));
-    const row = Math.min(7, Math.max(0, Math.floor(y * 8)));
-    return row * 8 + col;
-  }
-
-  private neighborBlockIds(blockId: number): number[] {
-    const row = Math.floor(blockId / 8);
-    const col = blockId % 8;
-    const ids: number[] = [];
-    for (let dr = -1; dr <= 1; ++dr) {
-      for (let dc = -1; dc <= 1; ++dc) {
-        const r = row + dr;
-        const c = col + dc;
-        if (r >= 0 && r < 8 && c >= 0 && c < 8) {
-          ids.push(r * 8 + c);
-        }
-      }
-    }
-    return ids;
-  }
-
-  // 区块 GLB 逐个读取注入；文件缺失（尚未烘焙）只跳过该区块，
-  // 并记入已尝试集合避免每帧重试，不回退全局环境。
-  private async loadEnvironmentBlocks(blockIds: number[]): Promise<void> {
-    const resourceManager = getContext(this).resourceManager;
-    for (const blockId of blockIds) {
-      if (this.loadedEnvironmentBlocks.indexOf(blockId) >= 0) {
-        continue;
-      }
-      try {
-        const bytes = await resourceManager
-          .getRawFileContent(`environment/block_${blockId}.glb`);
-        if (!nativeSetBlockAsset(blockId, bytes.buffer as ArrayBuffer)) {
-          console.error('[Ethelan] Native rejected environment block ' + blockId);
-        }
-      } catch (error) {
-        console.error('[Ethelan] Environment block ' + blockId + ' unavailable, skipped');
-      }
-      this.loadedEnvironmentBlocks.push(blockId);
-    }
-  }
-
-  // 玩家所在区块变化时懒加载其 3×3 邻域。
-  private refreshEnvironmentBlocks(x: number, y: number): void {
-    const blockId = this.environmentBlockIdAt(x, y);
-    if (blockId === this.lastEnvironmentBlockId) {
-      return;
-    }
-    this.lastEnvironmentBlockId = blockId;
-    this.loadEnvironmentBlocks(this.neighborBlockIds(blockId));
-  }
-
-  private async loadVisualTerrainSliceAssets(generation: number): Promise<void> {
-    const resourceManager = getContext(this).resourceManager;
-    for (const resource of VISUAL_TERRAIN_RESOURCES) {
-      const blockId: number = resource.blockId;
-      for (let lod = 0; lod < resource.lodAssets.length; ++lod) {
-        try {
-          const bytes = await resourceManager.getRawFileContent(
-            resource.lodAssets[lod]);
-          if (!this.isActiveModelLoad(generation)) {
-            return;
-          }
-          if (!nativeSetVisualTerrainAsset(blockId, lod, bytes.buffer as ArrayBuffer)) {
-            console.error(`[Ethelan] Native rejected visual terrain block ${blockId} LOD ${lod}`);
-          }
-        } catch (error) {
-          console.error(`[Ethelan] Visual terrain block ${blockId} LOD ${lod} unavailable`);
-        }
-      }
-    }
-  }
-
   private async loadModelAssets(generation: number): Promise<void> {
     try {
       const resourceManager = getContext(this).resourceManager;
@@ -490,26 +414,6 @@ struct GamePage {
         }
       }
       try {
-        const environmentAssets: Uint8Array[] = await Promise.all([
-          resourceManager.getRawFileContent('environment/outer_ring.glb'),
-          resourceManager.getRawFileContent('environment/center_rift.glb'),
-          resourceManager.getRawFileContent('environment/backdrop.glb'),
-          resourceManager.getRawFileContent('environment/decoration.glb')
-        ]);
-        if (this.isActiveModelLoad(generation) &&
-          !nativeSetEnvironmentAssets(environmentAssets[0].buffer as ArrayBuffer,
-            environmentAssets[1].buffer as ArrayBuffer,
-            environmentAssets[2].buffer as ArrayBuffer,
-            environmentAssets[3].buffer as ArrayBuffer)) {
-          console.error('[Ethelan] Native rejected environment assets; using procedural fallback');
-        }
-      } catch (error) {
-        if (this.isActiveModelLoad(generation)) {
-          console.error('[Ethelan] Failed to load environment assets; using procedural fallback: ' +
-            JSON.stringify(error));
-        }
-      }
-      try {
         const terrainAssets: Uint8Array[] = await Promise.all([
           resourceManager.getRawFileContent(TERRAIN_ATLAS_ASSET),
           resourceManager.getRawFileContent(TERRAIN_CONTROL_ASSET)
@@ -536,11 +440,6 @@ struct GamePage {
           console.error('[Ethelan] Failed to load foliage atlas: ' + JSON.stringify(error));
         }
       }
-      // 手工地貌独立加载：地表贴图缺失时仍允许视觉 GLB 使用回退材质。
-      await this.loadVisualTerrainSliceAssets(generation);
-      // Phase 2：预取出生点（0.5, 0.12）所在区块一圈；缺失文件静默跳过。
-      this.loadEnvironmentBlocks(
-        this.neighborBlockIds(this.environmentBlockIdAt(0.5, 0.12)));
     } catch (error) {
       console.error('[Ethelan] Resource manager unavailable: ' + JSON.stringify(error));
     } finally {
@@ -608,7 +507,12 @@ struct GamePage {
         bossCinematicProgress: this.bossCinematicProgress,
         bossShardCount: this.bossShardCount, bossSourceColor: this.bossSourceColor,
         bossRingBroken: this.bossRingBroken,
-        inputEventCount: this.inputEventCount })
+        inputEventCount: this.inputEventCount,
+        playerChunkX: this.playerChunkX, playerChunkY: this.playerChunkY,
+        playerLocalX: this.playerLocalX, playerLocalY: this.playerLocalY,
+        activeChunkCount: this.activeChunkCount,
+        cachedChunkCount: this.cachedChunkCount,
+        streamingPendingCount: this.streamingPendingCount })
         .hitTestBehavior(HitTestMode.Transparent)
 
       ExplorationHud({ explorationStamina: this.explorationStamina,
@@ -649,9 +553,6 @@ struct GamePage {
         explorationTraversalMask: this.explorationTraversalMask,
         explorationCurrentTargetLabel: this.explorationCurrentTargetLabel,
         explorationCurrentTargetDistrict: this.explorationCurrentTargetDistrict,
-        explorationBlockedGateId: this.explorationBlockedGateId,
-        explorationBlockedGateLabel: this.explorationBlockedGateLabel,
-        explorationBlockedByPuzzleLabel: this.explorationBlockedByPuzzleLabel,
         onOpenGacha: () => { this.gachaOpen = true; },
         onOpenMap: () => { this.mapOpen = true; },
         onOpenInventory: () => { this.inventoryOpen = true; },
@@ -810,8 +711,6 @@ struct GamePage {
         this.poise = this.snapshot.poise;
         this.posX = this.snapshot.x;
         this.posY = this.snapshot.y;
-        // Phase 2：玩家跨区块时懒加载新区块的环境批次资产。
-        this.refreshEnvironmentBlocks(this.snapshot.x, this.snapshot.y);
         this.fps = this.snapshot.fps;
         this.moving = this.snapshot.moving;
         this.moveX = this.snapshot.moveX;
@@ -879,8 +778,13 @@ struct GamePage {
         this.explorationStamina = this.snapshot.explorationStamina;
         this.motionState = this.snapshot.motionState;
         this.playerHeight = this.snapshot.playerHeight;
+        this.playerChunkX = this.snapshot.playerChunkX;
+        this.playerChunkY = this.snapshot.playerChunkY;
+        this.playerLocalX = this.snapshot.playerLocalX;
+        this.playerLocalY = this.snapshot.playerLocalY;
         this.activeChunkCount = this.snapshot.activeChunkCount;
-        this.chunkLoadCount = this.snapshot.chunkLoadCount;
+        this.cachedChunkCount = this.snapshot.cachedChunkCount;
+        this.streamingPendingCount = this.snapshot.streamingPendingCount;
         this.interactionAnchorId = this.snapshot.interactionAnchorId;
         this.interactionUnlocked = this.snapshot.interactionUnlocked;
         this.interactionLabel = this.snapshot.interactionLabel;
@@ -913,11 +817,6 @@ struct GamePage {
           this.snapshot.explorationCurrentTargetLabel;
         this.explorationCurrentTargetDistrict =
           this.snapshot.explorationCurrentTargetDistrict;
-        this.explorationBlockedGateId = this.snapshot.explorationBlockedGateId;
-        this.explorationBlockedGateLabel =
-          this.snapshot.explorationBlockedGateLabel;
-        this.explorationBlockedByPuzzleLabel =
-          this.snapshot.explorationBlockedByPuzzleLabel;
         this.explorationFeedbackType = this.snapshot.explorationFeedbackType;
         this.explorationFeedbackId = this.snapshot.explorationFeedbackId;
         this.explorationFeedbackTitle =

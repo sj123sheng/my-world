@@ -9,7 +9,6 @@
 #include "engine/input/changed_pointer_forwarder.h"
 #include "engine/input/pointer_input.h"
 #include "native/platform/harmony/model_asset_commit.h"
-#include "native/platform/harmony/environment_asset_commit.h"
 
 #define LOGI(...) OH_LOG_Print(LOG_APP, LOG_INFO, 0xFF00, "Ethelan", __VA_ARGS__)
 #define LOGE(...) OH_LOG_Print(LOG_APP, LOG_ERROR, 0xFF00, "Ethelan", __VA_ARGS__)
@@ -184,71 +183,6 @@ static napi_value NativeSetModelAssets(napi_env env, napi_callback_info info) {
   return result;
 }
 
-static napi_value NativeSetEnvironmentAssets(napi_env env,
-                                             napi_callback_info info) {
-  size_t argc = 4;
-  napi_value args[4] = {nullptr, nullptr, nullptr, nullptr};
-  napi_value result = nullptr;
-  if (napi_get_cb_info(env, info, &argc, args, nullptr, nullptr) != napi_ok ||
-      argc != 4) {
-    napi_get_boolean(env, false, &result);
-    return result;
-  }
-
-  const bool committed = CopyAndCommitEnvironmentAssets(
-      [&env, &args](EnvironmentAssetSlot slot, std::vector<uint8_t>& out) {
-        return CopyArrayBuffer(env, args[static_cast<size_t>(slot)], out);
-      },
-      [](auto operation) { g_loop.withLifecycle(operation); },
-      [](EnvironmentAssetSlot slot, std::vector<uint8_t> bytes) {
-        g_loop.surface.setEnvironmentAsset(
-            static_cast<EnvironmentBatchKind>(static_cast<size_t>(slot)),
-            std::move(bytes));
-      });
-  napi_get_boolean(env, committed, &result);
-  return result;
-}
-
-// Phase 2：按区块懒注入环境批次资产（blockId, ArrayBuffer）。
-// 注意：N-API 数值参数必须先解包为 double 再 TryConvertInt32。
-static napi_value NativeSetBlockEnvironmentAsset(napi_env env,
-                                                 napi_callback_info info) {
-  size_t argc = 2;
-  napi_value args[2] = {nullptr, nullptr};
-  napi_value result = nullptr;
-  if (napi_get_cb_info(env, info, &argc, args, nullptr, nullptr) != napi_ok ||
-      argc != 2) {
-    napi_get_boolean(env, false, &result);
-    return result;
-  }
-  napi_valuetype idType = napi_undefined;
-  double idNumber = 0.0;
-  if (args[0] == nullptr || napi_typeof(env, args[0], &idType) != napi_ok ||
-      idType != napi_number ||
-      napi_get_value_double(env, args[0], &idNumber) != napi_ok ||
-      !std::isfinite(idNumber)) {
-    napi_get_boolean(env, false, &result);
-    return result;
-  }
-  int32_t blockId = -1;
-  if (!TryConvertInt32(idNumber, blockId) || blockId < 0 ||
-      blockId >= kEnvironmentBlockCount) {
-    napi_get_boolean(env, false, &result);
-    return result;
-  }
-  const bool committed = CopyAndCommitBlockEnvironmentAsset(
-      blockId,
-      [&env, &args](std::vector<uint8_t>& out) {
-        return CopyArrayBuffer(env, args[1], out);
-      },
-      [](auto operation) { g_loop.withLifecycle(operation); },
-      [](int32_t id, std::vector<uint8_t> bytes) {
-        g_loop.surface.setBlockEnvironmentAsset(id, std::move(bytes));
-      });
-  napi_get_boolean(env, committed, &result);
-  return result;
-}
-
 static napi_value NativeSetTerrainAssets(napi_env env,
                                          napi_callback_info info) {
   size_t argc = 2;
@@ -291,40 +225,6 @@ static napi_value NativeSetFoliageAtlas(napi_env env,
   }
   g_loop.withLifecycle([&bytes]() {
     g_loop.surface.setFoliageAtlasAsset(std::move(bytes));
-  });
-  napi_get_boolean(env, true, &result);
-  return result;
-}
-
-static napi_value NativeSetVisualTerrainAsset(napi_env env,
-                                              napi_callback_info info) {
-  size_t argc = 3;
-  napi_value args[3] = {nullptr, nullptr, nullptr};
-  napi_value result = nullptr;
-  if (napi_get_cb_info(env, info, &argc, args, nullptr, nullptr) != napi_ok ||
-      argc != 3) {
-    napi_get_boolean(env, false, &result);
-    return result;
-  }
-  double blockNumber = 0.0;
-  double lodNumber = 0.0;
-  int32_t blockId = -1;
-  int32_t lod = -1;
-  if (napi_get_value_double(env, args[0], &blockNumber) != napi_ok ||
-      napi_get_value_double(env, args[1], &lodNumber) != napi_ok ||
-      !TryConvertInt32(blockNumber, blockId) ||
-      !TryConvertInt32(lodNumber, lod) || blockId < 0 ||
-      blockId >= kEnvironmentBlockCount || lod < 0 || lod > 2) {
-    napi_get_boolean(env, false, &result);
-    return result;
-  }
-  std::vector<uint8_t> bytes;
-  if (!CopyArrayBuffer(env, args[2], bytes)) {
-    napi_get_boolean(env, false, &result);
-    return result;
-  }
-  g_loop.withLifecycle([blockId, lod, &bytes]() {
-    g_loop.surface.setVisualTerrainAsset(blockId, lod, std::move(bytes));
   });
   napi_get_boolean(env, true, &result);
   return result;
@@ -1128,12 +1028,25 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_value playerHeightVal;
   napi_create_double(env, snapshot.playerHeight, &playerHeightVal);
   napi_set_named_property(env, result, "playerHeight", playerHeightVal);
+  napi_value playerChunkXVal, playerChunkYVal, playerLocalXVal, playerLocalYVal;
+  napi_create_int64(env, snapshot.playerChunkX, &playerChunkXVal);
+  napi_create_int64(env, snapshot.playerChunkY, &playerChunkYVal);
+  napi_create_double(env, snapshot.playerLocalX, &playerLocalXVal);
+  napi_create_double(env, snapshot.playerLocalY, &playerLocalYVal);
+  napi_set_named_property(env, result, "playerChunkX", playerChunkXVal);
+  napi_set_named_property(env, result, "playerChunkY", playerChunkYVal);
+  napi_set_named_property(env, result, "playerLocalX", playerLocalXVal);
+  napi_set_named_property(env, result, "playerLocalY", playerLocalYVal);
   napi_value activeChunkCountVal;
   napi_create_int32(env, snapshot.activeChunkCount, &activeChunkCountVal);
   napi_set_named_property(env, result, "activeChunkCount", activeChunkCountVal);
-  napi_value chunkLoadCountVal;
-  napi_create_int32(env, snapshot.chunkLoadCount, &chunkLoadCountVal);
-  napi_set_named_property(env, result, "chunkLoadCount", chunkLoadCountVal);
+  napi_value cachedChunkCountVal, streamingPendingCountVal;
+  napi_create_int32(env, snapshot.cachedChunkCount, &cachedChunkCountVal);
+  napi_create_int32(env, snapshot.streamingPendingCount,
+                    &streamingPendingCountVal);
+  napi_set_named_property(env, result, "cachedChunkCount", cachedChunkCountVal);
+  napi_set_named_property(env, result, "streamingPendingCount",
+                          streamingPendingCountVal);
   napi_value interactionAnchorIdVal;
   napi_create_int32(env, snapshot.interactionAnchorId, &interactionAnchorIdVal);
   napi_set_named_property(env, result, "interactionAnchorId",
@@ -1545,23 +1458,6 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
                           explorationCurrentTargetLabelVal);
   napi_set_named_property(env, result, "explorationCurrentTargetDistrict",
                           explorationCurrentTargetDistrictVal);
-  napi_value explorationBlockedGateIdVal, explorationBlockedGateLabelVal,
-      explorationBlockedByPuzzleLabelVal;
-  napi_create_int32(env, snapshot.explorationBlockedGateId,
-                    &explorationBlockedGateIdVal);
-  napi_create_string_utf8(env, snapshot.explorationBlockedGateLabel.c_str(),
-                          snapshot.explorationBlockedGateLabel.size(),
-                          &explorationBlockedGateLabelVal);
-  napi_create_string_utf8(
-      env, snapshot.explorationBlockedByPuzzleLabel.c_str(),
-      snapshot.explorationBlockedByPuzzleLabel.size(),
-      &explorationBlockedByPuzzleLabelVal);
-  napi_set_named_property(env, result, "explorationBlockedGateId",
-                          explorationBlockedGateIdVal);
-  napi_set_named_property(env, result, "explorationBlockedGateLabel",
-                          explorationBlockedGateLabelVal);
-  napi_set_named_property(env, result, "explorationBlockedByPuzzleLabel",
-                          explorationBlockedByPuzzleLabelVal);
   napi_value explorationFeedbackTypeVal, explorationFeedbackIdVal,
       explorationFeedbackTitleVal, explorationFeedbackSubtitleVal,
       explorationFeedbackRemainingMsVal;
@@ -1597,11 +1493,8 @@ static napi_value Init(napi_env env, napi_value exports) {
     {"nativeStop", nullptr, NativeStop, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"nativeStartIfForeground", nullptr, NativeStartIfForeground, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"nativeSetModelAssets", nullptr, NativeSetModelAssets, nullptr, nullptr, nullptr, napi_default, nullptr},
-    {"nativeSetEnvironmentAssets", nullptr, NativeSetEnvironmentAssets, nullptr, nullptr, nullptr, napi_default, nullptr},
-    {"nativeSetBlockAsset", nullptr, NativeSetBlockEnvironmentAsset, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"nativeSetTerrainAssets", nullptr, NativeSetTerrainAssets, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"nativeSetFoliageAtlas", nullptr, NativeSetFoliageAtlas, nullptr, nullptr, nullptr, napi_default, nullptr},
-    {"nativeSetVisualTerrainAsset", nullptr, NativeSetVisualTerrainAsset, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"nativeSetNpcAsset", nullptr, NativeSetNpcAsset, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"nativeSetEnemyArchetypeAsset", nullptr, NativeSetEnemyArchetypeAsset, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"pushInput", nullptr, NativePushInput, nullptr, nullptr, nullptr, napi_default, nullptr},

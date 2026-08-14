@@ -73,7 +73,7 @@ Tick AdvanceCombatTime(Tick now, int64_t dtMs) {
 
 // 把当前 EncounterSnapshot 的敌人与首领 2D 位置写入 Surface 的 3D 渲染字段。
 // 渲染层只读消费这些状态，不反向修改游戏逻辑。敌人与首领位置已在
-// 逻辑层（EncounterController/BossController）经建筑碰撞解算，此处直接同步。
+// 逻辑层（EncounterController/BossController）更新完成，此处直接同步。
 void publish3DEncounterState(Surface& surface,
                              const EncounterSnapshot& snapshot,
                              float dtSeconds) {
@@ -262,15 +262,6 @@ void publishWildEnemies3d(Surface& surface, const WildSpawnSystem& wild,
     }
     surface.wildEnemies3d.push_back(state);
   }
-}
-
-// 流式半径性能联动（Phase 5）：按 PerformanceGuard 视距缩放决定半径——
-// 档位对应 viewDistanceScale：Full 1.0 / Light 0.9 / Medium 0.75 → 半径 2，
-// Heavy 0.6 / Critical 0.45 → 1；低画质预设（qualityPreset=1）强制取小。
-int32_t streamingRadiusForPerf(int32_t qualityPreset,
-                               const PerformanceGuard& guard) {
-  const int32_t radius = guard.viewDistanceScale() >= 0.7f ? 2 : 1;
-  return qualityPreset == 1 ? std::min(radius, 1) : radius;
 }
 
 // NPC 渲染上限性能联动（Phase 5）：按 lodLevel 收缩 6→4→3。
@@ -787,9 +778,19 @@ void ApplyExplorationSnapshot(GameSnapshot& output, const Loop& loop) {
   output.explorationStamina = loop.motionState.stamina;
   output.motionState = static_cast<int32_t>(loop.motionState.state);
   output.playerHeight = loop.motionState.height;
-  output.activeChunkCount =
-      static_cast<int32_t>(loop.worldGrid.activeChunks().size());
-  output.chunkLoadCount = loop.chunkLoadCount;
+  output.playerChunkX = loop.playerWorldPosition.chunk.x;
+  output.playerChunkY = loop.playerWorldPosition.chunk.y;
+  output.playerLocalX = loop.playerWorldPosition.local.x;
+  output.playerLocalY = loop.playerWorldPosition.local.y;
+  output.activeChunkCount = 0;
+  for (const ChunkCoord coord : loop.worldGrid.activeChunks()) {
+    if (loop.streamScheduler.isActive(coord)) ++output.activeChunkCount;
+  }
+  output.cachedChunkCount =
+      static_cast<int32_t>(loop.proceduralChunks.size());
+  output.streamingPendingCount = static_cast<int32_t>(
+      loop.streamScheduler.pendingLoadCount() +
+      loop.streamScheduler.readyCount());
   output.interactionAnchorId = loop.currentAnchorInteraction.anchorId;
   output.interactionUnlocked = loop.currentAnchorInteraction.unlocked;
   output.interactionLabel = loop.currentAnchorInteraction.anchorId >= 0
@@ -808,28 +809,12 @@ void ApplyExplorationSnapshot(GameSnapshot& output, const Loop& loop) {
   output.explorationCurrentPoiId = -1;
   output.explorationCurrentTargetLabel.clear();
   output.explorationCurrentTargetDistrict.clear();
-  output.explorationBlockedGateId = -1;
-  output.explorationBlockedGateLabel.clear();
-  output.explorationBlockedByPuzzleLabel.clear();
   const ExplorationFeedback& feedback = loop.explorationFeedback.snapshot();
   output.explorationFeedbackType = static_cast<int32_t>(feedback.type);
   output.explorationFeedbackId = feedback.id;
   output.explorationFeedbackTitle = feedback.title;
   output.explorationFeedbackSubtitle = feedback.subtitle;
   output.explorationFeedbackRemainingMs = feedback.remainingMs;
-  const ExplorationTarget nearbyTarget = loop.explorationContent.nearestTarget(
-      {loop.surface.player.x, loop.surface.player.y}, 0.045f);
-  if (nearbyTarget.kind == ExplorationTargetKind::TraversalGate &&
-      !loop.explorationContent.isGateOpen(nearbyTarget.id)) {
-    output.explorationBlockedGateId = nearbyTarget.id;
-    output.explorationBlockedGateLabel = nearbyTarget.label;
-    for (const PuzzleNode& puzzle : loop.explorationContent.puzzles()) {
-      if (puzzle.opensGateId == nearbyTarget.id) {
-        output.explorationBlockedByPuzzleLabel = puzzle.label;
-        break;
-      }
-    }
-  }
   for (const PointOfInterest& poi : loop.explorationContent.pointsOfInterest()) {
     if (!loop.explorationContent.isPointDiscovered(poi.id) && poi.mainRoute) {
       output.explorationCurrentPoiId = poi.id;
@@ -1043,11 +1028,6 @@ void ApplyGrowthSnapshot(GameSnapshot& output, const Loop& loop) {
 }
 }  // namespace
 
-void Loop::refreshExplorationGateCollision() {
-  explorationGateCollision =
-      ExplorationGateCollision::fromContent(explorationContent);
-}
-
 void Loop::publishExplorationFeedback(ExplorationFeedbackType type, int32_t id,
                                       const std::string& title,
                                       const std::string& subtitle,
@@ -1055,15 +1035,129 @@ void Loop::publishExplorationFeedback(ExplorationFeedbackType type, int32_t id,
   explorationFeedback.publish(type, id, title, subtitle, durationMs);
 }
 
-BuildingContact Loop::resolvePlayerWorldCollision(float& x, float& y,
-                                                  float radius, float height) {
-  BuildingContact contact = buildingCollision.resolve(x, y, radius, height);
-  const BuildingContact gateContact =
-      explorationGateCollision.resolve(x, y, radius, height);
-  contact.touching = contact.touching || gateContact.touching;
-  contact.normal = gateContact.touching ? gateContact.normal : contact.normal;
-  contact.highestTop = std::max(contact.highestTop, gateContact.highestTop);
-  return contact;
+void Loop::rebuildProceduralRuntime() {
+  const std::vector<ChunkCoord>& cached = worldGrid.cachedChunks();
+  for (auto it = proceduralChunks.begin(); it != proceduralChunks.end();) {
+    if (!std::binary_search(cached.begin(), cached.end(), it->first)) {
+      const std::vector<EntityId> removedIds =
+          wildSpawn.deactivateProceduralChunk(it->first);
+      if (!removedIds.empty()) {
+        const auto wasRemoved = [&removedIds](uint32_t id) {
+          return std::binary_search(removedIds.begin(), removedIds.end(), id);
+        };
+        if (currentTarget.has_value() &&
+            wasRemoved(static_cast<uint32_t>(currentTarget->id))) {
+          currentTarget.reset();
+          surface.targetMarker3d.active = false;
+          surface.targetMarker3d.targetId = 0u;
+          camera.setExploration(true);
+        }
+        for (const EntityId id : removedIds) {
+          enemyHpTrails.erase(id);
+          prevAuraMasks.erase(id);
+          surface.enemyAnimationStates.erase(id);
+          surface.enemyHitFlash.erase(id);
+          surface.enemyStaggerSeconds.erase(id);
+          surface.enemyDeathSeconds.erase(id);
+          surface.enemyHitCounts.erase(id);
+          surface.enemyPrevWindingUp.erase(id);
+          surface.enemyPrevAttacking.erase(id);
+        }
+        surface.enemyHpBars3d.clear();
+        surface.wildEnemies3d.erase(
+            std::remove_if(surface.wildEnemies3d.begin(),
+                           surface.wildEnemies3d.end(),
+                           [&wasRemoved](const WildEnemy3DRenderState& enemy) {
+                             return wasRemoved(enemy.id);
+                           }),
+            surface.wildEnemies3d.end());
+      }
+      it = proceduralChunks.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  const std::vector<ChunkCoord>& active = worldGrid.activeChunks();
+  for (const ChunkCoord coord : cached) {
+    auto [it, inserted] = proceduralChunks.try_emplace(coord);
+    if (inserted) {
+      it->second.content = GenerateProceduralChunk(worldSeed, coord, terrain);
+    }
+    it->second.active =
+        std::binary_search(active.begin(), active.end(), coord);
+  }
+  surface.foliageInstances.clear();
+  proceduralCollectibles.clear();
+  for (const auto& entry : proceduralChunks) {
+    if (!entry.second.active) continue;
+    for (const ProceduralFoliageSpawn& spawn : entry.second.content.foliage) {
+      FoliageInstance instance;
+      instance.position = {
+          static_cast<float>(entry.first.x - playerWorldPosition.chunk.x) +
+              spawn.position.x,
+          terrain.heightAt(entry.first, spawn.position.x, spawn.position.y),
+          static_cast<float>(entry.first.y - playerWorldPosition.chunk.y) +
+              spawn.position.y};
+      instance.scale = spawn.scale;
+      instance.kind = static_cast<FoliageKind>(
+          std::min<uint8_t>(spawn.kind,
+                            static_cast<uint8_t>(FoliageKind::Rock)));
+      instance.castsShadow = instance.kind == FoliageKind::Tree ||
+                             instance.kind == FoliageKind::Rock;
+      surface.foliageInstances.push_back(instance);
+    }
+    for (const ProceduralCollectibleSpawn& spawn :
+         entry.second.content.collectibles) {
+      if (entry.second.collectedIds.count(spawn.stableId) > 0) continue;
+      proceduralCollectibles.emplace(
+          spawn.stableId,
+          ProceduralCollectibleRuntime{
+              spawn.stableId, entry.first,
+              {static_cast<float>(entry.first.x -
+                                  playerWorldPosition.chunk.x) +
+                   spawn.position.x,
+               static_cast<float>(entry.first.y -
+                                  playerWorldPosition.chunk.y) +
+                   spawn.position.y},
+              spawn.itemId});
+    }
+  }
+  surface.foliageScatterBuilt = true;
+}
+
+void Loop::syncInfiniteWorld(Vec2 cameraForward, Vec2 movement) {
+  const int32_t quality = std::clamp(qualityPreset, 0, 2);
+  const int32_t activeRadius = WorldGrid::ActiveRadiusForQuality(quality);
+  if (quality != streamingQualityLevel) {
+    worldGrid = WorldGrid(WorldGridConfig{activeRadius, 2});
+    streamingQualityLevel = quality;
+  }
+  streamScheduler.setKeepRadius(activeRadius, 2);
+  if (worldGrid.updateStreaming(playerWorldPosition.chunk, cameraForward,
+                                movement)) {
+    chunkLoadCount += static_cast<int32_t>(worldGrid.pendingLoads().size());
+    streamScheduler.requestLoads(worldGrid.pendingLoads(),
+                                 playerWorldPosition.chunk, quality);
+    streamScheduler.requestUnloads(worldGrid.pendingUnloads());
+  }
+  (void)streamScheduler.drainReady(streamScheduler.syncMode() ? 1000 : 2);
+  (void)streamScheduler.applyUnloads();
+  rebuildProceduralRuntime();
+  const bool safeRingWasPending = !teleportSafeRingPending.empty();
+  for (auto it = teleportSafeRingPending.begin();
+       it != teleportSafeRingPending.end();) {
+    if (streamScheduler.isActive(*it)) {
+      it = teleportSafeRingPending.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  if (!teleportSafeRingPending.empty()) {
+    teleportFlashMs = std::max<Tick>(teleportFlashMs, 100);
+  } else if (safeRingWasPending) {
+    camera.reset();
+    teleportFlashMs = 0;
+  }
 }
 
 void Loop::start() {
@@ -1297,6 +1391,11 @@ bool Loop::saveProgress(const std::string& path) {
     state.explorationRewardMask = explorationContent.claimedRewardMask();
     state.explorationGateMask = explorationContent.openGateMask();
     state.explorationTraversalMask = explorationContent.traversalMask();
+    state.worldSeed = worldSeed;
+    state.playerChunkX = playerWorldPosition.chunk.x;
+    state.playerChunkY = playerWorldPosition.chunk.y;
+    state.playerLocalX = playerWorldPosition.local.x;
+    state.playerLocalY = playerWorldPosition.local.y;
     Save save;
     return save.write(state, path.c_str());
   });
@@ -1611,19 +1710,16 @@ bool Loop::teleportToAnchor(int32_t anchorId) {
     if (!anchors.isUnlocked(anchorId)) return false;
     for (const TeleportAnchor& anchor : anchors.anchors()) {
       if (anchor.id != anchorId) continue;
-      surface.player.x = anchor.x;
-      surface.player.y = anchor.y;
+      playerWorldPosition = NormalizeWorldPosition({0, 0}, anchor.x, anchor.y);
+      surface.player.x = playerWorldPosition.local.x;
+      surface.player.y = playerWorldPosition.local.y;
       motionState = explorationMotion.reset(
           terrain.heightAt(anchor.x, anchor.y));
-      // 传送：强制刷新流式集合同步准备目标分块一圈，配合黑屏转场。
-      worldGrid.updateStreaming({anchor.x, anchor.y});
-      chunkLoadCount += static_cast<int32_t>(worldGrid.pendingLoads().size());
-      streamScheduler.loadRingSync(
-          worldGrid.chunkIndexAt({anchor.x, anchor.y}),
-          worldGrid.config().streamingRadius, performanceGuard.lodLevel());
-      // 传送圈分块在 Ready 队列等待上传：黑屏窗口内临时放宽每帧
-      // 配额（25 块 / 4 块每帧 ≈ 7 帧 ≪ 1200ms 转场）。
-      streamScheduler.beginBurst(10, 4);
+      syncInfiniteWorld({0.0f, 1.0f}, {});
+      const std::vector<ChunkCoord> safeRing = streamScheduler.loadSafeRingSync(
+          playerWorldPosition.chunk, std::clamp(qualityPreset, 0, 2));
+      teleportSafeRingPending = {safeRing.begin(), safeRing.end()};
+      streamScheduler.beginBurst(10, 9);
       teleportFlashMs = 1200;
       audioBridge.playUiSound(SoundEffect::Resonance);
       return true;
@@ -1639,6 +1735,15 @@ bool Loop::loadProgress(const std::string& path) {
     if (!save.read(state, path.c_str())) {
       return false;
     }
+    worldSeed = state.worldSeed == 0 ? 1 : state.worldSeed;
+    playerWorldPosition = NormalizeWorldPosition(
+        {state.playerChunkX, state.playerChunkY}, state.playerLocalX,
+        state.playerLocalY);
+    surface.player.x = playerWorldPosition.local.x;
+    surface.player.y = playerWorldPosition.local.y;
+    motionState = explorationMotion.reset(terrain.heightAt(
+        playerWorldPosition.chunk, playerWorldPosition.local.x,
+        playerWorldPosition.local.y));
     quests.restoreLinear(state.completedQuestCount, state.activeQuestId);
     // V8：开放世界支线按完成掩码恢复（V1-V7 旧存档字段为默认值，
     // restoreByMask(0,-1) 等价于初始全部可接取态）。
@@ -1944,8 +2049,8 @@ void Loop::tickOnce(int64_t elapsedMs) {
     fps = tickCount * 1000.0f / (float)elapsed;
     tickCount = 0;
     lastFpsTime = now;
-    // 分块流式与野外敌人计数（性能仪表扩展）：打点处仅只读现有状态，
-    // wild_enemies 当前恒为 0，由后续 WildSpawnSystem 填充。
+#ifdef OHOS_PLATFORM
+    // 分块流式与野外敌人计数（性能仪表扩展）：打点处仅只读现有状态。
     const int activeChunkCount =
         static_cast<int>(worldGrid.activeChunks().size());
     const int streamingPendingCount =
@@ -1965,6 +2070,7 @@ void Loop::tickOnce(int64_t elapsedMs) {
          performanceGuard.level() >= 4 ? "half" : "full",
          static_cast<int>(encounter.snapshot().mode),
          activeChunkCount, streamingPendingCount, wildEnemyCount);
+#endif
   }
   performanceGuard.sample(fixedStep.tick(), 16, fps);
 
@@ -2088,10 +2194,12 @@ void Loop::tickOnce(int64_t elapsedMs) {
   }
 }
 
-void Loop::updateFixed(Tick tick, int64_t dtMs) {
+void Loop::updateFixed(Tick /*tick*/, int64_t dtMs) {
   const Vec2 lookDelta = intent.lookDelta;
   intent.lookDelta = {};
   const float dtSeconds = static_cast<float>(dtMs) / 1000.0f;
+  surface.player.x = playerWorldPosition.local.x;
+  surface.player.y = playerWorldPosition.local.y;
 
   // 相机先更新：玩家移动使用本帧最新 yaw，保证操控方向与画面严格一致。
   camera.update({surface.player.x, surface.player.y}, lookDelta, dtSeconds);
@@ -2130,8 +2238,9 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       turnSpeedScale = 0.0f;
     }
   }
-  // 地形墙探测必须使用控制器积分前的位置；若在 update 之后才取样，
-  // 本帧位移恒为零，正面阻挡和攀爬入口均不会触发，只剩嵌入推出兜底。
+  // Surface 只承载当前分块局部表现；每帧先从 CPU 权威位置恢复。
+  surface.player.x = playerWorldPosition.local.x;
+  surface.player.y = playerWorldPosition.local.y;
   const Vec2 playerPosBeforeController{surface.player.x, surface.player.y};
   const float playerSpeedScale =
       motionState.sprinting
@@ -2140,100 +2249,28 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   playerController.update(surface.player, intent.move, camera.yaw(),
                           dtSeconds, playerSpeedScale,
                           turnSpeedScale);
-
-  // 建筑碰撞：把主角从城墙/塔楼盒内推出并沿墙滑动，不再穿模；
-  // 接触信息驱动墙面攀爬判定（高度越过盒顶时不再阻挡，可翻上墙头）。
-  const BuildingContact wallContact = resolvePlayerWorldCollision(
-      surface.player.x, surface.player.y, playerCollisionRadius,
-      motionState.height);
-
-  // 地形墙碰撞（原神式悬崖语言）：特征层生成的 mesa 壁/回廊悬崖/
-  // 劣地脊线/边缘山脊此前没有水平阻挡，角色直接穿墙而过。现在与
-  // 建筑碰撞同语言：陡坡墙阻挡 + 沿墙滑动，接触信息驱动真地形攀爬；
-  // 游泳中地形墙不参与（水域边缘为缓坡入水）。
-  TerrainWallContact terrainWall;
-  if (motionState.state != MotionState::Swimming) {
-    const Vec2 prevPlayerPos = playerPosBeforeController;
-    const Vec2 moveDelta{surface.player.x - prevPlayerPos.x,
-                         surface.player.y - prevPlayerPos.y};
-    if (moveDelta.length() > 1e-6f) {
-      // 探测距离 = 碰撞半径 + 本帧位移 + 余量：在撞墙前拦截。
-      const float terrainProbeDistance =
-          playerCollisionRadius + moveDelta.length() + 0.001f;
-      terrainWall = terrainWallContact(terrain, prevPlayerPos.x,
-                                       prevPlayerPos.y, motionState.height,
-                                       moveDelta, terrainProbeDistance);
-      if (terrainWall.blocked) {
-        const Vec2 slide =
-            slideAlongTerrainWall(moveDelta, terrainWall.normal);
-        surface.player.x = prevPlayerPos.x + slide.x;
-        surface.player.y = prevPlayerPos.y + slide.y;
-      }
-    }
-    // 嵌入兜底：被击退/传送送进墙体时沿下坡方向推出。
-    const Vec2 fixedPos = depenetrateTerrainWall(
-        terrain, surface.player.x, surface.player.y, motionState.height,
-        playerCollisionRadius);
-    surface.player.x = fixedPos.x;
-    surface.player.y = fixedPos.y;
-  }
-
-  // ---- 开放世界探索（阶段一）----
-  // 性能降级联动视距（Phase 5 接入 viewDistanceScale）：档位越低
-  // 视距越短，流式半径越小，减少激活分块与刷怪压力。
-  worldGrid.setStreamingRadius(
-      streamingRadiusForPerf(qualityPreset, performanceGuard));
-  streamScheduler.setKeepRadius(worldGrid.config().streamingRadius + 1);
-  // 分块流式：按玩家位置维护激活分块集合，累计加载次数供验收。
-  if (worldGrid.updateStreaming({surface.player.x, surface.player.y})) {
-    chunkLoadCount += static_cast<int32_t>(worldGrid.pendingLoads().size());
-    // 转发流式调度器：驱动分块地形内容加载/卸载（滞后带由调度器评估）。
-    streamScheduler.requestLoads(
-        worldGrid.pendingLoads(),
-        worldGrid.chunkIndexAt({surface.player.x, surface.player.y}),
-        performanceGuard.lodLevel());
-    streamScheduler.requestUnloads(worldGrid.pendingUnloads());
-  }
+  playerWorldPosition = NormalizeWorldPosition(
+      playerWorldPosition.chunk, surface.player.x, surface.player.y);
+  surface.player.x = playerWorldPosition.local.x;
+  surface.player.y = playerWorldPosition.local.y;
+  const float cameraYaw = camera.yaw();
+  syncInfiniteWorld({std::sin(cameraYaw), std::cos(cameraYaw)},
+                    {surface.player.x - playerPosBeforeController.x,
+                     surface.player.y - playerPosBeforeController.y});
   // 垂直运动：跳跃/滑翔/攀爬/游泳与探索体力。
   {
     MotionInput motionInput;
     motionInput.jumpPressed = jumpQueued;
     motionInput.glideHeld = glideHeld;
     motionInput.moving = surface.player.moving;
-    // 地形攀爬：被可攀爬地形墙阻挡且仍在朝墙推进时进入真攀爬
-    //（按攀爬速度限速上升、播放攀爬动画）；爬到墙顶后阻挡自动
-    // 解除（高度已可跨越），行走接管站上墙顶。
-    motionInput.terrainClimbing =
-        terrainWall.blocked && terrainWall.climbable &&
-        surface.player.moving &&
-        (motionState.state == MotionState::Grounded ||
-         motionState.state == MotionState::Climbing) &&
-        motionState.stamina > 0.0f;
-    // 墙面攀爬：贴墙朝墙推进且尚未登顶时，与地形陡坡同等进入攀爬，
-    // 消耗体力并按固定速度上升；登顶后由地面覆盖接管站上墙头。
-    motionInput.wallClimbing =
-        wallContact.touching && surface.player.moving &&
-        (motionState.state == MotionState::Grounded ||
-         motionState.state == MotionState::Climbing) &&
-        motionState.height < wallContact.highestTop - 0.002f &&
-        motionState.stamina > 0.0f;
-    // 合成支撑高度：已翻上建筑盒顶时，地面取盒顶而非地形采样，
-    // 保证墙头站立/落地贴合；贴墙站立时不会误判（standingTopAt
-    // 仅在盒顶不高于当前高度时计入）。
-    const float terrainGround =
-        terrain.heightAt(surface.player.x, surface.player.y);
-    const float standingTop = buildingCollision.standingTopAt(
-        surface.player.x, surface.player.y, playerCollisionRadius * 0.5f,
-        motionState.height, 0.006f);
-    MotionGroundOverride groundOverride;
-    if (std::isfinite(standingTop) && standingTop > terrainGround) {
-      groundOverride.active = true;
-      groundOverride.groundHeight = standingTop;
-    }
+    motionInput.terrainClimbing = false;
+    motionInput.wallClimbing = false;
+    const double worldX = static_cast<double>(playerWorldPosition.chunk.x) +
+                          playerWorldPosition.local.x;
+    const double worldY = static_cast<double>(playerWorldPosition.chunk.y) +
+                          playerWorldPosition.local.y;
     motionState = explorationMotion.update(
-        motionState, motionInput, terrain, surface.player.x,
-        surface.player.y, dtSeconds,
-        groundOverride.active ? &groundOverride : nullptr);
+        motionState, motionInput, terrain, worldX, worldY, dtSeconds);
     const auto recordTraversal = [&](TraversalAbility ability) {
       if (explorationContent.traversalUsed(ability)) return;
       explorationContent.recordTraversal(ability);
@@ -2280,6 +2317,17 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     teleportFlashMs = std::max<Tick>(teleportFlashMs, 300);
     audioBridge.playUiSound(SoundEffect::AuraApplied);
   }
+  if (explorationTarget.kind == ExplorationTargetKind::RegionTrigger &&
+      explorationContent.enterRegion(
+          explorationTarget.id,
+          {surface.player.x, surface.player.y})) {
+    quests.notifyPointReached(explorationTarget.id);
+    publishExplorationFeedback(ExplorationFeedbackType::PoiDiscovered,
+                               explorationTarget.id,
+                               explorationTarget.label,
+                               "已进入自然区域", 1200);
+    audioBridge.playUiSound(SoundEffect::AuraApplied);
+  }
   if (interactQueued) {
     interactQueued = false;
     if (dialogSession.active()) {
@@ -2298,10 +2346,19 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
             currentAnchorInteraction.anchorId,
             {surface.player.x, surface.player.y});
         if (result.success) {
-          surface.player.x = result.position.x;
-          surface.player.y = result.position.y;
+          playerWorldPosition = NormalizeWorldPosition(
+              {0, 0}, result.position.x, result.position.y);
+          surface.player.x = playerWorldPosition.local.x;
+          surface.player.y = playerWorldPosition.local.y;
           motionState = explorationMotion.reset(
               terrain.heightAt(surface.player.x, surface.player.y));
+          syncInfiniteWorld({0.0f, 1.0f}, {});
+          const std::vector<ChunkCoord> safeRing =
+              streamScheduler.loadSafeRingSync(
+                  playerWorldPosition.chunk,
+                  std::clamp(qualityPreset, 0, 2));
+          teleportSafeRingPending = {safeRing.begin(), safeRing.end()};
+          streamScheduler.beginBurst(10, 9);
           teleportFlashMs = 1200;
           audioBridge.playUiSound(SoundEffect::Resonance);
         } else if (result.anchorId >= 0) {
@@ -2312,27 +2369,15 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
           teleportFlashMs = 600;
           audioBridge.playUiSound(SoundEffect::AuraApplied);
         }
-      } else if (explorationTarget.kind == ExplorationTargetKind::Puzzle) {
-        if (explorationContent.activatePuzzle(explorationTarget.id,
-                                              motionState.state)) {
+      } else if (explorationTarget.kind ==
+                 ExplorationTargetKind::NaturalNode) {
+        if (explorationContent.activateNaturalNode(explorationTarget.id,
+                                                   motionState.state)) {
           quests.notifyPuzzleActivated(explorationTarget.id);
           publishExplorationFeedback(ExplorationFeedbackType::PuzzleActivated,
                                      explorationTarget.id,
                                      explorationTarget.label, "机关已激活",
                                      1200);
-          const PuzzleNode* puzzle =
-              explorationContent.puzzleById(explorationTarget.id);
-          const TraversalGate* openedGate =
-              puzzle != nullptr
-                  ? explorationContent.gateById(puzzle->opensGateId)
-                  : nullptr;
-          if (openedGate != nullptr &&
-              explorationContent.isGateOpen(openedGate->id)) {
-            publishExplorationFeedback(ExplorationFeedbackType::GateOpened,
-                                       openedGate->id, openedGate->label,
-                                       "路径已开启", 1400);
-          }
-          refreshExplorationGateCollision();
           teleportFlashMs = 700;
           audioBridge.playUiSound(SoundEffect::Resonance);
         }
@@ -2739,19 +2784,19 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   intent.actions.clear();
   const Tick combatTime = AdvanceCombatTime(combatTimeMs_.load(), dtMs);
   combatTimeMs_.store(combatTime);
-  // 敌人碰撞：遭遇敌人与野外敌人共用同一建筑碰撞集。
-  const auto enemyPositionResolver = [this](Vec2& position, float radius) {
-    const float ground = terrain.heightAt(position.x, position.y);
-    buildingCollision.resolve(position.x, position.y, radius, ground);
-    explorationGateCollision.resolve(position.x, position.y, radius, ground);
-  };
   // 野外刷怪（Phase 3.2/3.3）：worldGrid 流式之后推进；生成/回收/重生/
   // 巡逻/LOD 在此结算，敌方命中转发 combat 外部通道。
   // 性能档位转发（Phase 5）：降级时活跃上限 8→6→4、感知半径收缩。
   wildSpawn.setPerformanceLevel(performanceGuard.lodLevel());
-  wildSpawn.update({combatTime, dtMs, {surface.player.x, surface.player.y},
-                    combat.snapshot().playerHp > 0,
-                    &worldGrid.activeChunks(), enemyPositionResolver});
+  WildSpawnFrameInput wildInput;
+  wildInput.tick = combatTime;
+  wildInput.dtMs = dtMs;
+  wildInput.playerPosition = {surface.player.x, surface.player.y};
+  wildInput.playerAlive = combat.snapshot().playerHp > 0;
+  wildInput.playerChunk = playerWorldPosition.chunk;
+  wildInput.activeChunks = &worldGrid.activeChunks();
+  wildInput.proceduralChunks = &proceduralChunks;
+  wildSpawn.update(wildInput);
   wildEnemyCount = wildSpawn.activeCount();
   // 仅遭遇运行时转发：避免队列在非战斗态滞留。
   if (encounter.snapshot().state == EncounterState::Running) {
@@ -2766,8 +2811,7 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   encounter.update({combatTime, dtMs,
                     {surface.player.x, surface.player.y},
                     surface.player.moving,
-                    currentTarget ? static_cast<EntityId>(currentTarget->id) : 0,
-                    enemyPositionResolver});
+                    currentTarget ? static_cast<EntityId>(currentTarget->id) : 0});
   const EncounterSnapshot& encounterState = encounter.snapshot();
   DemoSignals demoSignals;
   demoSignals.introComplete = combatTime >= 1000;

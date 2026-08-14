@@ -4,6 +4,8 @@
 #include <chrono>
 #include <cmath>
 #include <atomic>
+#include <cstdio>
+#include <string>
 #include <thread>
 #include <type_traits>
 #include <vector>
@@ -19,6 +21,158 @@ void isolateWildSpawns(Loop& loop) { loop.wildSpawn.resetZones({}); }
 int main() {
   static_assert(std::is_same_v<decltype(&Loop::tickOnce), void (Loop::*)(int64_t)>);
   static_assert(std::is_same_v<decltype(&Loop::updateFixed), void (Loop::*)(Tick, int64_t)>);
+
+  // 生产变更破坏点：Loop 若仍把 Surface::player 当世界真值，跨块后局部
+  // 坐标会逃出 [0,1)，快照也无法发布完整 ChunkCoord 与缓存/待生成统计。
+  Loop infiniteWorldLoop;
+  isolateWildSpawns(infiniteWorldLoop);
+  infiniteWorldLoop.surface.ready = true;
+  infiniteWorldLoop.streamScheduler.setSyncMode(true);
+  const float originHeightBeforeTravel =
+      infiniteWorldLoop.terrain.heightAt({0, 0}, 0.25f, 0.5f);
+  for (int quality = 0; quality < 3; ++quality) {
+    infiniteWorldLoop.qualityPreset = quality;
+    for (int64_t chunkX = 0; chunkX <= 50; ++chunkX) {
+      infiniteWorldLoop.playerWorldPosition =
+          NormalizeWorldPosition({chunkX, 0}, 0.25, 0.5);
+      infiniteWorldLoop.streamScheduler.beginBurst(1, 1024);
+      infiniteWorldLoop.updateFixed(
+          static_cast<Tick>(quality * 1000 + chunkX + 1), 16);
+      infiniteWorldLoop.tickOnce(0);
+      const GameSnapshot streamed = infiniteWorldLoop.snapshot();
+      assert(streamed.playerChunkX == chunkX);
+      assert(streamed.playerChunkY == 0);
+      assert(streamed.playerLocalX >= 0.0 && streamed.playerLocalX < 1.0);
+      assert(streamed.playerLocalY >= 0.0 && streamed.playerLocalY < 1.0);
+      const int radius = WorldGrid::ActiveRadiusForQuality(quality);
+      assert(streamed.activeChunkCount == (radius * 2 + 1) * (radius * 2 + 1));
+      const int cacheRadius = radius + 2;
+      assert(streamed.cachedChunkCount <=
+             (cacheRadius * 2 + 1) * (cacheRadius * 2 + 1));
+      assert(streamed.streamingPendingCount >= 0);
+    }
+  }
+  infiniteWorldLoop.playerWorldPosition =
+      NormalizeWorldPosition({0, 0}, 0.25, 0.5);
+  infiniteWorldLoop.streamScheduler.beginBurst(1, 1024);
+  infiniteWorldLoop.updateFixed(4000, 16);
+  infiniteWorldLoop.tickOnce(0);
+  assert(infiniteWorldLoop.snapshot().playerChunkX == 0);
+  assert(infiniteWorldLoop.snapshot().playerLocalX == 0.25);
+  assert(infiniteWorldLoop.terrain.heightAt({0, 0}, 0.25f, 0.5f) ==
+         originHeightBeforeTravel);
+
+  // V10 必须由 Loop 接线保存/恢复世界种子与规范化后的 WorldPosition，
+  // 不能只让 Save 单元测试覆盖序列化器而遗漏真实调用链。
+  Loop saveLoop;
+  isolateWildSpawns(saveLoop);
+  saveLoop.worldSeed = 0x123456789abcdef0ULL;
+  saveLoop.playerWorldPosition =
+      NormalizeWorldPosition({-37, 22}, 1.75, -0.25);
+  const WorldPosition expectedRestoredPosition = saveLoop.playerWorldPosition;
+  const std::string savePath =
+      "/tmp/my_world_task8_loop_v10_" +
+      std::to_string(reinterpret_cast<std::uintptr_t>(&saveLoop)) + ".save";
+  std::remove(savePath.c_str());
+  assert(saveLoop.saveProgress(savePath));
+  Loop restoredLoop;
+  isolateWildSpawns(restoredLoop);
+  assert(restoredLoop.loadProgress(savePath));
+  assert(restoredLoop.worldSeed == saveLoop.worldSeed);
+  assert(restoredLoop.playerWorldPosition.chunk ==
+         expectedRestoredPosition.chunk);
+  assert(restoredLoop.playerWorldPosition.local.x ==
+         expectedRestoredPosition.local.x);
+  assert(restoredLoop.playerWorldPosition.local.y ==
+         expectedRestoredPosition.local.y);
+  std::remove(savePath.c_str());
+
+  // 活动 procedural chunk 的植被必须投影到玩家局部坐标；缓存块卸载后
+  // Surface 不得继续持有旧块实例。
+  Loop foliageRuntimeLoop;
+  isolateWildSpawns(foliageRuntimeLoop);
+  foliageRuntimeLoop.streamScheduler.setSyncMode(true);
+  foliageRuntimeLoop.qualityPreset = 2;
+  foliageRuntimeLoop.playerWorldPosition =
+      NormalizeWorldPosition({2, 0}, 0.5, 0.5);
+  foliageRuntimeLoop.streamScheduler.beginBurst(1, 1024);
+  foliageRuntimeLoop.updateFixed(1, 16);
+  std::size_t expectedActiveFoliage = 0;
+  for (const auto& entry : foliageRuntimeLoop.proceduralChunks) {
+    if (entry.second.active) {
+      expectedActiveFoliage += entry.second.content.foliage.size();
+    }
+  }
+  assert(expectedActiveFoliage > 0);
+  assert(foliageRuntimeLoop.surface.foliageInstances.size() ==
+         expectedActiveFoliage);
+  std::size_t expectedActiveCollectibles = 0;
+  for (const auto& entry : foliageRuntimeLoop.proceduralChunks) {
+    if (entry.second.active) {
+      expectedActiveCollectibles += entry.second.content.collectibles.size();
+    }
+  }
+  assert(expectedActiveCollectibles > 0);
+  assert(foliageRuntimeLoop.proceduralCollectibleCount() ==
+         expectedActiveCollectibles);
+
+  // 传送遮罩必须覆盖完整 3x3 安全圈；九块全部 Active 后才复位相机并
+  // 恢复画面，不能只等待中心块。
+  Loop teleportRingLoop;
+  isolateWildSpawns(teleportRingLoop);
+  teleportRingLoop.streamScheduler.setSyncMode(true);
+  teleportRingLoop.camera.update({0.5f, 0.5f}, {1.0f, 0.0f}, 0.2f);
+  assert(std::abs(teleportRingLoop.camera.yaw()) > 0.01f);
+  assert(teleportRingLoop.teleportToAnchor(1));
+  assert(teleportRingLoop.teleportSafeRingPending.size() == 9);
+  teleportRingLoop.streamScheduler.beginBurst(1, 1);
+  teleportRingLoop.updateFixed(1, 16);
+  assert(!teleportRingLoop.teleportSafeRingPending.empty());
+  assert(teleportRingLoop.teleportFlashMs > 0);
+  teleportRingLoop.streamScheduler.beginBurst(1, 9);
+  teleportRingLoop.updateFixed(2, 16);
+  assert(teleportRingLoop.teleportSafeRingPending.empty());
+  for (int64_t dy = -1; dy <= 1; ++dy) {
+    for (int64_t dx = -1; dx <= 1; ++dx) {
+      assert(teleportRingLoop.streamScheduler.isActive(
+          {teleportRingLoop.playerWorldPosition.chunk.x + dx,
+           teleportRingLoop.playerWorldPosition.chunk.y + dy}));
+    }
+  }
+  assert(teleportRingLoop.teleportFlashMs == 0);
+  assert(teleportRingLoop.camera.yaw() ==
+         teleportRingLoop.camera.config().defaultYaw);
+
+  // 分块真正回收前必须同步解除锁定、血条滞后与渲染血条关联，不能等到
+  // 下一次 WildSpawnSystem 更新后再清理悬空 EntityId。
+  Loop recycleAssociationLoop;
+  recycleAssociationLoop.streamScheduler.setSyncMode(true);
+  recycleAssociationLoop.qualityPreset = 2;
+  recycleAssociationLoop.playerWorldPosition =
+      NormalizeWorldPosition({3, 0}, 0.5, 0.5);
+  recycleAssociationLoop.streamScheduler.beginBurst(1, 1024);
+  recycleAssociationLoop.updateFixed(1, 16);
+  assert(!recycleAssociationLoop.wildSpawn.snapshot().empty());
+  const EntityId recycledEnemyId =
+      recycleAssociationLoop.wildSpawn.snapshot().front().id;
+  recycleAssociationLoop.currentTarget =
+      TargetSelection{static_cast<int32_t>(recycledEnemyId), 0.1f, 0.0f,
+                      {1.0f, 0.0f}};
+  recycleAssociationLoop.surface.targetMarker3d.active = true;
+  recycleAssociationLoop.surface.targetMarker3d.targetId = recycledEnemyId;
+  recycleAssociationLoop.enemyHpTrails[recycledEnemyId] = {};
+  recycleAssociationLoop.prevAuraMasks[recycledEnemyId] = 1;
+  recycleAssociationLoop.surface.enemyHpBars3d.push_back({});
+  recycleAssociationLoop.playerWorldPosition =
+      NormalizeWorldPosition({50, 0}, 0.5, 0.5);
+  recycleAssociationLoop.streamScheduler.beginBurst(1, 1024);
+  recycleAssociationLoop.syncInfiniteWorld({0.0f, 1.0f}, {});
+  assert(!recycleAssociationLoop.currentTarget.has_value());
+  assert(!recycleAssociationLoop.surface.targetMarker3d.active);
+  assert(recycleAssociationLoop.surface.targetMarker3d.targetId == 0u);
+  assert(recycleAssociationLoop.enemyHpTrails.count(recycledEnemyId) == 0);
+  assert(recycleAssociationLoop.prevAuraMasks.count(recycledEnemyId) == 0);
+  assert(recycleAssociationLoop.surface.enemyHpBars3d.empty());
 
   // 动画比例必须跟随控制器平滑后的真实速度，而不是瞬时摇杆幅度。
   Loop locomotionLoop;
@@ -277,9 +431,14 @@ int main() {
   assert(targetingLoop.surface.props.size() == 1);
   // 训练假人不是敌人原型，焦点框隐藏（archetype = -1）。
   assert(targeted.targetArchetype == -1);
-  // 出生点 (0.5, 0.12) 到训练假人 (0.5, 0.8) 的距离；建筑碰撞会把
-  // 贴墙的出生点向外推出 0.002，实际距离为 0.678。
-  assert(std::abs(targeted.targetDist - 0.678f) < 0.001f);
+  // 出生点 (0.5, 0.12) 到训练假人 (0.5, 0.8) 的距离；
+  // 人工结构不再推出玩家，保持几何直线距离 0.68。
+  assert(std::abs(targeted.targetDist - 0.68f) < 0.001f);
+  assert(targetingLoop.playerWorldPosition.chunk == (ChunkCoord{0, 0}));
+  assert(std::abs(targetingLoop.playerWorldPosition.local.x - 0.5f) <
+         0.0001f);
+  assert(std::abs(targetingLoop.playerWorldPosition.local.y - 0.12f) <
+         0.0001f);
 
   targetingLoop.resetInput();
   targetingLoop.tickOnce(0);

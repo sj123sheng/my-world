@@ -2,9 +2,13 @@
 // 覆盖：archetype 映射 6 原型、分块进出生成/回收序列确定性、
 // 重生计时、注册/活跃配额钳制（24/8）、仇恨组联动、距离 LOD 降频。
 #include "gameplay/ai/wild_spawn_system.h"
+#include "gameplay/world/procedural_chunk_content.h"
+#include "engine/world/terrain_heightfield.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdio>
+#include <map>
 #include <vector>
 
 namespace {
@@ -43,13 +47,19 @@ WorldLayout::WorldSpawnZoneDef makeZone(const char* zoneId,
 }
 
 WildSpawnFrameInput makeInput(Tick tick, Vec2 player,
-                              const std::vector<int32_t>* chunks = nullptr) {
+                              const std::vector<ChunkCoord>* chunks = nullptr,
+                              std::map<ChunkCoord, ProceduralChunkRuntime>*
+                                  procedural = nullptr) {
   WildSpawnFrameInput input;
   input.tick = tick;
   input.dtMs = kStepMs;
   input.playerPosition = player;
   input.playerAlive = true;
+  if (chunks != nullptr && chunks->size() == 1) {
+    input.playerChunk = chunks->front();
+  }
   input.activeChunks = chunks;
+  input.proceduralChunks = procedural;
   return input;
 }
 
@@ -84,14 +94,14 @@ void testChunkLifecycleDeterminism() {
   std::vector<WorldLayout::WorldSpawnZoneDef> zones{
       makeZone("north", WorldLayout::SpawnArchetype::RiftClaw, 2, 0.05f,
                0.05f, "north", 8000)};
-  const std::vector<int32_t> inChunk{0};
-  const std::vector<int32_t> outChunk{1};
+  const std::vector<ChunkCoord> inChunk{{0, 0}};
+  const std::vector<ChunkCoord> outChunk{{1, 0}};
 
   // 两个系统跑完全相同的输入序列，逐步断言快照一致（确定性）。
   WildSpawnSystem a(zones);
   WildSpawnSystem b(zones);
   Tick tick = 0;
-  const auto stepBoth = [&](const std::vector<int32_t>* chunks) {
+  const auto stepBoth = [&](const std::vector<ChunkCoord>* chunks) {
     tick += kStepMs;
     a.update(makeInput(tick, kFarPlayer, chunks));
     b.update(makeInput(tick, kFarPlayer, chunks));
@@ -321,19 +331,16 @@ void testPatrolAndCandidates() {
   const std::vector<TargetCandidate> candidates = wild.candidates();
   assert(candidates.size() == 1);
   assert(candidates.front().id == static_cast<int32_t>(WildSpawnSystem::kIdBase));
-  // 默认构造：消费 WorldLayout::kSpawnZones（7 区），全激活下注册 ≤ 24。
+  // 默认构造不再消费手工刷怪区；外围敌人只由程序分块注入。
   WildSpawnSystem worldDefault;
   worldDefault.update(makeInput(kStepMs, kFarPlayer));
-  assert(worldDefault.registeredCount() > 0);
-  assert(worldDefault.registeredCount() <= WildSpawnSystem::kMaxRegistered);
+  assert(worldDefault.registeredCount() == 0);
   std::printf("testPatrolAndCandidates ok\n");
 }
 
 void testGeneratedLayoutKeepsSpawnPlateauSafe() {
-  std::vector<WorldLayout::WorldSpawnZoneDef> zones(
-      WorldLayout::kSpawnZones.begin(), WorldLayout::kSpawnZones.end());
-  WildSpawnSystem wild(zones);
-  const std::vector<int32_t> spawnChunk{4};
+  WildSpawnSystem wild;
+  const std::vector<ChunkCoord> spawnChunk{{0, 0}};
   const Vec2 player{0.50f, 0.12f};
   wild.update(makeInput(kStepMs, player, &spawnChunk));
 
@@ -342,6 +349,63 @@ void testGeneratedLayoutKeepsSpawnPlateauSafe() {
   }
   assert(wild.snapshot().empty());
   std::printf("testGeneratedLayoutKeepsSpawnPlateauSafe ok\n");
+}
+
+void testProceduralChunkLifecycleAndStableReload() {
+  TerrainHeightfield terrain;
+  const ChunkCoord coord{7, -3};
+  ProceduralChunkRuntime runtime;
+  runtime.content = GenerateProceduralChunk(1234567, coord, terrain);
+  runtime.active = true;
+  assert(!runtime.content.enemies.empty());
+  std::map<ChunkCoord, ProceduralChunkRuntime> cached;
+  cached.emplace(coord, runtime);
+  const std::vector<ChunkCoord> active{coord};
+  WildSpawnSystem wild(std::vector<WorldLayout::WorldSpawnZoneDef>{});
+
+  Tick tick = kStepMs;
+  wild.update(makeInput(tick, {0.5f, 0.5f}, &active, &cached));
+  assert(wild.snapshot().size() == runtime.content.enemies.size());
+  const uint64_t killedStableId = wild.snapshot().front().stableId;
+  const Vec2 killedPosition = wild.snapshot().front().position;
+  CombatTargetBinding binding =
+      wild.combatBinding(wild.snapshot().front().id, {0.5f, 0.5f});
+  assert(binding.target != nullptr);
+  binding.target->applyHpDamage(fp(10000), tick);
+  tick += kStepMs;
+  wild.update(makeInput(tick, {0.5f, 0.5f}, &active, &cached));
+  assert(cached.at(coord).defeatedEnemyIds.count(killedStableId) == 1);
+
+  cached.at(coord).active = false;
+  tick += kStepMs;
+  wild.update(makeInput(tick, {0.5f, 0.5f}, &active, &cached));
+  assert(wild.snapshot().empty());
+  cached.at(coord).active = true;
+  tick += kStepMs;
+  wild.update(makeInput(tick, {0.5f, 0.5f}, &active, &cached));
+  assert(std::none_of(wild.snapshot().begin(), wild.snapshot().end(),
+                      [killedStableId](const WildEnemySnapshot& enemy) {
+                        return enemy.stableId == killedStableId;
+                      }));
+  assert(wild.proceduralStateChunkCount() <= cached.size());
+
+  cached.clear();
+  tick += kStepMs;
+  wild.update(makeInput(tick, {0.5f, 0.5f}, &active, &cached));
+  assert(wild.snapshot().empty());
+  ProceduralChunkRuntime reloaded;
+  reloaded.content = GenerateProceduralChunk(1234567, coord, terrain);
+  reloaded.active = true;
+  cached.emplace(coord, std::move(reloaded));
+  tick += kStepMs;
+  wild.update(makeInput(tick, {0.5f, 0.5f}, &active, &cached));
+  const auto restored = std::find_if(
+      wild.snapshot().begin(), wild.snapshot().end(),
+      [killedStableId](const WildEnemySnapshot& enemy) {
+        return enemy.stableId == killedStableId;
+      });
+  assert(restored != wild.snapshot().end());
+  assert(restored->position == killedPosition);
 }
 
 }  // namespace
@@ -355,6 +419,7 @@ int main() {
   testDistanceLod();
   testPatrolAndCandidates();
   testGeneratedLayoutKeepsSpawnPlateauSafe();
+  testProceduralChunkLifecycleAndStableReload();
   std::printf("test_wild_spawn_system all passed\n");
   return 0;
 }

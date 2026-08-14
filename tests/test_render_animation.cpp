@@ -168,19 +168,6 @@ void testSurfaceStoresLateModelAssetsForContextBoundInitialization() {
   assert(surface.bossModelAsset.dirty);
 }
 
-void testSurfaceKeepsEnvironmentBytesUntilContextBoundInitialization() {
-  Surface surface;
-  surface.setEnvironmentAsset(EnvironmentBatchKind::OuterRing, {1, 2, 3});
-  assert(surface.environmentAssets[0].dirty);
-  assert(surface.environmentAssets[0].bytes.size() == 3);
-}
-
-void testEnvironmentFailureKeepsFallbackEnabled() {
-  Surface surface;
-  surface.environmentStatuses[0] = EnvironmentBatchStatus::Failed;
-  assert(surface.shouldDrawEnvironmentFallback());
-}
-
 void testSurfaceKeepsEnemyAnimationStateByStableEntityId() {
   Surface surface;
   surface.enemyAnimationStates.emplace(2001, SkinnedAnimationState{});
@@ -668,8 +655,6 @@ int main() {
   testAnimationLogOnlyReportsIntentOrResolvedClipChanges();
   testUnavailableRuntimeModelStaysOnFallbackPath();
   testSurfaceStoresLateModelAssetsForContextBoundInitialization();
-  testSurfaceKeepsEnvironmentBytesUntilContextBoundInitialization();
-  testEnvironmentFailureKeepsFallbackEnabled();
   testSurfaceKeepsEnemyAnimationStateByStableEntityId();
   testPendingAssetIsConsumedExactlyOnceAfterLateDirtySignal();
   testPendingAssetReplacementAndClearRemainConsumable();

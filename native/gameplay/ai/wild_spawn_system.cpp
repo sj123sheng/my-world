@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <limits>
+#include <string_view>
 
 namespace {
 
@@ -63,6 +65,12 @@ uint64_t nextStableSequence(uint64_t& next) {
   return value;
 }
 
+EntityId projectedEntityId(uint64_t stableId) {
+  const uint32_t folded = static_cast<uint32_t>(stableId) ^
+                          static_cast<uint32_t>(stableId >> 32U);
+  return 0x40000000U | (folded & 0x3fffffffU);
+}
+
 // 与 EncounterController 同构的移动积分：速度钳制 + 区域投影。
 Vec2 advancePosition(Vec2 position, Vec2 movement, int64_t dtMs,
                      const CombatRegion& region, float speedPerMs) {
@@ -92,7 +100,7 @@ bool hitLess(const HitRequest& left, const HitRequest& right) {
 }  // namespace
 
 struct WildSpawnSystem::Slot {
-  Slot(EntityId id, EnemyArchetype archetype, Vec2 position,
+  Slot(EntityId id, uint64_t stableId, EnemyArchetype archetype, Vec2 position,
        const CombatRegionConfig& region, std::size_t zoneCapacity)
       : target(targetConfig(archetype)),
         agent(std::make_unique<EnemyAgent>(
@@ -104,11 +112,14 @@ struct WildSpawnSystem::Slot {
     enemy.position = position;
     enemy.spawnPosition = position;
     enemy.safeReturnPosition = position;
+    this->stableId = stableId;
+    patrolCenter = region.center;
     maxHp = target.hp();
     lastObservedHp = maxHp;
   }
 
   Enemy enemy;
+  uint64_t stableId = 0;
   FixedPoint maxHp = 0;
   TrainingTarget target;
   std::unique_ptr<EnemyAgent> agent;
@@ -126,12 +137,18 @@ struct WildSpawnSystem::Slot {
   Tick deathTick = 0;
   int32_t zoneIndex = 0;
   int32_t slotIndex = 0;
+  bool procedural = false;
+  ChunkCoord chunk{};
+  Vec2 patrolCenter{};
+  std::vector<Vec2> patrolPoints;
+  uint64_t aggroGroup = 0;
+  Tick respawnMs = 0;
 };
 
 struct WildSpawnSystem::Zone {
   WorldLayout::WorldSpawnZoneDef def;
   int32_t index = 0;
-  int32_t chunkId = 0;
+  ChunkCoord chunk{};
   bool active = false;
   // zone 内非零巡逻/出生点数量（生成数据用 0 填充未用槽位）。
   int32_t positionCount = 0;
@@ -143,15 +160,8 @@ EnemyArchetype WildSpawnSystem::fromSpawnArchetype(
   return static_cast<EnemyArchetype>(archetype);
 }
 
-int32_t WildSpawnSystem::chunkIdOf(Vec2 position) {
-  // 与 WorldGrid::chunkIndexAt 同公式（id = y * countX + x）。
-  const int32_t cx = std::clamp(
-      static_cast<int32_t>(position.x * WorldLayout::kGridCountX), 0,
-      WorldLayout::kGridCountX - 1);
-  const int32_t cy = std::clamp(
-      static_cast<int32_t>(position.y * WorldLayout::kGridCountY), 0,
-      WorldLayout::kGridCountY - 1);
-  return cy * WorldLayout::kGridCountX + cx;
+ChunkCoord WildSpawnSystem::chunkCoordOf(Vec2 position) {
+  return NormalizeWorldPosition({0, 0}, position.x, position.y).chunk;
 }
 
 CombatConfig WildSpawnSystem::targetConfig(EnemyArchetype archetype) {
@@ -197,8 +207,7 @@ EnemyAiConfig WildSpawnSystem::aiConfig(EnemyArchetype archetype,
 }
 
 WildSpawnSystem::WildSpawnSystem()
-    : WildSpawnSystem(std::vector<WorldLayout::WorldSpawnZoneDef>(
-          WorldLayout::kSpawnZones.begin(), WorldLayout::kSpawnZones.end())) {}
+    : WildSpawnSystem(std::vector<WorldLayout::WorldSpawnZoneDef>{}) {}
 
 WildSpawnSystem::~WildSpawnSystem() = default;
 
@@ -214,8 +223,8 @@ void WildSpawnSystem::buildZones(
     Zone zone;
     zone.def = zones[i];
     zone.index = static_cast<int32_t>(i);
-    zone.chunkId =
-        chunkIdOf({zones[i].patrolCenterX, zones[i].patrolCenterY});
+    zone.chunk =
+        chunkCoordOf({zones[i].patrolCenterX, zones[i].patrolCenterY});
     for (int32_t p = 0; p < WorldLayout::kMaxSpawnPositions; ++p) {
       if (zones[i].positionX[p] != 0.0f || zones[i].positionY[p] != 0.0f) {
         zone.positionCount += 1;
@@ -234,6 +243,8 @@ void WildSpawnSystem::resetZones(
   playerHits_.clear();
   lastTick_ = 0;
   nextSequence_ = 1;
+  proceduralStateChunks_.clear();
+  hasLastPlayerChunk_ = false;
   zones_.clear();
   buildZones(zones);
 }
@@ -244,6 +255,23 @@ void WildSpawnSystem::update(const WildSpawnFrameInput& input) {
   const Tick tick = std::max(lastTick_, input.tick);
   const int64_t dtMs = std::max<int64_t>(0, input.dtMs);
   lastTick_ = tick;
+
+  if (hasLastPlayerChunk_ && input.playerChunk != lastPlayerChunk_) {
+    const Vec2 rebase{
+        static_cast<float>(lastPlayerChunk_.x - input.playerChunk.x),
+        static_cast<float>(lastPlayerChunk_.y - input.playerChunk.y)};
+    for (const std::unique_ptr<Slot>& uptr : slots_) {
+      Slot& slot = *uptr;
+      if (!slot.procedural) continue;
+      slot.enemy.position = slot.enemy.position + rebase;
+      slot.enemy.spawnPosition = slot.enemy.spawnPosition + rebase;
+      slot.enemy.safeReturnPosition = slot.enemy.safeReturnPosition + rebase;
+      slot.patrolCenter = slot.patrolCenter + rebase;
+      for (Vec2& point : slot.patrolPoints) point = point + rebase;
+    }
+  }
+  lastPlayerChunk_ = input.playerChunk;
+  hasLastPlayerChunk_ = true;
 
   // 1) 同步上一步战斗结算：hp 差分检测受击/死亡（确定性，无事件依赖）。
   //    受击即仇恨并联动同组；死亡进入重生计时。
@@ -257,6 +285,12 @@ void WildSpawnSystem::update(const WildSpawnFrameInput& input) {
       slot.attacking = false;
       slot.moving = false;
       slot.lastObservedHp = 0;
+      if (slot.procedural && input.proceduralChunks != nullptr) {
+        const auto runtime = input.proceduralChunks->find(slot.chunk);
+        if (runtime != input.proceduralChunks->end()) {
+          runtime->second.defeatedEnemyIds.insert(slot.stableId);
+        }
+      }
       deaths_.push_back({slot.enemy.id, slot.enemy.archetype, tick});
       continue;
     }
@@ -274,15 +308,15 @@ void WildSpawnSystem::update(const WildSpawnFrameInput& input) {
 
   // 2) 分块生命周期：激活集进出 → 生成/回收。
   syncZones(input);
+  syncProceduralChunks(input);
 
   // 3) 重生：分块仍激活时按 zone.respawnMs 计时。
   for (const std::unique_ptr<Slot>& uptr : slots_) {
     Slot& slot = *uptr;
     if (slot.deathTick == 0) continue;
-    const Zone& zone = zones_[slot.zoneIndex];
-    if (!zone.active) continue;
-    if (tick - slot.deathTick >= static_cast<Tick>(zone.def.respawnMs)) {
-      respawnSlot(slot, zone);
+    if (slot.procedural) continue;
+    if (tick - slot.deathTick >= slot.respawnMs) {
+      respawnSlot(slot);
     }
   }
 
@@ -294,9 +328,8 @@ void WildSpawnSystem::update(const WildSpawnFrameInput& input) {
   for (const std::unique_ptr<Slot>& uptr : slots_) {
     Slot& slot = *uptr;
     if (slot.deathTick > 0 || slot.frozen) continue;
-    const Zone& zone = zones_[slot.zoneIndex];
-    const CombatRegionConfig regionConfig{
-        {zone.def.patrolCenterX, zone.def.patrolCenterY}, kZoneRegionRadius};
+    const CombatRegionConfig regionConfig{slot.patrolCenter,
+                                          kZoneRegionRadius};
     const CombatRegion region(regionConfig);
     const Vec2 toPlayer = input.playerPosition - slot.enemy.position;
     const float playerDistance = toPlayer.length();
@@ -362,8 +395,7 @@ void WildSpawnSystem::update(const WildSpawnFrameInput& input) {
       for (const std::unique_ptr<Slot>& allyPtr : slots_) {
         const Slot& ally = *allyPtr;
         if (&ally == &slot || ally.deathTick > 0 || ally.frozen) continue;
-        const Zone& allyZone = zones_[ally.zoneIndex];
-        if (allyZone.def.aggroGroup != zone.def.aggroGroup) continue;
+        if (ally.aggroGroup != slot.aggroGroup) continue;
         world.allies.push_back(
             {ally.enemy.id, ally.enemy.archetype, ally.target.hp(),
              ally.enemy.shield, ally.enemy.position, ally.target.alive(),
@@ -411,10 +443,6 @@ void WildSpawnSystem::update(const WildSpawnFrameInput& input) {
     const Vec2 previous = slot.enemy.position;
     slot.enemy.position =
         advancePosition(previous, movement, dtMs, region, speedPerMs);
-    // 宿主层碰撞解算：与遭遇敌人共用同一建筑碰撞集。
-    if (input.positionResolver) {
-      input.positionResolver(slot.enemy.position, kEnemyCollisionRadius);
-    }
   }
 
   // 祭司/支援护盾效果：排序后叠加到目标敌人（与 encounter 同规则）。
@@ -440,6 +468,7 @@ void WildSpawnSystem::update(const WildSpawnFrameInput& input) {
     if (slot.frozen) continue;
     WildEnemySnapshot snap;
     snap.id = slot.enemy.id;
+    snap.stableId = slot.stableId;
     snap.archetype = static_cast<int32_t>(slot.enemy.archetype);
     snap.position = slot.enemy.position;
     snap.hp = slot.target.hp();
@@ -459,11 +488,83 @@ void WildSpawnSystem::syncZones(const WildSpawnFrameInput& input) {
     const bool shouldBeActive =
         input.activeChunks == nullptr ||
         std::binary_search(input.activeChunks->begin(),
-                           input.activeChunks->end(), zone.chunkId);
+                           input.activeChunks->end(), zone.chunk);
     if (shouldBeActive && !zone.active) {
       activateZone(zone);
     } else if (!shouldBeActive && zone.active) {
       deactivateZone(zone);
+    }
+  }
+}
+
+void WildSpawnSystem::syncProceduralChunks(
+    const WildSpawnFrameInput& input) {
+  proceduralStateChunks_.clear();
+  if (input.proceduralChunks == nullptr) {
+    slots_.erase(std::remove_if(slots_.begin(), slots_.end(),
+                                [](const std::unique_ptr<Slot>& slot) {
+                                  return slot->procedural;
+                                }),
+                 slots_.end());
+    return;
+  }
+  for (const auto& item : *input.proceduralChunks) {
+    proceduralStateChunks_.insert(item.first);
+  }
+  slots_.erase(
+      std::remove_if(
+          slots_.begin(), slots_.end(),
+          [&input](const std::unique_ptr<Slot>& slot) {
+            if (!slot->procedural) return false;
+            const auto runtime = input.proceduralChunks->find(slot->chunk);
+            return runtime == input.proceduralChunks->end() ||
+                   !runtime->second.active ||
+                   runtime->second.defeatedEnemyIds.count(slot->stableId) > 0;
+          }),
+      slots_.end());
+
+  const auto hasStableId = [this](uint64_t stableId) {
+    return std::any_of(slots_.begin(), slots_.end(),
+                       [stableId](const std::unique_ptr<Slot>& slot) {
+                         return slot->stableId == stableId;
+                       });
+  };
+  const auto idInUse = [this](EntityId id) {
+    return std::any_of(slots_.begin(), slots_.end(),
+                       [id](const std::unique_ptr<Slot>& slot) {
+                         return slot->enemy.id == id;
+                       });
+  };
+  for (auto& item : *input.proceduralChunks) {
+    const ChunkCoord coord = item.first;
+    ProceduralChunkRuntime& runtime = item.second;
+    if (!runtime.active) continue;
+    for (const ProceduralEnemySpawn& spawn : runtime.content.enemies) {
+      if (runtime.defeatedEnemyIds.count(spawn.stableId) > 0 ||
+          hasStableId(spawn.stableId) || registeredCount() >= kMaxRegistered) {
+        continue;
+      }
+      EntityId id = projectedEntityId(spawn.stableId);
+      while (idInUse(id)) {
+        id = id == std::numeric_limits<EntityId>::max() ? 0x40000000U
+                                                        : id + 1U;
+      }
+      const Vec2 position = RelativeWorldPosition(
+          {coord, spawn.position}, {input.playerChunk, {0.0f, 0.0f}});
+      const CombatRegionConfig region{position, kZoneRegionRadius};
+      auto slot = std::make_unique<Slot>(
+          id, spawn.stableId, spawn.archetype, position, region,
+          runtime.content.enemies.size());
+      slot->procedural = true;
+      slot->chunk = coord;
+      slot->patrolPoints.push_back(position);
+      slot->aggroGroup = StableChunkHash(spawn.stableId, coord, 0x51ULL);
+      const auto insertAt = std::upper_bound(
+          slots_.begin(), slots_.end(), id,
+          [](EntityId lhs, const std::unique_ptr<Slot>& rhs) {
+            return lhs < rhs->enemy.id;
+          });
+      slots_.insert(insertAt, std::move(slot));
     }
   }
 }
@@ -480,10 +581,21 @@ void WildSpawnSystem::activateZone(Zone& zone) {
     const int32_t posIndex = slotIndex % WorldLayout::kMaxSpawnPositions;
     const Vec2 position{zone.def.positionX[posIndex],
                         zone.def.positionY[posIndex]};
-    auto slot = std::make_unique<Slot>(id, archetype, position, region,
+    auto slot = std::make_unique<Slot>(id, id, archetype, position, region,
                                        static_cast<std::size_t>(count));
     slot->zoneIndex = zone.index;
     slot->slotIndex = slotIndex;
+    slot->chunk = zone.chunk;
+    slot->respawnMs = static_cast<Tick>(std::max(0, zone.def.respawnMs));
+    slot->aggroGroup = zone.def.aggroGroup.empty()
+                           ? std::hash<std::string_view>{}(std::string_view{})
+                           : std::hash<std::string_view>{}(zone.def.aggroGroup);
+    for (int32_t i = 0; i < WorldLayout::kMaxSpawnPositions; ++i) {
+      if (zone.def.positionX[i] != 0.0f || zone.def.positionY[i] != 0.0f) {
+        slot->patrolPoints.push_back(
+            {zone.def.positionX[i], zone.def.positionY[i]});
+      }
+    }
     // slots_ 维持 id 升序，保证遍历/结算顺序确定性。
     const auto insertAt = std::upper_bound(
         slots_.begin(), slots_.end(), id,
@@ -499,17 +611,21 @@ void WildSpawnSystem::deactivateZone(Zone& zone) {
   // 分块卸载即回收全部槽位（含死亡计时），重新激活时全新生成。
   slots_.erase(std::remove_if(slots_.begin(), slots_.end(),
                               [&zone](const std::unique_ptr<Slot>& slot) {
-                                return slot->zoneIndex == zone.index;
+                                return !slot->procedural &&
+                                       slot->zoneIndex == zone.index;
                               }),
                slots_.end());
 }
 
-void WildSpawnSystem::respawnSlot(Slot& slot, const Zone& zone) {
+void WildSpawnSystem::respawnSlot(Slot& slot) {
   slot.target.reset();
   slot.agent->reset();
-  const int32_t posIndex = slot.slotIndex % WorldLayout::kMaxSpawnPositions;
-  slot.enemy.position = {zone.def.positionX[posIndex],
-                         zone.def.positionY[posIndex]};
+  const int32_t posIndex = slot.patrolPoints.empty()
+                               ? 0
+                               : slot.slotIndex % slot.patrolPoints.size();
+  slot.enemy.position = slot.patrolPoints.empty()
+                            ? slot.patrolCenter
+                            : slot.patrolPoints[posIndex];
   slot.enemy.spawnPosition = slot.enemy.position;
   slot.enemy.safeReturnPosition = slot.enemy.position;
   slot.enemy.hp = slot.maxHp;
@@ -551,12 +667,10 @@ void WildSpawnSystem::applyActiveQuota(const WildSpawnFrameInput& input) {
 }
 
 void WildSpawnSystem::linkAggroGroup(const Slot& source) {
-  const Zone& sourceZone = zones_[source.zoneIndex];
   for (const std::unique_ptr<Slot>& uptr : slots_) {
     Slot& slot = *uptr;
     if (&slot == &source || slot.deathTick > 0 || slot.aggroed) continue;
-    const Zone& zone = zones_[slot.zoneIndex];
-    if (zone.def.aggroGroup != sourceZone.def.aggroGroup) continue;
+    if (slot.aggroGroup != source.aggroGroup) continue;
     const float distance =
         (slot.enemy.position - source.enemy.position).length();
     if (distance <= kAggroAllyRadius) slot.aggroed = true;
@@ -564,24 +678,12 @@ void WildSpawnSystem::linkAggroGroup(const Slot& source) {
 }
 
 Vec2 WildSpawnSystem::patrolPointFor(const Slot& slot, Tick tick) const {
-  const Zone& zone = zones_[slot.zoneIndex];
-  if (zone.positionCount <= 0) {
-    return {zone.def.patrolCenterX, zone.def.patrolCenterY};
-  }
+  if (slot.patrolPoints.empty()) return slot.patrolCenter;
   // tick 推导的确定性轮换：不同槽位以 slotIndex 错相。
   const int64_t cycle = tick / std::max<Tick>(1, kPatrolSwitchMs);
   int32_t target =
-      static_cast<int32_t>((cycle + slot.slotIndex) % zone.positionCount);
-  for (int32_t i = 0; i < WorldLayout::kMaxSpawnPositions; ++i) {
-    if (zone.def.positionX[i] == 0.0f && zone.def.positionY[i] == 0.0f) {
-      continue;
-    }
-    if (target == 0) {
-      return {zone.def.positionX[i], zone.def.positionY[i]};
-    }
-    --target;
-  }
-  return {zone.def.patrolCenterX, zone.def.patrolCenterY};
+      static_cast<int32_t>((cycle + slot.slotIndex) % slot.patrolPoints.size());
+  return slot.patrolPoints[static_cast<size_t>(target)];
 }
 
 WildSpawnSystem::Slot* WildSpawnSystem::findSlot(EntityId id) {
@@ -678,4 +780,34 @@ int32_t WildSpawnSystem::maxActiveForPerf() const {
 
 float WildSpawnSystem::perceptionRadiusForPerf() const {
   return kPerceptionRadius * kPerceptionScaleByPerfLevel[performanceLevel_];
+}
+
+size_t WildSpawnSystem::proceduralStateChunkCount() const {
+  return proceduralStateChunks_.size();
+}
+
+std::vector<EntityId> WildSpawnSystem::deactivateProceduralChunk(
+    ChunkCoord coord) {
+  std::vector<EntityId> removed;
+  for (const std::unique_ptr<Slot>& slot : slots_) {
+    if (slot->procedural && slot->chunk == coord) {
+      removed.push_back(slot->enemy.id);
+    }
+  }
+  slots_.erase(std::remove_if(slots_.begin(), slots_.end(),
+                              [coord](const std::unique_ptr<Slot>& slot) {
+                                return slot->procedural &&
+                                       slot->chunk == coord;
+                              }),
+               slots_.end());
+  snapshot_.erase(std::remove_if(snapshot_.begin(), snapshot_.end(),
+                                 [&removed](const WildEnemySnapshot& enemy) {
+                                   return std::find(removed.begin(),
+                                                    removed.end(), enemy.id) !=
+                                          removed.end();
+                                 }),
+                  snapshot_.end());
+  proceduralStateChunks_.erase(coord);
+  std::sort(removed.begin(), removed.end());
+  return removed;
 }

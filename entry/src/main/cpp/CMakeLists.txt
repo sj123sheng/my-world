@@ -86,7 +86,6 @@ add_library(native_game SHARED
     ${NATIVE_ROOT}/engine/world/world_grid.cpp
     ${NATIVE_ROOT}/engine/world/terrain_heightfield.cpp
     ${NATIVE_ROOT}/engine/world/stream_scheduler.cpp
-    ${NATIVE_ROOT}/engine/world/environment_collision.cpp
     ${NATIVE_ROOT}/engine/world/weather_system.cpp
     ${NATIVE_ROOT}/engine/world/foliage_system.cpp
     ${NATIVE_ROOT}/engine/world/water_body.cpp
@@ -141,8 +140,6 @@ add_library(native_game SHARED
     ${NATIVE_ROOT}/gameplay/world/exploration_content.cpp
     ${NATIVE_ROOT}/gameplay/world/world_terrain.cpp
     ${NATIVE_ROOT}/gameplay/world/procedural_chunk_content.cpp
-    ${NATIVE_ROOT}/gameplay/world/terrain_wall_collision.cpp
-    ${NATIVE_ROOT}/gameplay/world/exploration_gate_collision.cpp
     ${NATIVE_ROOT}/gameplay/world/exploration_feedback.cpp
     ${NATIVE_ROOT}/gameplay/world/npc_agent.cpp
     ${NATIVE_ROOT}/gameplay/world/npc_agent.h

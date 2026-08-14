@@ -91,6 +91,19 @@ const hud = fs.readFileSync('entry/src/main/ets/ui/Hud.ets', 'utf8');
 const ability = fs.readFileSync('entry/src/main/ets/EntryAbility.ets', 'utf8');
 const nativeBridge = fs.readFileSync('entry/src/main/cpp/native_bridge.cpp', 'utf8');
 const loop = fs.readFileSync('native/engine/core/loop.cpp', 'utf8');
+const explorationMotionHeader = fs.readFileSync(
+  'native/gameplay/player/exploration_motion.h', 'utf8');
+const explorationMotionImpl = fs.readFileSync(
+  'native/gameplay/player/exploration_motion.cpp', 'utf8');
+const encounterControllerHeader = fs.readFileSync(
+  'native/gameplay/ai/encounter_controller.h', 'utf8');
+const encounterControllerImpl = fs.readFileSync(
+  'native/gameplay/ai/encounter_controller.cpp', 'utf8');
+const bossHeader = fs.readFileSync('native/gameplay/entities/boss.h', 'utf8');
+const bossImpl = fs.readFileSync('native/gameplay/entities/boss.cpp', 'utf8');
+const wildSpawnHeader = fs.readFileSync(
+  'native/gameplay/ai/wild_spawn_system.h', 'utf8');
+const enemyHeader = fs.readFileSync('native/gameplay/entities/enemy.h', 'utf8');
 const controls = fs.existsSync('entry/src/main/ets/ui/CombatControls.ets')
   ? fs.readFileSync('entry/src/main/ets/ui/CombatControls.ets', 'utf8') : '';
 const joystick = fs.existsSync('entry/src/main/ets/ui/Joystick.ets')
@@ -122,9 +135,20 @@ for (const [label, type] of buttonActions) {
 // 探索动作 7（交互）由 ExplorationHud 发出，8/9（滑翔按下/松开）由 CombatControls 发出。
 const explorationHud = fs.existsSync('entry/src/main/ets/ui/ExplorationHud.ets')
   ? fs.readFileSync('entry/src/main/ets/ui/ExplorationHud.ets', 'utf8') : '';
-assert.match(loop,
-  /const auto enemyPositionResolver[\s\S]*buildingCollision\.resolve[\s\S]*explorationGateCollision\.resolve/,
-  'enemy and boss resolver must apply static buildings before dynamic gates');
+assert.doesNotMatch(loop,
+  /enemyPositionResolver|buildingCollision|explorationGateCollision|terrainWallCollision/,
+  'infinite natural world combat must not retain authored collision resolvers');
+assert.doesNotMatch(explorationMotionHeader + explorationMotionImpl,
+  /MotionGroundOverride|groundOverride/,
+  'removed building-top collision must not survive as a hidden motion override');
+assert.doesNotMatch(encounterControllerHeader + encounterControllerImpl +
+  bossHeader + bossImpl + wildSpawnHeader + enemyHeader,
+  /positionResolver|[Cc]ollisionRadius|建筑.*(?:障碍|推出)|碰撞解算/,
+  'enemy and boss motion must not retain hidden authored-collision resolver APIs');
+assert.match(loop, /motionInput\.wallClimbing\s*=\s*false;/,
+  'natural world loop must not synthesize authored wall climbing');
+assert.match(loop, /motionInput\.terrainClimbing\s*=\s*false;/,
+  'natural world loop must keep the removed terrain-collision input false');
 assert.match(explorationHud, /pushAction\(7\);/,
   'ExplorationHud must issue the interact action');
 assert.match(controls, /pushAction\(8\);/,
@@ -519,38 +543,24 @@ assert.match(nativeBridge,
   /CopyAndCommitModelAssets[\s\S]*?g_loop\.withLifecycle[\s\S]*?setModelAsset\(ModelKind::Player[\s\S]*?setModelAsset\(ModelKind::Enemy[\s\S]*?setModelAsset\(ModelKind::Boss/,
   'all copies must finish before one lifecycle-held, three-asset commit');
 
-// Task 8 会移除 GamePage/Bridge/Surface 中遗留的人工环境消费者；本任务不再
-// 用测试锁定已经从 rawfile 删除的四批人工 GLB。
-assert.match(bridge, /export const nativeSetEnvironmentAssets/);
-assert.match(declarations,
-  /nativeSetEnvironmentAssets: \(outer: ArrayBuffer, center: ArrayBuffer,[\s\S]*?backdrop: ArrayBuffer, decoration: ArrayBuffer\) => boolean;/);
-assert.match(nativeBridge, /"nativeSetEnvironmentAssets", nullptr, NativeSetEnvironmentAssets/);
-const setEnvironmentAssetsBody = functionBody(nativeBridge,
-  'static napi_value NativeSetEnvironmentAssets');
-assert.match(setEnvironmentAssetsBody, /argc != 4/,
-  'NativeSetEnvironmentAssets must require exactly four arguments');
-assert.match(setEnvironmentAssetsBody, /CopyAndCommitEnvironmentAssets/);
-assert.match(setEnvironmentAssetsBody,
-  /CopyArrayBuffer\(env, args\[static_cast<size_t>\(slot\)\], out\)/);
-assert.match(setEnvironmentAssetsBody, /g_loop\.withLifecycle/);
-assert.match(loadModelAssetsBody,
-  /nativeSetModelAssets[\s\S]*?try[\s\S]*?nativeSetEnvironmentAssets[\s\S]*?catch/,
-  'character and environment assets must use separate failure domains');
+// Task 8: the infinite natural world has no authored environment/block asset bridge.
+for (const source of [bridge, declarations, nativeBridge, page]) {
+  assert.doesNotMatch(source,
+    /nativeSetEnvironmentAssets|nativeSetBlockAsset|nativeSetVisualTerrainAsset|VisualTerrain/,
+    'authored environment and visual-terrain consumers must be removed');
+}
+assert.doesNotMatch(page,
+  /loadEnvironmentBlocks|refreshEnvironmentBlocks|loadVisualTerrainSliceAssets|block_\$\{|block_\d+\.glb/,
+  'GamePage must not preload or refresh authored environment blocks');
 
 // ---- Environment vertical slice: natural terrain textures, no authored structures ----
 assert.match(bridge, /export const nativeSetTerrainAssets/,
   'Bridge must export terrain material asset upload');
-assert.match(bridge, /export const nativeSetVisualTerrainAsset/,
-  'Bridge must export authored visual terrain upload');
 assert.match(declarations,
   /nativeSetTerrainAssets: \(atlas: ArrayBuffer, control: ArrayBuffer\) => boolean;/,
   'native declarations must expose the terrain atlas/control pair');
-assert.match(declarations,
-  /nativeSetVisualTerrainAsset: \(blockId: number, lod: number, bytes: ArrayBuffer\) => boolean;/,
-  'native declarations must expose block and LOD addressed visual terrain');
 assert.match(nativeBridge, /"nativeSetTerrainAssets", nullptr, NativeSetTerrainAssets/);
 assert.match(nativeBridge, /"nativeSetFoliageAtlas", nullptr, NativeSetFoliageAtlas/);
-assert.match(nativeBridge, /"nativeSetVisualTerrainAsset", nullptr, NativeSetVisualTerrainAsset/);
 assert.match(page, /TERRAIN_ATLAS_ASSET/,
   'GamePage must load the schema-generated terrain atlas path');
 assert.match(page, /TERRAIN_CONTROL_ASSET/,
@@ -563,10 +573,6 @@ assert.doesNotMatch(environmentManifest, /\bVISUAL_TERRAIN_RESOURCES\b/,
   'natural world manifest must remove the old visual terrain resource constant');
 assert.doesNotMatch(environmentManifest, /\.glb/,
   'natural world manifest must not reference artificial GLBs');
-const loadVisualTerrainBody = functionBody(page,
-  'private async loadVisualTerrainSliceAssets(generation: number)');
-assert.match(loadVisualTerrainBody, /this\.isActiveModelLoad\(generation\)/,
-  'late visual terrain reads must not commit after the page generation is invalidated');
 
 // ---- Stage 8: cooldown totals in snapshot, haptics and hit feedback ----
 const gameSnapshot = fs.readFileSync('native/engine/core/game_snapshot.h', 'utf8');
@@ -650,6 +656,11 @@ assert.match(page, /ActionToast\(\{ lastRejectReason: this\.lastRejectReason,\s*
 // ---- Stage 10: lock-on target marker and combo counter ----
 const surfaceHeader = fs.readFileSync('native/engine/render/surface.h', 'utf8');
 const surfaceImpl = fs.readFileSync('native/engine/render/surface.cpp', 'utf8');
+for (const source of [surfaceHeader, surfaceImpl]) {
+  assert.doesNotMatch(source,
+    /nativeSetEnvironmentAssets|nativeSetBlockAsset|nativeSetVisualTerrainAsset|VisualTerrain/,
+    'Surface must remove authored environment and visual-terrain consumers');
+}
 const comboCounter = fs.existsSync('entry/src/main/ets/ui/ComboCounter.ets')
   ? fs.readFileSync('entry/src/main/ets/ui/ComboCounter.ets', 'utf8') : '';
 
@@ -828,7 +839,8 @@ assert.match(hud, /this\.stamina < 30 \? '#E06A5E' : '#4FD4BB'/,
 
 // ---- Stage 16: open-world exploration fields across the snapshot chain ----
 for (const field of ['explorationStamina', 'motionState', 'playerHeight',
-  'activeChunkCount', 'chunkLoadCount', 'interactionAnchorId',
+  'playerChunkX', 'playerChunkY', 'playerLocalX', 'playerLocalY',
+  'activeChunkCount', 'cachedChunkCount', 'streamingPendingCount', 'interactionAnchorId',
   'interactionUnlocked', 'interactionLabel', 'unlockedAnchorCount',
   'cameraExploration', 'teleportFlashMs', 'minimapAnchorX',
   'minimapAnchorY', 'minimapAnchorUnlocked']) {
@@ -838,6 +850,13 @@ for (const field of ['explorationStamina', 'motionState', 'playerHeight',
     `native bridge must marshal ${field}`);
   assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
     `GamePage polling must assign ${field}`);
+}
+for (const field of ['playerChunkX', 'playerChunkY', 'playerLocalX', 'playerLocalY',
+  'activeChunkCount', 'cachedChunkCount', 'streamingPendingCount']) {
+  assert.match(bridge, new RegExp(`\\b${field}\\b`),
+    `Bridge Snapshot must expose ${field}`);
+  assert.match(declarations, new RegExp(`\\b${field}\\b`),
+    `Index.d.ts must declare ${field}`);
 }
 assert.match(page, /ExplorationHud\(\{/,
   'GamePage must mount ExplorationHud');
@@ -852,26 +871,16 @@ assert.match(loop, /anchors\.nearestInteraction/,
 assert.match(loop, /camera\.setExploration\(!currentTarget\.has_value\(\)\);/,
   'camera must switch exploration mode without a locked target');
 
-// ---- Stage 16b: closed traversal gate blocking feedback ----
+// ---- Stage 16b: authored traversal gates are gone ----
 for (const field of ['explorationBlockedGateId', 'explorationBlockedGateLabel',
   'explorationBlockedByPuzzleLabel']) {
-  assert.match(gameSnapshot, new RegExp(`\\b${field}\\b`),
-    `GameSnapshot must expose ${field}`);
-  assert.match(nativeBridge, new RegExp(`"${field}"`),
-    `native bridge must marshal ${field}`);
-  assert.match(bridge, new RegExp(`${field}: (?:number|string);`),
-    `Bridge Snapshot must declare ${field}`);
-  assert.match(declarations, new RegExp(`${field}: (?:number|string),`),
-    `Index.d.ts must declare ${field}`);
-  assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
-    `GamePage polling must assign ${field}`);
+  for (const source of [gameSnapshot, nativeBridge, bridge, declarations, page, explorationHud]) {
+    assert.doesNotMatch(source, new RegExp(`\\b${field}\\b`),
+      `production snapshot chain must remove ${field}`);
+  }
 }
-assert.match(loop, /explorationContent\.nearestTarget\(\s*\{loop\.surface\.player\.x, loop\.surface\.player\.y\}/,
-  'loop must resolve nearby exploration targets for gate feedback');
-assert.match(explorationHud, /explorationBlockedGateLabel/,
-  'ExplorationHud must render blocked gate feedback');
-assert.match(explorationHud, /路径受阻/,
-  'ExplorationHud must identify a blocked traversal gate');
+assert.doesNotMatch(explorationHud, /路径受阻/,
+  'ExplorationHud must not render obsolete traversal-gate feedback');
 
 // ---- Stage 16c: unified exploration feedback ----
 const explorationToast = fs.existsSync('entry/src/main/ets/ui/ExplorationToast.ets')

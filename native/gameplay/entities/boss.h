@@ -5,7 +5,6 @@
 
 #include <array>
 #include <cstdint>
-#include <functional>
 
 enum class BossPhase : uint8_t {
   RadianceLockdown = 1,
@@ -70,9 +69,6 @@ struct BossFrameInput {
   // 玩家实时位置与存活状态：驱动首领追击/环绕与普攻射程判定。
   Vec2 playerPosition;
   bool playerAlive = true;
-  // 宿主层注入的位置解算器：首领移动后把其从建筑等障碍内推出。
-  // 空则不做任何阻挡，与平坦无障碍世界行为一致。
-  std::function<void(Vec2& position, float radius)> positionResolver;
 };
 
 struct BossSnapshot {
@@ -122,9 +118,6 @@ struct BossSnapshot {
 
 class BossController {
  public:
-  // 首领碰撞半径（世界单位）：体型更大，供宿主层位置解算器使用。
-  static constexpr float kBossCollisionRadius = 0.024f;
-
   bool start(const BossConfig& config);
   bool retry(Tick tick);
   void applyDamage(FixedPoint hpDamage, FixedPoint poiseDamage, Tick tick);

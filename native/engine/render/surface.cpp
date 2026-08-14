@@ -1223,70 +1223,6 @@ static void tryInitializePendingModelAssets(Surface& s) {
   }
 }
 
-static const char* environmentAssetName(size_t index) {
-  static constexpr std::array<const char*, 4> kNames = {
-      "outer_ring.glb", "center_rift.glb", "backdrop.glb", "decoration.glb"};
-  return kNames[index];
-}
-
-static void tryInitializePendingEnvironmentAssets(Surface& s) {
-  for (size_t index = 0; index < s.environmentAssets.size(); ++index) {
-    std::vector<uint8_t> bytes;
-    {
-      std::lock_guard<std::mutex> lock(s.modelAssetMutex);
-      if (!s.environmentAssets[index].take(bytes)) continue;
-    }
-    StaticModel& model = s.environmentModels[index];
-    model.destroy();
-    if (bytes.empty()) {
-      s.environmentStatuses[index] = EnvironmentBatchStatus::Empty;
-      continue;
-    }
-    if (model.tryInitialize(bytes, environmentAssetName(index))) {
-      s.environmentStatuses[index] = EnvironmentBatchStatus::Ready;
-      LOGI("environment batch ready: %{public}s", environmentAssetName(index));
-    } else {
-      s.environmentStatuses[index] = EnvironmentBatchStatus::Failed;
-      LOGE("%{public}s; procedural fallback remains active",
-           model.lastError().c_str());
-    }
-  }
-}
-
-// Phase 2 区块批次上传：每帧最多消费一个待上传区块，避免一次性注入
-// 多个大 GLB 造成帧尖峰；解析失败仅把该区块置为 Failed（跳过绘制），
-// 不回退全局批次。
-static void tryInitializePendingBlockEnvironmentAssets(Surface& s) {
-  int32_t blockId = -1;
-  std::vector<uint8_t> bytes;
-  {
-    std::lock_guard<std::mutex> lock(s.modelAssetMutex);
-    for (auto& entry : s.blockEnvironmentAssets) {
-      if (entry.second.take(bytes)) {
-        blockId = entry.first;
-        break;
-      }
-    }
-  }
-  if (blockId < 0) return;
-  StaticModel& model = s.blockEnvironmentModels[blockId];
-  model.destroy();
-  if (bytes.empty()) {
-    s.blockEnvironmentStatuses[blockId] = EnvironmentBatchStatus::Empty;
-    return;
-  }
-  char assetName[32];
-  std::snprintf(assetName, sizeof(assetName), "block_%d.glb",
-                static_cast<int>(blockId));
-  if (model.tryInitialize(bytes, assetName)) {
-    s.blockEnvironmentStatuses[blockId] = EnvironmentBatchStatus::Ready;
-    LOGI("environment block ready: %{public}s", assetName);
-  } else {
-    s.blockEnvironmentStatuses[blockId] = EnvironmentBatchStatus::Failed;
-    LOGE("%{public}s; block batch skipped", model.lastError().c_str());
-  }
-}
-
 static void tryInitializePendingTerrainTextures(Surface& s) {
   std::vector<uint8_t> atlasBytes;
   std::vector<uint8_t> controlBytes;
@@ -1342,276 +1278,9 @@ static void tryInitializePendingFoliageAtlas(Surface& s) {
   }
 }
 
-// 手工视觉层与基础高度场分离：每帧最多解析一个 LOD GLB，避免九个资源
-// 同帧上传。生成资产使用世界归一化坐标，绘制时必须保持单位矩阵。
-static void tryInitializePendingVisualTerrainAssets(Surface& s) {
-  int32_t key = -1;
-  std::vector<uint8_t> bytes;
-  {
-    std::lock_guard<std::mutex> lock(s.modelAssetMutex);
-    for (auto& entry : s.visualTerrainAssets) {
-      if (entry.second.take(bytes)) {
-        key = entry.first;
-        break;
-      }
-    }
-  }
-  if (key < 0) return;
-  StaticModel& model = s.visualTerrainModels[key];
-  model.destroy();
-  if (bytes.empty()) {
-    s.visualTerrainStatuses[key] = EnvironmentBatchStatus::Empty;
-    return;
-  }
-  char assetName[48];
-  std::snprintf(assetName, sizeof(assetName), "visual_block_%d_lod%d.glb",
-                static_cast<int>(key / 3), static_cast<int>(key % 3));
-  if (model.tryInitialize(bytes, assetName)) {
-    s.visualTerrainStatuses[key] = EnvironmentBatchStatus::Ready;
-    LOGI("visual terrain ready: %{public}s", assetName);
-  } else {
-    s.visualTerrainStatuses[key] = EnvironmentBatchStatus::Failed;
-    LOGE("%{public}s; authored cell skipped", model.lastError().c_str());
-  }
-}
-
-// 环境模型世界适配变换：layout.json 以米制描述布局（-34..+20），而世界为
-// [0,1] 归一化坐标；参数与碰撞层共用 environmentWorldFitForRegion，
-// 保证可见建筑与碰撞体严格对齐（见 environment.h）。
-static glm::mat4 environmentWorldFit(const Surface& s, size_t index) {
-  return environmentWorldFitMatrix(index, s.environmentComposition);
-}
-
-// ---- 视锥剔除（Phase 5）：环境批次绘制前可见性判断 ----
-// 单个布局条目的世界空间包围球：fit 相似变换作用于布局空间
-// translation 与 halfExtents，旋转不改变球半径，直接取保守球。
-static bool placementInFrustum(const EnvironmentPlacement& placement,
-                               const EnvironmentWorldFit& fit,
-                               const FrustumPlanes& frustum) {
-  const glm::vec3 center{
-      fit.centerX + fit.scale * placement.translation[0],
-      fit.yBias + fit.scale * placement.translation[1],
-      fit.centerZ + fit.scale * placement.translation[2]};
-  const float radius = fit.scale * glm::length(glm::vec3(
-      placement.scale[0] * placement.halfExtents[0],
-      placement.scale[1] * placement.halfExtents[1],
-      placement.scale[2] * placement.halfExtents[2]));
-  return FrustumContainsSphere(frustum, center, radius);
-}
-
-// 全局批次（blockId=-1 且 region=index）可见性：任一条目通过平面
-// 测试即保留；批次无布局条目时保守保留，避免误剔除。
-static bool environmentBatchInFrustum(const Surface& s, size_t index,
-                                      const FrustumPlanes& frustum) {
-  const EnvironmentWorldFit fit =
-      environmentWorldFitParams(index, s.environmentComposition);
-  bool anyPlacement = false;
-  const size_t count = environmentLayoutPlacementCount();
-  const EnvironmentPlacement* placements = environmentLayoutPlacements();
-  for (size_t i = 0; i < count; ++i) {
-    const EnvironmentPlacement& placement = placements[i];
-    if (placement.blockId != kEnvironmentGlobalBlockId ||
-        placement.region != static_cast<int>(index)) {
-      continue;
-    }
-    anyPlacement = true;
-    if (placementInFrustum(placement, fit, frustum)) return true;
-  }
-  return !anyPlacement;
-}
-
-// 区块批次（blockId≥0）可见性：与全局批次同理，fit 统一取 OuterRing
-// 参数（与 environmentBlockWorldFitMatrix 一致）。
-static bool environmentBlockInFrustum(const Surface& s, int32_t blockId,
-                                      const FrustumPlanes& frustum) {
-  const EnvironmentWorldFit fit = environmentWorldFitParams(
-      static_cast<size_t>(EnvironmentBatchKind::OuterRing),
-      s.environmentComposition);
-  bool anyPlacement = false;
-  const size_t count = environmentLayoutPlacementCount();
-  const EnvironmentPlacement* placements = environmentLayoutPlacements();
-  for (size_t i = 0; i < count; ++i) {
-    const EnvironmentPlacement& placement = placements[i];
-    if (placement.blockId != blockId) continue;
-    anyPlacement = true;
-    if (placementInFrustum(placement, fit, frustum)) return true;
-  }
-  return !anyPlacement;
-}
-
-static void drawEnvironmentModel(Surface& s, size_t index,
-                                 const glm::mat4& vp,
-                                 const FrustumPlanes& frustum,
-                                 const glm::vec3& tint, float tintStrength) {
-  StaticModel& model = s.environmentModels[index];
-  if (s.environmentStatuses[index] != EnvironmentBatchStatus::Ready ||
-      !model.ready()) return;
-  // 视锥剔除（Phase 5）：布局条目全部在视锥外时跳过整个批次。
-  if (!environmentBatchInFrustum(s, index, frustum)) return;
-  model.setTextureTier(s.environmentPlan.textureTier);
-  const glm::mat4 fit = environmentWorldFit(s, index);
-  s.shader3d.setMVP(vp * fit);
-  s.shader3d.setModel(fit);
-  s.shader3d.setSkinned(false);
-  s.shader3d.setLight(glm::normalize(s.lightDir), s.lightColor, s.ambient);
-  s.shader3d.setEnvironmentTint(tint, tintStrength);
-  model.draw(s.shader3d);
-  s.environmentDrawCalls += static_cast<uint32_t>(model.stats().primitiveCount);
-  s.environmentTriangles += static_cast<uint32_t>(model.stats().triangleCount);
-}
-
-// 区块批次绘制：仅绘制 Ready 且所属分块在 environmentPlan.activeBlocks
-// 中的区块；fit 矩阵统一取 OuterRing 参数，与碰撞层一致。
-static void drawBlockEnvironmentModels(Surface& s, const glm::mat4& vp,
-                                       const FrustumPlanes& frustum) {
-  if (s.blockEnvironmentModels.empty()) return;
-  const glm::mat4 fit = environmentBlockWorldFitMatrix(s.environmentComposition);
-  for (auto& entry : s.blockEnvironmentModels) {
-    const int32_t blockId = entry.first;
-    const auto status = s.blockEnvironmentStatuses.find(blockId);
-    if (status == s.blockEnvironmentStatuses.end() ||
-        status->second != EnvironmentBatchStatus::Ready) continue;
-    if (!s.environmentPlan.blockActive(blockId)) continue;
-    // 视锥剔除（Phase 5）：区块内布局条目全部在视锥外时跳过。
-    if (!environmentBlockInFrustum(s, blockId, frustum)) continue;
-    StaticModel& model = entry.second;
-    if (!model.ready()) continue;
-    model.setTextureTier(s.environmentPlan.textureTier);
-    s.shader3d.setMVP(vp * fit);
-    s.shader3d.setModel(fit);
-    s.shader3d.setSkinned(false);
-    s.shader3d.setLight(glm::normalize(s.lightDir), s.lightColor, s.ambient);
-    s.shader3d.setEnvironmentTint(glm::vec3(0.0f), 0.0f);
-    model.draw(s.shader3d);
-    s.environmentDrawCalls +=
-        static_cast<uint32_t>(model.stats().primitiveCount);
-    s.environmentTriangles +=
-        static_cast<uint32_t>(model.stats().triangleCount);
-  }
-}
-
-static void drawVisualTerrainModels(Surface& s, const glm::mat4& vp,
-                                    const FrustumPlanes& frustum) {
-  const EnvironmentQualityProfile quality =
-      EnvironmentQualityProfileFor(s.environmentPerfLevel);
-  for (const WorldLayout::WorldVisualTerrainCellDef& cell :
-       WorldLayout::kVisualTerrainCells) {
-    if (!s.environmentPlan.blockActive(cell.blockId)) continue;
-    const glm::vec3 center{(cell.boundsMinX + cell.boundsMaxX) * 0.5f, 0.02f,
-                           (cell.boundsMinY + cell.boundsMaxY) * 0.5f};
-    if (!FrustumContainsAabb(
-            frustum, {cell.boundsMinX, -0.12f, cell.boundsMinY},
-            {cell.boundsMaxX, 0.18f, cell.boundsMaxY})) {
-      continue;
-    }
-    const float distance = glm::distance(s.camera3d.position, center);
-    int32_t lod = distance < quality.foliageViewDistance * 0.55f
-                      ? 0
-                      : (distance < quality.foliageViewDistance ? 1 : 2);
-    // 目标 LOD 缺失或仍在逐帧上传时，按稳定顺序选择任意已就绪 LOD，
-    // 单个资源失败不会让整块地貌永久消失。
-    int32_t key = -1;
-    for (const int candidate : VisualTerrainLodFallbackOrder(lod)) {
-      const int32_t candidateKey = cell.blockId * 3 + candidate;
-      if (s.visualTerrainStatuses[candidateKey] ==
-              EnvironmentBatchStatus::Ready &&
-          s.visualTerrainModels[candidateKey].ready()) {
-        key = candidateKey;
-        break;
-      }
-    }
-    if (key < 0) continue;
-    StaticModel& model = s.visualTerrainModels[key];
-    model.setTextureTier(s.environmentPlan.textureTier);
-    const glm::mat4 identity(1.0f);
-    s.shader3d.setMVP(vp);
-    s.shader3d.setModel(identity);
-    s.shader3d.setSkinned(false);
-    s.shader3d.setLight(glm::normalize(s.lightDir), s.lightColor, s.ambient);
-    s.shader3d.setEnvironmentTint({0.44f, 0.37f, 0.29f}, 0.55f);
-    model.draw(s.shader3d);
-    s.environmentDrawCalls += static_cast<uint32_t>(model.stats().primitiveCount);
-    s.environmentTriangles += static_cast<uint32_t>(model.stats().triangleCount);
-  }
-}
-
-static float distanceToRoute(float x, float z) {
-  float nearest = 1000.0f;
-  for (const WorldRouteSegment& route : worldRouteSegments()) {
-    const glm::vec2 a{route.fromX, route.fromY};
-    const glm::vec2 b{route.toX, route.toY};
-    const glm::vec2 point{x, z};
-    const glm::vec2 segment = b - a;
-    const float lengthSquared = glm::dot(segment, segment);
-    const float t = lengthSquared > 1e-8f
-                        ? std::clamp(glm::dot(point - a, segment) /
-                                         lengthSquared,
-                                     0.0f, 1.0f)
-                        : 0.0f;
-    nearest = std::min(nearest, glm::length(point - (a + segment * t)));
-  }
-  return nearest;
-}
-
 static void buildFoliageScatter(Surface& s) {
-  if (s.foliageScatterBuilt || s.terrain == nullptr) return;
-  std::vector<FoliageExclusion> exclusions;
-  exclusions.reserve(WorldLayout::kPointOfInterestCount +
-                     WorldLayout::kPuzzleNodeCount);
-  for (const WorldLayout::WorldPointOfInterestDef& poi :
-       WorldLayout::kPointsOfInterest) {
-    exclusions.push_back({{poi.x, poi.y}, 0.022f});
-  }
-  for (const WorldLayout::WorldPuzzleNodeDef& puzzle :
-       WorldLayout::kPuzzleNodes) {
-    exclusions.push_back({{puzzle.x, puzzle.y}, 0.018f});
-  }
-  for (const WorldLayout::WorldVisualTerrainCellDef& cell :
-       WorldLayout::kVisualTerrainCells) {
-    for (const WorldLayout::WorldFoliageLayerDef& def :
-         WorldLayout::kFoliageLayers) {
-      FoliageLayer layer;
-      layer.kind = static_cast<FoliageKind>(def.kind);
-      layer.assetId = def.assetId;
-      layer.density = def.density;
-      layer.minScale = def.minScale;
-      layer.maxScale = def.maxScale;
-      layer.minHeight = def.minHeight;
-      layer.maxHeight = def.maxHeight;
-      layer.maxSlope = def.maxSlope;
-      layer.waterClearance = def.waterClearance;
-      layer.routeClearance = def.routeClearance;
-      layer.castsShadow = def.castsShadow;
-      FoliageScatterRegion region;
-      region.blockId = cell.blockId;
-      region.rect = {cell.boundsMinX, cell.boundsMinY, cell.boundsMaxX,
-                     cell.boundsMaxY};
-      region.seed = 0x6d2b79f5u ^
-                    static_cast<uint32_t>(cell.blockId * 97 + def.kind);
-      const float clearance = def.waterClearance;
-      const auto waterAt = [clearance](float px, float pz) {
-        for (const WorldLayout::WorldWaterBodyDef& body :
-             WorldLayout::kWaterBodies) {
-          const float nx = (px - body.centerX) /
-                           (body.halfExtentX + clearance);
-          const float nz = (pz - body.centerY) /
-                           (body.halfExtentY + clearance);
-          if (nx * nx + nz * nz <= 1.0f) return true;
-        }
-        return false;
-      };
-      std::vector<FoliageInstance> scattered = ScatterFoliage(
-          layer, region,
-          [&s](float px, float pz) { return s.terrain->heightAt(px, pz); },
-          [&s](float px, float pz) { return s.terrain->slopeAt(px, pz); },
-          waterAt, distanceToRoute, exclusions);
-      s.foliageInstances.insert(s.foliageInstances.end(), scattered.begin(),
-                                scattered.end());
-    }
-  }
+  // Loop 按活动 proceduralChunks 注入并在回收时替换该有界列表。
   s.foliageScatterBuilt = true;
-  LOGI("foliage deterministic scatter ready: instances=%{public}zu",
-       s.foliageInstances.size());
 }
 
 static void drawFoliage(Surface& s, const glm::mat4& vp) {
@@ -1745,40 +1414,6 @@ static void renderDirectionalShadow(Surface& s,
     }
   }
 
-  for (std::size_t index = 0; index < s.environmentModels.size(); ++index) {
-    StaticModel& model = s.environmentModels[index];
-    if (s.environmentStatuses[index] != EnvironmentBatchStatus::Ready ||
-        !model.ready()) {
-      continue;
-    }
-    const glm::mat4 fit = environmentWorldFit(s, index);
-    s.shader3d.setMVP(lightVp * fit);
-    s.shader3d.setModel(fit);
-    model.draw(s.shader3d);
-    s.environmentShadowDrawCalls +=
-        static_cast<uint32_t>(model.stats().primitiveCount);
-    s.environmentShadowTriangles +=
-        static_cast<uint32_t>(model.stats().triangleCount);
-  }
-  for (const WorldLayout::WorldVisualTerrainCellDef& cell :
-       WorldLayout::kVisualTerrainCells) {
-    if (!s.environmentPlan.blockActive(cell.blockId)) continue;
-    for (const int lod : {1, 2, 0}) {
-      const int32_t key = cell.blockId * 3 + lod;
-      if (s.visualTerrainStatuses[key] == EnvironmentBatchStatus::Ready &&
-          s.visualTerrainModels[key].ready()) {
-        s.shader3d.setMVP(lightVp);
-        s.shader3d.setModel(identity);
-        s.visualTerrainModels[key].draw(s.shader3d);
-        s.environmentShadowDrawCalls += static_cast<uint32_t>(
-            s.visualTerrainModels[key].stats().primitiveCount);
-        s.environmentShadowTriangles += static_cast<uint32_t>(
-            s.visualTerrainModels[key].stats().triangleCount);
-        break;
-      }
-    }
-  }
-
   buildFoliageScatter(s);
   const std::vector<FoliageRenderBatch> foliage = BuildFoliageRenderBatches(
       s.foliageInstances, {s.player.x, s.player.y}, quality,
@@ -1816,65 +1451,6 @@ static void renderDirectionalShadow(Surface& s,
   glActiveTexture(GL_TEXTURE0);
   s.shader3d.setShadowSampling(
       true, lightVp, 1.0f / static_cast<float>(quality.shadowMapSize));
-}
-
-static void drawFallbackMesh(Surface& s, const Mesh& mesh,
-                             const glm::mat4& vp, const glm::mat4& model,
-                             const glm::vec3& color) {
-  s.shader3d.setMVP(vp * model);
-  s.shader3d.setModel(model);
-  s.shader3d.setSkinned(false);
-  s.shader3d.setHasTexture(false);
-  s.shader3d.setLight(glm::normalize(s.lightDir), color * 0.75f, color * 0.25f);
-  s.shader3d.setEnvironmentTint(glm::vec3(0.0f), 0.0f);
-  mesh.draw();
-  ++s.environmentDrawCalls;
-  s.environmentTriangles += static_cast<uint32_t>(mesh.indices.size() / 3u);
-}
-
-static void drawEnvironmentFallback(Surface& s, const glm::mat4& vp) {
-  constexpr int kPillars = 12;
-  for (int index = 0; index < kPillars; ++index) {
-    const float angle = static_cast<float>(index) * 6.2831853f / kPillars;
-    const float pillarX = 0.5f + std::cos(angle) * 0.42f;
-    const float pillarZ = 0.65f + std::sin(angle) * 0.42f;
-    const glm::vec3 position{pillarX,
-                             groundYAt(s, pillarX, pillarZ) + 0.06f, pillarZ};
-    const glm::mat4 pillar = glm::translate(glm::mat4(1.0f), position) *
-        glm::scale(glm::mat4(1.0f), glm::vec3(0.55f, 1.0f, 0.55f));
-    drawFallbackMesh(s, s.fallbackPillarMesh, vp, pillar,
-                     {0.42f, 0.45f, 0.50f});
-  }
-  constexpr int kWalls = 8;
-  for (int index = 0; index < kWalls; ++index) {
-    const float angle = static_cast<float>(index) * 6.2831853f / kWalls;
-    const float wallX = 0.5f + std::cos(angle) * 0.46f;
-    const float wallZ = 0.65f + std::sin(angle) * 0.46f;
-    const glm::vec3 position{wallX, groundYAt(s, wallX, wallZ) + 0.035f,
-                             wallZ};
-    const glm::mat4 wall = glm::translate(glm::mat4(1.0f), position) *
-        glm::rotate(glm::mat4(1.0f), -angle, glm::vec3(0.0f, 1.0f, 0.0f)) *
-        glm::scale(glm::mat4(1.0f), glm::vec3(0.20f, 0.07f, 0.025f));
-    drawFallbackMesh(s, s.fallbackWallMesh, vp, wall, {0.34f, 0.37f, 0.42f});
-  }
-}
-
-static void drawCenterFallback(Surface& s, const glm::mat4& vp) {
-  constexpr int kMarkers = 4;
-  for (int index = 0; index < kMarkers; ++index) {
-    const float angle = static_cast<float>(index) * 6.2831853f / kMarkers;
-    const float markerX = 0.5f + std::cos(angle) * 0.16f;
-    const float markerZ = 0.75f + std::sin(angle) * 0.09f;
-    const glm::vec3 position{markerX,
-                             groundYAt(s, markerX, markerZ) + 0.018f, markerZ};
-    const glm::mat4 marker =
-        glm::translate(glm::mat4(1.0f), position) *
-        glm::rotate(glm::mat4(1.0f), -angle,
-                    glm::vec3(0.0f, 1.0f, 0.0f)) *
-        glm::scale(glm::mat4(1.0f), glm::vec3(0.07f, 0.036f, 0.035f));
-    drawFallbackMesh(s, s.fallbackWallMesh, vp, marker,
-                     {0.31f, 0.25f, 0.25f});
-  }
 }
 
 // -----------------------------------------------------------------------------
@@ -3060,11 +2636,8 @@ static void draw3DPhase(Surface& s) {
   // bridge 可能晚于 Surface 创建；surface_draw 已成功 makeCurrent，因此只在这里
   // 消费一次标脏字节，解析失败后保持静态 Mesh，不在每帧反复尝试。
   tryInitializePendingModelAssets(s);
-  tryInitializePendingEnvironmentAssets(s);
-  tryInitializePendingBlockEnvironmentAssets(s);
   tryInitializePendingTerrainTextures(s);
   tryInitializePendingFoliageAtlas(s);
-  tryInitializePendingVisualTerrainAssets(s);
   if (!s.shader3dReady || s.shader3d.program() == 0u) return;
 
   // bloom（原神式技能发光）：高画质档场景先渲染入 FBO，3D 阶段末尾
@@ -3111,73 +2684,18 @@ static void draw3DPhase(Surface& s) {
   s.environmentShadowTriangles = 0;
   s.environmentWeatherDrawCalls = 0;
   s.environmentWeatherTriangles = 0;
-  s.environmentPlan = s.environmentController.evaluate(
-      {s.player.x, s.player.y}, s.environmentPerfLevel);
-  // 区块批次启停：激活分块集合直接来自流式调度器（Loop 已在推进它），
-  // 无需在 loop.cpp 挂接任何回调；binary_search 要求升序。
-  if (s.streamScheduler != nullptr) {
-    s.environmentPlan.activeBlocks = s.streamScheduler->activeChunkIds();
-    std::sort(s.environmentPlan.activeBlocks.begin(),
-              s.environmentPlan.activeBlocks.end());
-  } else {
-    s.environmentPlan.activeBlocks.clear();
-  }
-  if (s.environmentPlan.textureTier != s.loggedEnvironmentTextureTier) {
-    s.loggedEnvironmentTextureTier = s.environmentPlan.textureTier;
-    LOGI("environment texture tier: %{public}s",
-         s.loggedEnvironmentTextureTier == StaticTextureTier::Half ? "half"
-                                                                    : "full");
-  }
-
   const EnvironmentQualityProfile environmentQuality =
       EnvironmentQualityProfileFor(s.environmentPerfLevel);
   renderDirectionalShadow(s, environmentQuality);
 
-  // 天空穹顶 → 地形网格 → 环境模型 → 水面：地形采样与逻辑层同一
+  // 天空穹顶 → 自然地形/植被 → 水面：地形采样与逻辑层同一
   // 高度场，起伏/水域与贴地判定严格一致。
   drawSkyDome(s, vp);
   drawTerrainChunks(s, vp, frustum);
-
-  if (s.environmentPlan.backdrop) {
-    drawEnvironmentModel(s, 2, vp, frustum, glm::vec3(0.0f), 0.0f);
-  }
-  drawEnvironmentModel(s, 0, vp, frustum, glm::vec3(0.0f), 0.0f);
-  if (s.environmentStatuses[0] != EnvironmentBatchStatus::Ready) {
-    drawEnvironmentFallback(s, vp);
-  }
-  if (s.environmentPlan.decoration) {
-    drawEnvironmentModel(s, 3, vp, frustum, glm::vec3(0.0f), 0.0f);
-  }
-  drawEnvironmentModel(s, 1, vp, frustum, s.environmentPalette.fogColor,
-                       0.22f);
-  if (s.environmentStatuses[1] != EnvironmentBatchStatus::Ready) {
-    drawCenterFallback(s, vp);
-  }
-  // Phase 2 区块批次：仅激活分块的 block_<id>.glb 参与绘制。
-  drawBlockEnvironmentModels(s, vp, frustum);
-  drawVisualTerrainModels(s, vp, frustum);
   drawFoliage(s, vp);
-  const float altarGround =
-      groundYAt(s, s.environmentComposition.altarAnchor.x,
-                s.environmentComposition.altarAnchor.z);
-  const glm::mat4 rift =
-      glm::translate(glm::mat4(1.0f),
-                     s.environmentComposition.altarAnchor +
-                         glm::vec3(0.0f, altarGround + 0.004f, 0.0f)) *
-      glm::scale(glm::mat4(1.0f), {0.22f, 1.0f, 0.08f});
-  drawFallbackMesh(s, s.riftPlaneMesh, vp, rift,
-                   s.environmentPalette.altarGlow);
   drawWater(s, vp);
   drawPrecipitation(s, vp);
-  const bool fallbackMeshesReady = s.fallbackPillarMesh.vbo != 0u &&
-                                   s.fallbackWallMesh.vbo != 0u;
-  const bool outerCovered =
-      s.environmentStatuses[0] == EnvironmentBatchStatus::Ready ||
-      fallbackMeshesReady;
-  const bool centerCovered =
-      s.environmentStatuses[1] == EnvironmentBatchStatus::Ready ||
-      (s.fallbackWallMesh.vbo != 0u && s.riftPlaneMesh.vbo != 0u);
-  s.environmentReady = s.shader3dReady && outerCovered && centerCovered;
+  s.environmentReady = s.shader3dReady && !s.terrainChunkMeshes.empty();
 
   // M3-1 地面索引按双面占位使用；角色模型阶段启用背面剔除。
   glEnable(GL_CULL_FACE);
@@ -3948,9 +3466,6 @@ static void init3DResources(Surface& s) {
       {{-0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
   };
   s.hpBarQuadMesh.indices = {0u, 1u, 2u, 0u, 2u, 3u};
-  s.fallbackPillarMesh = createCylinder(0.025f, 0.12f, 16);
-  s.fallbackWallMesh = createCube(1.0f);
-  s.riftPlaneMesh = createPlane(1.0f, 1.0f);
   s.playerMesh.upload();
   s.groundMesh.upload();
   s.enemyMesh.upload();
@@ -3963,9 +3478,6 @@ static void init3DResources(Surface& s) {
   s.clubMesh.upload();
   s.hpBarQuadMesh.upload();
   s.shadowMesh.upload();
-  s.fallbackPillarMesh.upload();
-  s.fallbackWallMesh.upload();
-  s.riftPlaneMesh.upload();
   s.terrainMesh.upload();
   s.waterMesh.upload();
   s.skyMesh.upload();
@@ -3983,11 +3495,8 @@ static void init3DResources(Surface& s) {
     LOGE("bloom program init failed, bloom disabled");
   }
   tryInitializePendingModelAssets(s);
-  tryInitializePendingEnvironmentAssets(s);
-  tryInitializePendingBlockEnvironmentAssets(s);
   tryInitializePendingTerrainTextures(s);
   tryInitializePendingFoliageAtlas(s);
-  tryInitializePendingVisualTerrainAssets(s);
 #else
   (void)s;
 #endif
@@ -4006,9 +3515,6 @@ static void destroy3DResource(Surface& s, SurfaceGlResource resource) {
       for (SkinnedModel& model : s.enemyArchetypeModels) model.destroy();
       break;
     case SurfaceGlResource::StaticEnvironmentModels:
-      for (StaticModel& model : s.environmentModels) model.destroy();
-      for (auto& entry : s.blockEnvironmentModels) entry.second.destroy();
-      for (auto& entry : s.visualTerrainModels) entry.second.destroy();
       s.terrainMaterialAtlas.destroyGpuResource();
       s.terrainControlMap.destroyGpuResource();
       s.foliageAtlas.destroyGpuResource();
@@ -4018,9 +3524,6 @@ static void destroy3DResource(Surface& s, SurfaceGlResource resource) {
       s.groundMesh.destroy();
       s.enemyMesh.destroy();
       s.bossMesh.destroy();
-      s.fallbackPillarMesh.destroy();
-      s.fallbackWallMesh.destroy();
-      s.riftPlaneMesh.destroy();
       s.shadowMesh.destroy();
       s.terrainMesh.destroy();
       s.waterMesh.destroy();
@@ -4054,15 +3557,6 @@ static void destroy3DResource(Surface& s, SurfaceGlResource resource) {
         for (PendingModelAsset& asset : s.enemyArchetypeModelAssets) {
           asset.markDirtyForContextRebuild();
         }
-        for (PendingModelAsset& asset : s.environmentAssets) {
-          asset.markDirtyForContextRebuild();
-        }
-        for (auto& entry : s.blockEnvironmentAssets) {
-          entry.second.markDirtyForContextRebuild();
-        }
-        for (auto& entry : s.visualTerrainAssets) {
-          entry.second.markDirtyForContextRebuild();
-        }
         s.terrainMaterialAtlasAsset.markDirtyForContextRebuild();
         s.terrainControlMapAsset.markDirtyForContextRebuild();
         s.foliageAtlasAsset.markDirtyForContextRebuild();
@@ -4089,13 +3583,6 @@ static void abandon3DResources(Surface& s) {
   for (SkinnedModel& model : s.enemyArchetypeModels) {
     model.abandonGpuResources();
   }
-  for (StaticModel& model : s.environmentModels) model.abandonGpuResources();
-  for (auto& entry : s.blockEnvironmentModels) {
-    entry.second.abandonGpuResources();
-  }
-  for (auto& entry : s.visualTerrainModels) {
-    entry.second.abandonGpuResources();
-  }
   s.terrainMaterialAtlas.abandonGpuResource();
   s.terrainControlMap.abandonGpuResource();
   s.foliageAtlas.abandonGpuResource();
@@ -4103,9 +3590,6 @@ static void abandon3DResources(Surface& s) {
   s.groundMesh.abandonGpuResources();
   s.enemyMesh.abandonGpuResources();
   s.bossMesh.abandonGpuResources();
-  s.fallbackPillarMesh.abandonGpuResources();
-  s.fallbackWallMesh.abandonGpuResources();
-  s.riftPlaneMesh.abandonGpuResources();
   s.targetRingMesh.abandonGpuResources();
   s.hpBarQuadMesh.abandonGpuResources();
   s.shadowMesh.abandonGpuResources();
@@ -4149,15 +3633,6 @@ static void abandon3DResources(Surface& s) {
     for (PendingModelAsset& asset : s.enemyArchetypeModelAssets) {
       asset.markDirtyForContextRebuild();
     }
-    for (PendingModelAsset& asset : s.environmentAssets) {
-      asset.markDirtyForContextRebuild();
-    }
-    for (auto& entry : s.blockEnvironmentAssets) {
-      entry.second.markDirtyForContextRebuild();
-    }
-    for (auto& entry : s.visualTerrainAssets) {
-      entry.second.markDirtyForContextRebuild();
-    }
     s.terrainMaterialAtlasAsset.markDirtyForContextRebuild();
     s.terrainControlMapAsset.markDirtyForContextRebuild();
     s.foliageAtlasAsset.markDirtyForContextRebuild();
@@ -4176,17 +3651,9 @@ static void clearModelAssets(Surface& s) {
   for (PendingModelAsset& asset : s.enemyArchetypeModelAssets) {
     asset.clear();
   }
-  for (size_t index = 0; index < s.environmentAssets.size(); ++index) {
-    s.environmentAssets[index].clear();
-    s.environmentStatuses[index] = EnvironmentBatchStatus::Empty;
-  }
   s.terrainMaterialAtlasAsset.clear();
   s.terrainControlMapAsset.clear();
   s.foliageAtlasAsset.clear();
-  for (auto& entry : s.visualTerrainAssets) entry.second.clear();
-  s.visualTerrainAssets.clear();
-  s.visualTerrainModels.clear();
-  s.visualTerrainStatuses.clear();
   s.terrainMaterialAtlas.clear();
   s.terrainControlMap.clear();
   s.foliageAtlas.clear();
@@ -4201,7 +3668,6 @@ static void clearModelAssets(Surface& s) {
   s.environmentShadowTriangles = 0;
   s.environmentWeatherDrawCalls = 0;
   s.environmentWeatherTriangles = 0;
-  s.loggedEnvironmentTextureTier = StaticTextureTier::Full;
 }
 
 static bool tryInitGL(Surface& s) {

@@ -2,12 +2,8 @@ export const nativeStart: () => void;
 export const nativeStop: () => void;
 export const nativeStartIfForeground: () => void;
 export const nativeSetModelAssets: (player: ArrayBuffer, enemy: ArrayBuffer, boss: ArrayBuffer) => boolean;
-export const nativeSetEnvironmentAssets: (outer: ArrayBuffer, center: ArrayBuffer,
-  backdrop: ArrayBuffer, decoration: ArrayBuffer) => boolean;
-export const nativeSetBlockAsset: (blockId: number, bytes: ArrayBuffer) => boolean;
 export const nativeSetTerrainAssets: (atlas: ArrayBuffer, control: ArrayBuffer) => boolean;
 export const nativeSetFoliageAtlas: (atlas: ArrayBuffer) => boolean;
-export const nativeSetVisualTerrainAsset: (blockId: number, lod: number, bytes: ArrayBuffer) => boolean;
 export const nativeSetNpcAsset: (bytes: ArrayBuffer) => boolean;
 // 敌人原型独立模型槽位（独立高模资产）：archetype ∈ [0, 6)，
 // 缺失时 native 侧保持共享 enemy.glb 回退。
@@ -113,8 +109,13 @@ export const pullSnapshot: () => {
   explorationStamina: number,
   motionState: number,
   playerHeight: number,
+  playerChunkX: number,
+  playerChunkY: number,
+  playerLocalX: number,
+  playerLocalY: number,
   activeChunkCount: number,
-  chunkLoadCount: number,
+  cachedChunkCount: number,
+  streamingPendingCount: number,
   interactionAnchorId: number,
   interactionUnlocked: boolean,
   interactionLabel: string,
@@ -202,9 +203,6 @@ export const pullSnapshot: () => {
   explorationCurrentPoiId: number,
   explorationCurrentTargetLabel: string,
   explorationCurrentTargetDistrict: string,
-  explorationBlockedGateId: number,
-  explorationBlockedGateLabel: string,
-  explorationBlockedByPuzzleLabel: string,
   explorationFeedbackType: number,
   explorationFeedbackId: number,
   explorationFeedbackTitle: string,

@@ -4,6 +4,8 @@
 #include <chrono>
 #include <optional>
 #include <mutex>
+#include <map>
+#include <set>
 #include <unordered_map>
 #include "fixed_step.h"
 #include "../../engine/presentation/vfx_system.h"
@@ -13,6 +15,7 @@
 #include "lifecycle_state.h"
 #include "snapshot_store.h"
 #include "../render/surface.h"
+#include "../render/environment.h"
 #include "../render/camera.h"
 #include "../input/input_queue.h"
 #include "../input/touch_router.h"
@@ -29,11 +32,10 @@
 #include "../../gameplay/world/teleport_anchor.h"
 #include "../../gameplay/world/interactable.h"
 #include "../../gameplay/world/exploration_content.h"
-#include "../../gameplay/world/exploration_gate_collision.h"
 #include "../../gameplay/world/exploration_feedback.h"
 #include "../../gameplay/world/npc_agent.h"
+#include "../../gameplay/world/procedural_chunk_content.h"
 #include "../../gameplay/world/world_terrain.h"
-#include "../../gameplay/world/terrain_wall_collision.h"
 #include "../../gameplay/quest/quest_system.h"
 #include "../../gameplay/quest/side_quests.h"
 #include "../../gameplay/quest/daily_quest.h"
@@ -49,24 +51,29 @@
 #include "../world/world_grid.h"
 #include "../world/terrain_heightfield.h"
 #include "../world/stream_scheduler.h"
-#include "../world/environment_collision.h"
 #include "../world/weather_system.h"
+
+struct ProceduralCollectibleRuntime {
+  uint64_t stableId = 0;
+  ChunkCoord chunk{};
+  Vec2 localPosition{};
+  int32_t itemId = 0;
+};
 
 struct Loop {
   Loop() {
     const EnvironmentComposition composition =
         EnvironmentController::defaultComposition();
-    surface.player.x = composition.spawn.x;
-    surface.player.y = composition.spawn.z;
+    playerWorldPosition = NormalizeWorldPosition(
+        {0, 0}, composition.spawn.x, composition.spawn.z);
+    surface.player.x = playerWorldPosition.local.x;
+    surface.player.y = playerWorldPosition.local.y;
     motionState = explorationMotion.reset(
         terrain.heightAt(surface.player.x, surface.player.y));
     // 渲染层只读消费同一高度场：地形网格生成与角色/阴影贴地采样。
     surface.terrain = &terrain;
     // 分块地形流式：渲染线程每帧从调度器取就绪分块上传/绘制。
     surface.streamScheduler = &streamScheduler;
-    // 建筑碰撞：与渲染批次共用世界适配参数，城墙/塔楼不再穿模。
-    buildingCollision = BuildingCollision::fromEnvironmentLayout(
-        composition.altarAnchor.x, composition.altarAnchor.z);
     // 开局赠送主角（辉印·莉拉）。
     characters.addCharacter(1);
     (void)encounter.start(EncounterMode::Training);
@@ -79,6 +86,9 @@ struct Loop {
   CameraGesture cameraGesture{CameraGestureConfig{}};
   PlayerIntent intent;
   PlayerController playerController;
+  // CPU 权威世界位置；Surface::player 只保留当前分块局部表现值。
+  WorldPosition playerWorldPosition;
+  uint64_t worldSeed = 1;
   // 开放世界探索基础（阶段一）：分块流式、地形、垂直运动与锚点。
   WorldGrid worldGrid;
   // 地形 = 生成头特征层（湖盆/台地/劣地/悬崖/天际线）+ 缓基础八度。
@@ -86,10 +96,6 @@ struct Loop {
   // 分块地形流式调度器：消费 worldGrid 的加/卸载请求，后台生成
   // 分块网格；渲染线程经 surface.streamScheduler 每帧取用。
   StreamScheduler streamScheduler{terrain, worldGrid};
-  // 建筑碰撞集（城墙/塔楼）：滑动阻挡 + 墙面攀爬 + 墙头支撑。
-  BuildingCollision buildingCollision;
-  // 主角碰撞半径（世界单位）：用于建筑 OBB 膨胀与支撑查询。
-  static constexpr float playerCollisionRadius = 0.012f;
   ExplorationMotion explorationMotion;
   ExplorationMotionState motionState;
   TeleportAnchorSystem anchors = TeleportAnchorSystem::openWorldLayout();
@@ -109,8 +115,6 @@ struct Loop {
   StoryDirector storyDirector = StoryDirector::opening();
   InteractableRegistry interactables = InteractableRegistry::openWorldLayout();
   ExplorationContent explorationContent = ExplorationContent::verticalSlice();
-  ExplorationGateCollision explorationGateCollision =
-      ExplorationGateCollision::fromContent(explorationContent);
   ExplorationFeedbackState explorationFeedback;
   InteractableTarget currentInteractable;
   DialogSession dialogSession;
@@ -144,6 +148,7 @@ struct Loop {
   Tick loopTimeMs = 0;
   // 画质预设：0=自动（跟随 PerformanceGuard），1=低（强制小流式半径）。
   int32_t qualityPreset = 0;
+  int32_t streamingQualityLevel = -1;
   // BGM 区域（阶段四）：0=森林 1=平原 2=高地，按玩家位置切换。
   int32_t musicRegionId = 0;
   // 采集物重生倒计时（毫秒）；归零后采集物恢复可交互。
@@ -154,17 +159,22 @@ struct Loop {
   bool interactQueued = false;
   int32_t chunkLoadCount = 0;
 
-  void refreshExplorationGateCollision();
   void publishExplorationFeedback(ExplorationFeedbackType type, int32_t id,
                                   const std::string& title,
                                   const std::string& subtitle,
                                   Tick durationMs);
-  BuildingContact resolvePlayerWorldCollision(float& x, float& y,
-                                              float radius, float height);
+  void syncInfiniteWorld(Vec2 cameraForward, Vec2 movement);
+  void rebuildProceduralRuntime();
   // 野外敌人数量（性能仪表预留）：当前无野外敌人系统恒为 0，
   // 由后续 WildSpawnSystem 写入，PROFILE 打点只读消费。
   int32_t wildEnemyCount = 0;
   Tick teleportFlashMs = 0;
+  std::set<ChunkCoord> teleportSafeRingPending;
+  std::map<ChunkCoord, ProceduralChunkRuntime> proceduralChunks;
+  std::map<uint64_t, ProceduralCollectibleRuntime> proceduralCollectibles;
+  std::size_t proceduralCollectibleCount() const {
+    return proceduralCollectibles.size();
+  }
   ThirdPersonCamera camera;
   SoftTargeting softTargeting;
   CombatController combat{CombatConfig::defaults()};
@@ -278,8 +288,10 @@ struct Loop {
   bool switchCharacter();
   // 地图快速传送：仅已解锁锚点可用（原神式地图选点传送）。
   bool teleportToAnchor(int32_t anchorId);
-  // 画质预设：0=自动，1=低。
-  void setQualityPreset(int32_t preset) { qualityPreset = preset == 1 ? 1 : 0; }
+  // 画质预设：0=高/auto，1=中，2=低。
+  void setQualityPreset(int32_t preset) {
+    qualityPreset = preset < 0 ? 0 : (preset > 2 ? 2 : preset);
+  }
   int32_t qualityPresetValue() const { return qualityPreset; }
   // 音效总开关：由设置界面下发，关闭后静音并停环境垫底。
   void setAudioEnabled(bool enabled) { audioBridge.setEnabled(enabled); }

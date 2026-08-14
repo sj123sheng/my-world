@@ -20,4 +20,12 @@ const generator = await readFile(new URL(
 assert.ok(!/fort|ruin|wall|writeGlb|visualTerrain/i.test(generator),
   'natural asset generator must not retain artificial asset generation');
 
+const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
+assert.ok(!readme.includes('`assets/environment/manifest.json`'),
+  'README must not link the removed authored-environment manifest');
+assert.ok(!readme.includes('`outer_ring.glb`'),
+  'README must not present removed authored GLBs as current assets');
+assert.match(readme, /历史验收[\s\S]*assets\/environment\/LICENSES\.md/,
+  'README must label the old visual benchmark as history and retain license provenance');
+
 console.log('test_environment_assets ok');

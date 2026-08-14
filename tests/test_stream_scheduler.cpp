@@ -8,6 +8,7 @@
 #include "native/engine/world/world_grid.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <chrono>
 #include <cmath>
@@ -17,6 +18,7 @@
 #include <memory>
 #include <mutex>
 #include <set>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
@@ -180,6 +182,58 @@ int main() {
   asyncTravel.setSyncMode(true);
   assert(asyncTravel.readyCount() == 0);
   assert(asyncTravel.cachedChunkCount() == 0);
+
+  // 注入 builder 在同步安全圈中途失败时允许向调用方报告异常，但不得
+  // 提交半圈或遗留 token 阻止同坐标重试。
+  auto syncThrowCalls = std::make_shared<std::atomic<int>>(0);
+  auto syncThrowBuilder = std::make_shared<ChunkedTerrain>(terrain);
+  StreamScheduler syncThrow(
+      terrain, grid, {},
+      [syncThrowCalls, syncThrowBuilder](ChunkCoord coord,
+                                         uint32_t segments) {
+        if (syncThrowCalls->fetch_add(1) == 4) {
+          throw std::runtime_error("safe ring builder failure");
+        }
+        return syncThrowBuilder->buildChunkMesh(coord, segments);
+      });
+  syncThrow.setSyncMode(true);
+  bool safeRingThrew = false;
+  try {
+    (void)syncThrow.loadSafeRingSync({8, -8}, 0);
+  } catch (const std::runtime_error&) {
+    safeRingThrew = true;
+  }
+  assert(safeRingThrew);
+  assert(syncThrow.readyCount() == 0);
+  assert(syncThrow.cachedChunkCount() == 0);
+  const std::vector<ChunkCoord> retryRing = {
+      {8, -8}, {7, -9}, {8, -9}, {9, -9}, {7, -8},
+      {9, -8}, {7, -7}, {8, -7}, {9, -7}};
+  syncThrow.requestLoads(retryRing, {8, -8}, 0);
+  assert(syncThrow.readyCount() == retryRing.size());
+
+  // worker 边界必须吞住 builder 异常并释放当前 token；线程继续存活，
+  // 同一坐标随后可成功重试，而不是触发 std::terminate。
+  auto asyncThrowCalls = std::make_shared<std::atomic<int>>(0);
+  auto asyncThrowBuilder = std::make_shared<ChunkedTerrain>(terrain);
+  StreamScheduler asyncThrow(
+      terrain, grid, {},
+      [asyncThrowCalls, asyncThrowBuilder](ChunkCoord coord,
+                                           uint32_t segments) {
+        if (asyncThrowCalls->fetch_add(1) == 0) {
+          throw std::runtime_error("async builder failure");
+        }
+        return asyncThrowBuilder->buildChunkMesh(coord, segments);
+      });
+  asyncThrow.requestLoads({{4, 4}}, {4, 4}, 0);
+  for (int spin = 0; spin < 200 && asyncThrowCalls->load() < 1; ++spin) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  assert(asyncThrowCalls->load() == 1);
+  asyncThrow.requestLoads({{4, 4}}, {4, 4}, 0);
+  asyncThrow.setSyncMode(true);
+  assert(asyncThrowCalls->load() == 2);
+  assert(asyncThrow.readyCount() == 1);
 
   // 生产变更破坏点：极值落点直接做 +/-1 会溢出，静默跳过则不再是固定 3x3。
   const int64_t min = std::numeric_limits<int64_t>::min();

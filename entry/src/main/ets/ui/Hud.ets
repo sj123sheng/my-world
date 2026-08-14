@@ -55,6 +55,13 @@ export struct Hud {
   @Prop bossSourceColor: number = 0;
   @Prop bossRingBroken: boolean = false;
   @Prop inputEventCount: number = 0;
+  @Prop playerChunkX: number = 0;
+  @Prop playerChunkY: number = 0;
+  @Prop playerLocalX: number = 0.5;
+  @Prop playerLocalY: number = 0.5;
+  @Prop activeChunkCount: number = 0;
+  @Prop cachedChunkCount: number = 0;
+  @Prop streamingPendingCount: number = 0;
   @State auras: string[] = [];
   @State hpFlash: number = 0;
   @State staminaFlash: number = 0;
@@ -339,6 +346,10 @@ export struct Hud {
             .fontColor(Color.Gray).fontSize(10)
           Text(`输入事件 ${this.inputEventCount}`)
             .fontColor(Color.Yellow).fontSize(10)
+          Text(`分块 ${this.playerChunkX}, ${this.playerChunkY} · 局部 ${this.playerLocalX.toFixed(3)}, ${this.playerLocalY.toFixed(3)}`)
+            .fontColor(Color.Yellow).fontSize(10)
+          Text(`流送 活动 ${this.activeChunkCount} · 缓存 ${this.cachedChunkCount} · 待生成 ${this.streamingPendingCount}`)
+            .fontColor(Color.Gray).fontSize(10)
           }
           .alignItems(HorizontalAlign.Start)
           .position({ x: 12, y: 180 })

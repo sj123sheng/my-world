@@ -128,11 +128,6 @@ void BossController::update(const BossFrameInput& input) {
   } else {
     snapshot_.moving = false;
   }
-  // 宿主层碰撞解算：把首领从建筑等障碍内推出，位置修正回写权威
-  // 逻辑位置，后续朝向/射程判定与渲染严格一致。
-  if (input.positionResolver) {
-    input.positionResolver(snapshot_.position, kBossCollisionRadius);
-  }
 }
 
 void BossController::updateBasicAttackTimers(Tick elapsed) {

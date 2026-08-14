@@ -1,12 +1,23 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { access, readFile, stat } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 import { generateControlMapPng, terrainControlPixel } from
   '../automation/assets/generate_environment_visuals.mjs';
 import { validateWorldLayout } from '../automation/assets/generate_world_layout.mjs';
+
+async function withRestoredOutputs(paths, operation) {
+  const originals = await Promise.all(paths.map((path) => readFile(path)));
+  try {
+    return await operation();
+  } finally {
+    await Promise.all(paths.map((path, index) => writeFile(path, originals[index])));
+  }
+}
 
 const world = JSON.parse(await readFile(new URL('../assets/world/world.json', import.meta.url)));
 const schema = JSON.parse(await readFile(new URL(
@@ -124,26 +135,55 @@ for (const resource of resourceUrls) resourceBytes += (await stat(resource)).siz
 assert.ok(resourceBytes <= 80 * 1024 * 1024,
   'single-zone environment visual resources must stay within the 80 MiB ceiling');
 
+// 生成流程失败也必须恢复其接管的输出。先用临时文件验证恢复边界，避免
+// RED 阶段污染仓库中的 tracked generated files。
+const restoreFixtureDir = await mkdtemp(join(tmpdir(), 'myworld-generation-restore-'));
+const restoreFixturePath = join(restoreFixtureDir, 'generated.txt');
+let restoreOperationRan = false;
+try {
+  await writeFile(restoreFixturePath, 'before');
+  try {
+    await withRestoredOutputs([restoreFixturePath], async () => {
+      restoreOperationRan = true;
+      await writeFile(restoreFixturePath, 'changed');
+      throw new Error('intentional generator failure');
+    });
+  } catch (error) {
+    assert.equal(error.message, 'intentional generator failure');
+  }
+  assert.ok(restoreOperationRan);
+  assert.equal(await readFile(restoreFixturePath, 'utf8'), 'before');
+} finally {
+  await rm(restoreFixtureDir, { recursive: true, force: true });
+}
+
 const generatedOutputs = [
   new URL('../native/generated/world_layout.gen.h', import.meta.url),
   new URL('../entry/src/main/ets/generated/EnvironmentVisualManifest.ets', import.meta.url),
   new URL('../entry/src/main/resources/rawfile/environment/terrain_control_spawn.png',
     import.meta.url),
 ];
-const beforeGeneration = await Promise.all(generatedOutputs.map((path) => readFile(path)));
 const runGenerator = promisify(execFile);
 const root = fileURLToPath(new URL('..', import.meta.url));
-await runGenerator(process.execPath, ['automation/assets/generate_world_layout.mjs'], { cwd: root });
-await runGenerator(process.execPath,
-  ['automation/assets/generate_environment_visuals.mjs'], { cwd: root });
-const afterFirstGeneration = await Promise.all(generatedOutputs.map((path) => readFile(path)));
-await runGenerator(process.execPath, ['automation/assets/generate_world_layout.mjs'], { cwd: root });
-await runGenerator(process.execPath,
-  ['automation/assets/generate_environment_visuals.mjs'], { cwd: root });
-const afterSecondGeneration = await Promise.all(generatedOutputs.map((path) => readFile(path)));
-assert.deepEqual(afterFirstGeneration, beforeGeneration,
-  'first generator run must leave tracked outputs byte-identical');
-assert.deepEqual(afterSecondGeneration, afterFirstGeneration,
-  'second generator run must be byte-identical to the first');
+await withRestoredOutputs(generatedOutputs, async () => {
+  const beforeGeneration = await Promise.all(
+    generatedOutputs.map((path) => readFile(path)));
+  await runGenerator(process.execPath,
+    ['automation/assets/generate_world_layout.mjs'], { cwd: root });
+  await runGenerator(process.execPath,
+    ['automation/assets/generate_environment_visuals.mjs'], { cwd: root });
+  const afterFirstGeneration = await Promise.all(
+    generatedOutputs.map((path) => readFile(path)));
+  await runGenerator(process.execPath,
+    ['automation/assets/generate_world_layout.mjs'], { cwd: root });
+  await runGenerator(process.execPath,
+    ['automation/assets/generate_environment_visuals.mjs'], { cwd: root });
+  const afterSecondGeneration = await Promise.all(
+    generatedOutputs.map((path) => readFile(path)));
+  assert.deepEqual(afterFirstGeneration, beforeGeneration,
+    'first generator run must leave tracked outputs byte-identical');
+  assert.deepEqual(afterSecondGeneration, afterFirstGeneration,
+    'second generator run must be byte-identical to the first');
+});
 
 console.log('test_environment_visual_assets ok');
