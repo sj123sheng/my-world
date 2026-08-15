@@ -382,6 +382,34 @@ std::optional<Vec2> resolveEntityPosition(const Surface& surface,
   return std::nullopt;
 }
 
+// 按实体 ID 解析模型缩放（含原型倍率），与 resolveEntityPosition 同表：
+// 锁定环按目标体型放大，避免固定小环被本体/接地阴影遮住。
+float resolveEntityScale(const Surface& surface,
+                         const EncounterSnapshot& encounter, EntityId id,
+                         const WildSpawnSystem* wild = nullptr) {
+  if (id == CombatController::kPlayerId) {
+    return surface.playerAssetProfile.scale;
+  }
+  if (id == EncounterController::kBossId) {
+    return surface.bossAssetProfile.scale;
+  }
+  for (const EncounterEnemySnapshot& enemy : encounter.enemies) {
+    if (enemy.id == id) {
+      return surface.enemyAssetProfile.scale *
+             EnemyArchetypeScale(static_cast<int>(enemy.archetype));
+    }
+  }
+  if (wild != nullptr) {
+    for (const WildEnemySnapshot& enemy : wild->snapshot()) {
+      if (enemy.id == id) {
+        return surface.enemyAssetProfile.scale *
+               EnemyArchetypeScale(enemy.archetype);
+      }
+    }
+  }
+  return surface.enemyAssetProfile.scale;
+}
+
 // 按实体 ID 解析敌方元素归属（原神式元素可读性）：遭遇敌人与野外
 // 敌人同表查询，返回源质编号（0=辉印 1=脉流 2=蚀质）；物理原型 /
 // 首领 / 训练假人 / 未知实体返回 nullopt，击杀反馈保持亮金。
@@ -2830,6 +2858,8 @@ void Loop::updateFixed(Tick /*tick*/, int64_t dtMs) {
     if (markerPosition.has_value()) {
       surface.targetMarker3d.x = markerPosition->x;
       surface.targetMarker3d.z = markerPosition->y;
+      surface.targetMarker3d.targetScale = resolveEntityScale(
+          surface, encounter.snapshot(), *currentTarget.id, &wildSpawn);
     } else {
       surface.targetMarker3d.active = false;
       surface.targetMarker3d.targetId = 0u;
@@ -3007,6 +3037,8 @@ void Loop::updateFixed(Tick /*tick*/, int64_t dtMs) {
         if (markerPosition.has_value()) {
           surface.targetMarker3d.x = markerPosition->x;
           surface.targetMarker3d.z = markerPosition->y;
+          surface.targetMarker3d.targetScale = resolveEntityScale(
+              surface, encounter.snapshot(), *currentTarget.id, &wildSpawn);
         } else {
           surface.targetMarker3d.active = false;
           surface.targetMarker3d.targetId = 0u;

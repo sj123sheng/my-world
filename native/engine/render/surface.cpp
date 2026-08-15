@@ -488,6 +488,8 @@ static void drawWindupWarnings(Surface& s, const glm::mat4& vp) {
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   s.shader3d.setRim(glm::vec3(0.0f), 0.0f);
   s.shader3d.setSpecular(0.0f, 1.0f);
+  // createRing 卷绕正面朝下：剔除开启时从上方不可见，绘制期间关闭剔除。
+  glDisable(GL_CULL_FACE);
 
   // 0.8s 呼吸周期：环体缩放与透明度同步脉冲，营造紧迫感。
   const float phase = s.windupPulseSeconds / 0.8f * 6.2831853f;
@@ -533,6 +535,7 @@ static void drawWindupWarnings(Surface& s, const glm::mat4& vp) {
   s.shader3d.setAlpha(1.0f);
   glDisable(GL_BLEND);
   glDepthMask(GL_TRUE);
+  glEnable(GL_CULL_FACE);
 }
 
 // 元素附着光环：附着源质的目标脚下元素色呼吸光环（加法混合，
@@ -1501,9 +1504,15 @@ static void drawTargetMarker(Surface& s, const glm::mat4& vp) {
 
   const float phase = s.targetMarker3d.pulsePhase;
   const float scalePulse = 1.0f + 0.10f * std::sin(phase * 2.0f);
-  // 锁定环需要足够醒目：基础环网格半径较小（与预警/冲击波共用），
-  // 此处单独放大到可读尺寸，避免真机上脚下圆环不可见。
-  constexpr float kLockRingScale = 2.4f;
+  // 基础环网格外半径 0.082（与预警/冲击波共用）：锁定环半径按目标
+  // 体型缩放到 0.5 倍模型缩放，落在接地阴影（0.36 倍）之外，
+  // 避免固定小环被敌人本体/阴影完全遮住而真机不可见。
+  constexpr float kUnitRingOuterRadius = 0.082f;
+  constexpr float kLockRingRadiusFactor = 0.5f;
+  // 下限仅防 0（敌人体型缩放约 0.015 量级，不能再夹到 0.1）。
+  const float bodyScale = std::max(s.targetMarker3d.targetScale, 1e-4f);
+  const float ringScale =
+      bodyScale * kLockRingRadiusFactor / kUnitRingOuterRadius * scalePulse;
   // 环体旋转对称，无需旋转；仅做呼吸缩放脉冲。
   const glm::mat4 model =
       glm::translate(glm::mat4(1.0f),
@@ -1511,7 +1520,7 @@ static void drawTargetMarker(Surface& s, const glm::mat4& vp) {
                                groundYAt(s, s.targetMarker3d.x,
                                          s.targetMarker3d.z) + 0.016f,
                                s.targetMarker3d.z)) *
-      glm::scale(glm::mat4(1.0f), glm::vec3(scalePulse * kLockRingScale));
+      glm::scale(glm::mat4(1.0f), glm::vec3(ringScale));
   // 青金色锁定环，背光面仍保持可见。
   // 锁定元素目标时指示环混入元素色，提示目标系别。
   const glm::vec3 markerColor =
@@ -1522,6 +1531,8 @@ static void drawTargetMarker(Surface& s, const glm::mat4& vp) {
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   s.shader3d.setMVP(vp * model);
+  // 与预警环同因：createRing 正面朝下，剔除开启时从上方不可见。
+  glDisable(GL_CULL_FACE);
   s.shader3d.setModel(model);
   s.shader3d.setSkinned(false);
   s.shader3d.setHasTexture(false);
@@ -1533,6 +1544,7 @@ static void drawTargetMarker(Surface& s, const glm::mat4& vp) {
   s.shader3d.setAlpha(1.0f);
   glDisable(GL_BLEND);
   glDepthMask(GL_TRUE);
+  glEnable(GL_CULL_FACE);
 }
 
 // -----------------------------------------------------------------------------
