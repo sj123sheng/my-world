@@ -77,6 +77,10 @@ class TargetLockController {
   // 完全复位：清空当前目标、模式与活跃窗口。
   void clear();
 
+  // 锁定环可见度（0..1）：手动模式常亮 0.92 基线；自动模式活跃窗口内
+  // 0.72 基线，停止战斗后随 markerFadeMs 线性衰减到 0。无目标恒 0。
+  float markerVisibility(Tick now) const;
+
   TargetLockMode mode() const { return mode_; }
   std::optional<EntityId> currentId() const { return currentId_; }
 

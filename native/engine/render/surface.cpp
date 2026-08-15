@@ -1496,6 +1496,8 @@ static glm::mat4 cameraBillboard(const Surface& s) {
 static void drawTargetMarker(Surface& s, const glm::mat4& vp) {
   if (!s.targetMarker3d.active) return;
   if (s.targetRingMesh.vbo == 0u) return;
+  // 可见度为 0 时跳过绘制：自动锁定淡出后不再残留空环。
+  if (s.targetMarker3d.visibility <= 0.0f) return;
 
   const float phase = s.targetMarker3d.pulsePhase;
   const float scalePulse = 1.0f + 0.10f * std::sin(phase * 2.0f);
@@ -1517,7 +1519,10 @@ static void drawTargetMarker(Surface& s, const glm::mat4& vp) {
   s.shader3d.setHasTexture(false);
   s.shader3d.setLight(s.lightDir, markerColor * 0.7f, markerColor * 0.5f);
   s.shader3d.setEnvironmentTint(glm::vec3(0.0f), 0.0f);
+  // 环体 alpha 由可见度驱动：手动常亮 0.92，自动活跃 0.72 随窗口衰减。
+  s.shader3d.setAlpha(s.targetMarker3d.visibility);
   s.targetRingMesh.draw();
+  s.shader3d.setAlpha(1.0f);
 }
 
 // -----------------------------------------------------------------------------

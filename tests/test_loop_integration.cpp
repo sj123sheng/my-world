@@ -170,9 +170,19 @@ int main() {
   assert(!recycleAssociationLoop.wildSpawn.snapshot().empty());
   const EntityId recycledEnemyId =
       recycleAssociationLoop.wildSpawn.snapshot().front().id;
+  const Vec2 recycledEnemyPosition =
+      recycleAssociationLoop.wildSpawn.snapshot().front().position;
+  // 模拟手动锁定该野怪：TargetLockController 是唯一锁定状态来源。
+  std::vector<TargetLockCandidate> recycleLockCandidates;
+  recycleLockCandidates.push_back(
+      TargetLockCandidate{recycledEnemyId, recycledEnemyPosition, true, true,
+                          false});
   recycleAssociationLoop.currentTarget =
-      TargetSelection{static_cast<int32_t>(recycledEnemyId), 0.1f, 0.0f,
-                      {1.0f, 0.0f}};
+      recycleAssociationLoop.targetLock.cycleManual(
+          recycledEnemyPosition + Vec2{0.05f, 0.0f},
+          recycleAssociationLoop.camera.yaw(), recycleLockCandidates, 0);
+  assert(recycleAssociationLoop.currentTarget.id.has_value() &&
+         *recycleAssociationLoop.currentTarget.id == recycledEnemyId);
   recycleAssociationLoop.surface.targetMarker3d.active = true;
   recycleAssociationLoop.surface.targetMarker3d.targetId = recycledEnemyId;
   recycleAssociationLoop.enemyHpTrails[recycledEnemyId] = {};
@@ -182,7 +192,7 @@ int main() {
       NormalizeWorldPosition({50, 0}, 0.5, 0.5);
   recycleAssociationLoop.streamScheduler.beginBurst(1, 1024);
   recycleAssociationLoop.syncInfiniteWorld({0.0f, 1.0f}, {});
-  assert(!recycleAssociationLoop.currentTarget.has_value());
+  assert(!recycleAssociationLoop.currentTarget.id.has_value());
   assert(!recycleAssociationLoop.surface.targetMarker3d.active);
   assert(recycleAssociationLoop.surface.targetMarker3d.targetId == 0u);
   assert(recycleAssociationLoop.enemyHpTrails.count(recycledEnemyId) == 0);
@@ -530,6 +540,189 @@ int main() {
   assert(staleTargetLoop.enqueueInput(InputAction::Attack, -1, 0.0f, 0.0f));
   for (int frame = 0; frame < 10; ++frame) staleTargetLoop.tickOnce(16);
   assert(staleTargetLoop.encounter.events().combat.gameplay.empty());
+
+  // Task 4：唯一目标数据流——快照、锁定环、战斗绑定、encounter 与
+  // 投射物必须消费同一个目标 ID；目标死亡后同帧切换，不允许分叉。
+  // 自定义纵深站位（0.30/0.50/0.65）：间距足够大，敌人短时移动
+  // 不会翻转 (distance, id) 循环顺序，保证手动循环断言确定。
+  EncounterConfig lockFlowConfig;
+  lockFlowConfig.mode = EncounterMode::Mixed;
+  lockFlowConfig.enemies = {
+      EncounterEnemyConfig{EncounterController::kRiftEnemyId,
+                           EnemyArchetype::RiftClaw, {0.5f, 0.42f},
+                           {0.5f, 0.42f}, fp(300), fp(100)},
+      EncounterEnemyConfig{EncounterController::kPriestEnemyId,
+                           EnemyArchetype::Priest, {0.5f, 0.62f},
+                           {0.5f, 0.62f}, fp(300), fp(100)},
+      EncounterEnemyConfig{EncounterController::kGuardEnemyId,
+                           EnemyArchetype::Guard, {0.5f, 0.77f},
+                           {0.5f, 0.77f}, fp(300), fp(100)}};
+  Loop lockFlowLoop;
+  isolateWildSpawns(lockFlowLoop);
+  lockFlowLoop.surface.width = 1000;
+  lockFlowLoop.surface.height = 800;
+  lockFlowLoop.surface.ready = true;
+  assert(lockFlowLoop.encounter.start(lockFlowConfig));
+  lockFlowLoop.tickOnce(16);
+  const auto assertSingleTarget = [&lockFlowLoop]() -> int32_t {
+    const GameSnapshot snap = lockFlowLoop.snapshot();
+    assert(snap.targetId != 0);
+    assert(lockFlowLoop.surface.targetMarker3d.targetId ==
+           static_cast<uint32_t>(snap.targetId));
+    assert(lockFlowLoop.encounter.snapshot().selectedTargetId ==
+           static_cast<EntityId>(snap.targetId));
+    return snap.targetId;
+  };
+  // 自动模式：距离优先锁定最近敌人；未攻击时锁定环不显示（无活跃窗口）。
+  const int32_t autoLocked = assertSingleTarget();
+  assert(autoLocked ==
+         static_cast<int32_t>(EncounterController::kRiftEnemyId));
+  assert(lockFlowLoop.snapshot().targetLockMode == 0);
+  assert(!lockFlowLoop.surface.targetMarker3d.active);
+  assert(!lockFlowLoop.surface.targetMarker3d.manual);
+  assert(lockFlowLoop.surface.targetMarker3d.visibility == 0.0f);
+  // 触发攻击后锁定环进入活跃窗口；所有消费端仍共享同一 ID。
+  assert(lockFlowLoop.enqueueInput(InputAction::Attack, -1, 0.0f, 0.0f));
+  lockFlowLoop.tickOnce(16);
+  assert(assertSingleTarget() == autoLocked);
+  assert(lockFlowLoop.surface.targetMarker3d.active);
+  assert(lockFlowLoop.surface.targetMarker3d.visibility > 0.0f);
+  assert(lockFlowLoop.surface.targetMarker3d.visibility <= 0.72f);
+
+  // 手动循环：每次单击按 (distance, id) 切换；三名敌人三轮后环绕回起点；
+  // Manual 模式锁定环常亮（0.92 基线）且快照模式为 1。
+  int32_t cycleFirst = 0;
+  int32_t cyclePrev = 0;
+  for (int round = 0; round < 4; ++round) {
+    assert(lockFlowLoop.enqueueInput(InputAction::CycleTarget, -1, 0.0f, 0.0f));
+    lockFlowLoop.tickOnce(16);
+    const int32_t locked = assertSingleTarget();
+    if (round == 0) {
+      cycleFirst = locked;
+    } else if (round < 3) {
+      assert(locked != cyclePrev);
+      assert(locked != cycleFirst);
+    } else {
+      assert(locked == cycleFirst);  // 三轮后环绕回起点
+    }
+    cyclePrev = locked;
+    assert(lockFlowLoop.snapshot().targetLockMode == 1);
+    assert(lockFlowLoop.surface.targetMarker3d.manual);
+    assert(lockFlowLoop.surface.targetMarker3d.active);
+    assert(std::abs(lockFlowLoop.surface.targetMarker3d.visibility - 0.92f) <
+           0.001f);
+  }
+
+  // 解除锁定：切回自动模式并立即按自动规则刷新。
+  assert(lockFlowLoop.enqueueInput(InputAction::ReleaseTargetLock, -1, 0.0f,
+                                   0.0f));
+  lockFlowLoop.tickOnce(16);
+  assert(lockFlowLoop.snapshot().targetLockMode == 0);
+  assert(!lockFlowLoop.surface.targetMarker3d.manual);
+  assert(assertSingleTarget() != 0);
+
+  // Boss 作为候选参与：自动模式正常锁定，锁定环与首领轮廓指向同一 ID。
+  assert(lockFlowLoop.startEncounter(EncounterMode::Boss));
+  lockFlowLoop.tickOnce(16);
+  assert(lockFlowLoop.snapshot().targetId ==
+         static_cast<int32_t>(EncounterController::kBossId));
+  assert(lockFlowLoop.surface.targetMarker3d.targetId ==
+         static_cast<uint32_t>(EncounterController::kBossId));
+  assert(lockFlowLoop.surface.boss3d.targeted);
+  assert(lockFlowLoop.encounter.snapshot().selectedTargetId ==
+         EncounterController::kBossId);
+
+  // 投射物消费同一目标：锁定 Boss 时释放辉印，投射物朝 Boss 飞行。
+  // 施法前摇（160ms）+ 命中卡肉会把投射物生成推迟到约 19 帧后，
+  // 投射物寿命约 0.26s，因此逐帧扫描窗口而不是定点采样。
+  assert(lockFlowLoop.enqueueInput(InputAction::Radiance, -1, 0.0f, 0.0f));
+  bool projectileTowardBoss = false;
+  for (int frame = 0; frame < 40 && !projectileTowardBoss; ++frame) {
+    lockFlowLoop.tickOnce(16);
+    const Vec2 bossNow = lockFlowLoop.encounter.snapshot().boss.position;
+    for (const HitSpark3D& spark : lockFlowLoop.surface.hitSparks3d) {
+      if (spark.kind != 4) continue;  // 辉印释放投射物
+      const Vec2 velocity{spark.vx, spark.vz};
+      // 投射物速度远高于普通火花（>1 vs ~0.05），据此隔离。
+      if (velocity.length() < 1.0f) continue;
+      const Vec2 toBoss = bossNow - Vec2{spark.x, spark.z};
+      if (toBoss.length() < 0.02f) continue;
+      const float cosine = (toBoss.x * velocity.x + toBoss.y * velocity.y) /
+                           (toBoss.length() * velocity.length());
+      if (cosine > 0.99f) projectileTowardBoss = true;
+    }
+  }
+  assert(projectileTowardBoss);
+
+  // 目标死亡：击杀结算后所有消费端同帧切到新目标，过渡期不分叉。
+  CombatConfig fragileLockConfig = CombatConfig::defaults();
+  fragileLockConfig.comboDamage = {fp(300), fp(300), fp(300), fp(300)};
+  Loop deathSyncLoop;
+  isolateWildSpawns(deathSyncLoop);
+  deathSyncLoop.combat = CombatController(fragileLockConfig);
+  deathSyncLoop.surface.width = 1000;
+  deathSyncLoop.surface.height = 800;
+  deathSyncLoop.surface.ready = true;
+  assert(deathSyncLoop.startEncounter(EncounterMode::Mixed));
+  deathSyncLoop.tickOnce(16);
+  const int32_t deathFirstTarget = deathSyncLoop.snapshot().targetId;
+  assert(deathFirstTarget ==
+         static_cast<int32_t>(EncounterController::kRiftEnemyId));
+  assert(deathSyncLoop.enqueueInput(InputAction::Attack, -1, 0.0f, 0.0f));
+  bool deathSwitchObserved = false;
+  for (int frame = 0; frame < 20 && !deathSwitchObserved; ++frame) {
+    deathSyncLoop.tickOnce(16);
+    const GameSnapshot snap = deathSyncLoop.snapshot();
+    // 每一帧快照/锁定环/encounter 必须指向同一 ID（或同时为空）。
+    assert(snap.targetId == 0 ||
+           deathSyncLoop.surface.targetMarker3d.targetId ==
+               static_cast<uint32_t>(snap.targetId));
+    assert(deathSyncLoop.encounter.snapshot().selectedTargetId ==
+           static_cast<EntityId>(snap.targetId));
+    deathSwitchObserved =
+        snap.targetId != 0 && snap.targetId != deathFirstTarget;
+  }
+  assert(deathSwitchObserved);
+  const GameSnapshot afterDeathSwitch = deathSyncLoop.snapshot();
+  assert(afterDeathSwitch.targetId ==
+             static_cast<int32_t>(EncounterController::kPriestEnemyId) ||
+         afterDeathSwitch.targetId ==
+             static_cast<int32_t>(EncounterController::kGuardEnemyId));
+  assert(deathSyncLoop.surface.targetMarker3d.targetId ==
+         static_cast<uint32_t>(afterDeathSwitch.targetId));
+
+  // 野外敌人通道：锁定野外敌人时战斗外部绑定共享同一 ID。
+  Loop wildLockLoop;
+  wildLockLoop.streamScheduler.setSyncMode(true);
+  wildLockLoop.surface.width = 1000;
+  wildLockLoop.surface.height = 800;
+  wildLockLoop.surface.ready = true;
+  wildLockLoop.playerWorldPosition =
+      NormalizeWorldPosition({0, 0}, 0.5, 0.45);
+  wildLockLoop.streamScheduler.beginBurst(1, 1024);
+  WorldLayout::WorldSpawnZoneDef lockZone{};
+  lockZone.zoneId = "lock-test";
+  lockZone.districtId = "test";
+  lockZone.aggroGroup = "solo";
+  lockZone.archetype = WorldLayout::SpawnArchetype::RiftClaw;
+  lockZone.count = 1;
+  lockZone.respawnMs = 10000;
+  lockZone.patrolCenterX = 0.5f;
+  lockZone.patrolCenterY = 0.5f;
+  for (std::size_t i = 0; i < WorldLayout::kMaxSpawnPositions; ++i) {
+    lockZone.positionX[i] = 0.5f;
+    lockZone.positionY[i] = 0.5f;
+  }
+  wildLockLoop.wildSpawn.resetZones({lockZone});
+  wildLockLoop.updateFixed(1, 16);
+  assert(!wildLockLoop.wildSpawn.snapshot().empty());
+  wildLockLoop.tickOnce(16);
+  const EntityId wildLockedId =
+      static_cast<EntityId>(wildLockLoop.snapshot().targetId);
+  assert(wildLockedId != 0);
+  assert(wildLockedId == wildLockLoop.wildSpawn.snapshot().front().id);
+  assert(wildLockLoop.surface.targetMarker3d.targetId == wildLockedId);
+  assert(wildLockLoop.combat.externalTargetBinding().id == wildLockedId);
 
   enemyEncounterLoop.stop();
   assert(enemyEncounterLoop.combatEvents().gameplay.empty());

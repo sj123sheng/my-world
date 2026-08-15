@@ -24,7 +24,7 @@
 #include "../input/player_intent.h"
 #include "../../gameplay/player/player_controller.h"
 #include "../../gameplay/player/exploration_motion.h"
-#include "../../gameplay/targeting/soft_targeting.h"
+#include "../../gameplay/targeting/target_lock_controller.h"
 #include "../../gameplay/combat/combat_controller.h"
 #include "../../gameplay/ai/encounter_controller.h"
 #include "../../gameplay/ai/wild_spawn_system.h"
@@ -180,14 +180,18 @@ struct Loop {
     return proceduralCollectibles.size();
   }
   ThirdPersonCamera camera;
-  SoftTargeting softTargeting;
+  // 唯一目标状态机（Plan 2）：取代 Loop 直接调用 SoftTargeting，
+  // 独占锁定模式、当前 ID、循环顺序、超距/死亡重选与活跃窗口。
+  TargetLockController targetLock;
   CombatController combat{CombatConfig::defaults()};
   EncounterController encounter{combat};
   // 野外刷怪系统（Phase 3.2）：分块激活区刷怪/重生/巡逻/仇恨，
   // 战斗走 combat 外部通道，不进 EncounterController 状态机。
   WildSpawnSystem wildSpawn;
   DemoDirector demoDirector;
-  std::optional<TargetSelection> currentTarget;
+  // 唯一锁定结果（Plan 2）：攻击结算、投射物、镜头、脚下环、轮廓和
+  // 血条高亮必须消费同一个 id，由 targetLock 每固定步刷新。
+  TargetLockResult currentTarget;
   VfxSystem vfxSystem;
   DamageNumberSystem damageNumbers;
   // 敌人头顶血条滞后条状态：受击后短暂停留再匀速追赶实际血量，

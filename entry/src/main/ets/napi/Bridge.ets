@@ -23,6 +23,7 @@ export interface Snapshot {
   targetArchetype: number;
   targetHpRatio: number;
   targetId: number;
+  targetLockMode: number;
   bossPhase: number;
   encounterMode: number;
   encounterState: number;

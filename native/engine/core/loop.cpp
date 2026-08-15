@@ -1048,11 +1048,14 @@ void Loop::rebuildProceduralRuntime() {
         const auto wasRemoved = [&removedIds](uint32_t id) {
           return std::binary_search(removedIds.begin(), removedIds.end(), id);
         };
-        if (currentTarget.has_value() &&
-            wasRemoved(static_cast<uint32_t>(currentTarget->id))) {
-          currentTarget.reset();
+        if (currentTarget.id.has_value() &&
+            wasRemoved(static_cast<uint32_t>(*currentTarget.id))) {
+          targetLock.clear();
+          currentTarget = TargetLockResult{};
           surface.targetMarker3d.active = false;
           surface.targetMarker3d.targetId = 0u;
+          surface.targetMarker3d.manual = false;
+          surface.targetMarker3d.visibility = 0.0f;
           camera.setExploration(true);
         }
         for (const EntityId id : removedIds) {
@@ -1241,6 +1244,7 @@ void Loop::stop() {
     GameSnapshot paused = snapshots.read();
     paused.moving = false;
     paused.targetId = 0;
+    paused.targetLockMode = 0;
     paused.moveX = 0.0f;
     paused.moveY = 0.0f;
     paused.targetDist = 0.0f;
@@ -1252,7 +1256,8 @@ void Loop::stop() {
 
 bool Loop::startEncounter(EncounterMode mode) {
   return withLifecycle([this, mode]() {
-    currentTarget.reset();
+    targetLock.clear();
+    currentTarget = TargetLockResult{};
     intent.actions.clear();
     damageNumbers.clear();
     surface.damageNumbers3d.clear();
@@ -1280,7 +1285,8 @@ bool Loop::useSupply() {
 
 bool Loop::retryBoss() {
   return withLifecycle([this]() {
-    currentTarget.reset();
+    targetLock.clear();
+    currentTarget = TargetLockResult{};
     intent.actions.clear();
     return encounter.retryBoss();
   });
@@ -2005,7 +2011,8 @@ void Loop::resetInput() {
   prevComboSegmentForVfx = 0;
   prevActionForVfx = 0;
   prevAuraMasks.clear();
-  currentTarget.reset();
+  targetLock.clear();
+  currentTarget = TargetLockResult{};
   input.clear();
 }
 
@@ -2113,7 +2120,10 @@ void Loop::tickOnce(int64_t elapsedMs) {
   snapshot.playerY = surface.player.y;
   snapshot.fps = fps;
   snapshot.moving = surface.player.moving;
-  snapshot.targetId = currentTarget ? currentTarget->id : 0;
+  snapshot.targetId = currentTarget.id.has_value()
+                          ? static_cast<int32_t>(*currentTarget.id)
+                          : 0;
+  snapshot.targetLockMode = static_cast<int32_t>(currentTarget.mode);
   snapshot.rendererReady = surface.ready;
   snapshot.environmentReady = surface.environmentReady;
   snapshot.environmentDrawCalls = surface.environmentDrawCalls;
@@ -2124,15 +2134,14 @@ void Loop::tickOnce(int64_t elapsedMs) {
   snapshot.moveY = intent.move.y;
   snapshot.cameraYaw = camera.yaw();
   snapshot.cameraPitch = camera.pitch();
-  snapshot.targetDist = currentTarget ? currentTarget->distance : 0.0f;
+  snapshot.targetDist = currentTarget.distance;
   // 锁定目标焦点框：解析锁定敌人的原型与血量比例（首领已有专属血条，
   // 不在敌人列表中，保持 archetype = -1 由 HUD 隐藏焦点框）。
   snapshot.targetArchetype = -1;
   snapshot.targetHpRatio = 0.0f;
-  if (currentTarget.has_value()) {
+  if (currentTarget.id.has_value()) {
     for (const EncounterEnemySnapshot& enemy : encounter.snapshot().enemies) {
-      if (enemy.id == static_cast<EntityId>(currentTarget->id) &&
-          enemy.maxHp > 0) {
+      if (enemy.id == *currentTarget.id && enemy.maxHp > 0) {
         snapshot.targetArchetype = static_cast<int32_t>(enemy.archetype);
         snapshot.targetHpRatio = static_cast<float>(enemy.hp) /
                                  static_cast<float>(enemy.maxHp);
@@ -2590,10 +2599,9 @@ void Loop::updateFixed(Tick /*tick*/, int64_t dtMs) {
     // 释放目标：优先软锁定目标；未锁定时退回首领（首领战），
     // 保证投射物始终有明确去处。
     std::optional<Vec2> releaseTarget;
-    if (currentTarget.has_value()) {
+    if (currentTarget.id.has_value()) {
       releaseTarget = resolveEntityPosition(
-          surface, encounter.snapshot(),
-          static_cast<EntityId>(currentTarget->id), &wildSpawn);
+          surface, encounter.snapshot(), *currentTarget.id, &wildSpawn);
     }
     if (!releaseTarget.has_value() &&
         encounter.snapshot().mode == EncounterMode::Boss &&
@@ -2752,29 +2760,73 @@ void Loop::updateFixed(Tick /*tick*/, int64_t dtMs) {
     prevCorruptionCdMs = skillSnapshot.corruptionCooldownMs;
   }
 
-  // 软锁定候选合并：遭遇敌人 + 野外敌人（WildSpawnSystem）。
-  std::vector<TargetCandidate> candidates = encounter.snapshot().candidates;
-  const std::vector<TargetCandidate> wildCandidates = wildSpawn.candidates();
-  candidates.insert(candidates.end(), wildCandidates.begin(), wildCandidates.end());
-  currentTarget = softTargeting.select(
-      {surface.player.x, surface.player.y}, camera.yaw(), candidates,
-      currentTarget ? std::optional<int32_t>{currentTarget->id} : std::nullopt);
+  // 统一目标锁定候选（Plan 2）：遭遇敌人 + 野外敌人 + Boss 全部参与，
+  // 两路候选源已按存活/可攻击过滤；Boss 不强制抢锁，仅作为候选。
+  const auto collectLockCandidates =
+      [this]() -> std::vector<TargetLockCandidate> {
+    std::vector<TargetLockCandidate> lockCandidates;
+    const auto append =
+        [&lockCandidates](const std::vector<TargetCandidate>& source) {
+      for (const TargetCandidate& candidate : source) {
+        TargetLockCandidate lockCandidate;
+        lockCandidate.id = static_cast<EntityId>(candidate.id);
+        lockCandidate.position = candidate.position;
+        lockCandidate.boss =
+            candidate.id == static_cast<int32_t>(EncounterController::kBossId);
+        lockCandidates.push_back(lockCandidate);
+      }
+    };
+    append(encounter.snapshot().candidates);
+    append(wildSpawn.candidates());
+    return lockCandidates;
+  };
+  const Vec2 lockPlayerPosition{surface.player.x, surface.player.y};
+  const float lockCameraYaw = camera.yaw();
+  const Tick lockNow = combatTimeMs_.load();
+  const std::vector<TargetLockCandidate> lockCandidates =
+      collectLockCandidates();
+  bool attackQueuedForLock = false;
+  for (const ActionRequest& action : intent.actions) {
+    if (action.action == CombatAction::Attack) {
+      attackQueuedForLock = true;
+      break;
+    }
+  }
+  const bool comboActiveForLock = combat.snapshot().comboSegment > 0;
+  if (cycleTargetQueued) {
+    currentTarget = targetLock.cycleManual(lockPlayerPosition, lockCameraYaw,
+                                           lockCandidates, lockNow);
+  } else if (releaseTargetLockQueued) {
+    currentTarget = targetLock.releaseManual(lockPlayerPosition, lockCameraYaw,
+                                             lockCandidates, lockNow);
+  } else if (targetLock.mode() == TargetLockMode::Manual) {
+    // 手动模式每步维护：死亡/超距/卸载重选，无候选回到自动。
+    currentTarget = targetLock.refresh(lockPlayerPosition, lockCameraYaw,
+                                       lockCandidates, lockNow);
+  } else {
+    currentTarget = targetLock.updateAutomatic(
+        lockPlayerPosition, lockCameraYaw, lockCandidates, attackQueuedForLock,
+        comboActiveForLock, lockNow);
+  }
+  cycleTargetQueued = false;
+  releaseTargetLockQueued = false;
 
   // 相机双模式：无锁定目标时切探索视角（拉远），有目标时收回战斗视角。
-  camera.setExploration(!currentTarget.has_value());
+  camera.setExploration(!currentTarget.id.has_value());
 
-  // 锁定目标指示器：发布目标位置与脉冲相位，目标脚下绘制脉冲环。
-  surface.targetMarker3d.active = currentTarget.has_value();
+  // 锁定目标指示器：自动模式由控制器活跃窗口决定可见性，手动常亮。
+  surface.targetMarker3d.active = currentTarget.showMarker;
+  surface.targetMarker3d.manual = currentTarget.mode == TargetLockMode::Manual;
+  surface.targetMarker3d.visibility = targetLock.markerVisibility(lockNow);
   surface.targetMarker3d.targetId =
-      currentTarget.has_value() ? static_cast<uint32_t>(currentTarget->id) : 0u;
+      currentTarget.id.has_value() ? static_cast<uint32_t>(*currentTarget.id)
+                                   : 0u;
   // 首领锁定态同步发布，供渲染层轮廓光常亮增强。
-  surface.boss3d.targeted =
-      currentTarget.has_value() &&
-      static_cast<EntityId>(currentTarget->id) == EncounterController::kBossId;
-  if (currentTarget.has_value()) {
+  surface.boss3d.targeted = currentTarget.id.has_value() &&
+                            *currentTarget.id == EncounterController::kBossId;
+  if (currentTarget.id.has_value()) {
     const std::optional<Vec2> markerPosition = resolveEntityPosition(
-        surface, encounter.snapshot(),
-        static_cast<EntityId>(currentTarget->id), &wildSpawn);
+        surface, encounter.snapshot(), *currentTarget.id, &wildSpawn);
     if (markerPosition.has_value()) {
       surface.targetMarker3d.x = markerPosition->x;
       surface.targetMarker3d.z = markerPosition->y;
@@ -2783,13 +2835,13 @@ void Loop::updateFixed(Tick /*tick*/, int64_t dtMs) {
       surface.targetMarker3d.targetId = 0u;
     }
     // 锁定标记元素归属：供渲染层把指示环混入目标元素色。
-    const std::optional<int> markerElement = resolveEnemyElement(
-        encounter.snapshot(), static_cast<EntityId>(currentTarget->id),
-        &wildSpawn);
+    const std::optional<int> markerElement =
+        resolveEnemyElement(encounter.snapshot(), *currentTarget.id,
+                            &wildSpawn);
     surface.targetMarker3d.element =
         markerElement.has_value() ? *markerElement : -1;
   }
-  if (!currentTarget.has_value()) {
+  if (!currentTarget.id.has_value()) {
     surface.targetMarker3d.element = -1;
   }
   surface.targetMarker3d.pulsePhase =
@@ -2821,12 +2873,12 @@ void Loop::updateFixed(Tick /*tick*/, int64_t dtMs) {
   }
   // 绑定玩家锁定的野外目标：玩家攻击改道结算到它（非野外目标时空绑定）。
   combat.setExternalTargetBinding(wildSpawn.combatBinding(
-      currentTarget ? static_cast<EntityId>(currentTarget->id) : 0,
+      currentTarget.id.has_value() ? *currentTarget.id : 0,
       {surface.player.x, surface.player.y}));
   encounter.update({combatTime, dtMs,
                     {surface.player.x, surface.player.y},
                     surface.player.moving,
-                    currentTarget ? static_cast<EntityId>(currentTarget->id) : 0});
+                    currentTarget.id.has_value() ? *currentTarget.id : 0});
   const EncounterSnapshot& encounterState = encounter.snapshot();
   DemoSignals demoSignals;
   demoSignals.introComplete = combatTime >= 1000;
@@ -2911,23 +2963,57 @@ void Loop::updateFixed(Tick /*tick*/, int64_t dtMs) {
   // 锁定释放复核必须用本步结算后的新鲜候选：帧首候选是上一步快照，
   // 不含本步 encounter.update 的击杀结果，已死目标会多挂一帧锁定；
   // 而击杀触发的命中卡肉又会冻结后续固定步，把延迟放大成幽灵锁定。
-  // 释放时同步关闭锁定标记并切回探索视角，避免残留一帧幽灵标记。
-  if (currentTarget.has_value()) {
-    std::vector<TargetCandidate> freshCandidates =
-        encounter.snapshot().candidates;
-    const std::vector<TargetCandidate> freshWildCandidates =
-        wildSpawn.candidates();
-    freshCandidates.insert(freshCandidates.end(),
-                           freshWildCandidates.begin(),
-                           freshWildCandidates.end());
-    if (std::none_of(freshCandidates.begin(), freshCandidates.end(),
-                     [this](const TargetCandidate& candidate) {
-                       return candidate.id == currentTarget->id;
-                     })) {
-      currentTarget.reset();
-      surface.targetMarker3d.active = false;
-      surface.targetMarker3d.targetId = 0u;
-      camera.setExploration(true);
+  // 失效后立即用新鲜候选交给控制器重选并同步表现，避免一帧幽灵分叉。
+  if (currentTarget.id.has_value()) {
+    const std::vector<TargetLockCandidate> freshLockCandidates =
+        collectLockCandidates();
+    const EntityId lockedId = *currentTarget.id;
+    const bool lockTargetStillPresent = std::any_of(
+        freshLockCandidates.begin(), freshLockCandidates.end(),
+        [lockedId](const TargetLockCandidate& candidate) {
+          return candidate.id == lockedId;
+        });
+    if (!lockTargetStillPresent) {
+      targetLock.invalidate(lockedId);
+      if (targetLock.mode() == TargetLockMode::Manual) {
+        currentTarget = targetLock.refresh(lockPlayerPosition, lockCameraYaw,
+                                           freshLockCandidates, lockNow);
+      } else {
+        currentTarget = targetLock.updateAutomatic(
+            lockPlayerPosition, lockCameraYaw, freshLockCandidates,
+            /*attackTriggered=*/false, comboActiveForLock, lockNow);
+      }
+      // 同帧回写 encounter 快照：encounter.update 在击杀结算前已记录
+      // 旧 ID，不回写则死亡切换帧两路目标数据源分叉一帧。
+      encounter.rebindSelectedTarget(currentTarget.id.has_value()
+                                         ? *currentTarget.id
+                                         : 0);
+      camera.setExploration(!currentTarget.id.has_value());
+      surface.targetMarker3d.active = currentTarget.showMarker;
+      surface.targetMarker3d.manual =
+          currentTarget.mode == TargetLockMode::Manual;
+      surface.targetMarker3d.visibility =
+          targetLock.markerVisibility(lockNow);
+      surface.targetMarker3d.targetId =
+          currentTarget.id.has_value()
+              ? static_cast<uint32_t>(*currentTarget.id)
+              : 0u;
+      surface.boss3d.targeted = currentTarget.id.has_value() &&
+                                *currentTarget.id ==
+                                    EncounterController::kBossId;
+      if (currentTarget.id.has_value()) {
+        const std::optional<Vec2> markerPosition = resolveEntityPosition(
+            surface, encounter.snapshot(), *currentTarget.id, &wildSpawn);
+        if (markerPosition.has_value()) {
+          surface.targetMarker3d.x = markerPosition->x;
+          surface.targetMarker3d.z = markerPosition->y;
+        } else {
+          surface.targetMarker3d.active = false;
+          surface.targetMarker3d.targetId = 0u;
+        }
+      } else {
+        surface.targetMarker3d.element = -1;
+      }
     }
   }
 
@@ -3864,7 +3950,8 @@ void Loop::updateFixed(Tick /*tick*/, int64_t dtMs) {
 }
 
 void Loop::publishRendererStopped() {
-  currentTarget.reset();
+  targetLock.clear();
+  currentTarget = TargetLockResult{};
   encounter.stop();
   combat.reset();
   combatTimeMs_ = 0;

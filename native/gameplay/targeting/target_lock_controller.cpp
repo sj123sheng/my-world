@@ -279,3 +279,16 @@ void TargetLockController::clear() {
   currentId_.reset();
   lastActivityMs_ = kNoActivity;
 }
+
+float TargetLockController::markerVisibility(Tick now) const {
+  if (!currentId_.has_value()) return 0.0f;
+  // 手动模式锁定环常亮。
+  if (mode_ == TargetLockMode::Manual) return 0.92f;
+  if (lastActivityMs_ == kNoActivity) return 0.0f;
+  const Tick elapsed = now - lastActivityMs_;
+  if (elapsed <= 0) return 0.72f;
+  if (config_.markerFadeMs <= 0 || elapsed >= config_.markerFadeMs) return 0.0f;
+  const float remaining = 1.0f - static_cast<float>(elapsed) /
+                                     static_cast<float>(config_.markerFadeMs);
+  return 0.72f * remaining;
+}

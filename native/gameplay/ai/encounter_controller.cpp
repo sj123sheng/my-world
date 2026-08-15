@@ -247,7 +247,8 @@ bool EncounterSnapshot::operator==(const EncounterSnapshot& other) const {
          playerHp == other.playerHp && levelStage == other.levelStage &&
          gateState == other.gateState && supplyState == other.supplyState &&
          boss == other.boss && enemies == other.enemies &&
-         candidates == other.candidates;
+         candidates == other.candidates &&
+         selectedTargetId == other.selectedTargetId;
 }
 
 EncounterController::EncounterController(CombatController& combat)
@@ -359,8 +360,17 @@ void EncounterController::stop() {
   refreshSnapshot(false);
 }
 
+void EncounterController::rebindSelectedTarget(EntityId id) {
+  // 唯一目标数据流（Plan 2）：击杀复核重选后由 Loop 同帧回写，
+  // 避免 encounter 快照停留在已被击杀的旧锁定 ID。
+  snapshot_.selectedTargetId = id;
+}
+
 void EncounterController::update(const EncounterFrameInput& input) {
   events_ = {};
+  // 唯一目标数据流（Plan 2）：记录 Loop 本步传入的锁定 ID，
+  // 供集成回归核对攻击/表现是否共享同一目标。
+  snapshot_.selectedTargetId = input.targetId;
   if (snapshot_.state != EncounterState::Running) return;
 
   const Tick tick = std::max(lastTick_, input.tick);

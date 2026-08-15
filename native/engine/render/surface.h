@@ -206,6 +206,11 @@ struct TargetMarkerRenderState {
   // 锁定目标元素归属（0=辉印 1=脉流 2=蚀质，-1=无元素）：
   // 指示环按 TargetMarkerColorFor 混入元素色提示目标系别。
   int element = -1;
+  // 手动锁定模式（Plan 2）：手动锁定环常亮，自动锁定随活跃窗口淡出。
+  bool manual = false;
+  // 锁定环可见度（0..1）：手动 0.92 基线；自动活跃 0.72 基线并按
+  // 活跃窗口衰减。渲染层直接用作环体 alpha。
+  float visibility = 0.0f;
 };
 
 // 伤害飘字渲染状态：逻辑侧每帧生成，渲染层绘制为面向相机的

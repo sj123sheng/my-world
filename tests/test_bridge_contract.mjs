@@ -708,8 +708,8 @@ assert.match(surfaceImpl, /static void drawTargetMarker\(Surface& s, const glm::
   'surface must implement drawTargetMarker');
 assert.match(surfaceImpl, /drawTargetMarker\(s, vp\);/,
   '3D phase must draw the target marker');
-assert.match(loop, /surface\.targetMarker3d\.active = currentTarget\.has_value\(\);/,
-  'loop must publish lock-on marker activity from soft targeting');
+assert.match(loop, /surface\.targetMarker3d\.active = currentTarget\.showMarker;/,
+  'loop must publish lock-on marker activity from TargetLockController');
 assert.match(loop, /surface\.targetMarker3d\.pulsePhase =/,
   'loop must publish marker pulse phase');
 assert.match(loop, /surface\.targetMarker3d\.targetId =/,
@@ -736,6 +736,18 @@ assert.match(surfaceImpl, /setSpecular\(profile\.specularStrength, profile\.spec
   'actors must use per-profile specular material when drawn');
 assert.match(surfaceHeader, /uint32_t targetId = 0;/,
   'TargetMarkerRenderState must carry the locked target id');
+// Plan 2 Task 4：锁定环区分手动/自动模式并携带可见度（手动常亮 0.92、
+// 自动活跃 0.72 按窗口衰减），渲染层按 visibility 驱动 alpha。
+assert.match(surfaceHeader, /bool manual = false;/,
+  'TargetMarkerRenderState must carry the manual lock mode');
+assert.match(surfaceHeader, /float visibility = 0\.0f;/,
+  'TargetMarkerRenderState must carry lock ring visibility');
+assert.match(loop, /surface\.targetMarker3d\.manual = /,
+  'loop must publish manual lock mode to the marker');
+assert.match(loop, /surface\.targetMarker3d\.visibility = /,
+  'loop must publish lock ring visibility to the marker');
+assert.match(surfaceImpl, /targetMarker3d\.visibility/,
+  'drawTargetMarker must drive alpha from visibility');
 assert.match(surfaceHeader, /bool targeted = false;/,
   'Boss3DRenderState must carry lock-on state');
 assert.match(surfaceImpl, /enemy\.id == s\.targetMarker3d\.targetId/,
@@ -887,7 +899,7 @@ assert.match(loop, /explorationMotion\.update/,
   'loop must advance the exploration motion state machine');
 assert.match(loop, /anchors\.nearestInteraction/,
   'loop must resolve the nearest teleport anchor interaction');
-assert.match(loop, /camera\.setExploration\(!currentTarget\.has_value\(\)\);/,
+assert.match(loop, /camera\.setExploration\(!currentTarget\.id\.has_value\(\)\);/,
   'camera must switch exploration mode without a locked target');
 
 // ---- Stage 16b: authored traversal gates are gone ----

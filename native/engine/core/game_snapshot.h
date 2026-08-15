@@ -18,6 +18,9 @@ struct GameSnapshot {
   float fps = 0.0f;
   bool moving = false;
   int32_t targetId = 0;
+  // 目标锁定模式（Plan 2）：0 = Automatic 距离优先自动选敌，
+  // 1 = Manual 手动循环锁定。与 targetId 来自同一 TargetLockResult。
+  int32_t targetLockMode = 0;
   int32_t bossPhase = 0;
   int32_t encounterMode = 0;
   int32_t encounterState = 0;

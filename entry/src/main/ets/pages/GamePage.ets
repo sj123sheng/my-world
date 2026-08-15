@@ -28,7 +28,7 @@ struct GamePage {
   private snapshot: Snapshot = {
     tick: 0, hp: 100, poise: 100, x: 0.5, y: 0.5, fps: 0, moving: false,
     moveX: 0, moveY: 0, cameraYaw: 0, cameraPitch: 0,
-    targetDist: 0, targetId: 0, targetArchetype: -1, targetHpRatio: 0, bossPhase: 0, encounterMode: 0,
+    targetDist: 0, targetId: 0, targetLockMode: 0, targetArchetype: -1, targetHpRatio: 0, bossPhase: 0, encounterMode: 0,
     encounterState: 0, rendererReady: true, environmentReady: false,
     environmentDrawCalls: 0, environmentTriangles: 0,
     stamina: 100, comboSegment: 0, invulnerable: false, insightMs: 0,

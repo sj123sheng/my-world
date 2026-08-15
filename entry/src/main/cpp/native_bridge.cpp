@@ -859,7 +859,7 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_create_object(env, &result);
   napi_value tickVal, hpVal, poiseVal, xVal, yVal, fpsVal, movingVal;
   napi_value moveXVal, moveYVal, cameraYawVal, cameraPitchVal, distVal;
-  napi_value targetIdVal, bossPhaseVal, encounterModeVal, encounterStateVal, rendererReadyVal;
+  napi_value targetIdVal, targetLockModeVal, bossPhaseVal, encounterModeVal, encounterStateVal, rendererReadyVal;
   napi_value targetArchetypeVal, targetHpRatioVal;
   napi_value environmentReadyVal, environmentDrawCallsVal, environmentTrianglesVal;
   napi_value staminaVal, comboSegmentVal, invulnerableVal, insightMsVal;
@@ -879,6 +879,7 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_create_int32(env, snapshot.targetArchetype, &targetArchetypeVal);
   napi_create_double(env, snapshot.targetHpRatio, &targetHpRatioVal);
   napi_create_int32(env, snapshot.targetId, &targetIdVal);
+  napi_create_int32(env, snapshot.targetLockMode, &targetLockModeVal);
   napi_create_int32(env, snapshot.bossPhase, &bossPhaseVal);
   napi_create_int32(env, snapshot.encounterMode, &encounterModeVal);
   napi_create_int32(env, snapshot.encounterState, &encounterStateVal);
@@ -911,6 +912,7 @@ static napi_value NativePullSnapshot(napi_env env, napi_callback_info) {
   napi_set_named_property(env, result, "targetArchetype", targetArchetypeVal);
   napi_set_named_property(env, result, "targetHpRatio", targetHpRatioVal);
   napi_set_named_property(env, result, "targetId", targetIdVal);
+  napi_set_named_property(env, result, "targetLockMode", targetLockModeVal);
   napi_set_named_property(env, result, "bossPhase", bossPhaseVal);
   napi_set_named_property(env, result, "encounterMode", encounterModeVal);
   napi_set_named_property(env, result, "encounterState", encounterStateVal);
