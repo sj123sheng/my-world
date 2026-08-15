@@ -153,6 +153,7 @@ add_library(native_game SHARED
 
     # gameplay targeting
     ${NATIVE_ROOT}/gameplay/targeting/soft_targeting.cpp
+    ${NATIVE_ROOT}/gameplay/targeting/target_lock_controller.cpp
 
     # gameplay growth
     ${NATIVE_ROOT}/gameplay/growth/relic.cpp

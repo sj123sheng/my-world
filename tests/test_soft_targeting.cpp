@@ -165,6 +165,36 @@ void testKeepsPreferredTargetUntilItDisappears() {
   assert(retargeted && retargeted->id == 20);
 }
 
+void testMeasureTargetReportsGeometryWithoutFiltering() {
+  // MeasureTarget 是纯测量：给出距离/角度/方向，不做范围过滤。
+  const TargetMeasure measure =
+      MeasureTarget({1.0f, 2.0f}, 0.0f, {9, {1.6f, 2.8f}});
+  assert(measure.valid);
+  assert(measure.id == 9);
+  assert(near(measure.distance, 1.0f));
+  assert(near(measure.angle, std::acos(0.8f)));
+  assert(near(measure.direction.x, 0.6f));
+  assert(near(measure.direction.y, 0.8f));
+
+  // 超出常规获取距离的候选仍然可测量（过滤由调用方决定）。
+  const TargetMeasure far =
+      MeasureTarget({0.0f, 0.0f}, 0.0f, {1, {0.0f, 5.0f}});
+  assert(far.valid && near(far.distance, 5.0f));
+}
+
+void testMeasureTargetRejectsInvalidInput() {
+  const float infinity = std::numeric_limits<float>::infinity();
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+
+  assert(!MeasureTarget({0.0f, 0.0f}, 0.0f, {0, {0.0f, 0.5f}}).valid);
+  assert(!MeasureTarget({0.0f, 0.0f}, 0.0f, {-1, {0.0f, 0.5f}}).valid);
+  assert(!MeasureTarget({0.0f, 0.0f}, 0.0f, {1, {infinity, 0.0f}}).valid);
+  assert(!MeasureTarget({nan, 0.0f}, 0.0f, {1, {0.0f, 0.5f}}).valid);
+  assert(!MeasureTarget({0.0f, 0.0f}, nan, {1, {0.0f, 0.5f}}).valid);
+  // 与玩家重合：距离为零，方向无定义。
+  assert(!MeasureTarget({0.5f, 0.5f}, 0.0f, {1, {0.5f, 0.5f}}).valid);
+}
+
 }  // namespace
 
 int main() {
@@ -177,4 +207,6 @@ int main() {
   testReturnsDistanceAngleAndDirection();
   testHandlesLargeAndSmallFiniteOffsets();
   testKeepsPreferredTargetUntilItDisappears();
+  testMeasureTargetReportsGeometryWithoutFiltering();
+  testMeasureTargetRejectsInvalidInput();
 }
