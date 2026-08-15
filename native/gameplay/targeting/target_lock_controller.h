@@ -52,6 +52,25 @@ class TargetLockController {
                                    bool attackTriggered, bool comboActive,
                                    Tick now);
 
+  // 手动模式：单击锁定最近目标，再次单击按 (distance, id) 顺序循环
+  //（环绕）。手动维持距离为自动获取距离的 1.5 倍，不受镜头角度限制。
+  // 无有效候选时回到 Automatic 且 ID 空。手动模式锁定环始终显示。
+  TargetLockResult cycleManual(Vec2 player, float cameraYaw,
+                               const std::vector<TargetLockCandidate>& candidates,
+                               Tick now);
+
+  // 解除手动锁定：切回 Automatic 并立即按自动规则刷新，
+  // 不伪造攻击活跃窗口。
+  TargetLockResult releaseManual(Vec2 player, float cameraYaw,
+                                 const std::vector<TargetLockCandidate>& candidates,
+                                 Tick now);
+
+  // 每帧维护：手动模式下目标死亡/超距/卸载时重选最近有效候选，
+  // 无候选时回到 Automatic；自动模式下等价无攻击触发的 updateAutomatic。
+  TargetLockResult refresh(Vec2 player, float cameraYaw,
+                           const std::vector<TargetLockCandidate>& candidates,
+                           Tick now);
+
   // 目标失效（死亡/卸载）通知：当前目标命中时立即放弃，下次刷新重选。
   void invalidate(EntityId id);
 

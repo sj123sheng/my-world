@@ -15,11 +15,52 @@ constexpr float kPi = 3.14159265358979323846f;
 // 轻微漂移，超出后即使连招中也重选，避免拉着打不到的目标。
 constexpr float kComboHoldDistanceScale = 1.25f;
 
+// 手动维持距离 = 自动获取距离 × 1.5：手动锁定容忍更远的目标，
+// 避免玩家主动选中的目标因轻微超距立即丢失。
+constexpr float kManualHoldDistanceScale = 1.5f;
+
 struct MeasuredCandidate {
   EntityId id = 0;
   float distance = 0.0f;
   float angle = 0.0f;
 };
+
+// 收集手动模式有效候选：存活、可攻击、重复 id 拒绝、测量有效且
+// 距离不超过给定上限；按 (distance, id) 稳定排序，输入顺序无关。
+std::vector<MeasuredCandidate> CollectManualCandidates(
+    Vec2 player, float cameraYaw,
+    const std::vector<TargetLockCandidate>& candidates, float maxDistance) {
+  std::unordered_map<EntityId, std::size_t> idCounts;
+  for (const TargetLockCandidate& candidate : candidates) {
+    if (candidate.id > 0) {
+      ++idCounts[candidate.id];
+    }
+  }
+
+  std::vector<MeasuredCandidate> measured;
+  measured.reserve(candidates.size());
+  for (const TargetLockCandidate& candidate : candidates) {
+    if (candidate.id == 0 || idCounts[candidate.id] != 1 || !candidate.alive ||
+        !candidate.attackable) {
+      continue;
+    }
+    const TargetCandidate target{static_cast<int32_t>(candidate.id),
+                                 candidate.position};
+    const TargetMeasure measure = MeasureTarget(player, cameraYaw, target);
+    if (!measure.valid || measure.distance > maxDistance) {
+      continue;
+    }
+    measured.push_back(
+        MeasuredCandidate{candidate.id, measure.distance, measure.angle});
+  }
+
+  std::sort(measured.begin(), measured.end(),
+            [](const MeasuredCandidate& lhs, const MeasuredCandidate& rhs) {
+              return std::tie(lhs.distance, lhs.id) <
+                     std::tie(rhs.distance, rhs.id);
+            });
+  return measured;
+}
 
 }  // namespace
 
@@ -124,6 +165,113 @@ void TargetLockController::invalidate(EntityId id) {
   if (currentId_.has_value() && *currentId_ == id) {
     currentId_.reset();
   }
+}
+
+TargetLockResult TargetLockController::cycleManual(
+    Vec2 player, float cameraYaw,
+    const std::vector<TargetLockCandidate>& candidates, Tick now) {
+  (void)now;
+  TargetLockResult result;
+  if (!player.finite() || !std::isfinite(cameraYaw)) {
+    clear();
+    return result;
+  }
+
+  const std::vector<MeasuredCandidate> sorted = CollectManualCandidates(
+      player, cameraYaw, candidates,
+      config_.maxDistance * kManualHoldDistanceScale);
+  if (sorted.empty()) {
+    clear();
+    return result;
+  }
+
+  // 已处于手动且当前目标仍在候选中：选其后一项并环绕；
+  // 否则（首次单击或当前目标已失效）锁定最近目标。
+  std::size_t index = 0;
+  if (mode_ == TargetLockMode::Manual && currentId_.has_value()) {
+    const auto current = std::find_if(
+        sorted.begin(), sorted.end(), [this](const MeasuredCandidate& entry) {
+          return entry.id == *currentId_;
+        });
+    if (current != sorted.end()) {
+      index = static_cast<std::size_t>(current - sorted.begin() + 1) %
+              sorted.size();
+    }
+  }
+
+  const MeasuredCandidate& selected = sorted[index];
+  mode_ = TargetLockMode::Manual;
+  currentId_ = selected.id;
+  result.id = selected.id;
+  result.mode = TargetLockMode::Manual;
+  result.distance = selected.distance;
+  result.angle = selected.angle;
+  // 手动模式锁定环始终显示。
+  result.showMarker = true;
+  return result;
+}
+
+TargetLockResult TargetLockController::releaseManual(
+    Vec2 player, float cameraYaw,
+    const std::vector<TargetLockCandidate>& candidates, Tick now) {
+  mode_ = TargetLockMode::Automatic;
+  currentId_.reset();
+  // 不触碰 lastActivityMs_：解除锁定不伪造攻击活跃窗口。
+  return updateAutomatic(player, cameraYaw, candidates,
+                         /*attackTriggered=*/false, /*comboActive=*/false, now);
+}
+
+TargetLockResult TargetLockController::refresh(
+    Vec2 player, float cameraYaw,
+    const std::vector<TargetLockCandidate>& candidates, Tick now) {
+  if (mode_ == TargetLockMode::Automatic) {
+    return updateAutomatic(player, cameraYaw, candidates,
+                           /*attackTriggered=*/false, /*comboActive=*/false,
+                           now);
+  }
+
+  TargetLockResult result;
+  result.mode = TargetLockMode::Manual;
+  if (!player.finite() || !std::isfinite(cameraYaw)) {
+    clear();
+    result.mode = mode_;
+    return result;
+  }
+
+  const std::vector<MeasuredCandidate> sorted = CollectManualCandidates(
+      player, cameraYaw, candidates,
+      config_.maxDistance * kManualHoldDistanceScale);
+
+  // 当前目标仍存活且在手动维持距离内：保持。
+  if (currentId_.has_value()) {
+    const auto current = std::find_if(
+        sorted.begin(), sorted.end(), [this](const MeasuredCandidate& entry) {
+          return entry.id == *currentId_;
+        });
+    if (current != sorted.end()) {
+      result.id = current->id;
+      result.distance = current->distance;
+      result.angle = current->angle;
+      result.showMarker = true;
+      return result;
+    }
+  }
+
+  // 死亡/超距/卸载：重选最近有效候选。
+  if (!sorted.empty()) {
+    const MeasuredCandidate& selected = sorted.front();
+    currentId_ = selected.id;
+    result.id = selected.id;
+    result.distance = selected.distance;
+    result.angle = selected.angle;
+    result.showMarker = true;
+    return result;
+  }
+
+  // 无候选：回到 Automatic。
+  clear();
+  result.mode = mode_;
+  return result;
 }
 
 void TargetLockController::clear() {
