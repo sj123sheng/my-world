@@ -1,5 +1,7 @@
 #include "tactical_planner.h"
 
+#include "combat_region.h"
+
 #include <cmath>
 #include <limits>
 
@@ -116,7 +118,18 @@ Vec2 retreatDestination(const PerceptionSnapshot& facts) {
   if (!away.finite() || !std::isfinite(distance) || distance <= 0.0f) {
     return facts.safeReturnPosition;
   }
-  return facts.selfPosition + away * (1.0f / distance);
+  // 远离主角并叠加邻居分离；投影回战斗区域，避免后撤越出留白边界。
+  const Vec2 destination =
+      facts.selfPosition + away * (1.0f / distance) + facts.separationOffset;
+  return CombatRegion(facts.region).projectInside(destination);
+}
+
+// 追击目标是环形槽位 + 分离，而不是主角身体：未注入留白时回退到主角位置。
+Vec2 chaseDestination(const PerceptionSnapshot& facts) {
+  if (facts.engagementRange.ideal > 0.0f && facts.engagementSlot.finite()) {
+    return facts.engagementSlot + facts.separationOffset;
+  }
+  return facts.targetPosition;
 }
 
 }  // namespace
@@ -136,7 +149,8 @@ EnemyActionPlan TacticalPlanner::plan(EnemyIntent intent, const PerceptionSnapsh
   const std::optional<EnemyAbilityCategory> category = requiredCategory(intent);
   if (!category.has_value()) {
     if (intent == EnemyIntent::Chase && facts.targetVisible) {
-      return movementPlan(intent, facts, facts.targetPosition, EnemyPlanFallbackReason::None);
+      return movementPlan(intent, facts, chaseDestination(facts),
+                          EnemyPlanFallbackReason::None);
     }
     if (intent == EnemyIntent::Retreat) {
       return movementPlan(intent, facts, retreatDestination(facts), EnemyPlanFallbackReason::None);
@@ -178,7 +192,7 @@ EnemyActionPlan TacticalPlanner::plan(EnemyIntent intent, const PerceptionSnapsh
   if (selectedAbility == nullptr) {
     if (intent == EnemyIntent::Attack) {
       return facts.targetVisible
-                 ? movementPlan(EnemyIntent::Chase, facts, facts.targetPosition,
+                 ? movementPlan(EnemyIntent::Chase, facts, chaseDestination(facts),
                                 EnemyPlanFallbackReason::NoLegalAbility)
                  : idlePlan(EnemyIntent::Idle, facts, EnemyPlanFallbackReason::NoTarget);
     }

@@ -8,11 +8,6 @@
 #include <unordered_set>
 #include <vector>
 
-struct CombatRegionConfig {
-  Vec2 center;
-  float radius = 10.0f;
-};
-
 struct EnemyAiConfig {
   // 同屏敌人容量上限：放开到 8 以支撑野外刷怪（WildSpawnSystem）。
   static constexpr std::size_t kMaxEnemies = 8;

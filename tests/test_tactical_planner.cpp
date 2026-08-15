@@ -1,5 +1,7 @@
 #include "gameplay/ai/tactical_planner.h"
 
+#include "gameplay/ai/engagement_spacing.h"
+
 #include <cassert>
 #include <vector>
 
@@ -186,6 +188,41 @@ int main() {
   assert(retreat.state == EnemyAiState::Moving);
   assert(retreat.desiredPosition == (Vec2{-1.0f, 0.0f}));
   assert(retreat.fallbackReason == EnemyPlanFallbackReason::None);
+
+  // 交战留白（Plan 2 Task 6）：追击目标是环形槽位 + 分离，而不是主角身体。
+  PerceptionSnapshot chaseFacts = facts();
+  chaseFacts.engagementRange =
+      EngagementRangeFor(EnemyArchetype::RiftClaw, 0.05f, false);
+  chaseFacts.engagementSlot = {0.5f, 0.3f};
+  chaseFacts.separationOffset = {0.02f, -0.01f};
+  const EnemyActionPlan chaseSlot = planner.plan(EnemyIntent::Chase, chaseFacts, {});
+  assert(chaseSlot.intent == EnemyIntent::Chase);
+  assert(chaseSlot.state == EnemyAiState::Moving);
+  assert(chaseSlot.desiredPosition == (Vec2{0.52f, 0.29f}));
+  assert(chaseSlot.fallbackReason == EnemyPlanFallbackReason::None);
+
+  // 未注入留白时追击回退到主角位置（兼容未接线通道）。
+  const EnemyActionPlan chaseFallback = planner.plan(EnemyIntent::Chase, facts(), {});
+  assert(chaseFallback.desiredPosition == facts().targetPosition);
+
+  // 后撤远离主角并被投影回战斗区域，不越出留白边界。
+  PerceptionSnapshot retreatFacts = facts();
+  retreatFacts.region = {{0.0f, 0.0f}, 0.5f};
+  const EnemyActionPlan retreatClamped =
+      planner.plan(EnemyIntent::Retreat, retreatFacts, {});
+  assert(retreatClamped.intent == EnemyIntent::Retreat);
+  assert(retreatClamped.desiredPosition == (Vec2{-0.5f, 0.0f}));
+
+  // 攻击仍以玩家为能力目标，不把环形槽位误作伤害目标。
+  PerceptionSnapshot attackFacts = facts();
+  attackFacts.engagementRange =
+      EngagementRangeFor(EnemyArchetype::RiftClaw, 0.05f, false);
+  attackFacts.engagementSlot = {0.5f, 0.3f};
+  const EnemyActionPlan attackPlayer =
+      planner.plan(EnemyIntent::Attack, attackFacts, equalWeightAttacks);
+  assert(attackPlayer.intent == EnemyIntent::Attack);
+  assert(attackPlayer.targetId == 7);
+  assert(attackPlayer.desiredPosition == attackFacts.targetPosition);
 
   snapshot.selfInsideRegion = false;
   const EnemyActionPlan outside =

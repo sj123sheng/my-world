@@ -6,12 +6,7 @@
 
 // 敌人交战留白（Plan 2 Task 5）：原型距离参数、环形槽位与邻居分离。
 // 纯函数、无状态，Encounter/WildSpawn/Boss 与 AI 决策共享同一口径。
-struct EngagementRange {
-  float minimum = 0.0f;    // 低于该距离视为贴身，应后撤
-  float ideal = 0.0f;      // 理想交战距离，环形槽位半径
-  float attack = 0.0f;     // 能力有效射程上限（不缩短既有攻击）
-  float maxPursuit = 0.0f; // 追击上限，超出不再逼近
-};
+// EngagementRange 类型定义在 enemy_ai_types.h（供 PerceptionSnapshot 携带）。
 
 // 原型交战距离：近战/远程用字面量参数，Boss 按体型放大最小空挡。
 EngagementRange EngagementRangeFor(EnemyArchetype archetype, float bodyRadius,

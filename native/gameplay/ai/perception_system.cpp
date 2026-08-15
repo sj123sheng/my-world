@@ -60,6 +60,11 @@ PerceptionSnapshot PerceptionSystem::observe(const EnemyWorldView& world) const 
   snapshot.poise = world.poise;
   snapshot.staggered = world.staggered;
   snapshot.actionPhase = world.actionPhase;
+  // 交战留白（Plan 2 Task 6）：区域与槽位/分离原样透传。
+  snapshot.region = world.region;
+  snapshot.engagementRange = world.engagementRange;
+  snapshot.engagementSlot = world.engagementSlot;
+  snapshot.separationOffset = world.separationOffset;
   snapshot.allies.reserve(world.allies.size());
   for (const EnemyWorldAlly& ally : world.allies) {
     snapshot.allies.push_back({ally.id, ally.archetype, ally.health, ally.shield, ally.position,

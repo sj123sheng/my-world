@@ -34,6 +34,11 @@ struct EnemyWorldView {
   bool staggered = false;
   EnemyActionPhase actionPhase = EnemyActionPhase::None;
   std::vector<EnemyWorldAlly> allies;
+  // 交战留白（Plan 2 Task 6）：由 Encounter/WildSpawn 逐帧计算后注入，
+  // PerceptionSystem 原样复制到快照供决策/规划消费。
+  EngagementRange engagementRange;
+  Vec2 engagementSlot;
+  Vec2 separationOffset;
 
   static EnemyWorldView testDefaults();
 };
