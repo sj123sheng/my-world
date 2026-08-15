@@ -73,7 +73,7 @@ Tick AdvanceCombatTime(Tick now, int64_t dtMs) {
 
 // 把当前 EncounterSnapshot 的敌人与首领 2D 位置写入 Surface 的 3D 渲染字段。
 // 渲染层只读消费这些状态，不反向修改游戏逻辑。敌人与首领位置已在
-// 逻辑层（EncounterController/BossController）经建筑碰撞解算，此处直接同步。
+// 逻辑层（EncounterController/BossController）更新完成，此处直接同步。
 void publish3DEncounterState(Surface& surface,
                              const EncounterSnapshot& snapshot,
                              float dtSeconds) {
@@ -264,15 +264,6 @@ void publishWildEnemies3d(Surface& surface, const WildSpawnSystem& wild,
   }
 }
 
-// 流式半径性能联动（Phase 5）：按 PerformanceGuard 视距缩放决定半径——
-// 档位对应 viewDistanceScale：Full 1.0 / Light 0.9 / Medium 0.75 → 半径 2，
-// Heavy 0.6 / Critical 0.45 → 1；低画质预设（qualityPreset=1）强制取小。
-int32_t streamingRadiusForPerf(int32_t qualityPreset,
-                               const PerformanceGuard& guard) {
-  const int32_t radius = guard.viewDistanceScale() >= 0.7f ? 2 : 1;
-  return qualityPreset == 1 ? std::min(radius, 1) : radius;
-}
-
 // NPC 渲染上限性能联动（Phase 5）：按 lodLevel 收缩 6→4→3。
 // lodLevel 取 PerformanceGuard::lodLevel()（0=完整 1=中等 2=精简）。
 int32_t npcVisibleLimitForPerf(int32_t lodLevel) {
@@ -389,6 +380,34 @@ std::optional<Vec2> resolveEntityPosition(const Surface& surface,
     if (wild->positionOf(id, position)) return position;
   }
   return std::nullopt;
+}
+
+// 按实体 ID 解析模型缩放（含原型倍率），与 resolveEntityPosition 同表：
+// 锁定环按目标体型放大，避免固定小环被本体/接地阴影遮住。
+float resolveEntityScale(const Surface& surface,
+                         const EncounterSnapshot& encounter, EntityId id,
+                         const WildSpawnSystem* wild = nullptr) {
+  if (id == CombatController::kPlayerId) {
+    return surface.playerAssetProfile.scale;
+  }
+  if (id == EncounterController::kBossId) {
+    return surface.bossAssetProfile.scale;
+  }
+  for (const EncounterEnemySnapshot& enemy : encounter.enemies) {
+    if (enemy.id == id) {
+      return surface.enemyAssetProfile.scale *
+             EnemyArchetypeScale(static_cast<int>(enemy.archetype));
+    }
+  }
+  if (wild != nullptr) {
+    for (const WildEnemySnapshot& enemy : wild->snapshot()) {
+      if (enemy.id == id) {
+        return surface.enemyAssetProfile.scale *
+               EnemyArchetypeScale(enemy.archetype);
+      }
+    }
+  }
+  return surface.enemyAssetProfile.scale;
 }
 
 // 按实体 ID 解析敌方元素归属（原神式元素可读性）：遭遇敌人与野外
@@ -787,9 +806,19 @@ void ApplyExplorationSnapshot(GameSnapshot& output, const Loop& loop) {
   output.explorationStamina = loop.motionState.stamina;
   output.motionState = static_cast<int32_t>(loop.motionState.state);
   output.playerHeight = loop.motionState.height;
-  output.activeChunkCount =
-      static_cast<int32_t>(loop.worldGrid.activeChunks().size());
-  output.chunkLoadCount = loop.chunkLoadCount;
+  output.playerChunkX = loop.playerWorldPosition.chunk.x;
+  output.playerChunkY = loop.playerWorldPosition.chunk.y;
+  output.playerLocalX = loop.playerWorldPosition.local.x;
+  output.playerLocalY = loop.playerWorldPosition.local.y;
+  output.activeChunkCount = 0;
+  for (const ChunkCoord coord : loop.worldGrid.activeChunks()) {
+    if (loop.streamScheduler.isActive(coord)) ++output.activeChunkCount;
+  }
+  output.cachedChunkCount =
+      static_cast<int32_t>(loop.proceduralChunks.size());
+  output.streamingPendingCount = static_cast<int32_t>(
+      loop.streamScheduler.pendingLoadCount() +
+      loop.streamScheduler.readyCount());
   output.interactionAnchorId = loop.currentAnchorInteraction.anchorId;
   output.interactionUnlocked = loop.currentAnchorInteraction.unlocked;
   output.interactionLabel = loop.currentAnchorInteraction.anchorId >= 0
@@ -808,28 +837,12 @@ void ApplyExplorationSnapshot(GameSnapshot& output, const Loop& loop) {
   output.explorationCurrentPoiId = -1;
   output.explorationCurrentTargetLabel.clear();
   output.explorationCurrentTargetDistrict.clear();
-  output.explorationBlockedGateId = -1;
-  output.explorationBlockedGateLabel.clear();
-  output.explorationBlockedByPuzzleLabel.clear();
   const ExplorationFeedback& feedback = loop.explorationFeedback.snapshot();
   output.explorationFeedbackType = static_cast<int32_t>(feedback.type);
   output.explorationFeedbackId = feedback.id;
   output.explorationFeedbackTitle = feedback.title;
   output.explorationFeedbackSubtitle = feedback.subtitle;
   output.explorationFeedbackRemainingMs = feedback.remainingMs;
-  const ExplorationTarget nearbyTarget = loop.explorationContent.nearestTarget(
-      {loop.surface.player.x, loop.surface.player.y}, 0.045f);
-  if (nearbyTarget.kind == ExplorationTargetKind::TraversalGate &&
-      !loop.explorationContent.isGateOpen(nearbyTarget.id)) {
-    output.explorationBlockedGateId = nearbyTarget.id;
-    output.explorationBlockedGateLabel = nearbyTarget.label;
-    for (const PuzzleNode& puzzle : loop.explorationContent.puzzles()) {
-      if (puzzle.opensGateId == nearbyTarget.id) {
-        output.explorationBlockedByPuzzleLabel = puzzle.label;
-        break;
-      }
-    }
-  }
   for (const PointOfInterest& poi : loop.explorationContent.pointsOfInterest()) {
     if (!loop.explorationContent.isPointDiscovered(poi.id) && poi.mainRoute) {
       output.explorationCurrentPoiId = poi.id;
@@ -1043,11 +1056,6 @@ void ApplyGrowthSnapshot(GameSnapshot& output, const Loop& loop) {
 }
 }  // namespace
 
-void Loop::refreshExplorationGateCollision() {
-  explorationGateCollision =
-      ExplorationGateCollision::fromContent(explorationContent);
-}
-
 void Loop::publishExplorationFeedback(ExplorationFeedbackType type, int32_t id,
                                       const std::string& title,
                                       const std::string& subtitle,
@@ -1055,15 +1063,137 @@ void Loop::publishExplorationFeedback(ExplorationFeedbackType type, int32_t id,
   explorationFeedback.publish(type, id, title, subtitle, durationMs);
 }
 
-BuildingContact Loop::resolvePlayerWorldCollision(float& x, float& y,
-                                                  float radius, float height) {
-  BuildingContact contact = buildingCollision.resolve(x, y, radius, height);
-  const BuildingContact gateContact =
-      explorationGateCollision.resolve(x, y, radius, height);
-  contact.touching = contact.touching || gateContact.touching;
-  contact.normal = gateContact.touching ? gateContact.normal : contact.normal;
-  contact.highestTop = std::max(contact.highestTop, gateContact.highestTop);
-  return contact;
+void Loop::rebuildProceduralRuntime() {
+  // 渲染原点同步到玩家当前分块：渲染层据此把分块局部坐标平移回
+  // 玩家相对空间（ChunkRenderTranslation），植被/地形同一约定。
+  surface.renderOriginChunk = playerWorldPosition.chunk;
+  const std::vector<ChunkCoord>& cached = worldGrid.cachedChunks();
+  for (auto it = proceduralChunks.begin(); it != proceduralChunks.end();) {
+    if (!std::binary_search(cached.begin(), cached.end(), it->first)) {
+      const std::vector<EntityId> removedIds =
+          wildSpawn.deactivateProceduralChunk(it->first);
+      if (!removedIds.empty()) {
+        const auto wasRemoved = [&removedIds](uint32_t id) {
+          return std::binary_search(removedIds.begin(), removedIds.end(), id);
+        };
+        if (currentTarget.id.has_value() &&
+            wasRemoved(static_cast<uint32_t>(*currentTarget.id))) {
+          targetLock.clear();
+          currentTarget = TargetLockResult{};
+          surface.targetMarker3d.active = false;
+          surface.targetMarker3d.targetId = 0u;
+          surface.targetMarker3d.manual = false;
+          surface.targetMarker3d.visibility = 0.0f;
+          camera.setExploration(true);
+        }
+        for (const EntityId id : removedIds) {
+          enemyHpTrails.erase(id);
+          prevAuraMasks.erase(id);
+          surface.enemyAnimationStates.erase(id);
+          surface.enemyHitFlash.erase(id);
+          surface.enemyStaggerSeconds.erase(id);
+          surface.enemyDeathSeconds.erase(id);
+          surface.enemyHitCounts.erase(id);
+          surface.enemyPrevWindingUp.erase(id);
+          surface.enemyPrevAttacking.erase(id);
+        }
+        surface.enemyHpBars3d.clear();
+        surface.wildEnemies3d.erase(
+            std::remove_if(surface.wildEnemies3d.begin(),
+                           surface.wildEnemies3d.end(),
+                           [&wasRemoved](const WildEnemy3DRenderState& enemy) {
+                             return wasRemoved(enemy.id);
+                           }),
+            surface.wildEnemies3d.end());
+      }
+      it = proceduralChunks.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  const std::vector<ChunkCoord>& active = worldGrid.activeChunks();
+  for (const ChunkCoord coord : cached) {
+    auto [it, inserted] = proceduralChunks.try_emplace(coord);
+    if (inserted) {
+      it->second.content = GenerateProceduralChunk(worldSeed, coord, terrain);
+    }
+    it->second.active =
+        std::binary_search(active.begin(), active.end(), coord);
+  }
+  surface.foliageChunkBatches.clear();
+  proceduralCollectibles.clear();
+  for (const auto& entry : proceduralChunks) {
+    if (!entry.second.active) continue;
+    // 植被批次按 ChunkCoord 键控，位置为块内局部坐标；渲染层统一
+    // 叠加相对原点平移（ChunkRenderTranslation）回到玩家相对空间。
+    std::vector<FoliageInstance> batch;
+    batch.reserve(entry.second.content.foliage.size());
+    for (const ProceduralFoliageSpawn& spawn : entry.second.content.foliage) {
+      FoliageInstance instance;
+      instance.position = {spawn.position.x,
+                           terrain.heightAt(entry.first, spawn.position.x,
+                                            spawn.position.y),
+                           spawn.position.y};
+      instance.scale = spawn.scale;
+      instance.kind = static_cast<FoliageKind>(
+          std::min<uint8_t>(spawn.kind,
+                            static_cast<uint8_t>(FoliageKind::Rock)));
+      instance.castsShadow = instance.kind == FoliageKind::Tree ||
+                             instance.kind == FoliageKind::Rock;
+      batch.push_back(instance);
+    }
+    surface.foliageChunkBatches.emplace(entry.first, std::move(batch));
+    for (const ProceduralCollectibleSpawn& spawn :
+         entry.second.content.collectibles) {
+      if (entry.second.collectedIds.count(spawn.stableId) > 0) continue;
+      proceduralCollectibles.emplace(
+          spawn.stableId,
+          ProceduralCollectibleRuntime{
+              spawn.stableId, entry.first,
+              {static_cast<float>(entry.first.x -
+                                  playerWorldPosition.chunk.x) +
+                   spawn.position.x,
+               static_cast<float>(entry.first.y -
+                                  playerWorldPosition.chunk.y) +
+                   spawn.position.y},
+              spawn.itemId});
+    }
+  }
+}
+
+void Loop::syncInfiniteWorld(Vec2 cameraForward, Vec2 movement) {
+  const int32_t quality = std::clamp(qualityPreset, 0, 2);
+  const int32_t activeRadius = WorldGrid::ActiveRadiusForQuality(quality);
+  if (quality != streamingQualityLevel) {
+    worldGrid = WorldGrid(WorldGridConfig{activeRadius, 2});
+    streamingQualityLevel = quality;
+  }
+  streamScheduler.setKeepRadius(activeRadius, 2);
+  if (worldGrid.updateStreaming(playerWorldPosition.chunk, cameraForward,
+                                movement)) {
+    chunkLoadCount += static_cast<int32_t>(worldGrid.pendingLoads().size());
+    streamScheduler.requestLoads(worldGrid.pendingLoads(),
+                                 playerWorldPosition.chunk, quality);
+    streamScheduler.requestUnloads(worldGrid.pendingUnloads());
+  }
+  (void)streamScheduler.drainReady(streamScheduler.syncMode() ? 1000 : 2);
+  (void)streamScheduler.applyUnloads();
+  rebuildProceduralRuntime();
+  const bool safeRingWasPending = !teleportSafeRingPending.empty();
+  for (auto it = teleportSafeRingPending.begin();
+       it != teleportSafeRingPending.end();) {
+    if (streamScheduler.isActive(*it)) {
+      it = teleportSafeRingPending.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  if (!teleportSafeRingPending.empty()) {
+    teleportFlashMs = std::max<Tick>(teleportFlashMs, 100);
+  } else if (safeRingWasPending) {
+    camera.reset();
+    teleportFlashMs = 0;
+  }
 }
 
 void Loop::start() {
@@ -1142,6 +1272,7 @@ void Loop::stop() {
     GameSnapshot paused = snapshots.read();
     paused.moving = false;
     paused.targetId = 0;
+    paused.targetLockMode = 0;
     paused.moveX = 0.0f;
     paused.moveY = 0.0f;
     paused.targetDist = 0.0f;
@@ -1153,7 +1284,8 @@ void Loop::stop() {
 
 bool Loop::startEncounter(EncounterMode mode) {
   return withLifecycle([this, mode]() {
-    currentTarget.reset();
+    targetLock.clear();
+    currentTarget = TargetLockResult{};
     intent.actions.clear();
     damageNumbers.clear();
     surface.damageNumbers3d.clear();
@@ -1181,7 +1313,8 @@ bool Loop::useSupply() {
 
 bool Loop::retryBoss() {
   return withLifecycle([this]() {
-    currentTarget.reset();
+    targetLock.clear();
+    currentTarget = TargetLockResult{};
     intent.actions.clear();
     return encounter.retryBoss();
   });
@@ -1297,6 +1430,11 @@ bool Loop::saveProgress(const std::string& path) {
     state.explorationRewardMask = explorationContent.claimedRewardMask();
     state.explorationGateMask = explorationContent.openGateMask();
     state.explorationTraversalMask = explorationContent.traversalMask();
+    state.worldSeed = worldSeed;
+    state.playerChunkX = playerWorldPosition.chunk.x;
+    state.playerChunkY = playerWorldPosition.chunk.y;
+    state.playerLocalX = playerWorldPosition.local.x;
+    state.playerLocalY = playerWorldPosition.local.y;
     Save save;
     return save.write(state, path.c_str());
   });
@@ -1611,19 +1749,16 @@ bool Loop::teleportToAnchor(int32_t anchorId) {
     if (!anchors.isUnlocked(anchorId)) return false;
     for (const TeleportAnchor& anchor : anchors.anchors()) {
       if (anchor.id != anchorId) continue;
-      surface.player.x = anchor.x;
-      surface.player.y = anchor.y;
+      playerWorldPosition = NormalizeWorldPosition({0, 0}, anchor.x, anchor.y);
+      surface.player.x = playerWorldPosition.local.x;
+      surface.player.y = playerWorldPosition.local.y;
       motionState = explorationMotion.reset(
           terrain.heightAt(anchor.x, anchor.y));
-      // 传送：强制刷新流式集合同步准备目标分块一圈，配合黑屏转场。
-      worldGrid.updateStreaming({anchor.x, anchor.y});
-      chunkLoadCount += static_cast<int32_t>(worldGrid.pendingLoads().size());
-      streamScheduler.loadRingSync(
-          worldGrid.chunkIndexAt({anchor.x, anchor.y}),
-          worldGrid.config().streamingRadius, performanceGuard.lodLevel());
-      // 传送圈分块在 Ready 队列等待上传：黑屏窗口内临时放宽每帧
-      // 配额（25 块 / 4 块每帧 ≈ 7 帧 ≪ 1200ms 转场）。
-      streamScheduler.beginBurst(10, 4);
+      syncInfiniteWorld({0.0f, 1.0f}, {});
+      const std::vector<ChunkCoord> safeRing = streamScheduler.loadSafeRingSync(
+          playerWorldPosition.chunk, std::clamp(qualityPreset, 0, 2));
+      teleportSafeRingPending = {safeRing.begin(), safeRing.end()};
+      streamScheduler.beginBurst(10, 9);
       teleportFlashMs = 1200;
       audioBridge.playUiSound(SoundEffect::Resonance);
       return true;
@@ -1639,6 +1774,15 @@ bool Loop::loadProgress(const std::string& path) {
     if (!save.read(state, path.c_str())) {
       return false;
     }
+    worldSeed = state.worldSeed == 0 ? 1 : state.worldSeed;
+    playerWorldPosition = NormalizeWorldPosition(
+        {state.playerChunkX, state.playerChunkY}, state.playerLocalX,
+        state.playerLocalY);
+    surface.player.x = playerWorldPosition.local.x;
+    surface.player.y = playerWorldPosition.local.y;
+    motionState = explorationMotion.reset(terrain.heightAt(
+        playerWorldPosition.chunk, playerWorldPosition.local.x,
+        playerWorldPosition.local.y));
     quests.restoreLinear(state.completedQuestCount, state.activeQuestId);
     // V8：开放世界支线按完成掩码恢复（V1-V7 旧存档字段为默认值，
     // restoreByMask(0,-1) 等价于初始全部可接取态）。
@@ -1782,6 +1926,16 @@ void Loop::processInput() {
       switchCharacter();
       continue;
     }
+    // 目标锁定（Plan 2）：置单帧队列标志，下一固定步交给
+    // TargetLockController 消费。
+    if (e.action == InputAction::CycleTarget) {
+      cycleTargetQueued = true;
+      continue;
+    }
+    if (e.action == InputAction::ReleaseTargetLock) {
+      releaseTargetLockQueued = true;
+      continue;
+    }
     const TouchRole releaseRole = touchRouter.role(e.pointerId);
     switch (e.action) {
       case InputAction::PointerDown: {
@@ -1885,7 +2039,8 @@ void Loop::resetInput() {
   prevComboSegmentForVfx = 0;
   prevActionForVfx = 0;
   prevAuraMasks.clear();
-  currentTarget.reset();
+  targetLock.clear();
+  currentTarget = TargetLockResult{};
   input.clear();
 }
 
@@ -1944,8 +2099,8 @@ void Loop::tickOnce(int64_t elapsedMs) {
     fps = tickCount * 1000.0f / (float)elapsed;
     tickCount = 0;
     lastFpsTime = now;
-    // 分块流式与野外敌人计数（性能仪表扩展）：打点处仅只读现有状态，
-    // wild_enemies 当前恒为 0，由后续 WildSpawnSystem 填充。
+#ifdef OHOS_PLATFORM
+    // 分块流式与野外敌人计数（性能仪表扩展）：打点处仅只读现有状态。
     const int activeChunkCount =
         static_cast<int>(worldGrid.activeChunks().size());
     const int streamingPendingCount =
@@ -1965,6 +2120,7 @@ void Loop::tickOnce(int64_t elapsedMs) {
          performanceGuard.level() >= 4 ? "half" : "full",
          static_cast<int>(encounter.snapshot().mode),
          activeChunkCount, streamingPendingCount, wildEnemyCount);
+#endif
   }
   performanceGuard.sample(fixedStep.tick(), 16, fps);
 
@@ -1992,7 +2148,10 @@ void Loop::tickOnce(int64_t elapsedMs) {
   snapshot.playerY = surface.player.y;
   snapshot.fps = fps;
   snapshot.moving = surface.player.moving;
-  snapshot.targetId = currentTarget ? currentTarget->id : 0;
+  snapshot.targetId = currentTarget.id.has_value()
+                          ? static_cast<int32_t>(*currentTarget.id)
+                          : 0;
+  snapshot.targetLockMode = static_cast<int32_t>(currentTarget.mode);
   snapshot.rendererReady = surface.ready;
   snapshot.environmentReady = surface.environmentReady;
   snapshot.environmentDrawCalls = surface.environmentDrawCalls;
@@ -2003,15 +2162,14 @@ void Loop::tickOnce(int64_t elapsedMs) {
   snapshot.moveY = intent.move.y;
   snapshot.cameraYaw = camera.yaw();
   snapshot.cameraPitch = camera.pitch();
-  snapshot.targetDist = currentTarget ? currentTarget->distance : 0.0f;
+  snapshot.targetDist = currentTarget.distance;
   // 锁定目标焦点框：解析锁定敌人的原型与血量比例（首领已有专属血条，
   // 不在敌人列表中，保持 archetype = -1 由 HUD 隐藏焦点框）。
   snapshot.targetArchetype = -1;
   snapshot.targetHpRatio = 0.0f;
-  if (currentTarget.has_value()) {
+  if (currentTarget.id.has_value()) {
     for (const EncounterEnemySnapshot& enemy : encounter.snapshot().enemies) {
-      if (enemy.id == static_cast<EntityId>(currentTarget->id) &&
-          enemy.maxHp > 0) {
+      if (enemy.id == *currentTarget.id && enemy.maxHp > 0) {
         snapshot.targetArchetype = static_cast<int32_t>(enemy.archetype);
         snapshot.targetHpRatio = static_cast<float>(enemy.hp) /
                                  static_cast<float>(enemy.maxHp);
@@ -2088,10 +2246,12 @@ void Loop::tickOnce(int64_t elapsedMs) {
   }
 }
 
-void Loop::updateFixed(Tick tick, int64_t dtMs) {
+void Loop::updateFixed(Tick /*tick*/, int64_t dtMs) {
   const Vec2 lookDelta = intent.lookDelta;
   intent.lookDelta = {};
   const float dtSeconds = static_cast<float>(dtMs) / 1000.0f;
+  surface.player.x = playerWorldPosition.local.x;
+  surface.player.y = playerWorldPosition.local.y;
 
   // 相机先更新：玩家移动使用本帧最新 yaw，保证操控方向与画面严格一致。
   camera.update({surface.player.x, surface.player.y}, lookDelta, dtSeconds);
@@ -2130,8 +2290,9 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
       turnSpeedScale = 0.0f;
     }
   }
-  // 地形墙探测必须使用控制器积分前的位置；若在 update 之后才取样，
-  // 本帧位移恒为零，正面阻挡和攀爬入口均不会触发，只剩嵌入推出兜底。
+  // Surface 只承载当前分块局部表现；每帧先从 CPU 权威位置恢复。
+  surface.player.x = playerWorldPosition.local.x;
+  surface.player.y = playerWorldPosition.local.y;
   const Vec2 playerPosBeforeController{surface.player.x, surface.player.y};
   const float playerSpeedScale =
       motionState.sprinting
@@ -2140,100 +2301,28 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   playerController.update(surface.player, intent.move, camera.yaw(),
                           dtSeconds, playerSpeedScale,
                           turnSpeedScale);
-
-  // 建筑碰撞：把主角从城墙/塔楼盒内推出并沿墙滑动，不再穿模；
-  // 接触信息驱动墙面攀爬判定（高度越过盒顶时不再阻挡，可翻上墙头）。
-  const BuildingContact wallContact = resolvePlayerWorldCollision(
-      surface.player.x, surface.player.y, playerCollisionRadius,
-      motionState.height);
-
-  // 地形墙碰撞（原神式悬崖语言）：特征层生成的 mesa 壁/回廊悬崖/
-  // 劣地脊线/边缘山脊此前没有水平阻挡，角色直接穿墙而过。现在与
-  // 建筑碰撞同语言：陡坡墙阻挡 + 沿墙滑动，接触信息驱动真地形攀爬；
-  // 游泳中地形墙不参与（水域边缘为缓坡入水）。
-  TerrainWallContact terrainWall;
-  if (motionState.state != MotionState::Swimming) {
-    const Vec2 prevPlayerPos = playerPosBeforeController;
-    const Vec2 moveDelta{surface.player.x - prevPlayerPos.x,
-                         surface.player.y - prevPlayerPos.y};
-    if (moveDelta.length() > 1e-6f) {
-      // 探测距离 = 碰撞半径 + 本帧位移 + 余量：在撞墙前拦截。
-      const float terrainProbeDistance =
-          playerCollisionRadius + moveDelta.length() + 0.001f;
-      terrainWall = terrainWallContact(terrain, prevPlayerPos.x,
-                                       prevPlayerPos.y, motionState.height,
-                                       moveDelta, terrainProbeDistance);
-      if (terrainWall.blocked) {
-        const Vec2 slide =
-            slideAlongTerrainWall(moveDelta, terrainWall.normal);
-        surface.player.x = prevPlayerPos.x + slide.x;
-        surface.player.y = prevPlayerPos.y + slide.y;
-      }
-    }
-    // 嵌入兜底：被击退/传送送进墙体时沿下坡方向推出。
-    const Vec2 fixedPos = depenetrateTerrainWall(
-        terrain, surface.player.x, surface.player.y, motionState.height,
-        playerCollisionRadius);
-    surface.player.x = fixedPos.x;
-    surface.player.y = fixedPos.y;
-  }
-
-  // ---- 开放世界探索（阶段一）----
-  // 性能降级联动视距（Phase 5 接入 viewDistanceScale）：档位越低
-  // 视距越短，流式半径越小，减少激活分块与刷怪压力。
-  worldGrid.setStreamingRadius(
-      streamingRadiusForPerf(qualityPreset, performanceGuard));
-  streamScheduler.setKeepRadius(worldGrid.config().streamingRadius + 1);
-  // 分块流式：按玩家位置维护激活分块集合，累计加载次数供验收。
-  if (worldGrid.updateStreaming({surface.player.x, surface.player.y})) {
-    chunkLoadCount += static_cast<int32_t>(worldGrid.pendingLoads().size());
-    // 转发流式调度器：驱动分块地形内容加载/卸载（滞后带由调度器评估）。
-    streamScheduler.requestLoads(
-        worldGrid.pendingLoads(),
-        worldGrid.chunkIndexAt({surface.player.x, surface.player.y}),
-        performanceGuard.lodLevel());
-    streamScheduler.requestUnloads(worldGrid.pendingUnloads());
-  }
+  playerWorldPosition = NormalizeWorldPosition(
+      playerWorldPosition.chunk, surface.player.x, surface.player.y);
+  surface.player.x = playerWorldPosition.local.x;
+  surface.player.y = playerWorldPosition.local.y;
+  const float cameraYaw = camera.yaw();
+  syncInfiniteWorld({std::sin(cameraYaw), std::cos(cameraYaw)},
+                    {surface.player.x - playerPosBeforeController.x,
+                     surface.player.y - playerPosBeforeController.y});
   // 垂直运动：跳跃/滑翔/攀爬/游泳与探索体力。
   {
     MotionInput motionInput;
     motionInput.jumpPressed = jumpQueued;
     motionInput.glideHeld = glideHeld;
     motionInput.moving = surface.player.moving;
-    // 地形攀爬：被可攀爬地形墙阻挡且仍在朝墙推进时进入真攀爬
-    //（按攀爬速度限速上升、播放攀爬动画）；爬到墙顶后阻挡自动
-    // 解除（高度已可跨越），行走接管站上墙顶。
-    motionInput.terrainClimbing =
-        terrainWall.blocked && terrainWall.climbable &&
-        surface.player.moving &&
-        (motionState.state == MotionState::Grounded ||
-         motionState.state == MotionState::Climbing) &&
-        motionState.stamina > 0.0f;
-    // 墙面攀爬：贴墙朝墙推进且尚未登顶时，与地形陡坡同等进入攀爬，
-    // 消耗体力并按固定速度上升；登顶后由地面覆盖接管站上墙头。
-    motionInput.wallClimbing =
-        wallContact.touching && surface.player.moving &&
-        (motionState.state == MotionState::Grounded ||
-         motionState.state == MotionState::Climbing) &&
-        motionState.height < wallContact.highestTop - 0.002f &&
-        motionState.stamina > 0.0f;
-    // 合成支撑高度：已翻上建筑盒顶时，地面取盒顶而非地形采样，
-    // 保证墙头站立/落地贴合；贴墙站立时不会误判（standingTopAt
-    // 仅在盒顶不高于当前高度时计入）。
-    const float terrainGround =
-        terrain.heightAt(surface.player.x, surface.player.y);
-    const float standingTop = buildingCollision.standingTopAt(
-        surface.player.x, surface.player.y, playerCollisionRadius * 0.5f,
-        motionState.height, 0.006f);
-    MotionGroundOverride groundOverride;
-    if (std::isfinite(standingTop) && standingTop > terrainGround) {
-      groundOverride.active = true;
-      groundOverride.groundHeight = standingTop;
-    }
+    motionInput.terrainClimbing = false;
+    motionInput.wallClimbing = false;
+    const double worldX = static_cast<double>(playerWorldPosition.chunk.x) +
+                          playerWorldPosition.local.x;
+    const double worldY = static_cast<double>(playerWorldPosition.chunk.y) +
+                          playerWorldPosition.local.y;
     motionState = explorationMotion.update(
-        motionState, motionInput, terrain, surface.player.x,
-        surface.player.y, dtSeconds,
-        groundOverride.active ? &groundOverride : nullptr);
+        motionState, motionInput, terrain, worldX, worldY, dtSeconds);
     const auto recordTraversal = [&](TraversalAbility ability) {
       if (explorationContent.traversalUsed(ability)) return;
       explorationContent.recordTraversal(ability);
@@ -2280,6 +2369,17 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     teleportFlashMs = std::max<Tick>(teleportFlashMs, 300);
     audioBridge.playUiSound(SoundEffect::AuraApplied);
   }
+  if (explorationTarget.kind == ExplorationTargetKind::RegionTrigger &&
+      explorationContent.enterRegion(
+          explorationTarget.id,
+          {surface.player.x, surface.player.y})) {
+    quests.notifyPointReached(explorationTarget.id);
+    publishExplorationFeedback(ExplorationFeedbackType::PoiDiscovered,
+                               explorationTarget.id,
+                               explorationTarget.label,
+                               "已进入自然区域", 1200);
+    audioBridge.playUiSound(SoundEffect::AuraApplied);
+  }
   if (interactQueued) {
     interactQueued = false;
     if (dialogSession.active()) {
@@ -2298,10 +2398,19 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
             currentAnchorInteraction.anchorId,
             {surface.player.x, surface.player.y});
         if (result.success) {
-          surface.player.x = result.position.x;
-          surface.player.y = result.position.y;
+          playerWorldPosition = NormalizeWorldPosition(
+              {0, 0}, result.position.x, result.position.y);
+          surface.player.x = playerWorldPosition.local.x;
+          surface.player.y = playerWorldPosition.local.y;
           motionState = explorationMotion.reset(
               terrain.heightAt(surface.player.x, surface.player.y));
+          syncInfiniteWorld({0.0f, 1.0f}, {});
+          const std::vector<ChunkCoord> safeRing =
+              streamScheduler.loadSafeRingSync(
+                  playerWorldPosition.chunk,
+                  std::clamp(qualityPreset, 0, 2));
+          teleportSafeRingPending = {safeRing.begin(), safeRing.end()};
+          streamScheduler.beginBurst(10, 9);
           teleportFlashMs = 1200;
           audioBridge.playUiSound(SoundEffect::Resonance);
         } else if (result.anchorId >= 0) {
@@ -2312,27 +2421,15 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
           teleportFlashMs = 600;
           audioBridge.playUiSound(SoundEffect::AuraApplied);
         }
-      } else if (explorationTarget.kind == ExplorationTargetKind::Puzzle) {
-        if (explorationContent.activatePuzzle(explorationTarget.id,
-                                              motionState.state)) {
+      } else if (explorationTarget.kind ==
+                 ExplorationTargetKind::NaturalNode) {
+        if (explorationContent.activateNaturalNode(explorationTarget.id,
+                                                   motionState.state)) {
           quests.notifyPuzzleActivated(explorationTarget.id);
           publishExplorationFeedback(ExplorationFeedbackType::PuzzleActivated,
                                      explorationTarget.id,
                                      explorationTarget.label, "机关已激活",
                                      1200);
-          const PuzzleNode* puzzle =
-              explorationContent.puzzleById(explorationTarget.id);
-          const TraversalGate* openedGate =
-              puzzle != nullptr
-                  ? explorationContent.gateById(puzzle->opensGateId)
-                  : nullptr;
-          if (openedGate != nullptr &&
-              explorationContent.isGateOpen(openedGate->id)) {
-            publishExplorationFeedback(ExplorationFeedbackType::GateOpened,
-                                       openedGate->id, openedGate->label,
-                                       "路径已开启", 1400);
-          }
-          refreshExplorationGateCollision();
           teleportFlashMs = 700;
           audioBridge.playUiSound(SoundEffect::Resonance);
         }
@@ -2530,10 +2627,9 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     // 释放目标：优先软锁定目标；未锁定时退回首领（首领战），
     // 保证投射物始终有明确去处。
     std::optional<Vec2> releaseTarget;
-    if (currentTarget.has_value()) {
+    if (currentTarget.id.has_value()) {
       releaseTarget = resolveEntityPosition(
-          surface, encounter.snapshot(),
-          static_cast<EntityId>(currentTarget->id), &wildSpawn);
+          surface, encounter.snapshot(), *currentTarget.id, &wildSpawn);
     }
     if (!releaseTarget.has_value() &&
         encounter.snapshot().mode == EncounterMode::Boss &&
@@ -2692,44 +2788,90 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
     prevCorruptionCdMs = skillSnapshot.corruptionCooldownMs;
   }
 
-  // 软锁定候选合并：遭遇敌人 + 野外敌人（WildSpawnSystem）。
-  std::vector<TargetCandidate> candidates = encounter.snapshot().candidates;
-  const std::vector<TargetCandidate> wildCandidates = wildSpawn.candidates();
-  candidates.insert(candidates.end(), wildCandidates.begin(), wildCandidates.end());
-  currentTarget = softTargeting.select(
-      {surface.player.x, surface.player.y}, camera.yaw(), candidates,
-      currentTarget ? std::optional<int32_t>{currentTarget->id} : std::nullopt);
+  // 统一目标锁定候选（Plan 2）：遭遇敌人 + 野外敌人 + Boss 全部参与，
+  // 两路候选源已按存活/可攻击过滤；Boss 不强制抢锁，仅作为候选。
+  const auto collectLockCandidates =
+      [this]() -> std::vector<TargetLockCandidate> {
+    std::vector<TargetLockCandidate> lockCandidates;
+    const auto append =
+        [&lockCandidates](const std::vector<TargetCandidate>& source) {
+      for (const TargetCandidate& candidate : source) {
+        TargetLockCandidate lockCandidate;
+        lockCandidate.id = static_cast<EntityId>(candidate.id);
+        lockCandidate.position = candidate.position;
+        lockCandidate.boss =
+            candidate.id == static_cast<int32_t>(EncounterController::kBossId);
+        lockCandidates.push_back(lockCandidate);
+      }
+    };
+    append(encounter.snapshot().candidates);
+    append(wildSpawn.candidates());
+    return lockCandidates;
+  };
+  const Vec2 lockPlayerPosition{surface.player.x, surface.player.y};
+  const float lockCameraYaw = camera.yaw();
+  const Tick lockNow = combatTimeMs_.load();
+  const std::vector<TargetLockCandidate> lockCandidates =
+      collectLockCandidates();
+  bool attackQueuedForLock = false;
+  for (const ActionRequest& action : intent.actions) {
+    if (action.action == CombatAction::Attack) {
+      attackQueuedForLock = true;
+      break;
+    }
+  }
+  const bool comboActiveForLock = combat.snapshot().comboSegment > 0;
+  if (cycleTargetQueued) {
+    currentTarget = targetLock.cycleManual(lockPlayerPosition, lockCameraYaw,
+                                           lockCandidates, lockNow);
+  } else if (releaseTargetLockQueued) {
+    currentTarget = targetLock.releaseManual(lockPlayerPosition, lockCameraYaw,
+                                             lockCandidates, lockNow);
+  } else if (targetLock.mode() == TargetLockMode::Manual) {
+    // 手动模式每步维护：死亡/超距/卸载重选，无候选回到自动。
+    currentTarget = targetLock.refresh(lockPlayerPosition, lockCameraYaw,
+                                       lockCandidates, lockNow);
+  } else {
+    currentTarget = targetLock.updateAutomatic(
+        lockPlayerPosition, lockCameraYaw, lockCandidates, attackQueuedForLock,
+        comboActiveForLock, lockNow);
+  }
+  cycleTargetQueued = false;
+  releaseTargetLockQueued = false;
 
   // 相机双模式：无锁定目标时切探索视角（拉远），有目标时收回战斗视角。
-  camera.setExploration(!currentTarget.has_value());
+  camera.setExploration(!currentTarget.id.has_value());
 
-  // 锁定目标指示器：发布目标位置与脉冲相位，目标脚下绘制脉冲环。
-  surface.targetMarker3d.active = currentTarget.has_value();
+  // 锁定目标指示器：自动模式由控制器活跃窗口决定可见性，手动常亮。
+  surface.targetMarker3d.active = currentTarget.showMarker;
+  surface.targetMarker3d.manual = currentTarget.mode == TargetLockMode::Manual;
+  surface.targetMarker3d.visibility = targetLock.markerVisibility(lockNow);
   surface.targetMarker3d.targetId =
-      currentTarget.has_value() ? static_cast<uint32_t>(currentTarget->id) : 0u;
+      currentTarget.id.has_value() ? static_cast<uint32_t>(*currentTarget.id)
+                                   : 0u;
   // 首领锁定态同步发布，供渲染层轮廓光常亮增强。
-  surface.boss3d.targeted =
-      currentTarget.has_value() &&
-      static_cast<EntityId>(currentTarget->id) == EncounterController::kBossId;
-  if (currentTarget.has_value()) {
+  surface.boss3d.targeted = currentTarget.id.has_value() &&
+                            *currentTarget.id == EncounterController::kBossId;
+  if (currentTarget.id.has_value()) {
     const std::optional<Vec2> markerPosition = resolveEntityPosition(
-        surface, encounter.snapshot(),
-        static_cast<EntityId>(currentTarget->id), &wildSpawn);
+        surface, encounter.snapshot(), *currentTarget.id, &wildSpawn);
     if (markerPosition.has_value()) {
       surface.targetMarker3d.x = markerPosition->x;
       surface.targetMarker3d.z = markerPosition->y;
+      surface.targetMarker3d.targetScale = resolveEntityScale(
+          surface, encounter.snapshot(), *currentTarget.id, &wildSpawn);
     } else {
       surface.targetMarker3d.active = false;
       surface.targetMarker3d.targetId = 0u;
     }
     // 锁定标记元素归属：供渲染层把指示环混入目标元素色。
-    const std::optional<int> markerElement = resolveEnemyElement(
-        encounter.snapshot(), static_cast<EntityId>(currentTarget->id),
-        &wildSpawn);
+    const std::optional<int> markerElement =
+        resolveEnemyElement(encounter.snapshot(), *currentTarget.id,
+                            &wildSpawn);
     surface.targetMarker3d.element =
         markerElement.has_value() ? *markerElement : -1;
   }
-  if (!currentTarget.has_value()) {
+  if (!currentTarget.id.has_value()) {
     surface.targetMarker3d.element = -1;
   }
   surface.targetMarker3d.pulsePhase =
@@ -2739,19 +2881,19 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   intent.actions.clear();
   const Tick combatTime = AdvanceCombatTime(combatTimeMs_.load(), dtMs);
   combatTimeMs_.store(combatTime);
-  // 敌人碰撞：遭遇敌人与野外敌人共用同一建筑碰撞集。
-  const auto enemyPositionResolver = [this](Vec2& position, float radius) {
-    const float ground = terrain.heightAt(position.x, position.y);
-    buildingCollision.resolve(position.x, position.y, radius, ground);
-    explorationGateCollision.resolve(position.x, position.y, radius, ground);
-  };
   // 野外刷怪（Phase 3.2/3.3）：worldGrid 流式之后推进；生成/回收/重生/
   // 巡逻/LOD 在此结算，敌方命中转发 combat 外部通道。
   // 性能档位转发（Phase 5）：降级时活跃上限 8→6→4、感知半径收缩。
   wildSpawn.setPerformanceLevel(performanceGuard.lodLevel());
-  wildSpawn.update({combatTime, dtMs, {surface.player.x, surface.player.y},
-                    combat.snapshot().playerHp > 0,
-                    &worldGrid.activeChunks(), enemyPositionResolver});
+  WildSpawnFrameInput wildInput;
+  wildInput.tick = combatTime;
+  wildInput.dtMs = dtMs;
+  wildInput.playerPosition = {surface.player.x, surface.player.y};
+  wildInput.playerAlive = combat.snapshot().playerHp > 0;
+  wildInput.playerChunk = playerWorldPosition.chunk;
+  wildInput.activeChunks = &worldGrid.activeChunks();
+  wildInput.proceduralChunks = &proceduralChunks;
+  wildSpawn.update(wildInput);
   wildEnemyCount = wildSpawn.activeCount();
   // 仅遭遇运行时转发：避免队列在非战斗态滞留。
   if (encounter.snapshot().state == EncounterState::Running) {
@@ -2761,13 +2903,12 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   }
   // 绑定玩家锁定的野外目标：玩家攻击改道结算到它（非野外目标时空绑定）。
   combat.setExternalTargetBinding(wildSpawn.combatBinding(
-      currentTarget ? static_cast<EntityId>(currentTarget->id) : 0,
+      currentTarget.id.has_value() ? *currentTarget.id : 0,
       {surface.player.x, surface.player.y}));
   encounter.update({combatTime, dtMs,
                     {surface.player.x, surface.player.y},
                     surface.player.moving,
-                    currentTarget ? static_cast<EntityId>(currentTarget->id) : 0,
-                    enemyPositionResolver});
+                    currentTarget.id.has_value() ? *currentTarget.id : 0});
   const EncounterSnapshot& encounterState = encounter.snapshot();
   DemoSignals demoSignals;
   demoSignals.introComplete = combatTime >= 1000;
@@ -2852,23 +2993,59 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
   // 锁定释放复核必须用本步结算后的新鲜候选：帧首候选是上一步快照，
   // 不含本步 encounter.update 的击杀结果，已死目标会多挂一帧锁定；
   // 而击杀触发的命中卡肉又会冻结后续固定步，把延迟放大成幽灵锁定。
-  // 释放时同步关闭锁定标记并切回探索视角，避免残留一帧幽灵标记。
-  if (currentTarget.has_value()) {
-    std::vector<TargetCandidate> freshCandidates =
-        encounter.snapshot().candidates;
-    const std::vector<TargetCandidate> freshWildCandidates =
-        wildSpawn.candidates();
-    freshCandidates.insert(freshCandidates.end(),
-                           freshWildCandidates.begin(),
-                           freshWildCandidates.end());
-    if (std::none_of(freshCandidates.begin(), freshCandidates.end(),
-                     [this](const TargetCandidate& candidate) {
-                       return candidate.id == currentTarget->id;
-                     })) {
-      currentTarget.reset();
-      surface.targetMarker3d.active = false;
-      surface.targetMarker3d.targetId = 0u;
-      camera.setExploration(true);
+  // 失效后立即用新鲜候选交给控制器重选并同步表现，避免一帧幽灵分叉。
+  if (currentTarget.id.has_value()) {
+    const std::vector<TargetLockCandidate> freshLockCandidates =
+        collectLockCandidates();
+    const EntityId lockedId = *currentTarget.id;
+    const bool lockTargetStillPresent = std::any_of(
+        freshLockCandidates.begin(), freshLockCandidates.end(),
+        [lockedId](const TargetLockCandidate& candidate) {
+          return candidate.id == lockedId;
+        });
+    if (!lockTargetStillPresent) {
+      targetLock.invalidate(lockedId);
+      if (targetLock.mode() == TargetLockMode::Manual) {
+        currentTarget = targetLock.refresh(lockPlayerPosition, lockCameraYaw,
+                                           freshLockCandidates, lockNow);
+      } else {
+        currentTarget = targetLock.updateAutomatic(
+            lockPlayerPosition, lockCameraYaw, freshLockCandidates,
+            /*attackTriggered=*/false, comboActiveForLock, lockNow);
+      }
+      // 同帧回写 encounter 快照：encounter.update 在击杀结算前已记录
+      // 旧 ID，不回写则死亡切换帧两路目标数据源分叉一帧。
+      encounter.rebindSelectedTarget(currentTarget.id.has_value()
+                                         ? *currentTarget.id
+                                         : 0);
+      camera.setExploration(!currentTarget.id.has_value());
+      surface.targetMarker3d.active = currentTarget.showMarker;
+      surface.targetMarker3d.manual =
+          currentTarget.mode == TargetLockMode::Manual;
+      surface.targetMarker3d.visibility =
+          targetLock.markerVisibility(lockNow);
+      surface.targetMarker3d.targetId =
+          currentTarget.id.has_value()
+              ? static_cast<uint32_t>(*currentTarget.id)
+              : 0u;
+      surface.boss3d.targeted = currentTarget.id.has_value() &&
+                                *currentTarget.id ==
+                                    EncounterController::kBossId;
+      if (currentTarget.id.has_value()) {
+        const std::optional<Vec2> markerPosition = resolveEntityPosition(
+            surface, encounter.snapshot(), *currentTarget.id, &wildSpawn);
+        if (markerPosition.has_value()) {
+          surface.targetMarker3d.x = markerPosition->x;
+          surface.targetMarker3d.z = markerPosition->y;
+          surface.targetMarker3d.targetScale = resolveEntityScale(
+              surface, encounter.snapshot(), *currentTarget.id, &wildSpawn);
+        } else {
+          surface.targetMarker3d.active = false;
+          surface.targetMarker3d.targetId = 0u;
+        }
+      } else {
+        surface.targetMarker3d.element = -1;
+      }
     }
   }
 
@@ -3805,7 +3982,8 @@ void Loop::updateFixed(Tick tick, int64_t dtMs) {
 }
 
 void Loop::publishRendererStopped() {
-  currentTarget.reset();
+  targetLock.clear();
+  currentTarget = TargetLockResult{};
   encounter.stop();
   combat.reset();
   combatTimeMs_ = 0;

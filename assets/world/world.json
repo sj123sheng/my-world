@@ -25,10 +25,10 @@
     },
     {
       "districtId": "central_corridor",
-      "name": "中枢回廊",
+      "name": "中枢岩脊",
       "chunkXRange": [3, 4],
       "chunkYRange": [2, 3],
-      "description": "连接南北的中央通道，守卫把守，是进入北境的必经之路。"
+      "description": "连接南北的中央岩脊，守卫巡游，是进入北境的天然鞍部。"
     },
     {
       "districtId": "ashen_wastes",
@@ -39,18 +39,18 @@
     },
     {
       "districtId": "sanctum_highlands",
-      "name": "圣所高地",
+      "name": "岚冠高地",
       "chunkXRange": [4, 7],
       "chunkYRange": [4, 7],
-      "description": "东北高地：圣所遗迹所在，精英驻守，终局挑战入口。"
+      "description": "东北高地：岚冠岩原所在，精英驻守，终局挑战入口。"
     }
   ],
   "anchors": [
-    { "id": 8, "x": 0.15, "y": 0.15, "label": "翠风哨站", "districtId": "westlands" },
-    { "id": 9, "x": 0.85, "y": 0.15, "label": "湖岸渡口", "districtId": "gimmerlake" },
-    { "id": 10, "x": 0.5, "y": 0.35, "label": "回廊门庭", "districtId": "central_corridor" },
-    { "id": 11, "x": 0.2, "y": 0.75, "label": "灰烬前哨", "districtId": "ashen_wastes" },
-    { "id": 12, "x": 0.8, "y": 0.8, "label": "圣所阶地", "districtId": "sanctum_highlands" }
+    { "id": 8, "x": 0.15, "y": 0.15, "label": "翠风花谷", "districtId": "westlands" },
+    { "id": 9, "x": 0.85, "y": 0.15, "label": "辉光湖湾", "districtId": "gimmerlake" },
+    { "id": 10, "x": 0.5, "y": 0.35, "label": "中枢岩脊", "districtId": "central_corridor" },
+    { "id": 11, "x": 0.2, "y": 0.75, "label": "灰烬丘陵", "districtId": "ashen_wastes" },
+    { "id": 12, "x": 0.8, "y": 0.8, "label": "岚冠阶地", "districtId": "sanctum_highlands" }
   ],
   "npcs": [
     {
@@ -95,7 +95,7 @@
       "behavior": "patrol",
       "patrolPoints": [[0.45, 0.3], [0.55, 0.3]],
       "districtId": "central_corridor",
-      "label": "回廊信使"
+      "label": "岩脊行者"
     },
     {
       "id": 36,
@@ -117,7 +117,7 @@
       "behavior": "patrol",
       "patrolPoints": [[0.7, 0.7], [0.75, 0.78], [0.72, 0.68]],
       "districtId": "sanctum_highlands",
-      "label": "圣所守望者"
+      "label": "岚冠守望者"
     }
   ],
   "spawnZones": [
@@ -193,43 +193,43 @@
     }
   ],
   "chests": [
-    { "id": 48, "x": 0.56, "y": 0.06, "districtId": "spawn_plateau", "label": "台地旧箱" },
+    { "id": 48, "x": 0.56, "y": 0.06, "districtId": "spawn_plateau", "label": "台地赠礼" },
     { "id": 49, "x": 0.06, "y": 0.44, "districtId": "westlands", "label": "低地藏宝" },
     { "id": 50, "x": 0.9, "y": 0.1, "districtId": "gimmerlake", "label": "湖湾沉箱" },
-    { "id": 51, "x": 0.88, "y": 0.9, "districtId": "sanctum_highlands", "label": "圣所圣匣" }
+    { "id": 51, "x": 0.88, "y": 0.9, "districtId": "sanctum_highlands", "label": "岚冠结晶" }
   ],
   "collectibles": [
     { "id": 40, "x": 0.44, "y": 0.1, "kind": "herb", "districtId": "spawn_plateau", "label": "晨露草" },
     { "id": 41, "x": 0.3, "y": 0.1, "kind": "herb", "districtId": "westlands", "label": "风铃花" },
     { "id": 42, "x": 0.68, "y": 0.15, "kind": "ore", "districtId": "gimmerlake", "label": "辉光矿石" },
     { "id": 43, "x": 0.3, "y": 0.7, "kind": "ore", "districtId": "ashen_wastes", "label": "灰烬铁块" },
-    { "id": 44, "x": 0.55, "y": 0.55, "kind": "mushroom", "districtId": "sanctum_highlands", "label": "圣所菇" },
+    { "id": 44, "x": 0.55, "y": 0.55, "kind": "mushroom", "districtId": "sanctum_highlands", "label": "岚冠菇" },
     { "id": 45, "x": 0.05, "y": 0.25, "kind": "berry", "districtId": "westlands", "label": "翠风浆果" }
   ],
   "pointsOfInterest": [
-    { "id": 60, "x": 0.52, "y": 0.16, "label": "启明台地观景台", "districtId": "spawn_plateau", "mainRoute": true },
-    { "id": 61, "x": 0.18, "y": 0.28, "label": "翠风低地哨站", "districtId": "westlands", "mainRoute": true },
-    { "id": 62, "x": 0.70, "y": 0.22, "label": "辉光湖畔渡口", "districtId": "gimmerlake", "mainRoute": true },
-    { "id": 63, "x": 0.50, "y": 0.34, "label": "中枢回廊遗门", "districtId": "central_corridor", "mainRoute": true },
-    { "id": 64, "x": 0.86, "y": 0.12, "label": "湖心残塔", "districtId": "gimmerlake", "mainRoute": false }
+    { "id": 60, "x": 0.52, "y": 0.16, "label": "启明巨树", "districtId": "spawn_plateau", "mainRoute": true },
+    { "id": 61, "x": 0.18, "y": 0.28, "label": "翠风花谷", "districtId": "westlands", "mainRoute": true },
+    { "id": 62, "x": 0.70, "y": 0.20, "label": "辉光湖湾", "districtId": "gimmerlake", "mainRoute": true },
+    { "id": 63, "x": 0.50, "y": 0.34, "label": "中枢岩脊", "districtId": "central_corridor", "mainRoute": true },
+    { "id": 64, "x": 0.86, "y": 0.12, "label": "湖心岩台", "districtId": "gimmerlake", "mainRoute": false }
   ],
-  "puzzles": [
-    { "id": 70, "x": 0.25, "y": 0.30, "label": "风铃导流机关", "requiredMotion": "Grounded", "opensGateId": 80, "rewardId": 90 },
-    { "id": 71, "x": 0.74, "y": 0.25, "label": "湖畔浮桥机关", "requiredMotion": "Swimming", "opensGateId": 81, "rewardId": 91 },
-    { "id": 72, "x": 0.84, "y": 0.10, "label": "残塔风脉机关", "requiredMotion": "Gliding", "opensGateId": 82, "rewardId": 92 },
-    { "id": 73, "x": 0.48, "y": 0.38, "label": "回廊升降机关", "requiredMotion": "Climbing", "opensGateId": 83, "rewardId": 93 }
+  "naturalNodes": [
+    { "id": 70, "x": 0.52, "y": 0.16, "label": "启明源质晶簇", "requiredMotion": "Grounded", "rewardId": 90 },
+    { "id": 71, "x": 0.70, "y": 0.20, "label": "湖湾涌泉", "requiredMotion": "Grounded", "rewardId": 91 },
+    { "id": 72, "x": 0.84, "y": 0.10, "label": "岩台风脉", "requiredMotion": "Gliding", "rewardId": 92 },
+    { "id": 73, "x": 0.48, "y": 0.38, "label": "岩脊晶簇", "requiredMotion": "Climbing", "rewardId": 93 }
   ],
-  "traversalGates": [
-    { "id": 80, "x": 0.28, "y": 0.31, "label": "通往低地的风门", "requiredMotion": "Grounded", "halfExtents": [0.035, 0.008], "yaw": 0.0, "top": 0.12 },
-    { "id": 81, "x": 0.78, "y": 0.28, "label": "湖心浮桥", "requiredMotion": "Swimming", "halfExtents": [0.035, 0.008], "yaw": 1.570796, "top": 0.12 },
-    { "id": 82, "x": 0.88, "y": 0.09, "label": "残塔隐藏路径", "requiredMotion": "Gliding", "halfExtents": [0.035, 0.008], "yaw": 0.785398, "top": 0.12 },
-    { "id": 83, "x": 0.52, "y": 0.40, "label": "回廊升降台", "requiredMotion": "Climbing", "halfExtents": [0.035, 0.008], "yaw": 0.0, "top": 0.12 }
+  "regionTriggers": [
+    { "id": 80, "x": 0.28, "y": 0.31, "radius": 0.04, "label": "翠风花谷", "prerequisiteNodeId": 70 },
+    { "id": 81, "x": 0.70, "y": 0.20, "radius": 0.04, "label": "辉光湖湾", "prerequisiteNodeId": 71 },
+    { "id": 82, "x": 0.86, "y": 0.12, "radius": 0.04, "label": "湖心岩台", "prerequisiteNodeId": 72 },
+    { "id": 83, "x": 0.50, "y": 0.34, "radius": 0.04, "label": "中枢岩脊", "prerequisiteNodeId": 73 }
   ],
   "explorationRewards": [
     { "id": 90, "label": "风铃花种", "sourceTraces": 10, "gold": 0, "fate": 0, "itemId": 0, "itemCount": 0 },
-    { "id": 91, "label": "湖心源痕", "sourceTraces": 20, "gold": 50, "fate": 0, "itemId": 0, "itemCount": 0 },
-    { "id": 92, "label": "残塔隐藏宝匣", "sourceTraces": 30, "gold": 100, "fate": 1, "itemId": 0, "itemCount": 0 },
-    { "id": 93, "label": "回廊遗物构件", "sourceTraces": 0, "gold": 0, "fate": 0, "itemId": 0, "itemCount": 1 }
+    { "id": 91, "label": "湖湾源痕", "sourceTraces": 20, "gold": 50, "fate": 0, "itemId": 0, "itemCount": 0 },
+    { "id": 92, "label": "岩台风种", "sourceTraces": 30, "gold": 100, "fate": 1, "itemId": 0, "itemCount": 0 },
+    { "id": 93, "label": "岩脊源质晶簇", "sourceTraces": 0, "gold": 0, "fate": 0, "itemId": 0, "itemCount": 1 }
   ],
   "environmentVisual": {
     "foliageAtlasAsset": "environment/foliage_atlas.png",
@@ -242,35 +242,6 @@
       "triplanarSharpness": 4.0,
       "paintedControlStrength": 0.85
     },
-    "visualTerrainCells": [
-      {
-        "blockId": 4,
-        "nearAsset": "environment/visual_terrain/block_4_lod0.glb",
-        "midAsset": "environment/visual_terrain/block_4_lod1.glb",
-        "farAsset": "environment/visual_terrain/block_4_lod2.glb",
-        "bounds": [0.5, 0.0, 0.625, 0.125],
-        "maxWalkableDeviation": 0.006,
-        "collisionPolicy": "visual_only"
-      },
-      {
-        "blockId": 12,
-        "nearAsset": "environment/visual_terrain/block_12_lod0.glb",
-        "midAsset": "environment/visual_terrain/block_12_lod1.glb",
-        "farAsset": "environment/visual_terrain/block_12_lod2.glb",
-        "bounds": [0.5, 0.125, 0.625, 0.25],
-        "maxWalkableDeviation": 0.006,
-        "collisionPolicy": "visual_only"
-      },
-      {
-        "blockId": 20,
-        "nearAsset": "environment/visual_terrain/block_20_lod0.glb",
-        "midAsset": "environment/visual_terrain/block_20_lod1.glb",
-        "farAsset": "environment/visual_terrain/block_20_lod2.glb",
-        "bounds": [0.5, 0.25, 0.625, 0.375],
-        "maxWalkableDeviation": 0.006,
-        "collisionPolicy": "visual_only"
-      }
-    ],
     "foliageLayers": [
       { "kind": "grass", "assetId": "foliage_grass_cross", "density": 500.0, "minScale": 0.75, "maxScale": 1.25, "minHeight": -0.035, "maxHeight": 0.08, "maxSlope": 0.45, "waterClearance": 0.008, "routeClearance": 0.016, "castsShadow": false },
       { "kind": "shrub", "assetId": "foliage_shrub_round", "density": 180.0, "minScale": 0.70, "maxScale": 1.30, "minHeight": -0.025, "maxHeight": 0.09, "maxSlope": 0.38, "waterClearance": 0.012, "routeClearance": 0.022, "castsShadow": false },
@@ -284,7 +255,7 @@
     "validationCameras": [
       { "cameraId": "spawn_overlook", "x": 0.50, "y": 0.10, "yaw": 0.0, "pitch": -0.30, "distance": 0.32 },
       { "cameraId": "main_route_mid", "x": 0.50, "y": 0.20, "yaw": 0.0, "pitch": -0.26, "distance": 0.30 },
-      { "cameraId": "corridor_gate", "x": 0.50, "y": 0.34, "yaw": 3.141593, "pitch": -0.24, "distance": 0.28 },
+      { "cameraId": "central_ridge", "x": 0.50, "y": 0.34, "yaw": 3.141593, "pitch": -0.24, "distance": 0.28 },
       { "cameraId": "cliff_profile", "x": 0.58, "y": 0.28, "yaw": -1.20, "pitch": -0.22, "distance": 0.34 },
       { "cameraId": "distant_landmark", "x": 0.48, "y": 0.15, "yaw": 0.08, "pitch": -0.18, "distance": 0.42 }
     ]
@@ -299,11 +270,11 @@
       "radiusX": 0.055,
       "radiusY": 0.04,
       "feather": 0.25,
-      "description": "辉光湖盆地把主湖区压到水面以下，保证浮桥机关与湖心浮桥永远可游泳；边缘缓坡形成湖岸沙滩。",
+      "description": "辉光湖盆地把主湖区压到水面以下，保证湖心水域持续可游泳；边缘缓坡形成湖岸沙滩。",
       "targetHeight": -0.075
     },
     {
-      "featureId": "ruined_tower_mesa",
+      "featureId": "lake_rock_mesa",
       "kind": "basin",
       "districtId": "gimmerlake",
       "x": 0.86,
@@ -311,7 +282,7 @@
       "radiusX": 0.085,
       "radiusY": 0.085,
       "feather": 0.45,
-      "description": "湖心残塔所在的平顶台地：四面是可攀爬崖壁，塔顶为滑翔起点，构成湖区垂直地标。",
+      "description": "湖心岩台的平顶地貌：四面是可攀爬崖壁，顶部为滑翔起点，构成湖区垂直地标。",
       "targetHeight": 0.055
     },
     {
@@ -323,7 +294,7 @@
       "radiusX": 0.24,
       "radiusY": 0.24,
       "feather": 0.75,
-      "description": "圣所高地整体抬升台地，只抬不压，保留基础起伏；东北高地与低地形成明确高差。",
+      "description": "岚冠高地整体抬升台地，只抬不压，保留基础起伏；东北高地与低地形成明确高差。",
       "targetHeight": 0.035
     },
     {
@@ -335,7 +306,7 @@
       "radiusX": 0.22,
       "radiusY": 0.22,
       "feather": 0.6,
-      "description": "圣所台地上的岩脊纹理，打破大面积抬升的单调感。",
+      "description": "岚冠台地上的岩脊纹理，打破大面积抬升的单调感。",
       "amplitude": 0.005,
       "frequency": 4.0,
       "angleRadians": 0.9
@@ -349,7 +320,7 @@
       "radiusX": 0.06,
       "radiusY": 0.06,
       "feather": 0.6,
-      "description": "圣所阶地锚点下的阶地丘，让传送锚点拥有抬升剪影。",
+      "description": "岚冠阶地锚点下的自然丘，让远方锚点拥有抬升剪影。",
       "amplitude": 0.02
     },
     {
@@ -379,7 +350,7 @@
       "angleRadians": 0.6
     },
     {
-      "featureId": "ashen_outpost",
+      "featureId": "ashen_knoll",
       "kind": "hill",
       "districtId": "ashen_wastes",
       "x": 0.2,
@@ -387,7 +358,7 @@
       "radiusX": 0.055,
       "radiusY": 0.055,
       "feather": 0.6,
-      "description": "灰烬前哨锚点下的哨站土丘。",
+      "description": "灰烬丘陵锚点下的自然土丘。",
       "amplitude": 0.02
     },
     {
@@ -411,7 +382,7 @@
       "radiusX": 0.12,
       "radiusY": 0.12,
       "feather": 0.6,
-      "description": "低地新手营地整平区：狼群出生点与翠风哨站周围压平，保证遭遇战地面平整。",
+      "description": "低地新手草甸整平区：狼群出生点与翠风花谷周围压平，保证遭遇战地面平整。",
       "targetHeight": 0.005
     },
     {
@@ -447,7 +418,7 @@
       "radiusX": 0.05,
       "radiusY": 0.035,
       "feather": 0.35,
-      "description": "回廊东侧攀爬悬崖：升降机关旁的可攀爬崖壁，坡度超过攀爬阈值。",
+      "description": "中枢岩脊东侧攀爬悬崖：晶簇旁的可攀爬崖壁，坡度超过攀爬阈值。",
       "amplitude": 0.045
     },
     {
@@ -463,7 +434,7 @@
       "amplitude": 0.012
     },
     {
-      "featureId": "corridor_calm",
+      "featureId": "central_ridge_calm",
       "kind": "basin",
       "districtId": "central_corridor",
       "x": 0.49,
@@ -471,7 +442,7 @@
       "radiusX": 0.12,
       "radiusY": 0.1,
       "feather": 0.7,
-      "description": "中枢回廊整平带：遗门、门庭锚点与升降机关所在走廊压平，突出通道感。",
+      "description": "中枢岩脊整平带：岩脊晶簇与自然鞍部压平，突出连续地势。",
       "targetHeight": 0.004
     },
     {
@@ -483,11 +454,11 @@
       "radiusX": 0.05,
       "radiusY": 0.045,
       "feather": 0.7,
-      "description": "湖畔渡口与渔夫所在的湖岸整平区，形成天然小滩。",
+      "description": "湖湾与渔夫所在的湖岸整平区，形成天然小滩。",
       "targetHeight": 0.002
     },
     {
-      "featureId": "sacred_chest_pedestal",
+      "featureId": "highland_crystal_meadow",
       "kind": "basin",
       "districtId": "sanctum_highlands",
       "x": 0.88,
@@ -495,7 +466,7 @@
       "radiusX": 0.045,
       "radiusY": 0.045,
       "feather": 0.6,
-      "description": "圣所圣匣脚下的小平台，避免宝箱落在陡坡上。",
+      "description": "岚冠结晶周围的小草甸，避免探索奖励落在陡坡上。",
       "targetHeight": 0.04
     },
     {
@@ -507,7 +478,7 @@
       "radiusX": 0.2,
       "radiusY": 0.13,
       "feather": 0.65,
-      "description": "出生点与观景台整平区：保证开局地面平缓、战斗区过渡自然。",
+      "description": "出生点与启明巨树整平区：保证开局地面平缓、战斗区过渡自然。",
       "targetHeight": 0.006
     },
     {
@@ -563,17 +534,17 @@
     {
       "fromPoiId": 60,
       "toPoiId": 63,
-      "description": "主路：启明台地观景台 -> 中枢回廊遗门"
+      "description": "行旅线：启明巨树 -> 中枢岩脊"
     },
     {
       "fromPoiId": 60,
       "toPoiId": 61,
-      "description": "主路：启明台地观景台 -> 翠风低地哨站"
+      "description": "行旅线：启明巨树 -> 翠风花谷"
     },
     {
       "fromPoiId": 60,
       "toPoiId": 62,
-      "description": "主路：启明台地观景台 -> 辉光湖畔渡口"
+      "description": "行旅线：启明巨树 -> 辉光湖湾"
     }
   ]
 }

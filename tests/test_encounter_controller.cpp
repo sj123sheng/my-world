@@ -289,6 +289,133 @@ void testCurrentStormNodesBrokenByPlayerHits() {
   assert(encounter.snapshot().boss.vulnerable);  // 节点尽破，恢复易伤
 }
 
+// ---- 交战留白（Plan 2 Task 7）----
+
+EncounterEnemyConfig spacingEnemy(EntityId id, EnemyArchetype archetype,
+                                  Vec2 position) {
+  EncounterEnemyConfig enemy;
+  enemy.id = id;
+  enemy.archetype = archetype;
+  enemy.position = position;
+  enemy.safeReturnPosition = position;
+  enemy.hp = fp(300);
+  enemy.poise = fp(100);
+  return enemy;
+}
+
+EncounterConfig spacingConfig(const std::vector<EncounterEnemyConfig>& enemies) {
+  EncounterConfig config;
+  config.mode = EncounterMode::Mixed;
+  config.maxEnemies = EnemyAiConfig::kMaxEnemies;
+  config.region = {{0.5f, 0.5f}, 2.0f};
+  config.enemies = enemies;
+  return config;
+}
+
+void testMeleeSpacingSeparationAndMinimumDistance() {
+  CombatController combat(CombatConfig::defaults());
+  EncounterController encounter(combat);
+  // 两名近战从同一点出发。
+  assert(encounter.start(spacingConfig(
+      {spacingEnemy(101, EnemyArchetype::RiftClaw, {0.5f, 0.62f}),
+       spacingEnemy(102, EnemyArchetype::RiftClaw, {0.5f, 0.62f})})));
+  const Vec2 player{0.5f, 0.5f};
+  const float meleeMinimum = 0.08f;
+  for (int frame = 0; frame < 120; ++frame) {
+    encounter.update({frame * 16, 16, player, false, 0});
+  }
+  const EncounterEnemySnapshot* a = findEnemy(encounter.snapshot(), 101);
+  const EncounterEnemySnapshot* b = findEnemy(encounter.snapshot(), 102);
+  assert(a != nullptr && b != nullptr);
+  // 环形槽位把两名近战拉开，不再重叠。
+  assert((a->position - b->position).length() > 0.05f);
+  // 与主角保持最小空挡（突进下限即 minimum）。
+  assert((a->position - player).length() >= meleeMinimum - 0.02f);
+  assert((b->position - player).length() >= meleeMinimum - 0.02f);
+}
+
+void testPlayerApproachTriggersRetreatWithoutMovingPlayer() {
+  CombatController combat(CombatConfig::defaults());
+  EncounterController encounter(combat);
+  assert(encounter.start(spacingConfig(
+      {spacingEnemy(101, EnemyArchetype::RiftClaw, {0.5f, 0.56f})})));
+  const Vec2 player{0.5f, 0.5f};  // 距离 0.06 < minimum 0.08
+  encounter.update({0, 16, player, false, 0});
+  const Vec2 enemyStart = findEnemy(encounter.snapshot(), 101)->position;
+  for (int frame = 1; frame <= 20; ++frame) {
+    encounter.update({frame * 16, 16, player, false, 0});
+  }
+  const Vec2 enemyAfter = findEnemy(encounter.snapshot(), 101)->position;
+  // 贴身时敌人后撤，距离拉大。
+  assert((enemyAfter - player).length() > (enemyStart - player).length());
+  // 主角位置只由输入给定，AI 从不改写。
+  assert(player == (Vec2{0.5f, 0.5f}));
+}
+
+void testRangedKeepsIdealBand() {
+  CombatController combat(CombatConfig::defaults());
+  EncounterController encounter(combat);
+  assert(encounter.start(spacingConfig(
+      {spacingEnemy(101, EnemyArchetype::Priest, {0.5f, 0.8f})})));
+  const Vec2 player{0.5f, 0.5f};
+  float minObserved = 1e9f;
+  float maxObserved = 0.0f;
+  for (int frame = 0; frame < 240; ++frame) {
+    encounter.update({frame * 16, 16, player, false, 0});
+    const EncounterEnemySnapshot* e = findEnemy(encounter.snapshot(), 101);
+    if (e == nullptr || !e->alive) continue;
+    // 非攻击瞬间采样：远程应锚定在理想距离附近。
+    if (!e->attacking && !e->windingUp) {
+      const float d = (e->position - player).length();
+      minObserved = std::min(minObserved, d);
+      maxObserved = std::max(maxObserved, d);
+    }
+  }
+  assert(maxObserved <= 0.38f);  // 不远离理想带 0.30
+  assert(minObserved >= 0.18f);  // 不贴脸
+}
+
+void testAttackLungeReturnsToIdealAfterRecovery() {
+  CombatController combat(CombatConfig::defaults());
+  EncounterController encounter(combat);
+  assert(encounter.start(spacingConfig(
+      {spacingEnemy(101, EnemyArchetype::RiftClaw, {0.5f, 0.64f})})));
+  const Vec2 player{0.5f, 0.5f};  // 距离 0.14 = 近战 ideal
+  const float ideal = 0.14f;
+  bool lunged = false;
+  bool returnedAfterLunge = false;
+  for (int frame = 0; frame < 400 && !returnedAfterLunge; ++frame) {
+    encounter.update({frame * 16, 16, player, false, 0});
+    const EncounterEnemySnapshot* e = findEnemy(encounter.snapshot(), 101);
+    if (e == nullptr || !e->alive) continue;
+    const float d = (e->position - player).length();
+    if (d < ideal - 0.02f) lunged = true;
+    else if (lunged && std::abs(d - ideal) <= 0.02f) returnedAfterLunge = true;
+  }
+  assert(lunged);             // Active 突进贴近
+  assert(returnedAfterLunge); // Recovery 回到理想距离 ±0.02
+}
+
+EncounterSnapshot runSpacingReplay(int frames) {
+  CombatController combat(CombatConfig::defaults());
+  EncounterController encounter(combat);
+  assert(encounter.start(spacingConfig(
+      {spacingEnemy(101, EnemyArchetype::RiftClaw, {0.46f, 0.7f}),
+       spacingEnemy(102, EnemyArchetype::RiftClaw, {0.54f, 0.7f})})));
+  const Vec2 player{0.5f, 0.5f};
+  for (int frame = 0; frame < frames; ++frame) {
+    encounter.update({frame * 16, 16, player, false, 0});
+  }
+  return encounter.snapshot();
+}
+
+void testSpacingReplayIsDeterministic() {
+  const EncounterSnapshot baseline = runSpacingReplay(600);
+  for (int replay = 0; replay < 10; ++replay) {
+    assert(runSpacingReplay(600) == baseline);
+  }
+}
+
 int main() {
   testStartsAllModesWithStableEntities();
   testRejectsInvalidConfigurationAtomically();
@@ -302,4 +429,9 @@ int main() {
   testEnemySnapshotExposesMaxHp();
   testBossJudgmentBeamPeriodicallyDamagesPlayer();
   testCurrentStormNodesBrokenByPlayerHits();
+  testMeleeSpacingSeparationAndMinimumDistance();
+  testPlayerApproachTriggersRetreatWithoutMovingPlayer();
+  testRangedKeepsIdealBand();
+  testAttackLungeReturnsToIdealAfterRecovery();
+  testSpacingReplayIsDeterministic();
 }

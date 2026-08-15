@@ -1,9 +1,13 @@
 #include "tactical_planner.h"
 
+#include "combat_region.h"
+
 #include <cmath>
 #include <limits>
 
 namespace {
+
+constexpr float kPi = 3.14159265358979323846f;
 
 struct TargetChoice {
   EntityId id = 0;
@@ -116,7 +120,45 @@ Vec2 retreatDestination(const PerceptionSnapshot& facts) {
   if (!away.finite() || !std::isfinite(distance) || distance <= 0.0f) {
     return facts.safeReturnPosition;
   }
-  return facts.selfPosition + away * (1.0f / distance);
+  // 远离主角并叠加邻居分离；投影回战斗区域，避免后撤越出留白边界。
+  const Vec2 destination =
+      facts.selfPosition + away * (1.0f / distance) + facts.separationOffset;
+  return CombatRegion(facts.region).projectInside(destination);
+}
+
+// 追击目标是环形槽位 + 分离，而不是主角身体：未注入留白时回退到主角位置。
+// 逼近方式沿理想环弧线逐帧转向槽位角度、半径收敛到 ideal，避免直线弦切
+// 从主角身边穿过（远程尤其明显）。
+Vec2 chaseDestination(const PerceptionSnapshot& facts) {
+  if (facts.engagementRange.ideal > 0.0f && facts.engagementSlot.finite()) {
+    const float ideal = facts.engagementRange.ideal;
+    const Vec2 selfOffset = facts.selfPosition - facts.targetPosition;
+    const Vec2 slotOffset = facts.engagementSlot - facts.targetPosition;
+    const float selfRadius = selfOffset.length();
+    const float slotRadius = slotOffset.length();
+    // 远离理想环时直线奔向槽位（进入攻击门控后由前摇站桩接管）；
+    // 已在环附近才沿弧线转向槽位角度。
+    const bool nearRing = selfRadius <= ideal * 2.0f;
+    if (!nearRing || !selfOffset.finite() || !slotOffset.finite() ||
+        !std::isfinite(selfRadius) || selfRadius <= 1e-4f ||
+        slotRadius <= 1e-4f) {
+      return facts.engagementSlot + facts.separationOffset;
+    }
+    // 单帧角步长上限：足够大让切向分量吃满移速，又小到弦不内凹。
+    constexpr float kMaxAngularStep = 0.25f;
+    const float selfAngle = std::atan2(selfOffset.y, selfOffset.x);
+    const float slotAngle = std::atan2(slotOffset.y, slotOffset.x);
+    float delta = std::atan2(std::sin(slotAngle - selfAngle),
+                             std::cos(slotAngle - selfAngle));
+    if (delta > kMaxAngularStep) delta = kMaxAngularStep;
+    if (delta < -kMaxAngularStep) delta = -kMaxAngularStep;
+    const Vec2 waypoint = facts.targetPosition +
+                          Vec2{std::cos(selfAngle + delta),
+                               std::sin(selfAngle + delta)} *
+                              ideal;
+    return waypoint + facts.separationOffset;
+  }
+  return facts.targetPosition;
 }
 
 }  // namespace
@@ -136,7 +178,8 @@ EnemyActionPlan TacticalPlanner::plan(EnemyIntent intent, const PerceptionSnapsh
   const std::optional<EnemyAbilityCategory> category = requiredCategory(intent);
   if (!category.has_value()) {
     if (intent == EnemyIntent::Chase && facts.targetVisible) {
-      return movementPlan(intent, facts, facts.targetPosition, EnemyPlanFallbackReason::None);
+      return movementPlan(intent, facts, chaseDestination(facts),
+                          EnemyPlanFallbackReason::None);
     }
     if (intent == EnemyIntent::Retreat) {
       return movementPlan(intent, facts, retreatDestination(facts), EnemyPlanFallbackReason::None);
@@ -178,7 +221,7 @@ EnemyActionPlan TacticalPlanner::plan(EnemyIntent intent, const PerceptionSnapsh
   if (selectedAbility == nullptr) {
     if (intent == EnemyIntent::Attack) {
       return facts.targetVisible
-                 ? movementPlan(EnemyIntent::Chase, facts, facts.targetPosition,
+                 ? movementPlan(EnemyIntent::Chase, facts, chaseDestination(facts),
                                 EnemyPlanFallbackReason::NoLegalAbility)
                  : idlePlan(EnemyIntent::Idle, facts, EnemyPlanFallbackReason::NoTarget);
     }

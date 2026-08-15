@@ -1,7 +1,5 @@
 #pragma once
 
-#include <array>
-
 // 环境质量档：由 PerformanceGuard 的 0..4 性能级统一派生，避免阴影、
 // 地表、植被、云层和水面各自做不一致的降级判断。
 struct EnvironmentQualityProfile {
@@ -18,4 +16,3 @@ struct EnvironmentQualityProfile {
 
 EnvironmentQualityProfile EnvironmentQualityProfileFor(int perfLevel);
 int EffectiveEnvironmentQualityLevel(int automaticLevel, bool lowPreset);
-std::array<int, 3> VisualTerrainLodFallbackOrder(int desiredLod);

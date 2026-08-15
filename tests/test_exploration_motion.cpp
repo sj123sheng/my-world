@@ -61,6 +61,23 @@ int main() {
   assert(state.height == 0.0f);
   assert(state.stamina == motion.config().maxStamina);
 
+  // 自然地形高度突变只能按配置速率贴地跟随，不能在一帧内跃迁。
+  TerrainFeature raisedGround;
+  raisedGround.kind = TerrainFeatureKind::Terrace;
+  raisedGround.x = 0.5f;
+  raisedGround.y = 0.5f;
+  raisedGround.radiusX = 0.4f;
+  raisedGround.radiusY = 0.4f;
+  raisedGround.targetHeight = 1.0f;
+  raisedGround.feather = 0.5f;
+  const TerrainHeightfield raisedTerrain{flat.config(), {raisedGround}};
+  ExplorationMotionState groundFollow = motion.reset(0.0f);
+  groundFollow = motion.update(groundFollow, {}, raisedTerrain,
+                               0.5f, 0.5f, 0.5f);
+  assert(groundFollow.state == MotionState::Grounded);
+  assert(std::abs(groundFollow.height -
+                  motion.config().maxGroundFollowPerSecond * 0.5f) < 0.0001f);
+
   // 跳跃：按下跳跃键进入空中，上升后受重力回落并最终落地。
   ExplorationMotionState jumping = motion.update(
       state, MotionInput{true, false, false}, flat, 0.5f, 0.5f, dt);

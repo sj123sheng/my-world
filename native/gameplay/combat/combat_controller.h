@@ -85,6 +85,10 @@ class CombatController {
   void setExternalTargetBinding(const CombatTargetBinding& binding) {
     externalBinding_ = binding;
   }
+  // 当前外部目标绑定（Plan 2 唯一目标数据流观测点）。
+  const CombatTargetBinding& externalTargetBinding() const {
+    return externalBinding_;
+  }
   // 外部敌人对玩家的命中入队：下次 update/updateEnemy 内部统一 drain
   // 结算（走 applyEnemyHit，尊重闪避无敌帧），事件并入同一 events_ 批次。
   void enqueueExternalEnemyHit(const HitRequest& hit) {

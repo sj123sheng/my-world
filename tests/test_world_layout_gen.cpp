@@ -152,14 +152,14 @@ int main() {
                       collectible.x, collectible.y));
   }
 
-  // ---- 垂直切片探索内容：POI、机关、路径门与奖励 ----
+  // ---- 垂直切片探索内容：POI、自然节点、区域触发与奖励 ----
   static_assert(WL::kPointOfInterestCount >= 4 &&
                     WL::kPointOfInterestCount <= 6,
                 "vertical slice needs 4-6 points of interest");
-  static_assert(WL::kPuzzleNodeCount >= 3 && WL::kPuzzleNodeCount <= 5,
-                "vertical slice needs 3-5 puzzles");
-  static_assert(WL::kTraversalGateCount >= 2 && WL::kTraversalGateCount <= 5,
-                "vertical slice needs 2-5 traversal gates");
+  static_assert(WL::kNaturalNodeCount == 4,
+                "migrated natural node ids must preserve four mask positions");
+  static_assert(WL::kRegionTriggerCount == 4,
+                "migrated region ids must preserve four mask positions");
   static_assert(WL::kExplorationRewardCount >= 4 &&
                     WL::kExplorationRewardCount <= 6,
                 "vertical slice needs 4-6 exploration rewards");
@@ -170,21 +170,22 @@ int main() {
     assert(InBounds(poi.x) && InBounds(poi.y));
     assert(!poi.label.empty() && !poi.districtId.empty());
   }
-  for (const auto& puzzle : WL::kPuzzleNodes) {
-    assert(puzzle.id >= 70);
-    assert(explorationIds.insert(puzzle.id).second);
-    assert(InBounds(puzzle.x) && InBounds(puzzle.y));
-    assert(puzzle.opensGateId >= 80);
-    assert(puzzle.rewardId >= 90);
+  for (size_t i = 0; i < WL::kNaturalNodes.size(); ++i) {
+    const auto& node = WL::kNaturalNodes[i];
+    assert(node.id == 70 + static_cast<int32_t>(i));
+    assert(explorationIds.insert(node.id).second);
+    assert(InBounds(node.x) && InBounds(node.y));
+    assert(!node.label.empty());
+    assert(node.rewardId == 90 + static_cast<int32_t>(i));
   }
-  for (const auto& gate : WL::kTraversalGates) {
-    assert(gate.id >= 80);
-    assert(explorationIds.insert(gate.id).second);
-    assert(InBounds(gate.x) && InBounds(gate.y));
-    assert(gate.halfExtents[0] > 0.0f && gate.halfExtents[0] < 0.15f);
-    assert(gate.halfExtents[1] > 0.0f && gate.halfExtents[1] < 0.15f);
-    assert(std::isfinite(gate.yaw));
-    assert(gate.top > 0.0f && gate.top < 0.5f);
+  for (size_t i = 0; i < WL::kRegionTriggers.size(); ++i) {
+    const auto& region = WL::kRegionTriggers[i];
+    assert(region.id == 80 + static_cast<int32_t>(i));
+    assert(explorationIds.insert(region.id).second);
+    assert(InBounds(region.x) && InBounds(region.y));
+    assert(region.radius > 0.0f && region.radius <= 0.15f);
+    assert(!region.label.empty());
+    assert(region.prerequisiteNodeId == 70 + static_cast<int32_t>(i));
   }
   for (const auto& reward : WL::kExplorationRewards) {
     assert(reward.id >= 90);
@@ -254,25 +255,7 @@ int main() {
     assert(fromMatched && toMatched);
   }
 
-  // ---- 单区环境视觉配置 ----
-  static_assert(WL::kVisualTerrainCellCount == 3,
-                "spawn-to-corridor slice needs three authored cells");
-  std::set<int32_t> visualBlocks;
-  for (const auto& cell : WL::kVisualTerrainCells) {
-    assert(cell.blockId >= 0 && cell.blockId < 64);
-    assert(visualBlocks.insert(cell.blockId).second);
-    assert(!cell.nearAsset.empty() && !cell.midAsset.empty() &&
-           !cell.farAsset.empty());
-    assert(cell.boundsMinX < cell.boundsMaxX);
-    assert(cell.boundsMinY < cell.boundsMaxY);
-    assert(cell.maxWalkableDeviation > 0.0f &&
-           cell.maxWalkableDeviation <= 0.01f);
-    assert(cell.collisionPolicy == 0);
-  }
-  assert(visualBlocks.count(4) == 1);
-  assert(visualBlocks.count(12) == 1);
-  assert(visualBlocks.count(20) == 1);
-
+  // ---- 单区自然环境视觉配置 ----
   static_assert(WL::kFoliageLayerCount == 5,
                 "slice needs grass/shrub/tree/flower/rock layers");
   for (const auto& layer : WL::kFoliageLayers) {

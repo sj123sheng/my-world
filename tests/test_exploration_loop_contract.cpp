@@ -1,6 +1,5 @@
 #include "native/engine/core/game_snapshot.h"
 #include "native/gameplay/world/exploration_content.h"
-#include "native/gameplay/world/exploration_gate_collision.h"
 #include "native/gameplay/world/exploration_feedback.h"
 
 #include <cassert>
@@ -15,7 +14,8 @@ int main() {
 
   ExplorationContent content = ExplorationContent::verticalSlice();
   content.discoverPoint(60);
-  content.activatePuzzle(71, MotionState::Swimming);
+  content.activateNaturalNode(71, MotionState::Grounded);
+  content.enterRegion(81, {0.70f, 0.20f});
   content.claimReward(91);
   content.recordTraversal(TraversalAbility::Swim);
 
@@ -26,7 +26,7 @@ int main() {
   snapshot.explorationGateCount = content.progress().openGateCount;
   snapshot.explorationTraversalMask = content.traversalMask();
   snapshot.explorationCurrentPoiId = 62;
-  snapshot.explorationCurrentTargetLabel = "辉光湖畔渡口";
+  snapshot.explorationCurrentTargetLabel = "辉光湖湾";
 
   assert(snapshot.explorationPoiCount == 1);
   assert(snapshot.explorationPuzzleCount == 1);
@@ -34,19 +34,14 @@ int main() {
   assert(snapshot.explorationGateCount == 1);
   assert(snapshot.explorationTraversalMask == (1 << 4));
   assert(snapshot.explorationCurrentPoiId == 62);
-  assert(snapshot.explorationCurrentTargetLabel == "辉光湖畔渡口");
+  assert(snapshot.explorationCurrentTargetLabel == "辉光湖湾");
 
-  ExplorationContent gateContent = ExplorationContent::verticalSlice();
-  ExplorationGateCollision gates =
-      ExplorationGateCollision::fromContent(gateContent);
-  float gateX = 0.78f;
-  float gateY = 0.28f;
-  assert(gates.resolve(gateX, gateY, 0.012f, 0.0f).touching);
-  assert(gateContent.activatePuzzle(71, MotionState::Swimming));
-  gates = ExplorationGateCollision::fromContent(gateContent);
-  gateX = 0.78f;
-  gateY = 0.28f;
-  assert(!gates.resolve(gateX, gateY, 0.012f, 0.0f).touching);
+  // 自然区域只记录完成，不再生产任何动态阻挡物。
+  ExplorationContent regionContent = ExplorationContent::verticalSlice();
+  assert(!regionContent.enterRegion(81, {0.70f, 0.20f}));
+  assert(regionContent.activateNaturalNode(71, MotionState::Grounded));
+  assert(regionContent.enterRegion(81, {0.70f, 0.20f}));
+  assert(regionContent.progress().openGateCount == 1);
 
   ExplorationFeedbackState feedback;
   feedback.publish(ExplorationFeedbackType::PoiDiscovered, 60, "辉光湖畔",

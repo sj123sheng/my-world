@@ -104,14 +104,14 @@ struct WorldPointOfInterestDef {
 };
 
 enum class TraversalMotion : int32_t { Grounded = 0, Airborne = 1, Gliding = 2, Climbing = 3, Swimming = 4 };
-struct WorldPuzzleNodeDef {
+struct WorldNaturalNodeDef {
   int32_t id; float x; float y; std::string_view label;
-  TraversalMotion requiredMotion; int32_t opensGateId; int32_t rewardId;
+  TraversalMotion requiredMotion; int32_t rewardId;
 };
 
-struct WorldTraversalGateDef {
-  int32_t id; float x; float y; std::string_view label; TraversalMotion requiredMotion;
-  float halfExtents[2]; float yaw; float top;
+struct WorldRegionTriggerDef {
+  int32_t id; float x; float y; float radius;
+  std::string_view label; int32_t prerequisiteNodeId;
 };
 
 struct WorldExplorationRewardDef {
@@ -141,11 +141,6 @@ struct WorldRouteDef {
 struct WorldTerrainMaterialSetDef {
   std::string_view atlasAsset; std::string_view controlAsset; int32_t layerCount;
   float macroScale; float detailScale; float triplanarSharpness; float paintedControlStrength;
-};
-struct WorldVisualTerrainCellDef {
-  int32_t blockId; std::string_view nearAsset; std::string_view midAsset; std::string_view farAsset;
-  float boundsMinX; float boundsMinY; float boundsMaxX; float boundsMaxY;
-  float maxWalkableDeviation; int32_t collisionPolicy;
 };
 struct WorldFoliageLayerDef {
   int32_t kind; std::string_view assetId; float density; float minScale; float maxScale; float minHeight; float maxHeight;
@@ -181,8 +176,8 @@ constexpr std::array<WorldDistrictDef, kDistrictCount> kDistricts{{
     },
     {
         "central_corridor"sv,
-        "中枢回廊"sv,
-        "连接南北的中央通道，守卫把守，是进入北境的必经之路。"sv,
+        "中枢岩脊"sv,
+        "连接南北的中央岩脊，守卫巡游，是进入北境的天然鞍部。"sv,
         3, 4, 2, 3,
     },
     {
@@ -193,8 +188,8 @@ constexpr std::array<WorldDistrictDef, kDistrictCount> kDistricts{{
     },
     {
         "sanctum_highlands"sv,
-        "圣所高地"sv,
-        "东北高地：圣所遗迹所在，精英驻守，终局挑战入口。"sv,
+        "岚冠高地"sv,
+        "东北高地：岚冠岩原所在，精英驻守，终局挑战入口。"sv,
         4, 7, 4, 7,
     },
 }};
@@ -203,23 +198,23 @@ constexpr std::size_t kAnchorCount = 5;
 constexpr std::array<WorldAnchorDef, kAnchorCount> kAnchors{{
     {
         8, 0.15f, 0.15f,
-        "翠风哨站"sv, "westlands"sv,
+        "翠风花谷"sv, "westlands"sv,
     },
     {
         9, 0.85f, 0.15f,
-        "湖岸渡口"sv, "gimmerlake"sv,
+        "辉光湖湾"sv, "gimmerlake"sv,
     },
     {
         10, 0.5f, 0.35f,
-        "回廊门庭"sv, "central_corridor"sv,
+        "中枢岩脊"sv, "central_corridor"sv,
     },
     {
         11, 0.2f, 0.75f,
-        "灰烬前哨"sv, "ashen_wastes"sv,
+        "灰烬丘陵"sv, "ashen_wastes"sv,
     },
     {
         12, 0.8f, 0.8f,
-        "圣所阶地"sv, "sanctum_highlands"sv,
+        "岚冠阶地"sv, "sanctum_highlands"sv,
     },
 }};
 
@@ -251,7 +246,7 @@ constexpr std::array<WorldNpcDef, kNpcCount> kNpcs{{
         103, NpcBehavior::Patrol, 2,
         {0.45f, 0.55f, 0.0f, 0.0f},
         {0.3f, 0.3f, 0.0f, 0.0f},
-        "回廊信使"sv, "central_corridor"sv,
+        "岩脊行者"sv, "central_corridor"sv,
     },
     {
         36, 0.25f, 0.6f, 4.71238898038469f,
@@ -265,7 +260,7 @@ constexpr std::array<WorldNpcDef, kNpcCount> kNpcs{{
         105, NpcBehavior::Patrol, 3,
         {0.7f, 0.75f, 0.72f, 0.0f},
         {0.7f, 0.78f, 0.68f, 0.0f},
-        "圣所守望者"sv, "sanctum_highlands"sv,
+        "岚冠守望者"sv, "sanctum_highlands"sv,
     },
 }};
 
@@ -326,7 +321,7 @@ constexpr std::size_t kChestCount = 4;
 constexpr std::array<WorldChestDef, kChestCount> kChests{{
     {
         48, 0.56f, 0.06f,
-        "台地旧箱"sv, "spawn_plateau"sv,
+        "台地赠礼"sv, "spawn_plateau"sv,
     },
     {
         49, 0.06f, 0.44f,
@@ -338,7 +333,7 @@ constexpr std::array<WorldChestDef, kChestCount> kChests{{
     },
     {
         51, 0.88f, 0.9f,
-        "圣所圣匣"sv, "sanctum_highlands"sv,
+        "岚冠结晶"sv, "sanctum_highlands"sv,
     },
 }};
 
@@ -362,7 +357,7 @@ constexpr std::array<WorldCollectibleDef, kCollectibleCount> kCollectibles{{
     },
     {
         44, 0.55f, 0.55f,
-        "mushroom"sv, "圣所菇"sv, "sanctum_highlands"sv,
+        "mushroom"sv, "岚冠菇"sv, "sanctum_highlands"sv,
     },
     {
         45, 0.05f, 0.25f,
@@ -372,35 +367,35 @@ constexpr std::array<WorldCollectibleDef, kCollectibleCount> kCollectibles{{
 
 constexpr std::size_t kPointOfInterestCount = 5;
 constexpr std::array<WorldPointOfInterestDef, kPointOfInterestCount> kPointsOfInterest{{
-    {60, 0.52f, 0.16f, "启明台地观景台"sv, "spawn_plateau"sv, true},
-    {61, 0.18f, 0.28f, "翠风低地哨站"sv, "westlands"sv, true},
-    {62, 0.7f, 0.22f, "辉光湖畔渡口"sv, "gimmerlake"sv, true},
-    {63, 0.5f, 0.34f, "中枢回廊遗门"sv, "central_corridor"sv, true},
-    {64, 0.86f, 0.12f, "湖心残塔"sv, "gimmerlake"sv, false},
+    {60, 0.52f, 0.16f, "启明巨树"sv, "spawn_plateau"sv, true},
+    {61, 0.18f, 0.28f, "翠风花谷"sv, "westlands"sv, true},
+    {62, 0.7f, 0.2f, "辉光湖湾"sv, "gimmerlake"sv, true},
+    {63, 0.5f, 0.34f, "中枢岩脊"sv, "central_corridor"sv, true},
+    {64, 0.86f, 0.12f, "湖心岩台"sv, "gimmerlake"sv, false},
 }};
 
-constexpr std::size_t kPuzzleNodeCount = 4;
-constexpr std::array<WorldPuzzleNodeDef, kPuzzleNodeCount> kPuzzleNodes{{
-    {70, 0.25f, 0.3f, "风铃导流机关"sv, TraversalMotion::Grounded, 80, 90},
-    {71, 0.74f, 0.25f, "湖畔浮桥机关"sv, TraversalMotion::Swimming, 81, 91},
-    {72, 0.84f, 0.1f, "残塔风脉机关"sv, TraversalMotion::Gliding, 82, 92},
-    {73, 0.48f, 0.38f, "回廊升降机关"sv, TraversalMotion::Climbing, 83, 93},
+constexpr std::size_t kNaturalNodeCount = 4;
+constexpr std::array<WorldNaturalNodeDef, kNaturalNodeCount> kNaturalNodes{{
+    {70, 0.52f, 0.16f, "启明源质晶簇"sv, TraversalMotion::Grounded, 90},
+    {71, 0.7f, 0.2f, "湖湾涌泉"sv, TraversalMotion::Grounded, 91},
+    {72, 0.84f, 0.1f, "岩台风脉"sv, TraversalMotion::Gliding, 92},
+    {73, 0.48f, 0.38f, "岩脊晶簇"sv, TraversalMotion::Climbing, 93},
 }};
 
-constexpr std::size_t kTraversalGateCount = 4;
-constexpr std::array<WorldTraversalGateDef, kTraversalGateCount> kTraversalGates{{
-    {80, 0.28f, 0.31f, "通往低地的风门"sv, TraversalMotion::Grounded, {0.035f, 0.008f}, 0.0f, 0.12f},
-    {81, 0.78f, 0.28f, "湖心浮桥"sv, TraversalMotion::Swimming, {0.035f, 0.008f}, 1.570796f, 0.12f},
-    {82, 0.88f, 0.09f, "残塔隐藏路径"sv, TraversalMotion::Gliding, {0.035f, 0.008f}, 0.785398f, 0.12f},
-    {83, 0.52f, 0.4f, "回廊升降台"sv, TraversalMotion::Climbing, {0.035f, 0.008f}, 0.0f, 0.12f},
+constexpr std::size_t kRegionTriggerCount = 4;
+constexpr std::array<WorldRegionTriggerDef, kRegionTriggerCount> kRegionTriggers{{
+    {80, 0.28f, 0.31f, 0.04f, "翠风花谷"sv, 70},
+    {81, 0.7f, 0.2f, 0.04f, "辉光湖湾"sv, 71},
+    {82, 0.86f, 0.12f, 0.04f, "湖心岩台"sv, 72},
+    {83, 0.5f, 0.34f, 0.04f, "中枢岩脊"sv, 73},
 }};
 
 constexpr std::size_t kExplorationRewardCount = 4;
 constexpr std::array<WorldExplorationRewardDef, kExplorationRewardCount> kExplorationRewards{{
     {90, "风铃花种"sv, 10, 0, 0, 0, 0},
-    {91, "湖心源痕"sv, 20, 50, 0, 0, 0},
-    {92, "残塔隐藏宝匣"sv, 30, 100, 1, 0, 0},
-    {93, "回廊遗物构件"sv, 0, 0, 0, 0, 1},
+    {91, "湖湾源痕"sv, 20, 50, 0, 0, 0},
+    {92, "岩台风种"sv, 30, 100, 1, 0, 0},
+    {93, "岩脊源质晶簇"sv, 0, 0, 0, 0, 1},
 }};
 
 constexpr std::size_t kTerrainFeatureCount = 22;
@@ -414,7 +409,7 @@ constexpr std::array<WorldTerrainFeatureDef, kTerrainFeatureCount> kTerrainFeatu
         0.25f,
     },
     {
-        "ruined_tower_mesa"sv, "gimmerlake"sv, 1,
+        "lake_rock_mesa"sv, "gimmerlake"sv, 1,
         0.86f, 0.12f,
         0.085f, 0.085f,
         0.0f, 0.055f,
@@ -462,7 +457,7 @@ constexpr std::array<WorldTerrainFeatureDef, kTerrainFeatureCount> kTerrainFeatu
         0.5f,
     },
     {
-        "ashen_outpost"sv, "ashen_wastes"sv, 0,
+        "ashen_knoll"sv, "ashen_wastes"sv, 0,
         0.2f, 0.75f,
         0.055f, 0.055f,
         0.02f, 0.0f,
@@ -518,7 +513,7 @@ constexpr std::array<WorldTerrainFeatureDef, kTerrainFeatureCount> kTerrainFeatu
         0.7f,
     },
     {
-        "corridor_calm"sv, "central_corridor"sv, 1,
+        "central_ridge_calm"sv, "central_corridor"sv, 1,
         0.49f, 0.34f,
         0.12f, 0.1f,
         0.0f, 0.004f,
@@ -534,7 +529,7 @@ constexpr std::array<WorldTerrainFeatureDef, kTerrainFeatureCount> kTerrainFeatu
         0.7f,
     },
     {
-        "sacred_chest_pedestal"sv, "sanctum_highlands"sv, 1,
+        "highland_crystal_meadow"sv, "sanctum_highlands"sv, 1,
         0.88f, 0.9f,
         0.045f, 0.045f,
         0.0f, 0.04f,
@@ -587,7 +582,7 @@ constexpr std::size_t kRouteCount = 3;
 constexpr std::array<WorldRouteDef, kRouteCount> kRoutes{{
     {60, 63, 0.52f, 0.16f, 0.5f, 0.34f},
     {60, 61, 0.52f, 0.16f, 0.18f, 0.28f},
-    {60, 62, 0.52f, 0.16f, 0.7f, 0.22f},
+    {60, 62, 0.52f, 0.16f, 0.7f, 0.2f},
 }};
 
 constexpr std::string_view kFoliageAtlasAsset = "environment/foliage_atlas.png"sv;
@@ -596,16 +591,6 @@ constexpr WorldTerrainMaterialSetDef kTerrainMaterialSet{
     "environment/terrain_material_atlas.png"sv, "environment/terrain_control_spawn.png"sv, 4,
     6.5f, 90.0f, 4.0f, 0.85f,
 };
-
-constexpr std::size_t kVisualTerrainCellCount = 3;
-constexpr std::array<WorldVisualTerrainCellDef, kVisualTerrainCellCount> kVisualTerrainCells{{
-    {4, "environment/visual_terrain/block_4_lod0.glb"sv, "environment/visual_terrain/block_4_lod1.glb"sv, "environment/visual_terrain/block_4_lod2.glb"sv,
-     0.5f, 0.0f, 0.625f, 0.125f, 0.006f, 0},
-    {12, "environment/visual_terrain/block_12_lod0.glb"sv, "environment/visual_terrain/block_12_lod1.glb"sv, "environment/visual_terrain/block_12_lod2.glb"sv,
-     0.5f, 0.125f, 0.625f, 0.25f, 0.006f, 0},
-    {20, "environment/visual_terrain/block_20_lod0.glb"sv, "environment/visual_terrain/block_20_lod1.glb"sv, "environment/visual_terrain/block_20_lod2.glb"sv,
-     0.5f, 0.25f, 0.625f, 0.375f, 0.006f, 0},
-}};
 
 constexpr std::size_t kFoliageLayerCount = 5;
 constexpr std::array<WorldFoliageLayerDef, kFoliageLayerCount> kFoliageLayers{{
@@ -625,7 +610,7 @@ constexpr std::size_t kEnvironmentValidationCameraCount = 5;
 constexpr std::array<WorldEnvironmentValidationCameraDef, kEnvironmentValidationCameraCount> kEnvironmentValidationCameras{{
     {"spawn_overlook"sv, 0.5f, 0.1f, 0.0f, -0.3f, 0.32f},
     {"main_route_mid"sv, 0.5f, 0.2f, 0.0f, -0.26f, 0.3f},
-    {"corridor_gate"sv, 0.5f, 0.34f, 3.141593f, -0.24f, 0.28f},
+    {"central_ridge"sv, 0.5f, 0.34f, 3.141593f, -0.24f, 0.28f},
     {"cliff_profile"sv, 0.58f, 0.28f, -1.2f, -0.22f, 0.34f},
     {"distant_landmark"sv, 0.48f, 0.15f, 0.08f, -0.18f, 0.42f},
 }};

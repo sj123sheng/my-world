@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <utility>
 
 namespace {
 
@@ -26,23 +27,24 @@ ExplorationContent ExplorationContent::verticalSlice() {
     pois.push_back({poi.id, poi.x, poi.y, std::string(poi.label),
                     std::string(poi.districtId), poi.mainRoute});
   }
-  std::vector<PuzzleNode> puzzles;
-  puzzles.reserve(WorldLayout::kPuzzleNodeCount);
-  for (const WorldLayout::WorldPuzzleNodeDef& puzzle :
-       WorldLayout::kPuzzleNodes) {
-    puzzles.push_back({puzzle.id, puzzle.x, puzzle.y, std::string(puzzle.label),
-                       toMotionState(puzzle.requiredMotion),
-                       puzzle.opensGateId, puzzle.rewardId});
+
+  std::vector<NaturalNode> naturalNodes;
+  naturalNodes.reserve(WorldLayout::kNaturalNodeCount);
+  for (const WorldLayout::WorldNaturalNodeDef& node :
+       WorldLayout::kNaturalNodes) {
+    naturalNodes.push_back({node.id, node.x, node.y, std::string(node.label),
+                            toMotionState(node.requiredMotion), node.rewardId});
   }
-  std::vector<TraversalGate> gates;
-  gates.reserve(WorldLayout::kTraversalGateCount);
-  for (const WorldLayout::WorldTraversalGateDef& gate :
-       WorldLayout::kTraversalGates) {
-    gates.push_back({gate.id, gate.x, gate.y, std::string(gate.label),
-                     toMotionState(gate.requiredMotion),
-                     {gate.halfExtents[0], gate.halfExtents[1]}, gate.yaw,
-                     gate.top});
+
+  std::vector<RegionTrigger> regionTriggers;
+  regionTriggers.reserve(WorldLayout::kRegionTriggerCount);
+  for (const WorldLayout::WorldRegionTriggerDef& region :
+       WorldLayout::kRegionTriggers) {
+    regionTriggers.push_back({region.id, region.x, region.y, region.radius,
+                              std::string(region.label),
+                              region.prerequisiteNodeId});
   }
+
   std::vector<ExplorationReward> rewards;
   rewards.reserve(WorldLayout::kExplorationRewardCount);
   for (const WorldLayout::WorldExplorationRewardDef& reward :
@@ -51,21 +53,22 @@ ExplorationContent ExplorationContent::verticalSlice() {
                        reward.gold, reward.fate, reward.itemId,
                        reward.itemCount});
   }
-  return ExplorationContent(std::move(pois), std::move(puzzles),
-                            std::move(gates), std::move(rewards));
+  return ExplorationContent(std::move(pois), std::move(naturalNodes),
+                            std::move(regionTriggers), std::move(rewards));
 }
 
 ExplorationContent::ExplorationContent(
-    std::vector<PointOfInterest> pois, std::vector<PuzzleNode> puzzles,
-    std::vector<TraversalGate> gates, std::vector<ExplorationReward> rewards)
+    std::vector<PointOfInterest> pois, std::vector<NaturalNode> naturalNodes,
+    std::vector<RegionTrigger> regionTriggers,
+    std::vector<ExplorationReward> rewards)
     : pois_(std::move(pois)),
-      puzzles_(std::move(puzzles)),
-      gates_(std::move(gates)),
+      naturalNodes_(std::move(naturalNodes)),
+      regionTriggers_(std::move(regionTriggers)),
       rewards_(std::move(rewards)),
       discoveredPois_(pois_.size(), false),
-      activatedPuzzles_(puzzles_.size(), false),
+      activatedNaturalNodes_(naturalNodes_.size(), false),
       claimedRewards_(rewards_.size(), false),
-      openGates_(gates_.size(), false) {}
+      completedRegions_(regionTriggers_.size(), false) {}
 
 ExplorationTarget ExplorationContent::nearestTarget(Vec2 position,
                                                     float radius) const {
@@ -82,6 +85,7 @@ ExplorationTarget ExplorationContent::nearestTarget(Vec2 position,
       bestDistance = distance;
     }
   };
+
   float bestDistance = std::numeric_limits<float>::max();
   for (size_t i = 0; i < pois_.size(); ++i) {
     if (!discoveredPois_[i]) {
@@ -89,32 +93,29 @@ ExplorationTarget ExplorationContent::nearestTarget(Vec2 position,
                pois_[i].y, pois_[i].label, bestDistance);
     }
   }
-  for (size_t i = 0; i < puzzles_.size(); ++i) {
-    if (!activatedPuzzles_[i]) {
-      consider(puzzles_[i].id, ExplorationTargetKind::Puzzle, puzzles_[i].x,
-               puzzles_[i].y, puzzles_[i].label, bestDistance);
+  for (size_t i = 0; i < naturalNodes_.size(); ++i) {
+    if (!activatedNaturalNodes_[i]) {
+      consider(naturalNodes_[i].id, ExplorationTargetKind::NaturalNode,
+               naturalNodes_[i].x, naturalNodes_[i].y, naturalNodes_[i].label,
+               bestDistance);
     }
   }
-  for (size_t i = 0; i < gates_.size(); ++i) {
-    if (!openGates_[i]) {
-      consider(gates_[i].id, ExplorationTargetKind::TraversalGate, gates_[i].x,
-               gates_[i].y, gates_[i].label, bestDistance);
+  for (size_t i = 0; i < regionTriggers_.size(); ++i) {
+    if (!completedRegions_[i] &&
+        isNaturalNodeActivated(regionTriggers_[i].prerequisiteNodeId)) {
+      consider(regionTriggers_[i].id, ExplorationTargetKind::RegionTrigger,
+               regionTriggers_[i].x, regionTriggers_[i].y,
+               regionTriggers_[i].label, bestDistance);
     }
   }
   for (size_t i = 0; i < rewards_.size(); ++i) {
-    if (!claimedRewards_[i]) {
-      // Rewards use the matching puzzle location and are surfaced only after
-      // their puzzle is active, so the HUD does not reveal every hidden reward.
-      const PuzzleNode* source = nullptr;
-      for (const PuzzleNode& puzzle : puzzles_) {
-        if (puzzle.rewardId == rewards_[i].id) {
-          source = &puzzle;
-          break;
-        }
-      }
-      if (source != nullptr && isPuzzleActivated(source->id)) {
-        consider(rewards_[i].id, ExplorationTargetKind::Reward, source->x,
-                 source->y, rewards_[i].label, bestDistance);
+    if (claimedRewards_[i]) continue;
+    for (const NaturalNode& node : naturalNodes_) {
+      if (node.rewardId == rewards_[i].id &&
+          isNaturalNodeActivated(node.id)) {
+        consider(rewards_[i].id, ExplorationTargetKind::Reward, node.x, node.y,
+                 rewards_[i].label, bestDistance);
+        break;
       }
     }
   }
@@ -131,21 +132,31 @@ bool ExplorationContent::discoverPoint(int32_t poiId) {
   return false;
 }
 
-bool ExplorationContent::activatePuzzle(int32_t puzzleId,
-                                         MotionState currentMotion) {
-  for (size_t i = 0; i < puzzles_.size(); ++i) {
-    const PuzzleNode& puzzle = puzzles_[i];
-    if (puzzle.id != puzzleId || activatedPuzzles_[i] ||
-        !motionMatches(puzzle.requiredMotion, currentMotion)) {
+bool ExplorationContent::activateNaturalNode(int32_t id,
+                                             MotionState currentMotion) {
+  for (size_t i = 0; i < naturalNodes_.size(); ++i) {
+    const NaturalNode& node = naturalNodes_[i];
+    if (node.id == id && !activatedNaturalNodes_[i] &&
+        motionMatches(node.requiredMotion, currentMotion)) {
+      activatedNaturalNodes_[i] = true;
+      return true;
+    }
+  }
+  return false;
+}
+
+bool ExplorationContent::enterRegion(int32_t id, Vec2 playerPosition) {
+  if (!playerPosition.finite()) return false;
+  for (size_t i = 0; i < regionTriggers_.size(); ++i) {
+    const RegionTrigger& region = regionTriggers_[i];
+    if (region.id != id || completedRegions_[i] ||
+        !isNaturalNodeActivated(region.prerequisiteNodeId)) {
       continue;
     }
-    activatedPuzzles_[i] = true;
-    for (size_t gateIndex = 0; gateIndex < gates_.size(); ++gateIndex) {
-      if (gates_[gateIndex].id == puzzle.opensGateId) {
-        openGates_[gateIndex] = true;
-        break;
-      }
+    if (distanceBetween(playerPosition, region.x, region.y) > region.radius) {
+      return false;
     }
+    completedRegions_[i] = true;
     return true;
   }
   return false;
@@ -154,24 +165,22 @@ bool ExplorationContent::activatePuzzle(int32_t puzzleId,
 bool ExplorationContent::claimReward(int32_t rewardId) {
   for (size_t i = 0; i < rewards_.size(); ++i) {
     if (rewards_[i].id != rewardId || claimedRewards_[i]) continue;
-    bool available = false;
-    for (const PuzzleNode& puzzle : puzzles_) {
-      if (puzzle.rewardId == rewardId && isPuzzleActivated(puzzle.id)) {
-        available = true;
-        break;
+    for (const NaturalNode& node : naturalNodes_) {
+      if (node.rewardId == rewardId && isNaturalNodeActivated(node.id)) {
+        claimedRewards_[i] = true;
+        return true;
       }
     }
-    if (!available) return false;
-    claimedRewards_[i] = true;
-    return true;
+    return false;
   }
   return false;
 }
 
 void ExplorationContent::recordTraversal(TraversalAbility ability) {
   const uint8_t value = static_cast<uint8_t>(ability);
-  if (value > static_cast<uint8_t>(TraversalAbility::Swim)) return;
-  traversalMask_ = static_cast<uint8_t>(traversalMask_ | (1u << value));
+  if (value <= static_cast<uint8_t>(TraversalAbility::Swim)) {
+    traversalMask_ = static_cast<uint8_t>(traversalMask_ | (1u << value));
+  }
 }
 
 bool ExplorationContent::isPointDiscovered(int32_t id) const {
@@ -181,30 +190,30 @@ bool ExplorationContent::isPointDiscovered(int32_t id) const {
   return false;
 }
 
-bool ExplorationContent::isPuzzleActivated(int32_t id) const {
-  for (size_t i = 0; i < puzzles_.size(); ++i) {
-    if (puzzles_[i].id == id) return activatedPuzzles_[i];
+bool ExplorationContent::isNaturalNodeActivated(int32_t id) const {
+  for (size_t i = 0; i < naturalNodes_.size(); ++i) {
+    if (naturalNodes_[i].id == id) return activatedNaturalNodes_[i];
   }
   return false;
 }
 
-bool ExplorationContent::isGateOpen(int32_t id) const {
-  for (size_t i = 0; i < gates_.size(); ++i) {
-    if (gates_[i].id == id) return openGates_[i];
+bool ExplorationContent::isRegionCompleted(int32_t id) const {
+  for (size_t i = 0; i < regionTriggers_.size(); ++i) {
+    if (regionTriggers_[i].id == id) return completedRegions_[i];
   }
   return false;
 }
 
-const TraversalGate* ExplorationContent::gateById(int32_t id) const {
-  for (const TraversalGate& gate : gates_) {
-    if (gate.id == id) return &gate;
+const RegionTrigger* ExplorationContent::regionById(int32_t id) const {
+  for (const RegionTrigger& region : regionTriggers_) {
+    if (region.id == id) return &region;
   }
   return nullptr;
 }
 
-const PuzzleNode* ExplorationContent::puzzleById(int32_t id) const {
-  for (const PuzzleNode& puzzle : puzzles_) {
-    if (puzzle.id == id) return &puzzle;
+const NaturalNode* ExplorationContent::naturalNodeById(int32_t id) const {
+  for (const NaturalNode& node : naturalNodes_) {
+    if (node.id == id) return &node;
   }
   return nullptr;
 }
@@ -229,14 +238,16 @@ ExplorationProgress ExplorationContent::progress() const {
   result.discoveredPoiCount = static_cast<int32_t>(std::count(
       discoveredPois_.begin(), discoveredPois_.end(), true));
   result.activatedPuzzleCount = static_cast<int32_t>(std::count(
-      activatedPuzzles_.begin(), activatedPuzzles_.end(), true));
+      activatedNaturalNodes_.begin(), activatedNaturalNodes_.end(), true));
   result.claimedRewardCount = static_cast<int32_t>(std::count(
       claimedRewards_.begin(), claimedRewards_.end(), true));
-  result.openGateCount = static_cast<int32_t>(
-      std::count(openGates_.begin(), openGates_.end(), true));
+  result.openGateCount = static_cast<int32_t>(std::count(
+      completedRegions_.begin(), completedRegions_.end(), true));
   for (uint8_t state = 0; state <= static_cast<uint8_t>(TraversalAbility::Swim);
        ++state) {
-    if ((traversalMask_ & (1u << state)) != 0) result.completedTraversalCount += 1;
+    if ((traversalMask_ & (1u << state)) != 0) {
+      result.completedTraversalCount += 1;
+    }
   }
   return result;
 }
@@ -258,7 +269,7 @@ int32_t ExplorationContent::discoveredPoiMask() const {
 }
 
 int32_t ExplorationContent::activatedPuzzleMask() const {
-  return maskFrom(activatedPuzzles_);
+  return maskFrom(activatedNaturalNodes_);
 }
 
 int32_t ExplorationContent::claimedRewardMask() const {
@@ -266,23 +277,23 @@ int32_t ExplorationContent::claimedRewardMask() const {
 }
 
 int32_t ExplorationContent::openGateMask() const {
-  return maskFrom(openGates_);
+  return maskFrom(completedRegions_);
 }
 
 void ExplorationContent::restoreMasks(int32_t poiMask, int32_t puzzleMask,
-                                       int32_t rewardMask, int32_t gateMask,
-                                       uint8_t traversalMask) {
+                                      int32_t rewardMask, int32_t gateMask,
+                                      uint8_t traversalMask) {
   for (size_t i = 0; i < discoveredPois_.size(); ++i) {
     discoveredPois_[i] = bitSet(poiMask, i);
   }
-  for (size_t i = 0; i < activatedPuzzles_.size(); ++i) {
-    activatedPuzzles_[i] = bitSet(puzzleMask, i);
+  for (size_t i = 0; i < activatedNaturalNodes_.size(); ++i) {
+    activatedNaturalNodes_[i] = bitSet(puzzleMask, i);
   }
   for (size_t i = 0; i < claimedRewards_.size(); ++i) {
     claimedRewards_[i] = bitSet(rewardMask, i);
   }
-  for (size_t i = 0; i < openGates_.size(); ++i) {
-    openGates_[i] = bitSet(gateMask, i);
+  for (size_t i = 0; i < completedRegions_.size(); ++i) {
+    completedRegions_[i] = bitSet(gateMask, i);
   }
   traversalMask_ = traversalMask & 0x1Fu;
 }
@@ -290,7 +301,7 @@ void ExplorationContent::restoreMasks(int32_t poiMask, int32_t puzzleMask,
 uint8_t ExplorationContent::traversalMask() const { return traversalMask_; }
 
 bool ExplorationContent::motionMatches(MotionState required,
-                                        MotionState current) {
+                                       MotionState current) {
   return required == MotionState::Grounded ? current == MotionState::Grounded
                                            : required == current;
 }

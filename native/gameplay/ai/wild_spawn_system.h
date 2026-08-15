@@ -5,17 +5,27 @@
 #include "gameplay/combat/combat_controller.h"
 #include "gameplay/entities/enemy.h"
 #include "gameplay/targeting/soft_targeting.h"
+#include "gameplay/world/procedural_chunk_content.h"
 #include "generated/world_layout.gen.h"
 
 #include <cstdint>
-#include <functional>
+#include <map>
 #include <memory>
+#include <set>
 #include <vector>
+
+struct ProceduralChunkRuntime {
+  ProceduralChunkContent content;
+  bool active = false;
+  std::set<uint64_t> defeatedEnemyIds;
+  std::set<uint64_t> collectedIds;
+};
 
 // 野外敌人逐帧快照：只保留渲染与任务需要的字段（仿 EncounterEnemySnapshot
 // 裁剪），渲染层经 Surface::wildEnemies3d 只读消费。
 struct WildEnemySnapshot {
   EntityId id = 0;
+  uint64_t stableId = 0;
   // 与 EnemyArchetype 数值一致的 int，避免渲染层反向依赖 gameplay 枚举。
   int32_t archetype = 0;
   Vec2 position;
@@ -43,10 +53,11 @@ struct WildSpawnFrameInput {
   int64_t dtMs = 0;
   Vec2 playerPosition;
   bool playerAlive = true;
-  // 当前激活分块 id 集合（升序）；nullptr 时全部刷怪区激活（测试用）。
-  const std::vector<int32_t>* activeChunks = nullptr;
-  // 宿主层碰撞解算（建筑推出/沿墙滑动），可为空。
-  std::function<void(Vec2&, float)> positionResolver;
+  ChunkCoord playerChunk{};
+  // 当前激活分块集合（升序）；nullptr 时手工刷怪区全激活。
+  const std::vector<ChunkCoord>* activeChunks = nullptr;
+  // Loop 持有的有界程序分块运行时；死亡状态只写入当前 cache。
+  std::map<ChunkCoord, ProceduralChunkRuntime>* proceduralChunks = nullptr;
 };
 
 // 野外刷怪系统（Phase 3.2/3.3）：独立于 EncounterController 的野外敌人
@@ -95,13 +106,11 @@ class WildSpawnSystem {
   static constexpr float kPatrolSpeedPerMs = 0.0003f;
   // 战斗移动速度上限（与 EncounterController 一致）。
   static constexpr float kMovementPerMillisecond = 0.001f;
-  // 碰撞半径（与 EncounterController::kEnemyCollisionRadius 一致）。
-  static constexpr float kEnemyCollisionRadius = 0.012f;
   // 禁用 TrainingTarget 自动复活的超长重置周期（约 31700 年）：
   // 野外敌人重生由本系统按 zone.respawnMs 显式控制。
   static constexpr Tick kNoAutoRespawnMs = 1000000000000;
 
-  // 默认使用 WorldLayout::kSpawnZones。
+  // 默认不加载手工刷怪区；Loop 注入程序分块内容。
   WildSpawnSystem();
   // 注入自定义刷怪区（测试合成场景用）。
   explicit WildSpawnSystem(std::vector<WorldLayout::WorldSpawnZoneDef> zones);
@@ -145,6 +154,9 @@ class WildSpawnSystem {
   bool isFrozen(EntityId id) const;
   // 指定敌人当前 AI 决策周期（ms）：验证距离 LOD 降频；不存在时返回 0。
   Tick decisionPeriodOf(EntityId id) const;
+  size_t proceduralStateChunkCount() const;
+  // Loop 在释放 ProceduralChunkRuntime 前调用，返回需同步解除的战斗 ID。
+  std::vector<EntityId> deactivateProceduralChunk(ChunkCoord coord);
 
  private:
   struct Slot;
@@ -154,16 +166,17 @@ class WildSpawnSystem {
   void buildZones(const std::vector<WorldLayout::WorldSpawnZoneDef>& zones);
 
   static EnemyArchetype fromSpawnArchetype(WorldLayout::SpawnArchetype a);
-  static int32_t chunkIdOf(Vec2 position);
+  static ChunkCoord chunkCoordOf(Vec2 position);
   static CombatConfig targetConfig(EnemyArchetype archetype);
   static EnemyAiConfig aiConfig(EnemyArchetype archetype,
                                 const CombatRegionConfig& region,
                                 std::size_t zoneCapacity);
 
   void syncZones(const WildSpawnFrameInput& input);
+  void syncProceduralChunks(const WildSpawnFrameInput& input);
   void activateZone(Zone& zone);
   void deactivateZone(Zone& zone);
-  void respawnSlot(Slot& slot, const Zone& zone);
+  void respawnSlot(Slot& slot);
   void applyActiveQuota(const WildSpawnFrameInput& input);
   void linkAggroGroup(const Slot& source);
   Vec2 patrolPointFor(const Slot& slot, Tick tick) const;
@@ -180,4 +193,7 @@ class WildSpawnSystem {
   uint64_t nextSequence_ = 1;
   // 性能降级档位（0/1/2）：驱动活跃配额与感知半径收缩。
   int32_t performanceLevel_ = 0;
+  std::set<ChunkCoord> proceduralStateChunks_;
+  ChunkCoord lastPlayerChunk_{};
+  bool hasLastPlayerChunk_ = false;
 };

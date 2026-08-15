@@ -35,6 +35,8 @@ struct ExplorationMotionConfig {
   // 而不是贴地瞬移（原神式走离台阶下落）。可行走坡度（< 攀爬阈值）
   // 在正常移速下的单帧下降远小于该值，不会误触发。
   float maxStepDown = 0.008f;
+  // 地面高度突变时的最大贴地速度，避免跨块或高差边界在一帧内瞬移。
+  float maxGroundFollowPerSecond = 0.25f;
   // 自动疾跑（原神式）：地面持续移动达阈值后加速并消耗体力。
   float sprintActivateSeconds = 1.5f;
   float sprintStaminaPerSecond = 9.0f;
@@ -58,21 +60,10 @@ struct MotionInput {
   bool glideHeld = false;
   // 水平方向是否有移动输入（攀爬判定需要角色正朝坡面移动）。
   bool moving = false;
-  // 正贴着建筑墙面朝墙移动：与地形陡坡等价地进入攀爬，
-  // 持续消耗体力并按 wallClimbSpeed 抬升高度，可攀登城墙等建筑。
+  // 历史输入位保留为运动状态机二进制兼容；自然世界生产路径固定 false。
   bool wallClimbing = false;
-  // 正贴着地形墙体（悬崖/mesa 壁等陡坡）朝墙移动：与建筑墙面攀爬
-  // 同语言——按 wallClimbSpeed 限速上升而不是地面高度瞬移吸附，
-  // 登顶前宿主层持续阻挡水平位移，登顶后阻挡自然解除走上台地。
+  // 同上；Loop 的自然世界生产路径固定 false。
   bool terrainClimbing = false;
-};
-
-// 宿主层地面高度覆盖：站在建筑盒顶等场景下，地面高度不再等于
-// 地形高度场采样值，由宿主层给出合成支撑高度。active=false 时
-// 行为与升级前完全一致。
-struct MotionGroundOverride {
-  bool active = false;
-  float groundHeight = 0.0f;
 };
 
 class ExplorationMotion {
@@ -83,14 +74,10 @@ class ExplorationMotion {
   ExplorationMotionState reset(float groundHeight) const;
 
   // 推进一个固定步。返回更新后的状态（值语义，便于测试断言）。
-  // groundOverride 非空且 active 时，地面高度取覆盖值（建筑盒顶等
-  // 合成支撑面）而非地形采样值；其余规则不变。
   ExplorationMotionState update(const ExplorationMotionState& state,
                                 const MotionInput& input,
                                 const TerrainHeightfield& terrain,
-                                float x, float y, float dtSeconds,
-                                const MotionGroundOverride* groundOverride =
-                                    nullptr) const;
+                                double x, double y, float dtSeconds) const;
 
   const ExplorationMotionConfig& config() const { return config_; }
 

@@ -194,27 +194,13 @@ my-world/
 
 ## 测试与验证
 
-### M4 Task 2 环境与场景氛围验收状态
+### M4 Task 2 人工环境历史验收状态
 
-2026-07-25 在 Pura 70 Pro 模拟器（HDC target `127.0.0.1:5555`，设备上报型号
-`emulator`，ABI `aarch64`）完成 Lost Ruins 环境的构建、运行和性能验收：
-
-- 环境资产来自 Poly Haven 的 **Modular Fort 01**（作者 Rico Cilliers，
-  `https://polyhaven.com/a/modular_fort_01`，源 GLTF SHA-256
-  `7278a56aaa624ce71974ad2374bb7b1a5ac83c9296ebc5acc5893862a69cf59d`）和
-  **Rabdentse Ruins Wall**（作者 Amal Kumar，
-  `https://polyhaven.com/a/rabdentse_ruins_wall`，源 GLTF SHA-256
-  `4130d776f3ba785db672be9b101cbd4bfa0c2c330608cd52937528dea4514a4c`）。两者均为
-  [CC0 1.0](https://polyhaven.com/license)，完整下载文件哈希见
-  `assets/environment/manifest.json`。
-- 四个派生 GLB 分别为：`outer_ring.glb` 6,265,288 字节，SHA-256
-  `c303a49e2621a2be34ab2200ebe1e4ac85f1cd6548e6abcc63dd96fee9f40c27`；
-  `center_rift.glb` 5,631,600 字节，SHA-256
-  `600703fc588eff24301031df0f99460316acc944bd54155c58169687635b07ae`；
-  `backdrop.glb` 6,028,252 字节，SHA-256
-  `55376fc70f8dc2f354c2edcdce242d14d0edf11f98de07a9d42f6285e7b410cc`；
-  `decoration.glb` 5,259,680 字节，SHA-256
-  `2c1bf9f689a0fa2452f1a2c7c67e4eccea5fbb91e32105165b3c7e481ae99879`。
+2026-07-25 曾在 Pura 70 Pro 模拟器（HDC target `127.0.0.1:5555`，设备上报型号
+`emulator`，ABI `aarch64`）完成 Lost Ruins 人工场景的构建、运行和性能验收。
+这些人工结构资产及派生 GLB 已在无限自然世界迁移中移除；以下数据只保留为历史基线，
+不代表当前资源或运行时链。第三方来源与许可记录继续保存在
+[`assets/environment/LICENSES.md`](assets/environment/LICENSES.md)：
 - 验收包 `entry/build/default/outputs/default/entry-default-signed.hap` 为 41,184,019 字节，
   SHA-256 `b57fb63f9d11320d5cd64b8532c172481a7f150d8ee69fc25b20142b82fdadab`。
   安装启动后的应用 PID 为 `4781`，采样期间保持不变。
@@ -235,10 +221,8 @@ my-world/
   使用 half texture、Critical 恢复先回 Heavy，以及中心和外环批次始终保留。模拟器正常
   负载实际只达到 `perf_level=1`，未提供强制 Heavy/Critical 的设备调试入口，因此这些规则
   当前属于自动化验证，不属于设备强制验证。
-- detached 临时 worktree 中将 `decoration.glb` 替换为无效数据后，Hvigor 可成功构建故障
-  unsigned HAP；原生单批次状态机和测试覆盖 `Failed` 后保留程序化 fallback。由于仓库不保存
-  本地签名配置，命令行明确跳过签名，故未将该故障包安装到模拟器；设备端 fallback、战斗存活
-  和 PID 稳定性仍待使用同一调试签名补验。生产 signed HAP 保持未修改。
+- 历史故障注入曾用损坏的人工装饰批次验证程序化 fallback；相关批次与注入链现已删除。
+  当时因仓库不保存本地签名配置，故障包未安装到模拟器，该结论不外推到当前自然地形链。
 
 ### M3-1 3D 渲染基础验收状态
 

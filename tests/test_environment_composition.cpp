@@ -1,141 +1,71 @@
+// 区块 GPU 资源组合测试（无限自然世界 Task 9）：
+// 回收差量必须同步移除地形网格与植被批次两类 ChunkCoord 键，
+// 出生点组合保持核心区自然路线锚点。
 #include "native/engine/render/environment.h"
 
-#include <algorithm>
+#include "native/engine/render/mesh.h"
+#include "native/engine/world/foliage_system.h"
+
 #include <cassert>
-#include <fstream>
-#include <regex>
-#include <sstream>
-#include <string>
+#include <map>
 #include <vector>
 
 namespace {
 
-void testSpawnFramesTheAltarAlongTheMainRoute() {
+Mesh makeStubMesh() {
+  Mesh mesh;
+  mesh.vertices.resize(3);
+  mesh.indices = {0u, 1u, 2u};
+  return mesh;
+}
+
+void testSpawnStaysInsideCoreChunk() {
   const EnvironmentComposition composition =
       EnvironmentController::defaultComposition();
-
-  assert(composition.spawn.z < composition.combatAnchor.z);
-  assert(composition.combatAnchor.z < composition.altarAnchor.z);
-  assert(composition.cameraFocus.z >= composition.altarAnchor.z);
+  assert(composition.spawn.x >= 0.0f && composition.spawn.x <= 1.0f);
+  assert(composition.spawn.z >= 0.0f && composition.spawn.z <= 1.0f);
 }
 
-void testOpeningShotHasForegroundAndDistantFocus() {
-  const EnvironmentComposition composition =
-      EnvironmentController::defaultComposition();
+void testUnloadDiffRemovesTerrainAndFoliageKeys() {
+  // 渲染侧按 ChunkCoord 持有地形网格与植被批次；区块离开两圈缓存后
+  // 回收差量必须同步移除两类 GPU 键，不允许任何一类残留。
+  const ChunkCoord unloadedCoord{2, -1};
+  const ChunkCoord keptCoord{3, 0};
+  std::map<ChunkCoord, Mesh> terrainMeshes;
+  std::map<ChunkCoord, std::vector<FoliageInstance>> foliageBatches;
+  terrainMeshes.emplace(unloadedCoord, makeStubMesh());
+  terrainMeshes.emplace(keptCoord, makeStubMesh());
+  foliageBatches[unloadedCoord] = {FoliageInstance{}};
+  foliageBatches[keptCoord] = {FoliageInstance{}, FoliageInstance{}};
 
-  assert(composition.foregroundOccluder.z > composition.spawn.z);
-  assert(composition.foregroundOccluder.z < composition.combatAnchor.z);
-  assert(composition.cameraFocus != composition.spawn);
-}
-
-void testSpawnStartsBeforeCombatTrigger() {
-  const EnvironmentComposition composition =
-      EnvironmentController::defaultComposition();
-  assert(composition.spawn.z < 0.45f);
-  assert(composition.combatAnchor.z >= 0.45f);
-}
-
-// ---- Phase 2：blockId 分组与流式启停 ----
-
-void testBlockIdAtMatchesGridConvention() {
-  // id = row * 8 + col，越界坐标钳制到边缘分块。
-  assert(environmentBlockIdAt(0.0f, 0.0f) == 0);
-  assert(environmentBlockIdAt(0.999f, 0.0f) == 7);
-  assert(environmentBlockIdAt(0.0f, 0.999f) == 56);
-  assert(environmentBlockIdAt(0.5f, 0.12f) == 0 * 8 + 4);
-  assert(environmentBlockIdAt(-5.0f, 3.0f) == 56);
-  assert(environmentBlockIdAt(5.0f, 3.0f) == 63);
-  assert(environmentBlockIdAt(0.5f, 3.0f) == 56 + 4);
-}
-
-void testRenderPlanBlockActivation() {
-  EnvironmentRenderPlan plan;
-  // 未填充激活集：所有区块批次关闭，全局批次不受影响。
-  assert(!plan.blockActive(0));
-  assert(plan.outerRing && plan.centerRift && plan.backdrop);
-  plan.activeBlocks = {3, 11, 12};
-  assert(plan.blockActive(3) && plan.blockActive(11) && plan.blockActive(12));
-  assert(!plan.blockActive(2) && !plan.blockActive(13));
-}
-
-void testBlockFitSharesOuterRingParams() {
-  const EnvironmentComposition composition =
-      EnvironmentController::defaultComposition();
-  const glm::mat4 blockFit = environmentBlockWorldFitMatrix(composition);
-  const glm::mat4 outerFit = environmentWorldFitMatrix(
-      static_cast<size_t>(EnvironmentBatchKind::OuterRing), composition);
-  for (int col = 0; col < 4; ++col) {
-    for (int row = 0; row < 4; ++row) {
-      assert(blockFit[col][row] == outerFit[col][row]);
-    }
+  const std::vector<ChunkCoord> unloaded = {unloadedCoord};
+  for (const ChunkCoord coord : unloaded) {
+    const auto found = terrainMeshes.find(coord);
+    assert(found != terrainMeshes.end());
+    found->second.destroy();  // 宿主侧为空操作，锁定释放调用点。
   }
-}
+  assert(EraseUnloadedChunkResources(unloaded, terrainMeshes) == 1u);
+  assert(EraseUnloadedChunkResources(unloaded, foliageBatches) == 1u);
 
-void testLayoutMirrorBlockIds() {
-  // 镜像条目的 blockId 必须落在 [-1, kEnvironmentBlockCount)；
-  // 区块条目（≥0）限定为可碰撞/氛围资产类型（outerRing/decoration）。
-  const EnvironmentPlacement* placements = environmentLayoutPlacements();
-  const std::size_t count = environmentLayoutPlacementCount();
-  assert(count > 0);
-  int blockEntries = 0;
-  int globalEntries = 0;
-  for (std::size_t i = 0; i < count; ++i) {
-    const EnvironmentPlacement& placement = placements[i];
-    assert(placement.blockId >= -1 &&
-           placement.blockId < kEnvironmentBlockCount);
-    if (placement.blockId >= 0) {
-      ++blockEntries;
-      assert(placement.region == 0 || placement.region == 3);
-    } else {
-      ++globalEntries;
-    }
-  }
-  // 6 个 district 各有地标与氛围条目。
-  assert(blockEntries >= 12);
-  assert(globalEntries >= 21);
-}
+  assert(terrainMeshes.count(unloadedCoord) == 0u);
+  assert(foliageBatches.count(unloadedCoord) == 0u);
+  // 未回收区块保持原样。
+  assert(terrainMeshes.count(keptCoord) == 1u);
+  assert(foliageBatches[keptCoord].size() == 2u);
 
-void testLayoutJsonAgreesWithMirrorBlockIds() {
-  // 构建期一致性：assets/environment/layout.json 的 blockId 多重集
-  // 与 C++ 镜像严格一致（测试从仓库根目录运行）。
-  std::ifstream file("assets/environment/layout.json");
-  assert(file.good());
-  std::stringstream buffer;
-  buffer << file.rdbuf();
-  const std::string text = buffer.str();
+  // 重复应用同一差量幂等：不再移除任何键。
+  assert(EraseUnloadedChunkResources(unloaded, terrainMeshes) == 0u);
+  assert(EraseUnloadedChunkResources(unloaded, foliageBatches) == 0u);
 
-  std::vector<int> jsonBlockIds;
-  const std::regex blockIdPattern("\"blockId\"\\s*:\\s*(-?[0-9]+)");
-  for (std::sregex_iterator it(text.begin(), text.end(), blockIdPattern),
-       end;
-       it != end; ++it) {
-    jsonBlockIds.push_back(std::stoi((*it)[1].str()));
-  }
-  assert(jsonBlockIds.size() == environmentLayoutPlacementCount());
-
-  std::vector<int> mirrorBlockIds;
-  for (std::size_t i = 0; i < environmentLayoutPlacementCount(); ++i) {
-    mirrorBlockIds.push_back(environmentLayoutPlacements()[i].blockId);
-  }
-  std::sort(jsonBlockIds.begin(), jsonBlockIds.end());
-  std::sort(mirrorBlockIds.begin(), mirrorBlockIds.end());
-  assert(jsonBlockIds == mirrorBlockIds);
-
-  // 区块条目的地标 id 必须同时存在于两份数据。
-  assert(text.find("\"westlands_tower\"") != std::string::npos);
-  assert(text.find("\"sanctum_highlands_tower\"") != std::string::npos);
+  // 差量为空时两张表不受影响。
+  assert(EraseUnloadedChunkResources({}, terrainMeshes) == 0u);
+  assert(terrainMeshes.size() == 1u);
 }
 
 }  // namespace
 
 int main() {
-  testSpawnFramesTheAltarAlongTheMainRoute();
-  testOpeningShotHasForegroundAndDistantFocus();
-  testSpawnStartsBeforeCombatTrigger();
-  testBlockIdAtMatchesGridConvention();
-  testRenderPlanBlockActivation();
-  testBlockFitSharesOuterRingParams();
-  testLayoutMirrorBlockIds();
-  testLayoutJsonAgreesWithMirrorBlockIds();
+  testSpawnStaysInsideCoreChunk();
+  testUnloadDiffRemovesTerrainAndFoliageKeys();
   return 0;
 }

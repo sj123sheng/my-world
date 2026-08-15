@@ -7,7 +7,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <vector>
 
@@ -64,10 +63,6 @@ struct EncounterFrameInput {
   Vec2 playerPosition;
   bool playerMoving = false;
   EntityId targetId = 0;
-  // 宿主层注入的位置解算器：敌人移动积分后把其从建筑等障碍内推出
-  //（参数：位置就地修正、碰撞半径）。空则不做任何阻挡，与平坦
-  // 无障碍世界行为一致，保持 gameplay 对引擎碰撞模块零依赖。
-  std::function<void(Vec2& position, float radius)> positionResolver;
 };
 
 struct EncounterEnemySnapshot {
@@ -104,6 +99,8 @@ struct EncounterSnapshot {
   BossSnapshot boss;
   std::vector<EncounterEnemySnapshot> enemies;
   std::vector<TargetCandidate> candidates;
+  // Loop 本步下发给 encounter 的锁定目标（Plan 2 唯一目标数据流观测点）。
+  EntityId selectedTargetId = 0;
 
   bool operator==(const EncounterSnapshot& other) const;
 };
@@ -119,10 +116,6 @@ class EncounterController {
   static constexpr EntityId kPriestEnemyId = 2002;
   static constexpr EntityId kGuardEnemyId = 2003;
   static constexpr EntityId kBossId = 3001;
-  // 敌人碰撞半径（世界单位）：供宿主层位置解算器使用；
-  // 首领半径见 BossController::kBossCollisionRadius。
-  static constexpr float kEnemyCollisionRadius = 0.012f;
-
   explicit EncounterController(CombatController& combat);
   ~EncounterController();
 
@@ -134,6 +127,9 @@ class EncounterController {
   void reset();
   void stop();
   void update(const EncounterFrameInput& input);
+  // 唯一目标数据流（Plan 2）：击杀复核重选后由 Loop 同帧回写锁定 ID，
+  // 保证 encounter 快照与全局锁定在死亡切换帧不分叉。
+  void rebindSelectedTarget(EntityId id);
   bool advanceLevel();
   bool useSupply();
   bool retryBoss();

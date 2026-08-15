@@ -82,10 +82,10 @@ add_library(native_game SHARED
     ${NATIVE_ROOT}/engine/resource/save.cpp
 
     # engine world (开放世界探索基础)
+    ${NATIVE_ROOT}/engine/world/world_position.cpp
     ${NATIVE_ROOT}/engine/world/world_grid.cpp
     ${NATIVE_ROOT}/engine/world/terrain_heightfield.cpp
     ${NATIVE_ROOT}/engine/world/stream_scheduler.cpp
-    ${NATIVE_ROOT}/engine/world/environment_collision.cpp
     ${NATIVE_ROOT}/engine/world/weather_system.cpp
     ${NATIVE_ROOT}/engine/world/foliage_system.cpp
     ${NATIVE_ROOT}/engine/world/water_body.cpp
@@ -124,6 +124,8 @@ add_library(native_game SHARED
     ${NATIVE_ROOT}/gameplay/ai/encounter_controller.h
     ${NATIVE_ROOT}/gameplay/ai/wild_spawn_system.cpp
     ${NATIVE_ROOT}/gameplay/ai/wild_spawn_system.h
+    ${NATIVE_ROOT}/gameplay/ai/engagement_spacing.cpp
+    ${NATIVE_ROOT}/gameplay/ai/engagement_spacing.h
 
     # gameplay entities
     ${NATIVE_ROOT}/gameplay/entities/boss.cpp
@@ -139,8 +141,7 @@ add_library(native_game SHARED
     ${NATIVE_ROOT}/gameplay/world/interactable.cpp
     ${NATIVE_ROOT}/gameplay/world/exploration_content.cpp
     ${NATIVE_ROOT}/gameplay/world/world_terrain.cpp
-    ${NATIVE_ROOT}/gameplay/world/terrain_wall_collision.cpp
-    ${NATIVE_ROOT}/gameplay/world/exploration_gate_collision.cpp
+    ${NATIVE_ROOT}/gameplay/world/procedural_chunk_content.cpp
     ${NATIVE_ROOT}/gameplay/world/exploration_feedback.cpp
     ${NATIVE_ROOT}/gameplay/world/npc_agent.cpp
     ${NATIVE_ROOT}/gameplay/world/npc_agent.h
@@ -154,6 +155,7 @@ add_library(native_game SHARED
 
     # gameplay targeting
     ${NATIVE_ROOT}/gameplay/targeting/soft_targeting.cpp
+    ${NATIVE_ROOT}/gameplay/targeting/target_lock_controller.cpp
 
     # gameplay growth
     ${NATIVE_ROOT}/gameplay/growth/relic.cpp

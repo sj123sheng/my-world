@@ -115,6 +115,23 @@ struct AllyPerception {
   bool insideRegion = false;
 };
 
+// 交战区域（留白投影边界）：类型层定义，供快照与配置共享。
+struct CombatRegionConfig {
+  Vec2 center;
+  float radius = 10.0f;
+};
+
+// 原型交战留白（Plan 2）：由 engagement_spacing 统一给出，快照携带供
+// DecisionPolicy/TacticalPlanner 消费。
+struct EngagementRange {
+  float minimum = 0.0f;
+  float ideal = 0.0f;
+  float attack = 0.0f;
+  float maxPursuit = 0.0f;
+  // Active 阶段是否允许向目标突进（近战 true，远程 false）。
+  bool lungeOnActive = false;
+};
+
 struct PerceptionSnapshot {
   Tick tick = 0;
   EntityId selfId = 0;
@@ -141,6 +158,11 @@ struct PerceptionSnapshot {
   bool staggered = false;
   EnemyActionPhase actionPhase = EnemyActionPhase::None;
   std::vector<AllyPerception> allies;
+  // 交战留白（Plan 2 Task 6）：区域、原型距离、环形槽位与邻居分离。
+  CombatRegionConfig region;
+  EngagementRange engagementRange;
+  Vec2 engagementSlot;
+  Vec2 separationOffset;
 };
 
 enum class EnemyPlanFallbackReason : uint8_t {

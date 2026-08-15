@@ -11,8 +11,8 @@
         "chests",
         "collectibles",
         "pointsOfInterest",
-        "puzzles",
-        "traversalGates",
+        "naturalNodes",
+        "regionTriggers",
         "explorationRewards",
         "environmentVisual"
     ],
@@ -389,19 +389,19 @@
                 }
             }
         },
-        "puzzles": {
+        "naturalNodes": {
             "type": "array",
             "minItems": 3,
             "maxItems": 5,
             "items": {
                 "type": "object",
+                "additionalProperties": false,
                 "required": [
                     "id",
                     "x",
                     "y",
                     "label",
                     "requiredMotion",
-                    "opensGateId",
                     "rewardId"
                 ],
                 "properties": {
@@ -433,10 +433,6 @@
                             "Swimming"
                         ]
                     },
-                    "opensGateId": {
-                        "type": "integer",
-                        "minimum": 80
-                    },
                     "rewardId": {
                         "type": "integer",
                         "minimum": 90
@@ -444,21 +440,20 @@
                 }
             }
         },
-        "traversalGates": {
+        "regionTriggers": {
             "type": "array",
             "minItems": 2,
             "maxItems": 5,
             "items": {
                 "type": "object",
+                "additionalProperties": false,
                 "required": [
                     "id",
                     "x",
                     "y",
                     "label",
-                    "requiredMotion",
-                    "halfExtents",
-                    "yaw",
-                    "top"
+                    "radius",
+                    "prerequisiteNodeId"
                 ],
                 "properties": {
                     "id": {
@@ -479,33 +474,14 @@
                         "type": "string",
                         "minLength": 1
                     },
-                    "requiredMotion": {
-                        "type": "string",
-                        "enum": [
-                            "Grounded",
-                            "Airborne",
-                            "Gliding",
-                            "Climbing",
-                            "Swimming"
-                        ]
-                    },
-                    "halfExtents": {
-                        "type": "array",
-                        "minItems": 2,
-                        "maxItems": 2,
-                        "items": {
-                            "type": "number",
-                            "exclusiveMinimum": 0,
-                            "maximum": 0.15
-                        }
-                    },
-                    "yaw": {
-                        "type": "number"
-                    },
-                    "top": {
+                    "radius": {
                         "type": "number",
                         "exclusiveMinimum": 0,
-                        "maximum": 0.5
+                        "maximum": 0.15
+                    },
+                    "prerequisiteNodeId": {
+                        "type": "integer",
+                        "minimum": 70
                     }
                 }
             }
@@ -641,7 +617,7 @@
         },
         "environmentVisual": {
             "type": "object",
-            "required": ["foliageAtlasAsset", "terrainMaterial", "visualTerrainCells", "foliageLayers", "waterBodies", "validationCameras"],
+            "required": ["foliageAtlasAsset", "terrainMaterial", "foliageLayers", "waterBodies", "validationCameras"],
             "properties": {
                 "foliageAtlasAsset": {
                     "type": "string",
@@ -659,23 +635,6 @@
                         "detailScale": { "type": "number", "minimum": 1.0, "maximum": 256.0 },
                         "triplanarSharpness": { "type": "number", "minimum": 1.0, "maximum": 16.0 },
                         "paintedControlStrength": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
-                    }
-                },
-                "visualTerrainCells": {
-                    "type": "array",
-                    "minItems": 1,
-                    "items": {
-                        "type": "object",
-                        "required": ["blockId", "nearAsset", "midAsset", "farAsset", "bounds", "maxWalkableDeviation", "collisionPolicy"],
-                        "properties": {
-                            "blockId": { "type": "integer", "minimum": 0, "maximum": 63 },
-                            "nearAsset": { "type": "string", "minLength": 1 },
-                            "midAsset": { "type": "string", "minLength": 1 },
-                            "farAsset": { "type": "string", "minLength": 1 },
-                            "bounds": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "type": "number", "minimum": 0.0, "maximum": 1.0 } },
-                            "maxWalkableDeviation": { "type": "number", "minimum": 0.0001, "maximum": 0.01 },
-                            "collisionPolicy": { "type": "string", "enum": ["visual_only", "explicit_obb"] }
-                        }
                     }
                 },
                 "foliageLayers": {

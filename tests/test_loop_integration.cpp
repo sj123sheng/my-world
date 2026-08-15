@@ -4,6 +4,8 @@
 #include <chrono>
 #include <cmath>
 #include <atomic>
+#include <cstdio>
+#include <string>
 #include <thread>
 #include <type_traits>
 #include <vector>
@@ -19,6 +21,183 @@ void isolateWildSpawns(Loop& loop) { loop.wildSpawn.resetZones({}); }
 int main() {
   static_assert(std::is_same_v<decltype(&Loop::tickOnce), void (Loop::*)(int64_t)>);
   static_assert(std::is_same_v<decltype(&Loop::updateFixed), void (Loop::*)(Tick, int64_t)>);
+
+  // 生产变更破坏点：Loop 若仍把 Surface::player 当世界真值，跨块后局部
+  // 坐标会逃出 [0,1)，快照也无法发布完整 ChunkCoord 与缓存/待生成统计。
+  Loop infiniteWorldLoop;
+  isolateWildSpawns(infiniteWorldLoop);
+  infiniteWorldLoop.surface.ready = true;
+  infiniteWorldLoop.streamScheduler.setSyncMode(true);
+  const float originHeightBeforeTravel =
+      infiniteWorldLoop.terrain.heightAt({0, 0}, 0.25f, 0.5f);
+  for (int quality = 0; quality < 3; ++quality) {
+    infiniteWorldLoop.qualityPreset = quality;
+    for (int64_t chunkX = 0; chunkX <= 50; ++chunkX) {
+      infiniteWorldLoop.playerWorldPosition =
+          NormalizeWorldPosition({chunkX, 0}, 0.25, 0.5);
+      infiniteWorldLoop.streamScheduler.beginBurst(1, 1024);
+      infiniteWorldLoop.updateFixed(
+          static_cast<Tick>(quality * 1000 + chunkX + 1), 16);
+      infiniteWorldLoop.tickOnce(0);
+      const GameSnapshot streamed = infiniteWorldLoop.snapshot();
+      assert(streamed.playerChunkX == chunkX);
+      assert(streamed.playerChunkY == 0);
+      assert(streamed.playerLocalX >= 0.0 && streamed.playerLocalX < 1.0);
+      assert(streamed.playerLocalY >= 0.0 && streamed.playerLocalY < 1.0);
+      const int radius = WorldGrid::ActiveRadiusForQuality(quality);
+      assert(streamed.activeChunkCount == (radius * 2 + 1) * (radius * 2 + 1));
+      const int cacheRadius = radius + 2;
+      assert(streamed.cachedChunkCount <=
+             (cacheRadius * 2 + 1) * (cacheRadius * 2 + 1));
+      assert(streamed.streamingPendingCount >= 0);
+    }
+  }
+  infiniteWorldLoop.playerWorldPosition =
+      NormalizeWorldPosition({0, 0}, 0.25, 0.5);
+  infiniteWorldLoop.streamScheduler.beginBurst(1, 1024);
+  infiniteWorldLoop.updateFixed(4000, 16);
+  infiniteWorldLoop.tickOnce(0);
+  assert(infiniteWorldLoop.snapshot().playerChunkX == 0);
+  assert(infiniteWorldLoop.snapshot().playerLocalX == 0.25);
+  assert(infiniteWorldLoop.terrain.heightAt({0, 0}, 0.25f, 0.5f) ==
+         originHeightBeforeTravel);
+
+  // V10 必须由 Loop 接线保存/恢复世界种子与规范化后的 WorldPosition，
+  // 不能只让 Save 单元测试覆盖序列化器而遗漏真实调用链。
+  Loop saveLoop;
+  isolateWildSpawns(saveLoop);
+  saveLoop.worldSeed = 0x123456789abcdef0ULL;
+  saveLoop.playerWorldPosition =
+      NormalizeWorldPosition({-37, 22}, 1.75, -0.25);
+  const WorldPosition expectedRestoredPosition = saveLoop.playerWorldPosition;
+  const std::string savePath =
+      "/tmp/my_world_task8_loop_v10_" +
+      std::to_string(reinterpret_cast<std::uintptr_t>(&saveLoop)) + ".save";
+  std::remove(savePath.c_str());
+  assert(saveLoop.saveProgress(savePath));
+  Loop restoredLoop;
+  isolateWildSpawns(restoredLoop);
+  assert(restoredLoop.loadProgress(savePath));
+  assert(restoredLoop.worldSeed == saveLoop.worldSeed);
+  assert(restoredLoop.playerWorldPosition.chunk ==
+         expectedRestoredPosition.chunk);
+  assert(restoredLoop.playerWorldPosition.local.x ==
+         expectedRestoredPosition.local.x);
+  assert(restoredLoop.playerWorldPosition.local.y ==
+         expectedRestoredPosition.local.y);
+  std::remove(savePath.c_str());
+
+  // 活动 procedural chunk 的植被必须按 ChunkCoord 分块投影到块内局部
+  // 坐标；缓存块卸载后 Surface 不得继续持有旧块批次。
+  Loop foliageRuntimeLoop;
+  isolateWildSpawns(foliageRuntimeLoop);
+  foliageRuntimeLoop.streamScheduler.setSyncMode(true);
+  foliageRuntimeLoop.qualityPreset = 2;
+  foliageRuntimeLoop.playerWorldPosition =
+      NormalizeWorldPosition({2, 0}, 0.5, 0.5);
+  foliageRuntimeLoop.streamScheduler.beginBurst(1, 1024);
+  foliageRuntimeLoop.updateFixed(1, 16);
+  std::size_t expectedActiveFoliage = 0;
+  for (const auto& entry : foliageRuntimeLoop.proceduralChunks) {
+    if (entry.second.active) {
+      expectedActiveFoliage += entry.second.content.foliage.size();
+    }
+  }
+  assert(expectedActiveFoliage > 0);
+  std::size_t surfaceFoliageCount = 0;
+  for (const auto& batch : foliageRuntimeLoop.surface.foliageChunkBatches) {
+    surfaceFoliageCount += batch.second.size();
+    // 批次内实例必须是块内局部坐标（[0,1]），渲染层统一加相对原点平移。
+    for (const FoliageInstance& instance : batch.second) {
+      assert(instance.position.x >= 0.0f && instance.position.x <= 1.0f);
+      assert(instance.position.z >= 0.0f && instance.position.z <= 1.0f);
+    }
+  }
+  assert(surfaceFoliageCount == expectedActiveFoliage);
+  // 植被批次键必须恰好等于活动 procedural 块；渲染原点同步到玩家分块。
+  assert(foliageRuntimeLoop.surface.renderOriginChunk ==
+         foliageRuntimeLoop.playerWorldPosition.chunk);
+  for (const auto& entry : foliageRuntimeLoop.proceduralChunks) {
+    assert(foliageRuntimeLoop.surface.foliageChunkBatches.count(entry.first) ==
+           (entry.second.active ? 1u : 0u));
+  }
+  std::size_t expectedActiveCollectibles = 0;
+  for (const auto& entry : foliageRuntimeLoop.proceduralChunks) {
+    if (entry.second.active) {
+      expectedActiveCollectibles += entry.second.content.collectibles.size();
+    }
+  }
+  assert(expectedActiveCollectibles > 0);
+  assert(foliageRuntimeLoop.proceduralCollectibleCount() ==
+         expectedActiveCollectibles);
+
+  // 传送遮罩必须覆盖完整 3x3 安全圈；九块全部 Active 后才复位相机并
+  // 恢复画面，不能只等待中心块。
+  Loop teleportRingLoop;
+  isolateWildSpawns(teleportRingLoop);
+  teleportRingLoop.streamScheduler.setSyncMode(true);
+  teleportRingLoop.camera.update({0.5f, 0.5f}, {1.0f, 0.0f}, 0.2f);
+  assert(std::abs(teleportRingLoop.camera.yaw()) > 0.01f);
+  assert(teleportRingLoop.teleportToAnchor(1));
+  assert(teleportRingLoop.teleportSafeRingPending.size() == 9);
+  teleportRingLoop.streamScheduler.beginBurst(1, 1);
+  teleportRingLoop.updateFixed(1, 16);
+  assert(!teleportRingLoop.teleportSafeRingPending.empty());
+  assert(teleportRingLoop.teleportFlashMs > 0);
+  teleportRingLoop.streamScheduler.beginBurst(1, 9);
+  teleportRingLoop.updateFixed(2, 16);
+  assert(teleportRingLoop.teleportSafeRingPending.empty());
+  for (int64_t dy = -1; dy <= 1; ++dy) {
+    for (int64_t dx = -1; dx <= 1; ++dx) {
+      assert(teleportRingLoop.streamScheduler.isActive(
+          {teleportRingLoop.playerWorldPosition.chunk.x + dx,
+           teleportRingLoop.playerWorldPosition.chunk.y + dy}));
+    }
+  }
+  assert(teleportRingLoop.teleportFlashMs == 0);
+  assert(teleportRingLoop.camera.yaw() ==
+         teleportRingLoop.camera.config().defaultYaw);
+
+  // 分块真正回收前必须同步解除锁定、血条滞后与渲染血条关联，不能等到
+  // 下一次 WildSpawnSystem 更新后再清理悬空 EntityId。
+  Loop recycleAssociationLoop;
+  recycleAssociationLoop.streamScheduler.setSyncMode(true);
+  recycleAssociationLoop.qualityPreset = 2;
+  recycleAssociationLoop.playerWorldPosition =
+      NormalizeWorldPosition({3, 0}, 0.5, 0.5);
+  recycleAssociationLoop.streamScheduler.beginBurst(1, 1024);
+  recycleAssociationLoop.updateFixed(1, 16);
+  assert(!recycleAssociationLoop.wildSpawn.snapshot().empty());
+  const EntityId recycledEnemyId =
+      recycleAssociationLoop.wildSpawn.snapshot().front().id;
+  const Vec2 recycledEnemyPosition =
+      recycleAssociationLoop.wildSpawn.snapshot().front().position;
+  // 模拟手动锁定该野怪：TargetLockController 是唯一锁定状态来源。
+  std::vector<TargetLockCandidate> recycleLockCandidates;
+  recycleLockCandidates.push_back(
+      TargetLockCandidate{recycledEnemyId, recycledEnemyPosition, true, true,
+                          false});
+  recycleAssociationLoop.currentTarget =
+      recycleAssociationLoop.targetLock.cycleManual(
+          recycledEnemyPosition + Vec2{0.05f, 0.0f},
+          recycleAssociationLoop.camera.yaw(), recycleLockCandidates, 0);
+  assert(recycleAssociationLoop.currentTarget.id.has_value() &&
+         *recycleAssociationLoop.currentTarget.id == recycledEnemyId);
+  recycleAssociationLoop.surface.targetMarker3d.active = true;
+  recycleAssociationLoop.surface.targetMarker3d.targetId = recycledEnemyId;
+  recycleAssociationLoop.enemyHpTrails[recycledEnemyId] = {};
+  recycleAssociationLoop.prevAuraMasks[recycledEnemyId] = 1;
+  recycleAssociationLoop.surface.enemyHpBars3d.push_back({});
+  recycleAssociationLoop.playerWorldPosition =
+      NormalizeWorldPosition({50, 0}, 0.5, 0.5);
+  recycleAssociationLoop.streamScheduler.beginBurst(1, 1024);
+  recycleAssociationLoop.syncInfiniteWorld({0.0f, 1.0f}, {});
+  assert(!recycleAssociationLoop.currentTarget.id.has_value());
+  assert(!recycleAssociationLoop.surface.targetMarker3d.active);
+  assert(recycleAssociationLoop.surface.targetMarker3d.targetId == 0u);
+  assert(recycleAssociationLoop.enemyHpTrails.count(recycledEnemyId) == 0);
+  assert(recycleAssociationLoop.prevAuraMasks.count(recycledEnemyId) == 0);
+  assert(recycleAssociationLoop.surface.enemyHpBars3d.empty());
 
   // 动画比例必须跟随控制器平滑后的真实速度，而不是瞬时摇杆幅度。
   Loop locomotionLoop;
@@ -277,9 +456,14 @@ int main() {
   assert(targetingLoop.surface.props.size() == 1);
   // 训练假人不是敌人原型，焦点框隐藏（archetype = -1）。
   assert(targeted.targetArchetype == -1);
-  // 出生点 (0.5, 0.12) 到训练假人 (0.5, 0.8) 的距离；建筑碰撞会把
-  // 贴墙的出生点向外推出 0.002，实际距离为 0.678。
-  assert(std::abs(targeted.targetDist - 0.678f) < 0.001f);
+  // 出生点 (0.5, 0.12) 到训练假人 (0.5, 0.8) 的距离；
+  // 人工结构不再推出玩家，保持几何直线距离 0.68。
+  assert(std::abs(targeted.targetDist - 0.68f) < 0.001f);
+  assert(targetingLoop.playerWorldPosition.chunk == (ChunkCoord{0, 0}));
+  assert(std::abs(targetingLoop.playerWorldPosition.local.x - 0.5f) <
+         0.0001f);
+  assert(std::abs(targetingLoop.playerWorldPosition.local.y - 0.12f) <
+         0.0001f);
 
   targetingLoop.resetInput();
   targetingLoop.tickOnce(0);
@@ -356,6 +540,189 @@ int main() {
   assert(staleTargetLoop.enqueueInput(InputAction::Attack, -1, 0.0f, 0.0f));
   for (int frame = 0; frame < 10; ++frame) staleTargetLoop.tickOnce(16);
   assert(staleTargetLoop.encounter.events().combat.gameplay.empty());
+
+  // Task 4：唯一目标数据流——快照、锁定环、战斗绑定、encounter 与
+  // 投射物必须消费同一个目标 ID；目标死亡后同帧切换，不允许分叉。
+  // 自定义纵深站位（0.30/0.50/0.65）：间距足够大，敌人短时移动
+  // 不会翻转 (distance, id) 循环顺序，保证手动循环断言确定。
+  EncounterConfig lockFlowConfig;
+  lockFlowConfig.mode = EncounterMode::Mixed;
+  lockFlowConfig.enemies = {
+      EncounterEnemyConfig{EncounterController::kRiftEnemyId,
+                           EnemyArchetype::RiftClaw, {0.5f, 0.42f},
+                           {0.5f, 0.42f}, fp(300), fp(100)},
+      EncounterEnemyConfig{EncounterController::kPriestEnemyId,
+                           EnemyArchetype::Priest, {0.5f, 0.62f},
+                           {0.5f, 0.62f}, fp(300), fp(100)},
+      EncounterEnemyConfig{EncounterController::kGuardEnemyId,
+                           EnemyArchetype::Guard, {0.5f, 0.77f},
+                           {0.5f, 0.77f}, fp(300), fp(100)}};
+  Loop lockFlowLoop;
+  isolateWildSpawns(lockFlowLoop);
+  lockFlowLoop.surface.width = 1000;
+  lockFlowLoop.surface.height = 800;
+  lockFlowLoop.surface.ready = true;
+  assert(lockFlowLoop.encounter.start(lockFlowConfig));
+  lockFlowLoop.tickOnce(16);
+  const auto assertSingleTarget = [&lockFlowLoop]() -> int32_t {
+    const GameSnapshot snap = lockFlowLoop.snapshot();
+    assert(snap.targetId != 0);
+    assert(lockFlowLoop.surface.targetMarker3d.targetId ==
+           static_cast<uint32_t>(snap.targetId));
+    assert(lockFlowLoop.encounter.snapshot().selectedTargetId ==
+           static_cast<EntityId>(snap.targetId));
+    return snap.targetId;
+  };
+  // 自动模式：距离优先锁定最近敌人；未攻击时锁定环不显示（无活跃窗口）。
+  const int32_t autoLocked = assertSingleTarget();
+  assert(autoLocked ==
+         static_cast<int32_t>(EncounterController::kRiftEnemyId));
+  assert(lockFlowLoop.snapshot().targetLockMode == 0);
+  assert(!lockFlowLoop.surface.targetMarker3d.active);
+  assert(!lockFlowLoop.surface.targetMarker3d.manual);
+  assert(lockFlowLoop.surface.targetMarker3d.visibility == 0.0f);
+  // 触发攻击后锁定环进入活跃窗口；所有消费端仍共享同一 ID。
+  assert(lockFlowLoop.enqueueInput(InputAction::Attack, -1, 0.0f, 0.0f));
+  lockFlowLoop.tickOnce(16);
+  assert(assertSingleTarget() == autoLocked);
+  assert(lockFlowLoop.surface.targetMarker3d.active);
+  assert(lockFlowLoop.surface.targetMarker3d.visibility > 0.0f);
+  assert(lockFlowLoop.surface.targetMarker3d.visibility <= 0.72f);
+
+  // 手动循环：每次单击按 (distance, id) 切换；三名敌人三轮后环绕回起点；
+  // Manual 模式锁定环常亮（0.92 基线）且快照模式为 1。
+  int32_t cycleFirst = 0;
+  int32_t cyclePrev = 0;
+  for (int round = 0; round < 4; ++round) {
+    assert(lockFlowLoop.enqueueInput(InputAction::CycleTarget, -1, 0.0f, 0.0f));
+    lockFlowLoop.tickOnce(16);
+    const int32_t locked = assertSingleTarget();
+    if (round == 0) {
+      cycleFirst = locked;
+    } else if (round < 3) {
+      assert(locked != cyclePrev);
+      assert(locked != cycleFirst);
+    } else {
+      assert(locked == cycleFirst);  // 三轮后环绕回起点
+    }
+    cyclePrev = locked;
+    assert(lockFlowLoop.snapshot().targetLockMode == 1);
+    assert(lockFlowLoop.surface.targetMarker3d.manual);
+    assert(lockFlowLoop.surface.targetMarker3d.active);
+    assert(std::abs(lockFlowLoop.surface.targetMarker3d.visibility - 0.92f) <
+           0.001f);
+  }
+
+  // 解除锁定：切回自动模式并立即按自动规则刷新。
+  assert(lockFlowLoop.enqueueInput(InputAction::ReleaseTargetLock, -1, 0.0f,
+                                   0.0f));
+  lockFlowLoop.tickOnce(16);
+  assert(lockFlowLoop.snapshot().targetLockMode == 0);
+  assert(!lockFlowLoop.surface.targetMarker3d.manual);
+  assert(assertSingleTarget() != 0);
+
+  // Boss 作为候选参与：自动模式正常锁定，锁定环与首领轮廓指向同一 ID。
+  assert(lockFlowLoop.startEncounter(EncounterMode::Boss));
+  lockFlowLoop.tickOnce(16);
+  assert(lockFlowLoop.snapshot().targetId ==
+         static_cast<int32_t>(EncounterController::kBossId));
+  assert(lockFlowLoop.surface.targetMarker3d.targetId ==
+         static_cast<uint32_t>(EncounterController::kBossId));
+  assert(lockFlowLoop.surface.boss3d.targeted);
+  assert(lockFlowLoop.encounter.snapshot().selectedTargetId ==
+         EncounterController::kBossId);
+
+  // 投射物消费同一目标：锁定 Boss 时释放辉印，投射物朝 Boss 飞行。
+  // 施法前摇（160ms）+ 命中卡肉会把投射物生成推迟到约 19 帧后，
+  // 投射物寿命约 0.26s，因此逐帧扫描窗口而不是定点采样。
+  assert(lockFlowLoop.enqueueInput(InputAction::Radiance, -1, 0.0f, 0.0f));
+  bool projectileTowardBoss = false;
+  for (int frame = 0; frame < 40 && !projectileTowardBoss; ++frame) {
+    lockFlowLoop.tickOnce(16);
+    const Vec2 bossNow = lockFlowLoop.encounter.snapshot().boss.position;
+    for (const HitSpark3D& spark : lockFlowLoop.surface.hitSparks3d) {
+      if (spark.kind != 4) continue;  // 辉印释放投射物
+      const Vec2 velocity{spark.vx, spark.vz};
+      // 投射物速度远高于普通火花（>1 vs ~0.05），据此隔离。
+      if (velocity.length() < 1.0f) continue;
+      const Vec2 toBoss = bossNow - Vec2{spark.x, spark.z};
+      if (toBoss.length() < 0.02f) continue;
+      const float cosine = (toBoss.x * velocity.x + toBoss.y * velocity.y) /
+                           (toBoss.length() * velocity.length());
+      if (cosine > 0.99f) projectileTowardBoss = true;
+    }
+  }
+  assert(projectileTowardBoss);
+
+  // 目标死亡：击杀结算后所有消费端同帧切到新目标，过渡期不分叉。
+  CombatConfig fragileLockConfig = CombatConfig::defaults();
+  fragileLockConfig.comboDamage = {fp(300), fp(300), fp(300), fp(300)};
+  Loop deathSyncLoop;
+  isolateWildSpawns(deathSyncLoop);
+  deathSyncLoop.combat = CombatController(fragileLockConfig);
+  deathSyncLoop.surface.width = 1000;
+  deathSyncLoop.surface.height = 800;
+  deathSyncLoop.surface.ready = true;
+  assert(deathSyncLoop.startEncounter(EncounterMode::Mixed));
+  deathSyncLoop.tickOnce(16);
+  const int32_t deathFirstTarget = deathSyncLoop.snapshot().targetId;
+  assert(deathFirstTarget ==
+         static_cast<int32_t>(EncounterController::kRiftEnemyId));
+  assert(deathSyncLoop.enqueueInput(InputAction::Attack, -1, 0.0f, 0.0f));
+  bool deathSwitchObserved = false;
+  for (int frame = 0; frame < 20 && !deathSwitchObserved; ++frame) {
+    deathSyncLoop.tickOnce(16);
+    const GameSnapshot snap = deathSyncLoop.snapshot();
+    // 每一帧快照/锁定环/encounter 必须指向同一 ID（或同时为空）。
+    assert(snap.targetId == 0 ||
+           deathSyncLoop.surface.targetMarker3d.targetId ==
+               static_cast<uint32_t>(snap.targetId));
+    assert(deathSyncLoop.encounter.snapshot().selectedTargetId ==
+           static_cast<EntityId>(snap.targetId));
+    deathSwitchObserved =
+        snap.targetId != 0 && snap.targetId != deathFirstTarget;
+  }
+  assert(deathSwitchObserved);
+  const GameSnapshot afterDeathSwitch = deathSyncLoop.snapshot();
+  assert(afterDeathSwitch.targetId ==
+             static_cast<int32_t>(EncounterController::kPriestEnemyId) ||
+         afterDeathSwitch.targetId ==
+             static_cast<int32_t>(EncounterController::kGuardEnemyId));
+  assert(deathSyncLoop.surface.targetMarker3d.targetId ==
+         static_cast<uint32_t>(afterDeathSwitch.targetId));
+
+  // 野外敌人通道：锁定野外敌人时战斗外部绑定共享同一 ID。
+  Loop wildLockLoop;
+  wildLockLoop.streamScheduler.setSyncMode(true);
+  wildLockLoop.surface.width = 1000;
+  wildLockLoop.surface.height = 800;
+  wildLockLoop.surface.ready = true;
+  wildLockLoop.playerWorldPosition =
+      NormalizeWorldPosition({0, 0}, 0.5, 0.45);
+  wildLockLoop.streamScheduler.beginBurst(1, 1024);
+  WorldLayout::WorldSpawnZoneDef lockZone{};
+  lockZone.zoneId = "lock-test";
+  lockZone.districtId = "test";
+  lockZone.aggroGroup = "solo";
+  lockZone.archetype = WorldLayout::SpawnArchetype::RiftClaw;
+  lockZone.count = 1;
+  lockZone.respawnMs = 10000;
+  lockZone.patrolCenterX = 0.5f;
+  lockZone.patrolCenterY = 0.5f;
+  for (std::size_t i = 0; i < WorldLayout::kMaxSpawnPositions; ++i) {
+    lockZone.positionX[i] = 0.5f;
+    lockZone.positionY[i] = 0.5f;
+  }
+  wildLockLoop.wildSpawn.resetZones({lockZone});
+  wildLockLoop.updateFixed(1, 16);
+  assert(!wildLockLoop.wildSpawn.snapshot().empty());
+  wildLockLoop.tickOnce(16);
+  const EntityId wildLockedId =
+      static_cast<EntityId>(wildLockLoop.snapshot().targetId);
+  assert(wildLockedId != 0);
+  assert(wildLockedId == wildLockLoop.wildSpawn.snapshot().front().id);
+  assert(wildLockLoop.surface.targetMarker3d.targetId == wildLockedId);
+  assert(wildLockLoop.combat.externalTargetBinding().id == wildLockedId);
 
   enemyEncounterLoop.stop();
   assert(enemyEncounterLoop.combatEvents().gameplay.empty());

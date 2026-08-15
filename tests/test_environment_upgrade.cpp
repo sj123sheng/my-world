@@ -38,9 +38,6 @@ void testQualityProfileDegradesEnvironmentAsOneUnit() {
   assert(EffectiveEnvironmentQualityLevel(0, false) == 0);
   assert(EffectiveEnvironmentQualityLevel(1, true) == 3);
   assert(EffectiveEnvironmentQualityLevel(4, true) == 4);
-  assert((VisualTerrainLodFallbackOrder(0) == std::array<int, 3>{0, 1, 2}));
-  assert((VisualTerrainLodFallbackOrder(1) == std::array<int, 3>{1, 2, 0}));
-  assert((VisualTerrainLodFallbackOrder(2) == std::array<int, 3>{2, 1, 0}));
 }
 
 void testTerrainWeightsRespectPaintedControlAndPhysicalFallback() {

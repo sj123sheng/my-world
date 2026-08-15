@@ -1,14 +1,26 @@
 # 项目状态
 
-更新时间：2026-08-12
+更新时间：2026-08-15
 
 ## 当前阶段
 
 艾瑟兰已进入“单区开放世界垂直切片”实现阶段。当前目标是把已有 HarmonyOS 原生动作 RPG
 基础系统收敛为一条 30～60 分钟可连续完成的探索—战斗—成长—首领流程，而不是继续扩展区域数量。
+世界底座已迁移为无限自然世界：核心区保留手工内容与永久探索状态，外围按 64 位分块确定性
+生成、按画质提前加载并按两圈缓存回收，人工建筑/门/墙体已彻底移除。
 
 ## 已完成
 
+- 统一目标锁定与敌人留白（Plan 2）已接入：TargetLockController 收敛自动/手动
+  目标为唯一真值——自动模式锁定稳定最近目标，手动单击按 ID 循环切换存活目标、
+  500ms 长按解除锁定，目标死亡或超距同帧重选；锁定按钮经 N-API 动作值接入输入
+  队列，结算/VFX/镜头/锁定环共用同一目标 ID 无一帧分叉。敌人留白由
+  engagement_spacing 纯函数统一口径（近战 min 0.08/ideal 0.14、远程
+  0.16/0.30、Boss 随体型半径放大）：Encounter/WildSpawn 每帧按仇恨组收集存活
+  参与者注入环形槽位与邻居分离，DecisionPolicy 过近后撤/能力射程内攻击/超距追
+  向槽位，TacticalPlanner 沿理想环弧线逼近槽位；前摇站桩、近战 Active 突进钳制
+  在最小空挡、远程站桩不突进、Recovery 回环，首领空挡随体型放大。600 帧群敌重放
+  无重叠、无 NaN、主角位置不被 AI 改写。
 - 出生台地—中枢回廊环境垂直切片已接入：四层原创地表图集 + 手绘控制图、
   宏观色差/细节法线/陡坡三平面岩层/湿岸，玩家周边单级方向光阴影，三个
   手工视觉地貌区块 × 三级 LOD，确定性实例化植被（最多 10 批），昼夜/天气
@@ -314,6 +326,20 @@
   刷怪数据源移除；走/跑动画由控制器平滑后的真实速度和迟滞驱动；
   停稳后保持最后移动朝向，软锁定目标仍保留且相机可自由环绕，
   上述行为已通过宿主测试。
+- 无限自然世界已接入（`codex/infinite-world-combat-overhaul` 分支）：
+  `WorldPosition = ChunkCoord + LocalPosition` 成为位置真值，地形与外围
+  内容从稳定 64 位分块哈希生成；高/中/低画质活动范围固定 9×9/7×7/5×5
+  并额外保留两圈缓存，超出后网格、生态、外围实体与 GPU 资源同步回收；
+  核心区外无剧情/唯一地标/机关/Boss/一次性奖励。
+- 人工结构彻底移除：建筑、遗迹、祭坛、围墙与路径门已从世界数据、资源
+  提交、碰撞与视觉链中删除；原 puzzle/gate 目标按原 ID（70–73/80–83）
+  迁移为自然节点与区域触发，保留旧完成位掩码语义。
+- 渲染层迁移为相对原点：地形网格保持块内局部坐标，绘制用
+  `ChunkRenderTranslation` 按玩家分块平移；植被按 ChunkCoord 批次注入，
+  区块离开 CPU 缓存后地形与植被 GPU 键经同一回收差量同步释放。
+- 存档升级 V10：新增世界种子、分块坐标与局部坐标，V1–V9 可读且旧位置
+  迁移到核心区出生坐标；OHOS 无浮点 `from_chars`，解析改用 classic
+  locale 流 + double 复探，边界契约（denorm/nextafter/坏令牌）不变。
 
 ## 验证状态
 
@@ -346,6 +372,23 @@
   `generate_world_layout.mjs`、Bridge 契约与 `git diff --check` 通过；
   Hvigor `assembleHap` 已完成 Native/ArkTS/打包/签名并返回 `BUILD SUCCESSFUL`。
   HDC 目标列表为空，未进行出生安全区、步态阈值、停步环绕与锁定攻击真机验收。
+- 无限自然世界验证（2026-08-14）：聚焦纯逻辑测试（world_position/
+  world_grid/procedural_chunk_content/terrain_heightfield/chunked_terrain/
+  stream_scheduler/save_v8/world_layout_gen/exploration_content 等）、
+  完整宿主测试集 105 pass / 0 fail（仅跳过 test_fence_wait 平台测试）、
+  `test_bridge_contract.mjs` 与 `test_environment_visual_assets.mjs` 通过；
+  地形着色器 glslangValidator 零错误；Hvigor `assembleHap` 再次返回
+  `BUILD SUCCESSFUL`（签名 HAP 产物已生成）。连续跨 50 块宿主仿真有界且
+  折返一致（test_loop_integration）。真机 FPS/内存与视觉验收仍待执行。
+- 统一目标锁定与敌人留白验证（2026-08-15）：test_target_lock_controller、
+  test_soft_targeting、test_input_queue、test_enemy_decision、
+  test_tactical_planner、test_engagement_spacing、test_encounter_controller、
+  test_wild_spawn_system、test_boss_controller、test_enemy_combat_integration、
+  test_loop_integration 与 node tests/test_bridge_contract.mjs 全部通过；
+  完整宿主测试集 107 pass / 0 fail（仅跳过 test_fence_wait 平台测试）；
+  git diff --check 无输出；Hvigor assembleHap 返回 BUILD SUCCESSFUL。
+  单击循环/长按解除/死亡超距重选/Boss 不抢锁/近战远程 Boss 空挡/多敌人不重叠
+  的真机验收仍待执行。
 
 ## 当前策略
 

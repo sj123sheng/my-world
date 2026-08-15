@@ -18,6 +18,9 @@ ExplorationMotion::ExplorationMotion(ExplorationMotionConfig config)
   if (config_.gravity <= 0.0f) config_.gravity = 1.7f;
   if (config_.glideFallSpeed <= 0.0f) config_.glideFallSpeed = 0.09f;
   if (config_.maxStepDown <= 0.0f) config_.maxStepDown = 0.008f;
+  if (config_.maxGroundFollowPerSecond <= 0.0f) {
+    config_.maxGroundFollowPerSecond = 0.25f;
+  }
 }
 
 ExplorationMotionState ExplorationMotion::reset(float groundHeight) const {
@@ -32,16 +35,11 @@ ExplorationMotionState ExplorationMotion::reset(float groundHeight) const {
 
 ExplorationMotionState ExplorationMotion::update(
     const ExplorationMotionState& input, const MotionInput& motionInput,
-    const TerrainHeightfield& terrain, float x, float y,
-    float dtSeconds, const MotionGroundOverride* groundOverride) const {
+    const TerrainHeightfield& terrain, double x, double y,
+    float dtSeconds) const {
   ExplorationMotionState state = input;
   if (!finiteDt(dtSeconds)) return state;
-  // 地面高度：默认取地形采样；宿主层可覆盖为合成支撑面（建筑盒顶）。
-  const float ground =
-      (groundOverride != nullptr && groundOverride->active &&
-       std::isfinite(groundOverride->groundHeight))
-          ? groundOverride->groundHeight
-          : terrain.heightAt(x, y);
+  const float ground = terrain.heightAt(x, y);
   const bool inWater = terrain.waterAt(x, y);
   const float waterLevel = terrain.config().waterLevel;
   bool consumed = false;
@@ -76,14 +74,15 @@ ExplorationMotionState ExplorationMotion::update(
         break;
       }
       // 走离悬崖边缘：地面单帧下降超过台阶上限时进入坠落，而不是
-      // 贴地瞬移滑下崖壁（与地形墙阻挡配套，补全悬崖的碰撞语言）。
+      // 贴地瞬移滑下自然崖壁。
       if (state.height - ground > config_.maxStepDown) {
         state.state = MotionState::Airborne;
         state.verticalVelocity = 0.0f;
         break;
       }
-      // 贴地：地面高度连续跟随，避免悬空或陷入地形。
-      state.height = ground;
+      // 贴地限速跟随：跨块或高差边界不得单帧瞬移。
+      const float maxFollow = config_.maxGroundFollowPerSecond * dtSeconds;
+      state.height += std::clamp(ground - state.height, -maxFollow, maxFollow);
       state.verticalVelocity = 0.0f;
       // 陡坡/墙面攀爬：在可攀爬面上移动或正贴墙朝墙推进即进入攀爬，
       // 持续消耗体力；体力耗尽后退回站立，允许缓慢挪过陡坡但不能持续攀行。

@@ -42,9 +42,3 @@ EnvironmentQualityProfile EnvironmentQualityProfileFor(int perfLevel) {
   }
   return profile;
 }
-
-std::array<int, 3> VisualTerrainLodFallbackOrder(int desiredLod) {
-  if (desiredLod <= 0) return {0, 1, 2};
-  if (desiredLod == 1) return {1, 2, 0};
-  return {2, 1, 0};
-}

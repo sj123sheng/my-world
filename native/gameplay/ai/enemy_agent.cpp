@@ -195,8 +195,11 @@ bool EnemyAgent::updateEscapeTracking(const EnemyActionPlan& plan, Tick tick,
   }
   if (tick < nextProgressDecisionTick_ || tick <= lastProgressDecisionTick_) return false;
 
+  // 已抵达目标点（如留白环形槽位）时原地待命属于预期行为，不计入无进展，
+  // 避免误触发 BreakFree 直冲安全点、从主角身边穿过。
   const float progress = bestRemainingDistance_ - remainingDistance;
-  if (progress >= tuning_.minimumProgress) {
+  if (remainingDistance <= tuning_.minimumProgress ||
+      progress >= tuning_.minimumProgress) {
     bestRemainingDistance_ = remainingDistance;
     noProgressDecisions_ = 0;
   } else if (noProgressDecisions_ < tuning_.noProgressDecisionLimit) {
@@ -315,7 +318,10 @@ EnemyUpdateResult EnemyAgent::update(const EnemyUpdateInput& input) {
     intent = EnemyIntent::BreakFree;
   }
 
-  const Vec2 separation = separationFor(world);
+  // 交战留白（Plan 2 Task 7）：接线后环形槽位目标已叠加分离偏移，
+  // 跳过 agent 内部二次分离，避免双重推挤；未接线时保留原口径。
+  const bool engagementConfigured = world.engagementRange.ideal > 0.0f;
+  const Vec2 separation = engagementConfigured ? Vec2{} : separationFor(world);
   EnemyActionPlan plan;
   if (arrivedAtSafePoint || staggerLatched_) {
     plan = EnemyActionPlan{};
@@ -358,7 +364,30 @@ EnemyUpdateResult EnemyAgent::update(const EnemyUpdateInput& input) {
   if (execution.state == EnemyAiState::Idle) result.state = plan.state;
   result.phase = execution.phase;
   result.desiredPosition = plan.desiredPosition;
-  result.movement = plan.movement.finite() ? plan.movement : Vec2{};
+  Vec2 movement = plan.movement.finite() ? plan.movement : Vec2{};
+  if (engagementConfigured && execution.phase == EnemyActionPhase::Windup) {
+    // 前摇保持站位：突进统一交给 Active 帧，避免前摇期间贴穿最小空挡。
+    movement = Vec2{};
+  } else if (engagementConfigured && execution.phase == EnemyActionPhase::Active) {
+    if (!world.engagementRange.lungeOnActive) {
+      // 远程站桩输出：Active 不突进，保持理想距离带。
+      movement = Vec2{};
+    } else {
+      // 近战 Active 允许突进贴近，但钳制在最小空挡之外，不越过 minimum。
+      // 突进方向取主角（攻击目标）而非 plan.desiredPosition——后者在
+      // Active 期间已被重新规划为环形槽位，会把突进拽回环上。
+      const Vec2 toward = world.playerPosition - world.selfPosition;
+      const float targetDistance = toward.length();
+      if (!toward.finite() || !std::isfinite(targetDistance) ||
+          targetDistance <= world.engagementRange.minimum) {
+        movement = Vec2{};
+      } else {
+        const float allowed = targetDistance - world.engagementRange.minimum;
+        movement = toward * (allowed / targetDistance);
+      }
+    }
+  }
+  result.movement = movement;
   result.separation = separation;
   result.hit = execution.hit;
   result.effect = execution.effect;

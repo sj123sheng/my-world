@@ -57,9 +57,6 @@ export struct ExplorationHud {
   @Prop explorationTraversalMask: number = 0;
   @Prop explorationCurrentTargetLabel: string = '';
   @Prop explorationCurrentTargetDistrict: string = '';
-  @Prop explorationBlockedGateId: number = -1;
-  @Prop explorationBlockedGateLabel: string = '';
-  @Prop explorationBlockedByPuzzleLabel: string = '';
 
   private activeCharacterName(): string {
     switch (this.activeCharacterId) {
@@ -302,29 +299,8 @@ export struct ExplorationHud {
       .markAnchor({ x: 176, y: 0 })
       .hitTestBehavior(HitTestMode.None)
 
-      // 支线任务追踪条：小地图下方，三条支线进度与每日委托。
-      if (this.explorationBlockedGateId >= 0) {
-        Column({ space: 2 }) {
-          Text('路径受阻')
-            .fontSize(12)
-            .fontWeight(FontWeight.Bold)
-            .fontColor('#F08A72')
-          Text(this.explorationBlockedGateLabel)
-            .fontSize(10)
-            .fontColor('#F2E0B8')
-          if (this.explorationBlockedByPuzzleLabel.length > 0) {
-            Text(`需要激活：${this.explorationBlockedByPuzzleLabel}`)
-              .fontSize(9)
-              .fontColor('#9FD8CB')
-          }
-        }
-        .alignItems(HorizontalAlign.Start)
-        .padding({ left: 8, right: 8, top: 6, bottom: 6 })
-        .backgroundColor('rgba(10, 14, 22, 0.72)')
-        .borderRadius(8)
-        .position({ x: 140, y: 84 })
-        .hitTestBehavior(HitTestMode.Transparent)
-      } else if (this.explorationCurrentTargetLabel.length > 0) {
+      // 支线任务追踪条：小地图下方显示自然区域探索进度。
+      if (this.explorationCurrentTargetLabel.length > 0) {
         Column({ space: 2 }) {
           Text(this.explorationCurrentTargetLabel)
             .fontSize(12)

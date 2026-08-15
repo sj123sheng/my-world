@@ -21,6 +21,7 @@ inline constexpr EGLContext EGL_NO_CONTEXT = nullptr;
 #include <algorithm>
 #include <random>
 #include <cstdint>
+#include <map>
 #include <mutex>
 #include <unordered_map>
 #include <utility>
@@ -37,10 +38,8 @@ inline constexpr EGLContext EGL_NO_CONTEXT = nullptr;
 #include "native/engine/render/shader_3d.h"
 #include "native/engine/render/bloom_pass.h"
 #include "native/engine/render/skinned_model.h"
-#include "native/engine/render/static_model.h"
 #include "native/engine/render/texture_asset.h"
 #include "native/engine/render/foliage_renderer.h"
-#include "native/engine/render/environment.h"
 #include "native/engine/world/terrain_heightfield.h"
 #include "native/engine/world/weather_system.h"
 #include <glm/vec3.hpp>
@@ -207,6 +206,14 @@ struct TargetMarkerRenderState {
   // 锁定目标元素归属（0=辉印 1=脉流 2=蚀质，-1=无元素）：
   // 指示环按 TargetMarkerColorFor 混入元素色提示目标系别。
   int element = -1;
+  // 手动锁定模式（Plan 2）：手动锁定环常亮，自动锁定随活跃窗口淡出。
+  bool manual = false;
+  // 锁定环可见度（0..1）：手动 0.92 基线；自动活跃 0.72 基线并按
+  // 活跃窗口衰减。渲染层直接用作环体 alpha。
+  float visibility = 0.0f;
+  // 锁定目标的世界模型缩放（与敌人渲染同口径）：指示环半径随体型
+  // 放大，确保环体落在实体接地阴影之外，不被模型本体遮挡。
+  float targetScale = 1.0f;
 };
 
 // 伤害飘字渲染状态：逻辑侧每帧生成，渲染层绘制为面向相机的
@@ -262,11 +269,16 @@ struct Surface {
   Mesh terrainMesh;
   Mesh waterMesh;
   Mesh skyMesh;
-  // 分块地形流式渲染：调度器由 Loop 注入（只读消费），
-  // terrainChunkMeshes 为已上传 GPU 的分块网格（chunk id → Mesh），
-  // 卸载路径沿用 abandonGpuResources/destroy 模式。
+  // 分块地形流式渲染（无限自然世界）：调度器由 Loop 注入（只读消费），
+  // 其生命周期（drainReady/applyUnloads）由 Loop 独占；渲染线程按
+  // CPU 缓存状态镜像 GPU 资源。terrainChunkMeshes 为已上传 GPU 的
+  // 分块网格（ChunkCoord → Mesh，网格保持块内局部坐标），绘制时按
+  // ChunkRenderTranslation 相对 renderOriginChunk 平移。
   StreamScheduler* streamScheduler = nullptr;
-  std::unordered_map<int32_t, Mesh> terrainChunkMeshes;
+  std::map<ChunkCoord, Mesh> terrainChunkMeshes;
+  // 渲染原点（玩家所在分块）：由 Loop 每帧同步；地形/植被的相对
+  // 原点平移与视锥剔除 AABB 都以该分块角点为渲染空间原点。
+  ChunkCoord renderOriginChunk{0, 0};
   // 逻辑层高度场只读指针：由 Loop 注入，渲染层据此贴地采样。
   const TerrainHeightfield* terrain = nullptr;
   // 主角脚底 3D 高度：逻辑层每帧写入（motionState.height），
@@ -329,17 +341,6 @@ struct Surface {
   // 敌人原型独立模型槽位（独立高模资产升级）：enemy_<archetype>.glb
   // 按需注入，缺失/解析失败时绘制回退共享 enemy.glb。
   std::array<PendingModelAsset, kEnemyArchetypeCount> enemyArchetypeModelAssets;
-  std::array<PendingModelAsset, 4> environmentAssets;
-  std::array<StaticModel, 4> environmentModels;
-  std::array<EnvironmentBatchStatus, 4> environmentStatuses{
-      EnvironmentBatchStatus::Empty, EnvironmentBatchStatus::Empty,
-      EnvironmentBatchStatus::Empty, EnvironmentBatchStatus::Empty};
-  // Phase 2 区块环境批次（blockId → 待上传字节/模型/状态）：
-  // block_<id>.glb 由应用层按玩家所在分块懒注入，仅在对应分块
-  // 激活时绘制；缺失的区块 GLB 保持 Empty，不影响全局批次。
-  std::unordered_map<int32_t, PendingModelAsset> blockEnvironmentAssets;
-  std::unordered_map<int32_t, StaticModel> blockEnvironmentModels;
-  std::unordered_map<int32_t, EnvironmentBatchStatus> blockEnvironmentStatuses;
   PendingModelAsset terrainMaterialAtlasAsset;
   PendingModelAsset terrainControlMapAsset;
   PendingModelAsset foliageAtlasAsset;
@@ -348,25 +349,17 @@ struct Surface {
   TextureAsset foliageAtlas;
   bool terrainMaterialReady = false;
   bool foliageAtlasReady = false;
-  std::unordered_map<int32_t, PendingModelAsset> visualTerrainAssets;
-  std::unordered_map<int32_t, StaticModel> visualTerrainModels;
-  std::unordered_map<int32_t, EnvironmentBatchStatus> visualTerrainStatuses;
   FoliageRenderer foliageRenderer;
-  std::vector<FoliageInstance> foliageInstances;
-  bool foliageScatterBuilt = false;
+  // 外围程序植被按 ChunkCoord 分块持有（块内局部坐标，由 Loop 按活动
+  // proceduralChunks 重建）；绘制时逐块叠加 ChunkRenderTranslation，
+  // 区块离开两圈缓存后与地形网格共用同一回收差量移除键。
+  std::map<ChunkCoord, std::vector<FoliageInstance>> foliageChunkBatches;
   GLuint directionalShadowFramebuffer = 0;
   GLuint directionalShadowDepthTexture = 0;
   int32_t directionalShadowSize = 0;
   glm::mat4 directionalShadowLightViewProjection{1.0f};
   bool directionalShadowReady = false;
-  EnvironmentController environmentController;
-  EnvironmentComposition environmentComposition =
-      EnvironmentController::defaultComposition();
   EnvironmentPalette environmentPalette = VisualTokens::environmentPalette();
-  EnvironmentRenderPlan environmentPlan;
-  Mesh fallbackPillarMesh;
-  Mesh fallbackWallMesh;
-  Mesh riftPlaneMesh;
   bool environmentReady = false;
   uint32_t environmentDrawCalls = 0;
   uint32_t environmentTriangles = 0;
@@ -375,7 +368,6 @@ struct Surface {
   uint32_t environmentWeatherDrawCalls = 0;
   uint32_t environmentWeatherTriangles = 0;
   int32_t environmentPerfLevel = 0;
-  StaticTextureTier loggedEnvironmentTextureTier = StaticTextureTier::Full;
   SkinnedModel playerModel;
   SkinnedModel enemyModel;
   SkinnedModel bossModel;
@@ -710,24 +702,6 @@ struct Surface {
         std::move(bytes));
   }
 
-  void setEnvironmentAsset(EnvironmentBatchKind kind, std::vector<uint8_t> bytes) {
-    std::lock_guard<std::mutex> lock(modelAssetMutex);
-    const size_t slot = static_cast<size_t>(kind);
-    if (slot < environmentAssets.size()) {
-      environmentAssets[slot].replace(std::move(bytes));
-      environmentStatuses[slot] = EnvironmentBatchStatus::Pending;
-    }
-  }
-
-  // 注入区块批次字节（blockId ∈ [0, kEnvironmentBlockCount)）；
-  // 解析与上传由 current GL context 下的渲染路径完成。
-  void setBlockEnvironmentAsset(int32_t blockId, std::vector<uint8_t> bytes) {
-    if (blockId < 0 || blockId >= kEnvironmentBlockCount) return;
-    std::lock_guard<std::mutex> lock(modelAssetMutex);
-    blockEnvironmentAssets[blockId].replace(std::move(bytes));
-    blockEnvironmentStatuses[blockId] = EnvironmentBatchStatus::Pending;
-  }
-
   void setTerrainMaterialAssets(std::vector<uint8_t> atlas,
                                 std::vector<uint8_t> control) {
     std::lock_guard<std::mutex> lock(modelAssetMutex);
@@ -740,20 +714,6 @@ struct Surface {
     foliageAtlasAsset.replace(std::move(atlas));
   }
 
-  void setVisualTerrainAsset(int32_t blockId, int32_t lod,
-                             std::vector<uint8_t> bytes) {
-    if (blockId < 0 || blockId >= kEnvironmentBlockCount || lod < 0 || lod > 2) {
-      return;
-    }
-    const int32_t key = blockId * 3 + lod;
-    std::lock_guard<std::mutex> lock(modelAssetMutex);
-    visualTerrainAssets[key].replace(std::move(bytes));
-  }
-
-  bool shouldDrawEnvironmentFallback() const {
-    return environmentStatuses[0] != EnvironmentBatchStatus::Ready ||
-           environmentStatuses[1] != EnvironmentBatchStatus::Ready;
-  }
 };
 
 bool surface_init(Surface& s, OHNativeWindow* window);

@@ -1,4 +1,6 @@
 #include "native/engine/render/camera_render_state.h"
+#include "native/engine/render/environment.h"
+#include "native/engine/world/world_position.h"
 #include "native/gameplay/player/player_controller.h"
 #include "native/gameplay/targeting/soft_targeting.h"
 
@@ -14,9 +16,52 @@ bool close(float actual, float expected) {
 
 Vec2 difference(Vec2 lhs, Vec2 rhs) { return lhs - rhs; }
 
+void testChunkRenderTranslationAtExtremeOrigin() {
+  // 极远原点（10^12）下相邻块平移必须有限且精确：先按 long double
+  // 求整数分块差再转 float，避免先转 float 造成的精度塌缩。
+  const ChunkCoord origin{1000000000000LL, -1000000000000LL};
+  const LocalPosition local{0.75f, 0.25f};
+  const glm::vec3 east =
+      ChunkRenderTranslation({origin.x + 1, origin.y}, origin, local);
+  assert(std::isfinite(east.x) && std::isfinite(east.y) &&
+         std::isfinite(east.z));
+  assert(close(east.x, 1.0f));
+  assert(close(east.y, 0.0f));
+  assert(close(east.z, 0.0f));
+
+  const glm::vec3 southWest =
+      ChunkRenderTranslation({origin.x - 2, origin.y + 3}, origin, local);
+  assert(close(southWest.x, -2.0f));
+  assert(close(southWest.z, 3.0f));
+
+  // 玩家所在分块平移为零（渲染原点即原点分块角点）。
+  const glm::vec3 self = ChunkRenderTranslation(origin, origin, local);
+  assert(close(self.x, 0.0f) && close(self.y, 0.0f) && close(self.z, 0.0f));
+
+  // 超远目标差值超出 float 安全整数范围时钳制为有限值。
+  const glm::vec3 far = ChunkRenderTranslation(
+      {origin.x + 9000000000000LL, origin.y}, origin, local);
+  assert(std::isfinite(far.x) && std::isfinite(far.z));
+}
+
+void testChunkRenderCommitRespectsActiveRadius() {
+  // 超出活动半径的目标块不提交 GPU 网格（切比雪夫距离判定）。
+  const ChunkCoord origin{1000000000000LL, -1000000000000LL};
+  assert(ChunkRenderCommittable(origin, origin, 4));
+  assert(ChunkRenderCommittable({origin.x + 4, origin.y - 4}, origin, 4));
+  assert(!ChunkRenderCommittable({origin.x + 5, origin.y}, origin, 4));
+  assert(!ChunkRenderCommittable({origin.x, origin.y + 5}, origin, 4));
+  assert(!ChunkRenderCommittable({origin.x - 5, origin.y - 5}, origin, 4));
+  // 低画质半径收缩后判定同步收缩。
+  assert(ChunkRenderCommittable({origin.x + 2, origin.y + 2}, origin, 2));
+  assert(!ChunkRenderCommittable({origin.x + 3, origin.y}, origin, 2));
+}
+
 }  // namespace
 
 int main() {
+  testChunkRenderTranslationAtExtremeOrigin();
+  testChunkRenderCommitRespectsActiveRadius();
   const Vec2 worldPoint{0.75f, 0.65f};
   const CameraRenderState neutral({0.5f, 0.5f}, 0.0f, 0.45f, 0.35f,
                                   0.45f, 0.35f);

@@ -3,6 +3,7 @@
 #include "combat_region.h"
 #include "enemy_agent.h"
 #include "enemy_archetypes.h"
+#include "engagement_spacing.h"
 #include "gameplay/entities/enemy.h"
 
 #include <algorithm>
@@ -247,7 +248,8 @@ bool EncounterSnapshot::operator==(const EncounterSnapshot& other) const {
          playerHp == other.playerHp && levelStage == other.levelStage &&
          gateState == other.gateState && supplyState == other.supplyState &&
          boss == other.boss && enemies == other.enemies &&
-         candidates == other.candidates;
+         candidates == other.candidates &&
+         selectedTargetId == other.selectedTargetId;
 }
 
 EncounterController::EncounterController(CombatController& combat)
@@ -359,8 +361,17 @@ void EncounterController::stop() {
   refreshSnapshot(false);
 }
 
+void EncounterController::rebindSelectedTarget(EntityId id) {
+  // 唯一目标数据流（Plan 2）：击杀复核重选后由 Loop 同帧回写，
+  // 避免 encounter 快照停留在已被击杀的旧锁定 ID。
+  snapshot_.selectedTargetId = id;
+}
+
 void EncounterController::update(const EncounterFrameInput& input) {
   events_ = {};
+  // 唯一目标数据流（Plan 2）：记录 Loop 本步传入的锁定 ID，
+  // 供集成回归核对攻击/表现是否共享同一目标。
+  snapshot_.selectedTargetId = input.targetId;
   if (snapshot_.state != EncounterState::Running) return;
 
   const Tick tick = std::max(lastTick_, input.tick);
@@ -417,8 +428,7 @@ void EncounterController::update(const EncounterFrameInput& input) {
     const Tick basicCastBefore = boss_.snapshot().basicAttackCastRemainingMs;
     boss_.update({tick, dtMs, combat_.snapshot().resonance > 0,
                   ultimateUsed, nextSequence_, input.playerPosition,
-                  combat_.snapshot().playerHp > 0,
-                  input.positionResolver});
+                  combat_.snapshot().playerHp > 0});
     // 首领普攻挥击落地：冷却/前摇驱动的周期性近战结算，
     // 闪避无敌帧同样可规避（applyEnemyHit 内部判定）。
     if (basicCastBefore > 0 &&
@@ -533,6 +543,14 @@ void EncounterController::update(const EncounterFrameInput& input) {
   std::vector<std::pair<EnemySlot*, EnemyUpdateResult>> results;
   results.reserve(enemies_.size());
   const CombatRegion region(config_.region);
+  // 交战留白（Plan 2 Task 7）：同一玩家目标下的存活参与者按 ID 排序，
+  // 共享同一环形槽位分配。
+  std::vector<EntityId> participants;
+  participants.reserve(enemies_.size());
+  for (const std::unique_ptr<EnemySlot>& slot : enemies_) {
+    if (slot->target.alive()) participants.push_back(slot->enemy.id);
+  }
+  std::sort(participants.begin(), participants.end());
   for (const std::unique_ptr<EnemySlot>& slot : enemies_) {
     EnemyWorldView world;
     world.tick = tick;
@@ -557,6 +575,22 @@ void EncounterController::update(const EncounterFrameInput& input) {
            ally->enemy.shield, ally->enemy.position, ally->target.alive(),
            region.contains(ally->enemy.position)});
     }
+    // 交战留白：原型距离、环形槽位与邻居分离注入世界视图。
+    const EngagementRange engagementRange =
+        EngagementRangeFor(slot->enemy.archetype, 0.0f, false);
+    world.engagementRange = engagementRange;
+    world.engagementSlot =
+        EngagementSlotPosition(slot->enemy.id, input.playerPosition,
+                               engagementRange.ideal, participants);
+    std::vector<EngagementNeighbor> engagementNeighbors;
+    engagementNeighbors.reserve(enemies_.size());
+    for (const std::unique_ptr<EnemySlot>& other : enemies_) {
+      if (other.get() == slot.get() || !other->target.alive()) continue;
+      engagementNeighbors.push_back({other->enemy.id, other->enemy.position});
+    }
+    world.separationOffset = SeparationOffset(
+        slot->enemy.id, slot->enemy.position, engagementNeighbors,
+        engagementRange.minimum);
 
     EnemyExecutionContext execution;
     execution.targetAlive = combat_.snapshot().playerHp > 0;
@@ -602,11 +636,6 @@ void EncounterController::update(const EncounterFrameInput& input) {
     const Vec2 previous = slot->enemy.position;
     slot->enemy.position =
         advancePosition(previous, result.movement, dtMs, region);
-    // 宿主层碰撞解算：把敌人从建筑等障碍内推出并沿墙滑动，
-    // 位置修正回写权威逻辑位置，战斗距离判定与渲染严格一致。
-    if (input.positionResolver) {
-      input.positionResolver(slot->enemy.position, kEnemyCollisionRadius);
-    }
     const Vec2 facing = input.playerPosition - slot->enemy.position;
     const float length = facing.length();
     if (facing.finite() && std::isfinite(length) && length > 0.0f) {

@@ -1,5 +1,71 @@
 # 技术决策
 
+## 2026-08-15：统一目标锁定与敌人留白（Plan 2）
+
+- 目标唯一真值：TargetLockController 统一管理自动/手动锁定。自动模式取
+  最近存活候选为稳定目标；手动单击按 ID 排序循环切换候选，500ms 长按
+  解除锁定；目标死亡或超出距离当帧自动重选。结算、VFX、镜头与表现统一
+  读同一目标 ID，击杀复核后 `encounter.rebindSelectedTarget()` 同帧回写，
+  无一帧分叉。锁定按钮经 N-API 动作值接入输入队列。
+- 敌人留白统一口径：`engagement_spacing` 纯函数给出原型交战距离
+  （近战 minimum 0.08 / ideal 0.14 / attack 0.25 / maxPursuit 0.60；
+  远程 0.16 / 0.30 / 4.0 / 6.0；Boss minimum = max(0.14, 体型半径×1.5)）、
+  环形槽位（参与者按 ID 排序、角间距 2π/N、基准角取最小 ID 稳定哈希）
+  与邻居分离（minimum 内推离、完全重叠用无序 ID 对稳定哈希方向）。
+- 决策与走位：DecisionPolicy 消费快照注入的留白——低于 minimum 后撤、
+  能力射程内攻击、超距追向槽位；ideal 只作环形槽位半径，不收紧攻击门
+  （用 ideal 做攻击门会破坏远程与集成测试）。TacticalPlanner 追击沿理想
+  环弧线逐帧转向槽位角度，避免直线弦切从主角身边穿过；远离环时才直线
+  奔向槽位。
+- 攻击节奏与留白：Windup 站桩、近战 Active 向主角突进但钳制在 minimum
+  之外（`lungeOnActive` 按原型区分，远程站桩不突进）、Recovery 沿弧线
+  回到理想环。抵达槽位原地待命不计入“无进展”，避免误触发 BreakFree
+  直冲安全点。Encounter/WildSpawn 每帧按仇恨组收集存活参与者（ID 排序）
+  共享槽位；Boss 单独用体型距离。movement resolver 只写敌人位置，从不
+  改写主角位置；最大追击仍受出生区域钳制，不因无限地图取消脱战。
+- 验证方式：11 个聚焦测试 + Bridge 契约 + 完整宿主测试集 107 pass / 0 fail
+  （仅跳过 test_fence_wait）+ `git diff --check` + Hvigor assembleHap
+  BUILD SUCCESSFUL；600 帧群敌重放确定性无重叠、无 NaN、主角无强制位移。
+  真机验收清单记录于 TASKS.md 待办。
+
+## 2026-08-14：无限自然世界坐标、流送、渲染与存档迁移
+
+- 位置真值改为 `WorldPosition = ChunkCoord + LocalPosition`（int64 分块 +
+  [0,1) 局部浮点）。`NormalizeWorldPosition` 用 `std::floor` 转移跨块量，
+  非有限输入回退原点；`StableChunkHash` 先 memcpy 重解释坐标再做无符号
+  SplitMix64 混合，全部溢出发生在 uint64_t，负坐标与超远坐标确定且有限；
+  `RelativeWorldPosition` 经 long double 求分块差并钳制 ±16777216。
+- 活动范围固定：高/中/低画质活动半径 4/3/2（9×9/7×7/5×5），不得以性能
+  为由缩小；额外保留两圈缓存（keep 半径 = activeRadius + 2），超出后
+  网格、生态、外围实体与 GPU 资源同时回收。加载顺序为中心、相邻圈、
+  相机/移动前方、距离、坐标的稳定排序。
+- 地形分区：核心区 = `ChunkCoord{0,0}` 内旧 [0,1] 范围，保留手工特征；
+  外围用连续解析缓坡（总幅度 ≤0.025、有限差分坡度 <0.45），手工特征在
+  核心区四边 0.08 过渡带衰减到零，相邻块边界完全一致；生态盐只影响材质。
+- 渲染相对原点：渲染空间以玩家分块角点为原点，玩家锚定局部坐标；
+  `ChunkRenderTranslation` 输出 long double 计算并钳制的整数分块差，
+  10^12 级坐标不损失精度。GPU 网格只提交活动半径内的块
+  （`ChunkRenderCommittable`）；Loop 拥有调度器生命周期，渲染线程把
+  CPU 缓存镜像到 GPU，离开缓存的块按同一回收差量同步移除地形网格与
+  植被批次键（`EraseUnloadedChunkResources`）。
+- 外围内容：`ProceduralChunkContent` 由分盐 `StableChunkHash` 确定性
+  生成植被/敌人/采集物，状态有界；区块卸载时关联敌人离场并清理锁定、
+  血条与动画状态，重新加载同块生成相同原型和位置。
+- 人工结构彻底移除：建筑/遗迹/祭坛/围墙/路径门从 world.json、schema、
+  生成清单、ArkTS 资源清单、碰撞与渲染链删除；原 puzzle ID 70–73 迁为
+  自然节点、gate ID 80–83 迁为区域触发，`explorationGateMask` 磁盘位置
+  不变改作区域触发完成掩码，V1–V9 旧掩码语义保留。
+- 存档 V10：追加 worldSeed、playerChunkX/Y（int64）、playerLocalX/Y；
+  V1–V9 读取时世界位置迁移到核心区出生坐标；局部坐标写入用 classic
+  locale + max_digits10，读取因 OHOS BiSheng libc++ 缺浮点 `from_chars`
+  改用 classic locale `istringstream` + double 复探（区分 ERANGE 与非法
+  数字），denorm_min/nextafter(1,0) 往返与坏令牌拒绝契约由 test_save_v8
+  锁定。
+- 验证方式：聚焦纯逻辑测试 + 完整宿主测试集（105 pass/0 fail，仅跳过
+  test_fence_wait）+ Bridge/视觉资产 Node 契约 + glslangValidator +
+  Hvigor assembleHap（BUILD SUCCESSFUL）。真机 FPS/内存、连续跨块与
+  人工结构不可见的设备验收记录于 TASKS.md 待办。
+
 ## 2026-08-12：出生安全区、真实速度步态与停步自由环绕
 
 - 删除 `world.json` 的 `sz_spawn_scout`，出生台地不再配置追击型野外敌人；训练假人和其他区域刷怪保持不变。世界 JSON 仍是刷怪布局的唯一事实来源，不增加运行时 zone 特判。

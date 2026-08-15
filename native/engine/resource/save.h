@@ -54,15 +54,21 @@ struct SaveState {
   int32_t openWorldQuestMask = 0;
   // 开放世界支线当前接取任务 id（-1 = 无）。
   int32_t openWorldQuestActiveId = -1;
-  // 垂直切片探索状态（V9）：POI/机关/奖励/路径门位掩码与移动能力位掩码。
+  // 垂直切片探索状态（V9）：POI/机关/奖励/路径门与移动能力位掩码。
   int32_t explorationPoiMask = 0;
   int32_t explorationPuzzleMask = 0;
   int32_t explorationRewardMask = 0;
   int32_t explorationGateMask = 0;
   int32_t explorationTraversalMask = 0;
+  // 无限世界位置（V10）：区块坐标承载超远距离，局部坐标限制在 [0, 1)。
+  uint64_t worldSeed = 1;
+  int64_t playerChunkX = 0;
+  int64_t playerChunkY = 0;
+  float playerLocalX = 0.5f;
+  float playerLocalY = 0.12f;
 };
 struct Save {
   bool write(const SaveState& s, const char* path);
-  // 兼容 v1-v9（垂直切片探索状态）存档。
+  // 兼容 v1-v10 存档；旧版本世界位置迁移到核心区出生点。
   bool read(SaveState& out, const char* path);
 };

@@ -20,8 +20,16 @@ int main() {
   PerceptionSnapshot facts = observeDefaults();
   assert(policy.choose(facts, EnemyArchetype::RiftClaw) == EnemyIntent::Chase);
 
+  // 近战交战留白（minimum 0.08 / attack 0.25）：贴身过近后撤、能力射程
+  // 内攻击、超出射程追击。
+  facts.playerDistance = 0.04f;
+  assert(policy.choose(facts, EnemyArchetype::RiftClaw) == EnemyIntent::Retreat);
+  facts.playerDistance = 0.14f;
+  assert(policy.choose(facts, EnemyArchetype::RiftClaw) == EnemyIntent::Attack);
   facts.playerDistance = 0.2f;
   assert(policy.choose(facts, EnemyArchetype::RiftClaw) == EnemyIntent::Attack);
+  facts.playerDistance = 0.5f;
+  assert(policy.choose(facts, EnemyArchetype::RiftClaw) == EnemyIntent::Chase);
 
   facts.selfAlive = false;
   assert(policy.choose(facts, EnemyArchetype::RiftClaw) == EnemyIntent::Idle);
@@ -68,14 +76,32 @@ int main() {
 
   facts.allies[0].shield = fp(10);
   facts.allies[1].shield = fp(10);
-  facts.playerDistance = 0.5f;
+  // 远程交战留白（minimum 0.16 / attack 4.0）：近身后撤、能力射程内施法、
+  // 超出射程拉回。
+  facts.playerDistance = 0.10f;
   assert(policy.choose(facts, EnemyArchetype::Priest) == EnemyIntent::Retreat);
 
-  facts.playerDistance = 2.0f;
+  facts.playerDistance = 0.30f;
+  assert(policy.choose(facts, EnemyArchetype::Priest) == EnemyIntent::Attack);
+
+  facts.playerDistance = 0.5f;
   assert(policy.choose(facts, EnemyArchetype::Priest) == EnemyIntent::Attack);
 
   facts.playerDistance = 5.0f;
+  assert(policy.choose(facts, EnemyArchetype::Priest) == EnemyIntent::Chase);
+
+  facts.playerDistance = 5.0f;
   assert(policy.choose(facts, EnemyArchetype::Guard) == EnemyIntent::Chase);
+
+  // 快照注入的留白优先于原型推导：Boss 空挡口径直接驱动分支。
+  PerceptionSnapshot custom = observeDefaults();
+  custom.engagementRange = {0.2f, 0.4f, 0.5f, 1.0f};
+  custom.playerDistance = 0.15f;
+  assert(policy.choose(custom, EnemyArchetype::RiftClaw) == EnemyIntent::Retreat);
+  custom.playerDistance = 0.3f;
+  assert(policy.choose(custom, EnemyArchetype::RiftClaw) == EnemyIntent::Attack);
+  custom.playerDistance = 0.7f;
+  assert(policy.choose(custom, EnemyArchetype::RiftClaw) == EnemyIntent::Chase);
 
   const EnemyIntent expected = policy.choose(facts, EnemyArchetype::Guard);
   for (int iteration = 0; iteration < 100; ++iteration) {

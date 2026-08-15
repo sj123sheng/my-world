@@ -3,12 +3,13 @@
 #include "native/engine/math/vec2.h"
 #include "native/gameplay/player/exploration_motion.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
 
-// 单区垂直切片的探索内容模型。定义由 verticalSlice() 集中提供，运行时只维护
-// 内容状态，不解析 JSON；世界布局 JSON 仍由构建期代码生成器负责校验和生成。
+// 单区垂直切片的自然探索内容模型。定义由 verticalSlice() 集中提供，运行时
+// 只维护状态，不解析 JSON；世界布局 JSON 由构建期代码生成器负责校验和生成。
 struct PointOfInterest {
   int32_t id = 0;
   float x = 0.0f;
@@ -18,25 +19,22 @@ struct PointOfInterest {
   bool mainRoute = false;
 };
 
-struct PuzzleNode {
+struct NaturalNode {
   int32_t id = 0;
   float x = 0.0f;
   float y = 0.0f;
   std::string label;
   MotionState requiredMotion = MotionState::Grounded;
-  int32_t opensGateId = -1;
   int32_t rewardId = -1;
 };
 
-struct TraversalGate {
+struct RegionTrigger {
   int32_t id = 0;
   float x = 0.0f;
   float y = 0.0f;
+  float radius = 0.0f;
   std::string label;
-  MotionState requiredMotion = MotionState::Grounded;
-  float halfExtents[2] = {0.0f, 0.0f};
-  float yaw = 0.0f;
-  float top = 0.0f;
+  int32_t prerequisiteNodeId = -1;
 };
 
 struct ExplorationReward {
@@ -61,8 +59,8 @@ enum class TraversalAbility : uint8_t {
 enum class ExplorationTargetKind : uint8_t {
   None = 0,
   PointOfInterest = 1,
-  Puzzle = 2,
-  TraversalGate = 3,
+  NaturalNode = 2,
+  RegionTrigger = 3,
   Reward = 4,
 };
 
@@ -75,8 +73,10 @@ struct ExplorationTarget {
 
 struct ExplorationProgress {
   int32_t discoveredPoiCount = 0;
+  // 字段名为快照/Bridge 兼容保留，语义是已激活自然节点数。
   int32_t activatedPuzzleCount = 0;
   int32_t claimedRewardCount = 0;
+  // 字段名为快照/Bridge 兼容保留，语义是已完成区域数。
   int32_t openGateCount = 0;
   int32_t completedTraversalCount = 0;
 };
@@ -87,25 +87,29 @@ class ExplorationContent {
 
   ExplorationTarget nearestTarget(Vec2 position, float radius) const;
   bool discoverPoint(int32_t poiId);
-  bool activatePuzzle(int32_t puzzleId, MotionState currentMotion);
+  bool activateNaturalNode(int32_t id, MotionState currentMotion);
+  bool enterRegion(int32_t id, Vec2 playerPosition);
   bool claimReward(int32_t rewardId);
   void recordTraversal(TraversalAbility ability);
 
   bool isPointDiscovered(int32_t poiId) const;
-  bool isPuzzleActivated(int32_t puzzleId) const;
-  bool isGateOpen(int32_t gateId) const;
-  const TraversalGate* gateById(int32_t gateId) const;
-  const PuzzleNode* puzzleById(int32_t puzzleId) const;
+  bool isNaturalNodeActivated(int32_t id) const;
+  bool isRegionCompleted(int32_t id) const;
+  const RegionTrigger* regionById(int32_t id) const;
+  const NaturalNode* naturalNodeById(int32_t id) const;
   bool isRewardClaimed(int32_t rewardId) const;
   bool traversalUsed(TraversalAbility ability) const;
   ExplorationProgress progress() const;
 
   const std::vector<PointOfInterest>& pointsOfInterest() const { return pois_; }
-  const std::vector<PuzzleNode>& puzzles() const { return puzzles_; }
-  const std::vector<TraversalGate>& gates() const { return gates_; }
+  const std::vector<NaturalNode>& naturalNodes() const { return naturalNodes_; }
+  const std::vector<RegionTrigger>& regionTriggers() const {
+    return regionTriggers_;
+  }
   const std::vector<ExplorationReward>& rewards() const { return rewards_; }
 
-  // 存档使用稳定的 bit mask：声明顺序分别对应 POI、机关、奖励和路径门。
+  // V9 磁盘顺序保持 POI、自然节点、奖励、完成区域；旧 gate API 名只为
+  // 存档/Bridge 兼容，第四个掩码及 openGateCount 的语义均为 completed regions。
   int32_t discoveredPoiMask() const;
   int32_t activatedPuzzleMask() const;
   int32_t claimedRewardMask() const;
@@ -116,29 +120,21 @@ class ExplorationContent {
 
  private:
   ExplorationContent(std::vector<PointOfInterest> pois,
-                     std::vector<PuzzleNode> puzzles,
-                     std::vector<TraversalGate> gates,
+                     std::vector<NaturalNode> naturalNodes,
+                     std::vector<RegionTrigger> regionTriggers,
                      std::vector<ExplorationReward> rewards);
-
-  template <typename T>
-  static bool hasId(const std::vector<T>& values, int32_t id) {
-    for (const T& value : values) {
-      if (value.id == id) return true;
-    }
-    return false;
-  }
 
   static bool motionMatches(MotionState required, MotionState current);
   static bool bitSet(int32_t mask, size_t index);
   static int32_t maskFrom(const std::vector<bool>& values);
 
   std::vector<PointOfInterest> pois_;
-  std::vector<PuzzleNode> puzzles_;
-  std::vector<TraversalGate> gates_;
+  std::vector<NaturalNode> naturalNodes_;
+  std::vector<RegionTrigger> regionTriggers_;
   std::vector<ExplorationReward> rewards_;
   std::vector<bool> discoveredPois_;
-  std::vector<bool> activatedPuzzles_;
+  std::vector<bool> activatedNaturalNodes_;
   std::vector<bool> claimedRewards_;
-  std::vector<bool> openGates_;
+  std::vector<bool> completedRegions_;
   uint8_t traversalMask_ = 0;
 };

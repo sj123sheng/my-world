@@ -12,7 +12,6 @@ struct Enemy {
   Vec2 spawnPosition;
   Vec2 safeReturnPosition;
   FixedPoint shield = 0;
-  float collisionRadius = 0.5f;
 
   bool alive() const { return id != 0 && hp > 0; }
 

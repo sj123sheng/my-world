@@ -19,6 +19,10 @@ enum class InputAction : uint8_t {
   GlideRelease,
   // 队伍动作：循环切换出战角色。
   SwitchCharacter,
+  // 目标锁定（Plan 2）：循环切换锁定目标 / 解除锁定。只追加，
+  // 不改动既有枚举数值，Bridge pushAction 11/12 一一映射。
+  CycleTarget,
+  ReleaseTargetLock,
 };
 
 struct InputEvent {

@@ -1,6 +1,87 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
+function allMatches(source, pattern) {
+  const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+  return [...source.matchAll(new RegExp(pattern.source, flags))];
+}
+
+function assertSourceSequence(
+  source, startPattern, endPattern, expressions, fieldReferencePattern) {
+  const start = source.search(startPattern);
+  assert.notEqual(start, -1, 'source sequence start marker must exist');
+  const tail = source.slice(start);
+  const end = tail.search(endPattern);
+  assert.ok(end > 0, 'source sequence end marker must follow its start');
+  const section = tail.slice(0, end);
+  let previousEnd = 0;
+  for (const { name, pattern } of expressions) {
+    const matches = allMatches(section, pattern);
+    assert.equal(matches.length, 1,
+      `${name} expression must appear exactly once in its source section`);
+    const match = matches[0];
+    assert.ok(match.index >= previousEnd,
+      `${name} expression must follow the preceding expression`);
+    assert.doesNotMatch(section.slice(previousEnd, match.index),
+      fieldReferencePattern,
+      `${name} must directly follow the preceding field expression`);
+    previousEnd = match.index + match[0].length;
+  }
+  assert.doesNotMatch(section.slice(previousEnd), fieldReferencePattern,
+    'source section must not contain an unexpected trailing field expression');
+}
+
+const sequenceFixture = 'BEGIN out << state.a; out << state.b; END';
+const sequenceExpressions = [
+  { name: 'a', pattern: /out\s*<<\s*state\.a/ },
+  { name: 'b', pattern: /out\s*<<\s*state\.b/ },
+];
+assert.doesNotThrow(() => assertSourceSequence(
+  sequenceFixture, /BEGIN/, /END/, sequenceExpressions, /\bstate\.\w+\b/));
+assert.throws(() => assertSourceSequence(
+  'BEGIN out << state.a; out << state.a; out << state.b; END',
+  /BEGIN/, /END/, sequenceExpressions, /\bstate\.\w+\b/));
+assert.throws(() => assertSourceSequence(
+  'BEGIN out << state.b; out << state.a; END',
+  /BEGIN/, /END/, sequenceExpressions, /\bstate\.\w+\b/));
+assert.throws(() => assertSourceSequence(
+  'BEGIN out << state.a; END', /BEGIN/, /END/, sequenceExpressions,
+  /\bstate\.\w+\b/));
+
+const tokenParseExpressions = [
+  { name: 'seed parse', pattern: /parse\(seedToken,\s*o\.seed\)/ },
+  { name: 'chunk X parse', pattern: /parse\(chunkXToken,\s*o\.chunkX\)/ },
+  { name: 'chunk Y parse', pattern: /parse\(chunkYToken,\s*o\.chunkY\)/ },
+  { name: 'local X parse', pattern: /parse\(localXToken,\s*o\.localX\)/ },
+  { name: 'local Y parse', pattern: /parse\(localYToken,\s*o\.localY\)/ },
+];
+const tokenReadExpressions = [
+  { name: 'seed token read', pattern: /f\s*>>\s*seedToken/ },
+  { name: 'chunk X token read', pattern: />>\s*chunkXToken/ },
+  { name: 'chunk Y token read', pattern: />>\s*chunkYToken/ },
+  { name: 'local X token read', pattern: />>\s*localXToken/ },
+  { name: 'local Y token read', pattern: />>\s*localYToken/ },
+];
+function assertReaderWorldFixture(source) {
+  assertSourceSequence(source, /BEGIN/, /parse\(/, tokenReadExpressions,
+    /\b(?:seed|chunkX|chunkY|localX|localY)Token\b/);
+  assertSourceSequence(source, /BEGIN/, /END/, tokenParseExpressions,
+    /\bo\.\w+\b/);
+}
+const correctReaderFixture = `BEGIN
+  f >> seedToken >> chunkXToken >> chunkYToken >> localXToken >> localYToken;
+  parse(seedToken, o.seed); parse(chunkXToken, o.chunkX);
+  parse(chunkYToken, o.chunkY); parse(localXToken, o.localX);
+  parse(localYToken, o.localY);
+END`;
+assert.doesNotThrow(() => assertReaderWorldFixture(correctReaderFixture));
+assert.throws(() => assertReaderWorldFixture(correctReaderFixture.replace(
+  'seedToken >> chunkXToken', 'chunkXToken >> seedToken')));
+assert.throws(() => assertReaderWorldFixture(correctReaderFixture.replace(
+  'chunkYToken >> localXToken', 'chunkYToken >> chunkYToken >> localXToken')));
+assert.throws(() => assertReaderWorldFixture(correctReaderFixture.replace(
+  ' >> localXToken', '')));
+
 const bridge = fs.readFileSync('entry/src/main/ets/napi/Bridge.ets', 'utf8');
 const declarations = fs.readFileSync('entry/src/main/cpp/types/libnative_game/Index.d.ts', 'utf8');
 const page = fs.readFileSync('entry/src/main/ets/pages/GamePage.ets', 'utf8');
@@ -10,6 +91,19 @@ const hud = fs.readFileSync('entry/src/main/ets/ui/Hud.ets', 'utf8');
 const ability = fs.readFileSync('entry/src/main/ets/EntryAbility.ets', 'utf8');
 const nativeBridge = fs.readFileSync('entry/src/main/cpp/native_bridge.cpp', 'utf8');
 const loop = fs.readFileSync('native/engine/core/loop.cpp', 'utf8');
+const explorationMotionHeader = fs.readFileSync(
+  'native/gameplay/player/exploration_motion.h', 'utf8');
+const explorationMotionImpl = fs.readFileSync(
+  'native/gameplay/player/exploration_motion.cpp', 'utf8');
+const encounterControllerHeader = fs.readFileSync(
+  'native/gameplay/ai/encounter_controller.h', 'utf8');
+const encounterControllerImpl = fs.readFileSync(
+  'native/gameplay/ai/encounter_controller.cpp', 'utf8');
+const bossHeader = fs.readFileSync('native/gameplay/entities/boss.h', 'utf8');
+const bossImpl = fs.readFileSync('native/gameplay/entities/boss.cpp', 'utf8');
+const wildSpawnHeader = fs.readFileSync(
+  'native/gameplay/ai/wild_spawn_system.h', 'utf8');
+const enemyHeader = fs.readFileSync('native/gameplay/entities/enemy.h', 'utf8');
 const controls = fs.existsSync('entry/src/main/ets/ui/CombatControls.ets')
   ? fs.readFileSync('entry/src/main/ets/ui/CombatControls.ets', 'utf8') : '';
 const joystick = fs.existsSync('entry/src/main/ets/ui/Joystick.ets')
@@ -41,15 +135,45 @@ for (const [label, type] of buttonActions) {
 // 探索动作 7（交互）由 ExplorationHud 发出，8/9（滑翔按下/松开）由 CombatControls 发出。
 const explorationHud = fs.existsSync('entry/src/main/ets/ui/ExplorationHud.ets')
   ? fs.readFileSync('entry/src/main/ets/ui/ExplorationHud.ets', 'utf8') : '';
-assert.match(loop,
-  /const auto enemyPositionResolver[\s\S]*buildingCollision\.resolve[\s\S]*explorationGateCollision\.resolve/,
-  'enemy and boss resolver must apply static buildings before dynamic gates');
+assert.doesNotMatch(loop,
+  /enemyPositionResolver|buildingCollision|explorationGateCollision|terrainWallCollision/,
+  'infinite natural world combat must not retain authored collision resolvers');
+assert.doesNotMatch(explorationMotionHeader + explorationMotionImpl,
+  /MotionGroundOverride|groundOverride/,
+  'removed building-top collision must not survive as a hidden motion override');
+assert.doesNotMatch(encounterControllerHeader + encounterControllerImpl +
+  bossHeader + bossImpl + wildSpawnHeader + enemyHeader,
+  /positionResolver|[Cc]ollisionRadius|建筑.*(?:障碍|推出)|碰撞解算/,
+  'enemy and boss motion must not retain hidden authored-collision resolver APIs');
+assert.match(loop, /motionInput\.wallClimbing\s*=\s*false;/,
+  'natural world loop must not synthesize authored wall climbing');
+assert.match(loop, /motionInput\.terrainClimbing\s*=\s*false;/,
+  'natural world loop must keep the removed terrain-collision input false');
 assert.match(explorationHud, /pushAction\(7\);/,
   'ExplorationHud must issue the interact action');
 assert.match(controls, /pushAction\(8\);/,
   'CombatControls must issue GlidePress on touch down');
 assert.match(controls, /pushAction\(9\);/,
   'CombatControls must issue GlideRelease on touch up');
+// 锁定按钮：单击循环目标（11），约 500ms 长按解除锁定（12），
+// 长按触发后松手不得再发 cycle，Cancel 不发送任何动作。
+assert.match(controls, /Button\(['"]锁定['"]\)/,
+  'CombatControls must provide a lock button');
+assert.match(controls,
+  /Button\(['"]锁定['"]\)(?:(?!Button\().)*\.hitTestBehavior\(HitTestMode\.Block\)(?:(?!Button\().)*\.onTouch/s,
+  'lock button must block its pointer before handling touch');
+assert.match(controls, /lockPressedAtMs: number/,
+  'lock button must record the press timestamp');
+assert.match(controls, /lockLongPressFired: boolean/,
+  'lock button must track whether the long press already fired');
+assert.match(controls, /this\.lockPressedAtMs = Date\.now\(\);/,
+  'lock button Down must record the press time');
+assert.match(controls,
+  /setTimeout\(\(\) => \{\s*this\.lockLongPressFired = true;\s*pushAction\(12\);\s*\}, 500\);/,
+  'lock button must fire ReleaseTargetLock after a 500ms long press');
+assert.match(controls,
+  /if \(!this\.lockLongPressFired\) \{\s*pushAction\(11\);\s*\}/,
+  'lock button Up must issue CycleTarget only when the long press has not fired');
 const blockingButtons = [
   '普攻', '闪避', '辉印', '脉流', '蚀质', '终结', '跳跃', '☰',
   '训练', '兽群', '混战', '守卫', '流程', '首领', '推进', '补给', '重试', '调试'
@@ -118,11 +242,11 @@ assert.match(pushActionBody, /!std::isfinite\(typeNumber\)/,
   'NativePushAction must reject non-finite numbers');
 assert.match(pushActionBody, /!TryConvertInt32\(typeNumber, type\)/,
   'NativePushAction must reject fractional numbers');
-assert.match(pushActionBody, /type < 0 \|\| type > 10/,
-  'NativePushAction must reject action types outside 0..10');
+assert.match(pushActionBody, /type < 0 \|\| type > 12/,
+  'NativePushAction must reject action types outside 0..12');
 assert.match(pushActionBody,
-  /kActions\[\]\s*=\s*\{\s*InputAction::Attack,\s*InputAction::Dodge,\s*InputAction::Radiance,\s*InputAction::Current,\s*InputAction::Corruption,\s*InputAction::Ultimate,\s*InputAction::Jump,\s*InputAction::Interact,\s*InputAction::GlidePress,\s*InputAction::GlideRelease,\s*InputAction::SwitchCharacter\s*\}/,
-  'NativePushAction mapping order must be 0..5 combat then 6 Jump, 7 Interact, 8 GlidePress, 9 GlideRelease, 10 SwitchCharacter');
+  /kActions\[\]\s*=\s*\{\s*InputAction::Attack,\s*InputAction::Dodge,\s*InputAction::Radiance,\s*InputAction::Current,\s*InputAction::Corruption,\s*InputAction::Ultimate,\s*InputAction::Jump,\s*InputAction::Interact,\s*InputAction::GlidePress,\s*InputAction::GlideRelease,\s*InputAction::SwitchCharacter,\s*InputAction::CycleTarget,\s*InputAction::ReleaseTargetLock\s*\}/,
+  'NativePushAction mapping order must be 0..5 combat then 6 Jump, 7 Interact, 8 GlidePress, 9 GlideRelease, 10 SwitchCharacter, 11 CycleTarget, 12 ReleaseTargetLock');
 assert.match(pushActionBody, /g_loop\.enqueueInput\(action, -1, 0\.0f, 0\.0f\)/,
   'NativePushAction must enqueue through Loop');
 
@@ -438,55 +562,36 @@ assert.match(nativeBridge,
   /CopyAndCommitModelAssets[\s\S]*?g_loop\.withLifecycle[\s\S]*?setModelAsset\(ModelKind::Player[\s\S]*?setModelAsset\(ModelKind::Enemy[\s\S]*?setModelAsset\(ModelKind::Boss/,
   'all copies must finish before one lifecycle-held, three-asset commit');
 
-// ---- M4 Task 2: four-batch environment bridge ----
-for (const batch of ['outer_ring', 'center_rift', 'backdrop', 'decoration']) {
-  assert.match(page,
-    new RegExp(`getRawFileContent\\(['"]environment/${batch}\\.glb['"]\\)`));
+// Task 8: the infinite natural world has no authored environment/block asset bridge.
+for (const source of [bridge, declarations, nativeBridge, page]) {
+  assert.doesNotMatch(source,
+    /nativeSetEnvironmentAssets|nativeSetBlockAsset|nativeSetVisualTerrainAsset|VisualTerrain/,
+    'authored environment and visual-terrain consumers must be removed');
 }
-assert.match(bridge, /export const nativeSetEnvironmentAssets/);
-assert.match(declarations,
-  /nativeSetEnvironmentAssets: \(outer: ArrayBuffer, center: ArrayBuffer,[\s\S]*?backdrop: ArrayBuffer, decoration: ArrayBuffer\) => boolean;/);
-assert.match(nativeBridge, /"nativeSetEnvironmentAssets", nullptr, NativeSetEnvironmentAssets/);
-const setEnvironmentAssetsBody = functionBody(nativeBridge,
-  'static napi_value NativeSetEnvironmentAssets');
-assert.match(setEnvironmentAssetsBody, /argc != 4/,
-  'NativeSetEnvironmentAssets must require exactly four arguments');
-assert.match(setEnvironmentAssetsBody, /CopyAndCommitEnvironmentAssets/);
-assert.match(setEnvironmentAssetsBody,
-  /CopyArrayBuffer\(env, args\[static_cast<size_t>\(slot\)\], out\)/);
-assert.match(setEnvironmentAssetsBody, /g_loop\.withLifecycle/);
-assert.match(loadModelAssetsBody,
-  /nativeSetModelAssets[\s\S]*?try[\s\S]*?nativeSetEnvironmentAssets[\s\S]*?catch/,
-  'character and environment assets must use separate failure domains');
+assert.doesNotMatch(page,
+  /loadEnvironmentBlocks|refreshEnvironmentBlocks|loadVisualTerrainSliceAssets|block_\$\{|block_\d+\.glb/,
+  'GamePage must not preload or refresh authored environment blocks');
 
-// ---- Environment vertical slice: terrain textures and authored visual terrain ----
+// ---- Environment vertical slice: natural terrain textures, no authored structures ----
 assert.match(bridge, /export const nativeSetTerrainAssets/,
   'Bridge must export terrain material asset upload');
-assert.match(bridge, /export const nativeSetVisualTerrainAsset/,
-  'Bridge must export authored visual terrain upload');
 assert.match(declarations,
   /nativeSetTerrainAssets: \(atlas: ArrayBuffer, control: ArrayBuffer\) => boolean;/,
   'native declarations must expose the terrain atlas/control pair');
-assert.match(declarations,
-  /nativeSetVisualTerrainAsset: \(blockId: number, lod: number, bytes: ArrayBuffer\) => boolean;/,
-  'native declarations must expose block and LOD addressed visual terrain');
 assert.match(nativeBridge, /"nativeSetTerrainAssets", nullptr, NativeSetTerrainAssets/);
 assert.match(nativeBridge, /"nativeSetFoliageAtlas", nullptr, NativeSetFoliageAtlas/);
-assert.match(nativeBridge, /"nativeSetVisualTerrainAsset", nullptr, NativeSetVisualTerrainAsset/);
 assert.match(page, /TERRAIN_ATLAS_ASSET/,
   'GamePage must load the schema-generated terrain atlas path');
 assert.match(page, /TERRAIN_CONTROL_ASSET/,
   'GamePage must load the schema-generated control map path');
 assert.match(page, /FOLIAGE_ATLAS_ASSET/,
   'GamePage must load the schema-generated foliage atlas path');
-assert.match(page, /VISUAL_TERRAIN_RESOURCES/,
-  'GamePage must load schema-generated visual terrain block/LOD resources');
-assert.match(environmentManifest, /blockId: 4/);
-assert.match(environmentManifest, /environment\/visual_terrain\/block_20_lod2\.glb/);
-const loadVisualTerrainBody = functionBody(page,
-  'private async loadVisualTerrainSliceAssets(generation: number)');
-assert.match(loadVisualTerrainBody, /this\.isActiveModelLoad\(generation\)/,
-  'late visual terrain reads must not commit after the page generation is invalidated');
+assert.doesNotMatch(environmentManifest, /\bVisualTerrainResource\b/,
+  'natural world manifest must remove the old visual terrain resource type');
+assert.doesNotMatch(environmentManifest, /\bVISUAL_TERRAIN_RESOURCES\b/,
+  'natural world manifest must remove the old visual terrain resource constant');
+assert.doesNotMatch(environmentManifest, /\.glb/,
+  'natural world manifest must not reference artificial GLBs');
 
 // ---- Stage 8: cooldown totals in snapshot, haptics and hit feedback ----
 const gameSnapshot = fs.readFileSync('native/engine/core/game_snapshot.h', 'utf8');
@@ -570,6 +675,11 @@ assert.match(page, /ActionToast\(\{ lastRejectReason: this\.lastRejectReason,\s*
 // ---- Stage 10: lock-on target marker and combo counter ----
 const surfaceHeader = fs.readFileSync('native/engine/render/surface.h', 'utf8');
 const surfaceImpl = fs.readFileSync('native/engine/render/surface.cpp', 'utf8');
+for (const source of [surfaceHeader, surfaceImpl]) {
+  assert.doesNotMatch(source,
+    /nativeSetEnvironmentAssets|nativeSetBlockAsset|nativeSetVisualTerrainAsset|VisualTerrain/,
+    'Surface must remove authored environment and visual-terrain consumers');
+}
 const comboCounter = fs.existsSync('entry/src/main/ets/ui/ComboCounter.ets')
   ? fs.readFileSync('entry/src/main/ets/ui/ComboCounter.ets', 'utf8') : '';
 
@@ -598,8 +708,8 @@ assert.match(surfaceImpl, /static void drawTargetMarker\(Surface& s, const glm::
   'surface must implement drawTargetMarker');
 assert.match(surfaceImpl, /drawTargetMarker\(s, vp\);/,
   '3D phase must draw the target marker');
-assert.match(loop, /surface\.targetMarker3d\.active = currentTarget\.has_value\(\);/,
-  'loop must publish lock-on marker activity from soft targeting');
+assert.match(loop, /surface\.targetMarker3d\.active = currentTarget\.showMarker;/,
+  'loop must publish lock-on marker activity from TargetLockController');
 assert.match(loop, /surface\.targetMarker3d\.pulsePhase =/,
   'loop must publish marker pulse phase');
 assert.match(loop, /surface\.targetMarker3d\.targetId =/,
@@ -626,6 +736,18 @@ assert.match(surfaceImpl, /setSpecular\(profile\.specularStrength, profile\.spec
   'actors must use per-profile specular material when drawn');
 assert.match(surfaceHeader, /uint32_t targetId = 0;/,
   'TargetMarkerRenderState must carry the locked target id');
+// Plan 2 Task 4：锁定环区分手动/自动模式并携带可见度（手动常亮 0.92、
+// 自动活跃 0.72 按窗口衰减），渲染层按 visibility 驱动 alpha。
+assert.match(surfaceHeader, /bool manual = false;/,
+  'TargetMarkerRenderState must carry the manual lock mode');
+assert.match(surfaceHeader, /float visibility = 0\.0f;/,
+  'TargetMarkerRenderState must carry lock ring visibility');
+assert.match(loop, /surface\.targetMarker3d\.manual = /,
+  'loop must publish manual lock mode to the marker');
+assert.match(loop, /surface\.targetMarker3d\.visibility = /,
+  'loop must publish lock ring visibility to the marker');
+assert.match(surfaceImpl, /targetMarker3d\.visibility/,
+  'drawTargetMarker must drive alpha from visibility');
 assert.match(surfaceHeader, /bool targeted = false;/,
   'Boss3DRenderState must carry lock-on state');
 assert.match(surfaceImpl, /enemy\.id == s\.targetMarker3d\.targetId/,
@@ -748,7 +870,8 @@ assert.match(hud, /this\.stamina < 30 \? '#E06A5E' : '#4FD4BB'/,
 
 // ---- Stage 16: open-world exploration fields across the snapshot chain ----
 for (const field of ['explorationStamina', 'motionState', 'playerHeight',
-  'activeChunkCount', 'chunkLoadCount', 'interactionAnchorId',
+  'playerChunkX', 'playerChunkY', 'playerLocalX', 'playerLocalY',
+  'activeChunkCount', 'cachedChunkCount', 'streamingPendingCount', 'interactionAnchorId',
   'interactionUnlocked', 'interactionLabel', 'unlockedAnchorCount',
   'cameraExploration', 'teleportFlashMs', 'minimapAnchorX',
   'minimapAnchorY', 'minimapAnchorUnlocked']) {
@@ -758,6 +881,13 @@ for (const field of ['explorationStamina', 'motionState', 'playerHeight',
     `native bridge must marshal ${field}`);
   assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
     `GamePage polling must assign ${field}`);
+}
+for (const field of ['playerChunkX', 'playerChunkY', 'playerLocalX', 'playerLocalY',
+  'activeChunkCount', 'cachedChunkCount', 'streamingPendingCount']) {
+  assert.match(bridge, new RegExp(`\\b${field}\\b`),
+    `Bridge Snapshot must expose ${field}`);
+  assert.match(declarations, new RegExp(`\\b${field}\\b`),
+    `Index.d.ts must declare ${field}`);
 }
 assert.match(page, /ExplorationHud\(\{/,
   'GamePage must mount ExplorationHud');
@@ -769,29 +899,19 @@ assert.match(loop, /explorationMotion\.update/,
   'loop must advance the exploration motion state machine');
 assert.match(loop, /anchors\.nearestInteraction/,
   'loop must resolve the nearest teleport anchor interaction');
-assert.match(loop, /camera\.setExploration\(!currentTarget\.has_value\(\)\);/,
+assert.match(loop, /camera\.setExploration\(!currentTarget\.id\.has_value\(\)\);/,
   'camera must switch exploration mode without a locked target');
 
-// ---- Stage 16b: closed traversal gate blocking feedback ----
+// ---- Stage 16b: authored traversal gates are gone ----
 for (const field of ['explorationBlockedGateId', 'explorationBlockedGateLabel',
   'explorationBlockedByPuzzleLabel']) {
-  assert.match(gameSnapshot, new RegExp(`\\b${field}\\b`),
-    `GameSnapshot must expose ${field}`);
-  assert.match(nativeBridge, new RegExp(`"${field}"`),
-    `native bridge must marshal ${field}`);
-  assert.match(bridge, new RegExp(`${field}: (?:number|string);`),
-    `Bridge Snapshot must declare ${field}`);
-  assert.match(declarations, new RegExp(`${field}: (?:number|string),`),
-    `Index.d.ts must declare ${field}`);
-  assert.match(page, new RegExp(`this\\.${field}\\s*=\\s*this\\.snapshot\\.${field}`),
-    `GamePage polling must assign ${field}`);
+  for (const source of [gameSnapshot, nativeBridge, bridge, declarations, page, explorationHud]) {
+    assert.doesNotMatch(source, new RegExp(`\\b${field}\\b`),
+      `production snapshot chain must remove ${field}`);
+  }
 }
-assert.match(loop, /explorationContent\.nearestTarget\(\s*\{loop\.surface\.player\.x, loop\.surface\.player\.y\}/,
-  'loop must resolve nearby exploration targets for gate feedback');
-assert.match(explorationHud, /explorationBlockedGateLabel/,
-  'ExplorationHud must render blocked gate feedback');
-assert.match(explorationHud, /路径受阻/,
-  'ExplorationHud must identify a blocked traversal gate');
+assert.doesNotMatch(explorationHud, /路径受阻/,
+  'ExplorationHud must not render obsolete traversal-gate feedback');
 
 // ---- Stage 16c: unified exploration feedback ----
 const explorationToast = fs.existsSync('entry/src/main/ets/ui/ExplorationToast.ets')
@@ -1028,28 +1148,85 @@ assert.match(loop, /sideQuests\.completedMask\(\)/,
 assert.match(loop, /sideQuests\.restoreMask\(state\.sideQuestMask\)/,
   'loadProgress must restore the side quest mask');
 const saveImpl = fs.readFileSync('native/engine/resource/save.cpp', 'utf8');
-assert.match(saveImpl, /"V9 "/,
-  'save format must be V9 with open world quest and exploration fields');
-// V9 只追加不重排：写入追加开放世界任务与垂直切片探索字段，
-// 且保留 V8/V7 读取分支兼容旧存档。
-assert.match(saveImpl, /s\.openWorldQuestMask << " " << s\.openWorldQuestActiveId/,
-  'save V9 must append open world quest fields');
-for (const field of ['explorationPoiMask', 'explorationPuzzleMask',
-  'explorationRewardMask', 'explorationGateMask',
-  'explorationTraversalMask']) {
-  assert.match(saveImpl, new RegExp(`s\\.${field}`),
-    `save V9 must append ${field}`);
+assert.match(saveImpl, /tmp\s*<<\s*"V10 "/,
+  'save writer must emit V10');
+// 精确锁定 V8 尾字段、V9 五探索字段及其后唯一的 V10 五世界字段。
+const writerTailExpressions = [
+  { name: 'openWorldQuestMask', pattern: /s\.openWorldQuestMask/ },
+  { name: 'openWorldQuestActiveId', pattern: /s\.openWorldQuestActiveId/ },
+  { name: 'explorationPoiMask', pattern: /s\.explorationPoiMask/ },
+  { name: 'explorationPuzzleMask', pattern: /s\.explorationPuzzleMask/ },
+  { name: 'explorationRewardMask', pattern: /s\.explorationRewardMask/ },
+  { name: 'explorationGateMask', pattern: /s\.explorationGateMask/ },
+  { name: 'explorationTraversalMask', pattern: /s\.explorationTraversalMask/ },
+  {
+    name: 'worldSeed',
+    pattern: /\(s\.worldSeed\s*==\s*0\s*\?\s*1\s*:\s*s\.worldSeed\)/,
+  },
+  { name: 'playerChunkX', pattern: /s\.playerChunkX/ },
+  { name: 'playerChunkY', pattern: /s\.playerChunkY/ },
+  { name: 'playerLocalX', pattern: /s\.playerLocalX/ },
+  { name: 'playerLocalY', pattern: /s\.playerLocalY/ },
+];
+assertSourceSequence(saveImpl,
+  /s\.openWorldQuestMask/, /tmp\s*<<\s*"\\n"/, writerTailExpressions,
+  /\bs\.\w+\b/);
+assert.match(saveImpl,
+  /first\s*==\s*"V8"\s*\|\|\s*first\s*==\s*"V9"\s*\|\|\s*first\s*==\s*"V10"/,
+  'save reader must share the complete V8/V9/V10 body');
+const readerExplorationExpressions = [
+  { name: 'explorationPoiMask', pattern: /f\s*>>\s*o\.explorationPoiMask/ },
+  { name: 'explorationPuzzleMask', pattern: />>\s*o\.explorationPuzzleMask/ },
+  { name: 'explorationRewardMask', pattern: />>\s*o\.explorationRewardMask/ },
+  { name: 'explorationGateMask', pattern: />>\s*o\.explorationGateMask/ },
+  { name: 'explorationTraversalMask', pattern: />>\s*o\.explorationTraversalMask/ },
+];
+assertSourceSequence(saveImpl,
+  /if\s*\(first\s*==\s*"V9"\s*\|\|\s*first\s*==\s*"V10"\)/,
+  /if\s*\(f\.fail\(\)\)\s*return\s+false/,
+  readerExplorationExpressions, /\bo\.\w+\b/);
+const readerWorldExpressions = [
+  {
+    name: 'worldSeed',
+    pattern: /parseIntegerToken\(seedToken,\s*o\.worldSeed\)/,
+  },
+  {
+    name: 'playerChunkX',
+    pattern: /parseIntegerToken\(chunkXToken,\s*o\.playerChunkX\)/,
+  },
+  {
+    name: 'playerChunkY',
+    pattern: /parseIntegerToken\(chunkYToken,\s*o\.playerChunkY\)/,
+  },
+  {
+    name: 'playerLocalX',
+    pattern: /parseLocalToken\(localXToken,\s*o\.playerLocalX\)/,
+  },
+  {
+    name: 'playerLocalY',
+    pattern: /parseLocalToken\(localYToken,\s*o\.playerLocalY\)/,
+  },
+];
+const readerWorldTokenExpressions = [
+  { name: 'seedToken', pattern: /f\s*>>\s*seedToken/ },
+  { name: 'chunkXToken', pattern: />>\s*chunkXToken/ },
+  { name: 'chunkYToken', pattern: />>\s*chunkYToken/ },
+  { name: 'localXToken', pattern: />>\s*localXToken/ },
+  { name: 'localYToken', pattern: />>\s*localYToken/ },
+];
+assertSourceSequence(saveImpl, /f\s*>>\s*seedToken/,
+  /if\s*\(f\.fail\(\)/, readerWorldTokenExpressions,
+  /\b(?:seed|chunkX|chunkY|localX|localY)Token\b/);
+assertSourceSequence(saveImpl, /if\s*\(first\s*==\s*"V10"\)/,
+  /if\s*\(o\.worldSeed\s*==\s*0\)/, readerWorldExpressions,
+  /\bo\.\w+\b/);
+for (let version = 2; version <= 7; version += 1) {
+  assert.match(saveImpl, new RegExp(`if\\s*\\(first\\s*==\\s*"V${version}"\\)`),
+    `V${version} saves must remain readable`);
 }
-assert.match(saveImpl, /if \(first == "V8" \|\| first == "V9"\)/,
-  'save reader must keep the V8/V9 shared compatibility branch');
-assert.match(saveImpl, /if \(first == "V9"\) \{[\s\S]*explorationPoiMask/,
-  'save reader must restore V9 exploration fields');
-assert.match(saveImpl, /if \(first == "V7"\)/,
-  'save reader must keep the V7 backward-compatible branch');
-assert.match(saveImpl, /if \(first == "V6"\)/,
-  'V6 saves must remain readable');
-assert.match(saveImpl, /if \(first == "V5"\)/,
-  'V5 saves must remain readable');
+assert.match(saveImpl,
+  /parseIntegerToken\(first,\s*o\.campLevel\)[\s\S]*?o\.relics[\s\S]*?o\.regionProgress/,
+  'unversioned V1 saves must remain readable');
 const interactableHeader = fs.readFileSync('native/gameplay/world/interactable.h', 'utf8');
 assert.match(interactableHeader, /Dungeon = 3/,
   'InteractableKind must include Dungeon entrances');

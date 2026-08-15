@@ -1,6 +1,7 @@
 #include "native/gameplay/flow/story_director.h"
 
 #include <cassert>
+#include <string>
 
 int main() {
   // 开场演出：三条字幕，未启动时不活跃。
@@ -19,6 +20,21 @@ int main() {
   assert(!director.current()->speaker.empty());
   assert(!director.current()->text.empty());
   assert(director.current()->cameraHint == 1);  // 第一条拉远镜头。
+
+  // 开场任务只引导自然地标，不再暗示任何人工构筑物。
+  std::string openingText;
+  StoryDirector textDirector = StoryDirector::opening();
+  textDirector.start(0);
+  for (int32_t i = 0; i < textDirector.count(); ++i) {
+    const StoryCue* cue = textDirector.current();
+    assert(cue != nullptr);
+    openingText += cue->text;
+    textDirector.advance(i + 1);
+  }
+  assert(openingText.find("祭坛") == std::string::npos);
+  assert(openingText.find("门庭") == std::string::npos);
+  assert(openingText.find("遗迹") == std::string::npos);
+  assert(openingText.find("源质晶簇") != std::string::npos);
 
   // 未到时长不推进。
   director.tick(3400);
