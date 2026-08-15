@@ -1,6 +1,6 @@
 # 项目状态
 
-更新时间：2026-08-14
+更新时间：2026-08-15
 
 ## 当前阶段
 
@@ -11,6 +11,16 @@
 
 ## 已完成
 
+- 统一目标锁定与敌人留白（Plan 2）已接入：TargetLockController 收敛自动/手动
+  目标为唯一真值——自动模式锁定稳定最近目标，手动单击按 ID 循环切换存活目标、
+  500ms 长按解除锁定，目标死亡或超距同帧重选；锁定按钮经 N-API 动作值接入输入
+  队列，结算/VFX/镜头/锁定环共用同一目标 ID 无一帧分叉。敌人留白由
+  engagement_spacing 纯函数统一口径（近战 min 0.08/ideal 0.14、远程
+  0.16/0.30、Boss 随体型半径放大）：Encounter/WildSpawn 每帧按仇恨组收集存活
+  参与者注入环形槽位与邻居分离，DecisionPolicy 过近后撤/能力射程内攻击/超距追
+  向槽位，TacticalPlanner 沿理想环弧线逼近槽位；前摇站桩、近战 Active 突进钳制
+  在最小空挡、远程站桩不突进、Recovery 回环，首领空挡随体型放大。600 帧群敌重放
+  无重叠、无 NaN、主角位置不被 AI 改写。
 - 出生台地—中枢回廊环境垂直切片已接入：四层原创地表图集 + 手绘控制图、
   宏观色差/细节法线/陡坡三平面岩层/湿岸，玩家周边单级方向光阴影，三个
   手工视觉地貌区块 × 三级 LOD，确定性实例化植被（最多 10 批），昼夜/天气
@@ -370,6 +380,15 @@
   地形着色器 glslangValidator 零错误；Hvigor `assembleHap` 再次返回
   `BUILD SUCCESSFUL`（签名 HAP 产物已生成）。连续跨 50 块宿主仿真有界且
   折返一致（test_loop_integration）。真机 FPS/内存与视觉验收仍待执行。
+- 统一目标锁定与敌人留白验证（2026-08-15）：test_target_lock_controller、
+  test_soft_targeting、test_input_queue、test_enemy_decision、
+  test_tactical_planner、test_engagement_spacing、test_encounter_controller、
+  test_wild_spawn_system、test_boss_controller、test_enemy_combat_integration、
+  test_loop_integration 与 node tests/test_bridge_contract.mjs 全部通过；
+  完整宿主测试集 107 pass / 0 fail（仅跳过 test_fence_wait 平台测试）；
+  git diff --check 无输出；Hvigor assembleHap 返回 BUILD SUCCESSFUL。
+  单击循环/长按解除/死亡超距重选/Boss 不抢锁/近战远程 Boss 空挡/多敌人不重叠
+  的真机验收仍待执行。
 
 ## 当前策略
 

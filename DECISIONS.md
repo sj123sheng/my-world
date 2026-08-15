@@ -1,5 +1,33 @@
 # 技术决策
 
+## 2026-08-15：统一目标锁定与敌人留白（Plan 2）
+
+- 目标唯一真值：TargetLockController 统一管理自动/手动锁定。自动模式取
+  最近存活候选为稳定目标；手动单击按 ID 排序循环切换候选，500ms 长按
+  解除锁定；目标死亡或超出距离当帧自动重选。结算、VFX、镜头与表现统一
+  读同一目标 ID，击杀复核后 `encounter.rebindSelectedTarget()` 同帧回写，
+  无一帧分叉。锁定按钮经 N-API 动作值接入输入队列。
+- 敌人留白统一口径：`engagement_spacing` 纯函数给出原型交战距离
+  （近战 minimum 0.08 / ideal 0.14 / attack 0.25 / maxPursuit 0.60；
+  远程 0.16 / 0.30 / 4.0 / 6.0；Boss minimum = max(0.14, 体型半径×1.5)）、
+  环形槽位（参与者按 ID 排序、角间距 2π/N、基准角取最小 ID 稳定哈希）
+  与邻居分离（minimum 内推离、完全重叠用无序 ID 对稳定哈希方向）。
+- 决策与走位：DecisionPolicy 消费快照注入的留白——低于 minimum 后撤、
+  能力射程内攻击、超距追向槽位；ideal 只作环形槽位半径，不收紧攻击门
+  （用 ideal 做攻击门会破坏远程与集成测试）。TacticalPlanner 追击沿理想
+  环弧线逐帧转向槽位角度，避免直线弦切从主角身边穿过；远离环时才直线
+  奔向槽位。
+- 攻击节奏与留白：Windup 站桩、近战 Active 向主角突进但钳制在 minimum
+  之外（`lungeOnActive` 按原型区分，远程站桩不突进）、Recovery 沿弧线
+  回到理想环。抵达槽位原地待命不计入“无进展”，避免误触发 BreakFree
+  直冲安全点。Encounter/WildSpawn 每帧按仇恨组收集存活参与者（ID 排序）
+  共享槽位；Boss 单独用体型距离。movement resolver 只写敌人位置，从不
+  改写主角位置；最大追击仍受出生区域钳制，不因无限地图取消脱战。
+- 验证方式：11 个聚焦测试 + Bridge 契约 + 完整宿主测试集 107 pass / 0 fail
+  （仅跳过 test_fence_wait）+ `git diff --check` + Hvigor assembleHap
+  BUILD SUCCESSFUL；600 帧群敌重放确定性无重叠、无 NaN、主角无强制位移。
+  真机验收清单记录于 TASKS.md 待办。
+
 ## 2026-08-14：无限自然世界坐标、流送、渲染与存档迁移
 
 - 位置真值改为 `WorldPosition = ChunkCoord + LocalPosition`（int64 分块 +
