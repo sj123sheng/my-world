@@ -345,17 +345,18 @@ static napi_value NativePushAction(napi_env env, napi_callback_info info) {
   if (args[0] == nullptr || napi_typeof(env, args[0], &argumentType) != napi_ok ||
       argumentType != napi_number || napi_get_value_double(env, args[0], &typeNumber) != napi_ok ||
       !std::isfinite(typeNumber)) {
-    return ThrowInputTypeError(env, "pushAction type must be a finite integer from 0 to 10");
+    return ThrowInputTypeError(env, "pushAction type must be a finite integer from 0 to 12");
   }
   int32_t type = 0;
-  if (!TryConvertInt32(typeNumber, type) || type < 0 || type > 10) {
-    return ThrowInputTypeError(env, "pushAction type must be an integer from 0 to 10");
+  if (!TryConvertInt32(typeNumber, type) || type < 0 || type > 12) {
+    return ThrowInputTypeError(env, "pushAction type must be an integer from 0 to 12");
   }
   static constexpr InputAction kActions[] = {
       InputAction::Attack, InputAction::Dodge, InputAction::Radiance,
       InputAction::Current, InputAction::Corruption, InputAction::Ultimate,
       InputAction::Jump, InputAction::Interact, InputAction::GlidePress,
-      InputAction::GlideRelease, InputAction::SwitchCharacter};
+      InputAction::GlideRelease, InputAction::SwitchCharacter,
+      InputAction::CycleTarget, InputAction::ReleaseTargetLock};
   const InputAction action = kActions[type];
   g_loop.enqueueInput(action, -1, 0.0f, 0.0f);
   return nullptr;

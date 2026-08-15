@@ -25,6 +25,16 @@ int main() {
   assert(queue.pop(out));
   assert(out.pointerId == 9 && out.sequence == 6);
 
+  // 目标锁定动作（Plan 2 Task 3）：新增枚举值走同一队列语义，
+  // 顺序与序列号保持不变。
+  assert(queue.push({InputAction::CycleTarget, -1, 0.0f, 0.0f, 7}));
+  assert(queue.push({InputAction::ReleaseTargetLock, -1, 0.0f, 0.0f, 8}));
+  assert(queue.pop(out));
+  assert(out.action == InputAction::CycleTarget && out.sequence == 7);
+  assert(queue.pop(out));
+  assert(out.action == InputAction::ReleaseTargetLock && out.sequence == 8);
+  assert(!queue.pop(out));
+
   InputQueue concurrent(32);
   std::atomic<bool> producerDone{false};
   std::thread producer([&]() {

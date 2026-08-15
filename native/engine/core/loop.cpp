@@ -1892,6 +1892,16 @@ void Loop::processInput() {
       switchCharacter();
       continue;
     }
+    // 目标锁定（Plan 2）：置单帧队列标志，下一固定步交给
+    // TargetLockController 消费。
+    if (e.action == InputAction::CycleTarget) {
+      cycleTargetQueued = true;
+      continue;
+    }
+    if (e.action == InputAction::ReleaseTargetLock) {
+      releaseTargetLockQueued = true;
+      continue;
+    }
     const TouchRole releaseRole = touchRouter.role(e.pointerId);
     switch (e.action) {
       case InputAction::PointerDown: {

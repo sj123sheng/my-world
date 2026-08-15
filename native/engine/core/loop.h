@@ -157,6 +157,10 @@ struct Loop {
   bool jumpQueued = false;
   bool glideHeld = false;
   bool interactQueued = false;
+  // 目标锁定输入（Plan 2）：单帧队列标志，下一固定步交给
+  // TargetLockController 消费后清零。
+  bool cycleTargetQueued = false;
+  bool releaseTargetLockQueued = false;
   int32_t chunkLoadCount = 0;
 
   void publishExplorationFeedback(ExplorationFeedbackType type, int32_t id,

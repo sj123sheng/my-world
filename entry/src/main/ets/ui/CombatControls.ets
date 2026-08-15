@@ -21,12 +21,18 @@ export struct CombatControls {
   @State ultimatePressed: boolean = false;
   @State jumpPressed: boolean = false;
   @State glidePressed: boolean = false;
+  @State lockPressed: boolean = false;
   @State radianceFlash: number = 0;
   @State currentFlash: number = 0;
   @State corruptionFlash: number = 0;
   private prevRadianceCd: number = 0;
   private prevCurrentCd: number = 0;
   private prevCorruptionCd: number = 0;
+  // 锁定按钮长按状态（Plan 2 Task 3）：Down 记录时间戳并启动 500ms
+  // 定时器，长按触发后松手不再补发 cycle，Cancel 不发送任何动作。
+  private lockPressedAtMs: number = 0;
+  private lockLongPressFired: boolean = false;
+  private lockLongPressTimer: number = -1;
 
   aboutToAppear(): void {
     // 终结技可用时的呼吸脉冲。
@@ -47,6 +53,13 @@ export struct CombatControls {
     }, () => {
       this.sourceReadyPulse = true;
     });
+  }
+
+  aboutToDisappear(): void {
+    if (this.lockLongPressTimer !== -1) {
+      clearTimeout(this.lockLongPressTimer);
+      this.lockLongPressTimer = -1;
+    }
   }
 
   onRadianceCd(): void {
@@ -118,6 +131,59 @@ export struct CombatControls {
     Stack() {
       // 技能按钮簇：右下角弧形布局（普攻主钮贴角，技能向左上扇形展开）。
       Stack() {
+        // 锁定：单击循环锁定目标（CycleTarget=11），约 500ms 长按解除锁定
+        // （ReleaseTargetLock=12）。长按已触发后松手不再补发 cycle，
+        // Cancel 不发送任何动作。
+        Stack() {
+          Button('锁定')
+            .width(48)
+            .height(48)
+            .type(ButtonType.Circle)
+            .backgroundColor(this.lockPressed ? '#1F3A5A' : '#23303E')
+            .border({ width: 1.5, color: this.lockPressed ? '#5E8BAB' : '#4A5A68' })
+            .fontColor('#B8D0F2')
+            .fontSize(12)
+            .fontWeight(FontWeight.Medium)
+            .shadow({ radius: 8, color: '#40000000', offsetX: 0, offsetY: 2 })
+            .scale({ x: this.lockPressed ? 0.9 : 1.0, y: this.lockPressed ? 0.9 : 1.0 })
+            .animation({ duration: 120, curve: Curve.EaseOut })
+            .hitTestBehavior(HitTestMode.Block)
+            .onTouch((e: TouchEvent) => {
+              if (e.type === TouchType.Down) {
+                this.lockPressed = true;
+                this.lockPressedAtMs = Date.now();
+                this.lockLongPressFired = false;
+                if (this.lockLongPressTimer !== -1) {
+                  clearTimeout(this.lockLongPressTimer);
+                }
+                this.lockLongPressTimer = setTimeout(() => {
+                  this.lockLongPressFired = true;
+                  pushAction(12);
+                }, 500);
+              }
+              if (e.type === TouchType.Up) {
+                this.lockPressed = false;
+                if (this.lockLongPressTimer !== -1) {
+                  clearTimeout(this.lockLongPressTimer);
+                  this.lockLongPressTimer = -1;
+                }
+                if (!this.lockLongPressFired) {
+                  pushAction(11);
+                }
+              }
+              if (e.type === TouchType.Cancel) {
+                this.lockPressed = false;
+                if (this.lockLongPressTimer !== -1) {
+                  clearTimeout(this.lockLongPressTimer);
+                  this.lockLongPressTimer = -1;
+                }
+              }
+            })
+        }
+        .width(48)
+        .height(48)
+        .position({ x: 16, y: 56 })
+
         // 滑翔：按住触发滑翔（GlidePress），松开结束（GlideRelease）。
         Stack() {
           Button('滑翔')

@@ -155,6 +155,25 @@ assert.match(controls, /pushAction\(8\);/,
   'CombatControls must issue GlidePress on touch down');
 assert.match(controls, /pushAction\(9\);/,
   'CombatControls must issue GlideRelease on touch up');
+// 锁定按钮：单击循环目标（11），约 500ms 长按解除锁定（12），
+// 长按触发后松手不得再发 cycle，Cancel 不发送任何动作。
+assert.match(controls, /Button\(['"]锁定['"]\)/,
+  'CombatControls must provide a lock button');
+assert.match(controls,
+  /Button\(['"]锁定['"]\)(?:(?!Button\().)*\.hitTestBehavior\(HitTestMode\.Block\)(?:(?!Button\().)*\.onTouch/s,
+  'lock button must block its pointer before handling touch');
+assert.match(controls, /lockPressedAtMs: number/,
+  'lock button must record the press timestamp');
+assert.match(controls, /lockLongPressFired: boolean/,
+  'lock button must track whether the long press already fired');
+assert.match(controls, /this\.lockPressedAtMs = Date\.now\(\);/,
+  'lock button Down must record the press time');
+assert.match(controls,
+  /setTimeout\(\(\) => \{\s*this\.lockLongPressFired = true;\s*pushAction\(12\);\s*\}, 500\);/,
+  'lock button must fire ReleaseTargetLock after a 500ms long press');
+assert.match(controls,
+  /if \(!this\.lockLongPressFired\) \{\s*pushAction\(11\);\s*\}/,
+  'lock button Up must issue CycleTarget only when the long press has not fired');
 const blockingButtons = [
   '普攻', '闪避', '辉印', '脉流', '蚀质', '终结', '跳跃', '☰',
   '训练', '兽群', '混战', '守卫', '流程', '首领', '推进', '补给', '重试', '调试'
@@ -223,11 +242,11 @@ assert.match(pushActionBody, /!std::isfinite\(typeNumber\)/,
   'NativePushAction must reject non-finite numbers');
 assert.match(pushActionBody, /!TryConvertInt32\(typeNumber, type\)/,
   'NativePushAction must reject fractional numbers');
-assert.match(pushActionBody, /type < 0 \|\| type > 10/,
-  'NativePushAction must reject action types outside 0..10');
+assert.match(pushActionBody, /type < 0 \|\| type > 12/,
+  'NativePushAction must reject action types outside 0..12');
 assert.match(pushActionBody,
-  /kActions\[\]\s*=\s*\{\s*InputAction::Attack,\s*InputAction::Dodge,\s*InputAction::Radiance,\s*InputAction::Current,\s*InputAction::Corruption,\s*InputAction::Ultimate,\s*InputAction::Jump,\s*InputAction::Interact,\s*InputAction::GlidePress,\s*InputAction::GlideRelease,\s*InputAction::SwitchCharacter\s*\}/,
-  'NativePushAction mapping order must be 0..5 combat then 6 Jump, 7 Interact, 8 GlidePress, 9 GlideRelease, 10 SwitchCharacter');
+  /kActions\[\]\s*=\s*\{\s*InputAction::Attack,\s*InputAction::Dodge,\s*InputAction::Radiance,\s*InputAction::Current,\s*InputAction::Corruption,\s*InputAction::Ultimate,\s*InputAction::Jump,\s*InputAction::Interact,\s*InputAction::GlidePress,\s*InputAction::GlideRelease,\s*InputAction::SwitchCharacter,\s*InputAction::CycleTarget,\s*InputAction::ReleaseTargetLock\s*\}/,
+  'NativePushAction mapping order must be 0..5 combat then 6 Jump, 7 Interact, 8 GlidePress, 9 GlideRelease, 10 SwitchCharacter, 11 CycleTarget, 12 ReleaseTargetLock');
 assert.match(pushActionBody, /g_loop\.enqueueInput\(action, -1, 0\.0f, 0\.0f\)/,
   'NativePushAction must enqueue through Loop');
 
