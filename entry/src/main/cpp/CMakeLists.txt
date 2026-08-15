@@ -124,6 +124,8 @@ add_library(native_game SHARED
     ${NATIVE_ROOT}/gameplay/ai/encounter_controller.h
     ${NATIVE_ROOT}/gameplay/ai/wild_spawn_system.cpp
     ${NATIVE_ROOT}/gameplay/ai/wild_spawn_system.h
+    ${NATIVE_ROOT}/gameplay/ai/engagement_spacing.cpp
+    ${NATIVE_ROOT}/gameplay/ai/engagement_spacing.h
 
     # gameplay entities
     ${NATIVE_ROOT}/gameplay/entities/boss.cpp
