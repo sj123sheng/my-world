@@ -1501,6 +1501,9 @@ static void drawTargetMarker(Surface& s, const glm::mat4& vp) {
 
   const float phase = s.targetMarker3d.pulsePhase;
   const float scalePulse = 1.0f + 0.10f * std::sin(phase * 2.0f);
+  // 锁定环需要足够醒目：基础环网格半径较小（与预警/冲击波共用），
+  // 此处单独放大到可读尺寸，避免真机上脚下圆环不可见。
+  constexpr float kLockRingScale = 2.4f;
   // 环体旋转对称，无需旋转；仅做呼吸缩放脉冲。
   const glm::mat4 model =
       glm::translate(glm::mat4(1.0f),
@@ -1508,11 +1511,16 @@ static void drawTargetMarker(Surface& s, const glm::mat4& vp) {
                                groundYAt(s, s.targetMarker3d.x,
                                          s.targetMarker3d.z) + 0.016f,
                                s.targetMarker3d.z)) *
-      glm::scale(glm::mat4(1.0f), glm::vec3(scalePulse));
+      glm::scale(glm::mat4(1.0f), glm::vec3(scalePulse * kLockRingScale));
   // 青金色锁定环，背光面仍保持可见。
   // 锁定元素目标时指示环混入元素色，提示目标系别。
   const glm::vec3 markerColor =
       TargetMarkerColorFor(s.targetMarker3d.element);
+  // 与预警环同一透明绘制口径：关闭深度写、开启混合，
+  // 避免环体被地形深度遮挡或 alpha 不生效导致真机不可见。
+  glDepthMask(GL_FALSE);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   s.shader3d.setMVP(vp * model);
   s.shader3d.setModel(model);
   s.shader3d.setSkinned(false);
@@ -1523,6 +1531,8 @@ static void drawTargetMarker(Surface& s, const glm::mat4& vp) {
   s.shader3d.setAlpha(s.targetMarker3d.visibility);
   s.targetRingMesh.draw();
   s.shader3d.setAlpha(1.0f);
+  glDisable(GL_BLEND);
+  glDepthMask(GL_TRUE);
 }
 
 // -----------------------------------------------------------------------------
