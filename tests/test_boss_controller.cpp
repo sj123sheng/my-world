@@ -267,6 +267,41 @@ void testBossEncounterAppliesBasicAttackDamage() {
          encounter.snapshot().boss.position);
 }
 
+// 交战留白（Plan 2 Task 7）：首领体型越大空挡越大，身躯不遮住主角。
+float averageBossGapOverTail(float bodyRadius) {
+  BossController boss;
+  BossConfig config = BossConfig::karounDefaults();
+  config.bodyRadius = bodyRadius;
+  config.arenaRadius = 1.0f;  // 放大竞技场，避免钳制干扰间距采样。
+  assert(boss.start(config));
+
+  BossFrameInput input;
+  input.tick = 0;
+  input.dtMs = 16;
+  input.playerPosition = config.arenaCenter;  // 主角站在竞技场中心。
+  input.playerAlive = true;
+
+  const int totalFrames = 600;
+  const int tailFrames = 100;
+  double sum = 0.0;
+  for (int frame = 0; frame < totalFrames; ++frame) {
+    input.tick += 16;
+    boss.update(input);
+    if (frame >= totalFrames - tailFrames) {
+      sum += distanceBetween(boss.snapshot().position, input.playerPosition);
+    }
+  }
+  return static_cast<float>(sum / tailFrames);
+}
+
+void testBossBodyRadiusExpandsEngagementGap() {
+  const float smallGap = averageBossGapOverTail(0.05f);
+  const float largeGap = averageBossGapOverTail(0.20f);
+  // 体型放大显著拉开空挡：大体型首领环绕在更远的最小空挡外。
+  assert(largeGap > smallGap + 0.1f);
+  assert(largeGap >= 0.28f);
+}
+
 }  // namespace
 
 int main() {
@@ -278,4 +313,5 @@ int main() {
   testBossChasesPlayerAndOrbitsAtPreferredRange();
   testBossBasicAttackCycleAndVariantRotation();
   testBossEncounterAppliesBasicAttackDamage();
+  testBossBodyRadiusExpandsEngagementGap();
 }

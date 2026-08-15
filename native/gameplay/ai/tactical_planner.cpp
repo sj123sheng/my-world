@@ -7,6 +7,8 @@
 
 namespace {
 
+constexpr float kPi = 3.14159265358979323846f;
+
 struct TargetChoice {
   EntityId id = 0;
   Vec2 position;
@@ -125,9 +127,36 @@ Vec2 retreatDestination(const PerceptionSnapshot& facts) {
 }
 
 // 追击目标是环形槽位 + 分离，而不是主角身体：未注入留白时回退到主角位置。
+// 逼近方式沿理想环弧线逐帧转向槽位角度、半径收敛到 ideal，避免直线弦切
+// 从主角身边穿过（远程尤其明显）。
 Vec2 chaseDestination(const PerceptionSnapshot& facts) {
   if (facts.engagementRange.ideal > 0.0f && facts.engagementSlot.finite()) {
-    return facts.engagementSlot + facts.separationOffset;
+    const float ideal = facts.engagementRange.ideal;
+    const Vec2 selfOffset = facts.selfPosition - facts.targetPosition;
+    const Vec2 slotOffset = facts.engagementSlot - facts.targetPosition;
+    const float selfRadius = selfOffset.length();
+    const float slotRadius = slotOffset.length();
+    // 远离理想环时直线奔向槽位（进入攻击门控后由前摇站桩接管）；
+    // 已在环附近才沿弧线转向槽位角度。
+    const bool nearRing = selfRadius <= ideal * 2.0f;
+    if (!nearRing || !selfOffset.finite() || !slotOffset.finite() ||
+        !std::isfinite(selfRadius) || selfRadius <= 1e-4f ||
+        slotRadius <= 1e-4f) {
+      return facts.engagementSlot + facts.separationOffset;
+    }
+    // 单帧角步长上限：足够大让切向分量吃满移速，又小到弦不内凹。
+    constexpr float kMaxAngularStep = 0.25f;
+    const float selfAngle = std::atan2(selfOffset.y, selfOffset.x);
+    const float slotAngle = std::atan2(slotOffset.y, slotOffset.x);
+    float delta = std::atan2(std::sin(slotAngle - selfAngle),
+                             std::cos(slotAngle - selfAngle));
+    if (delta > kMaxAngularStep) delta = kMaxAngularStep;
+    if (delta < -kMaxAngularStep) delta = -kMaxAngularStep;
+    const Vec2 waypoint = facts.targetPosition +
+                          Vec2{std::cos(selfAngle + delta),
+                               std::sin(selfAngle + delta)} *
+                              ideal;
+    return waypoint + facts.separationOffset;
   }
   return facts.targetPosition;
 }

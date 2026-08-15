@@ -75,6 +75,7 @@ EngagementRange EngagementRangeFor(EnemyArchetype archetype, float bodyRadius,
     range.attack = std::max(kBossAttackRange, range.ideal);
     range.maxPursuit =
         std::max(kBossMaxPursuitFloor, range.attack + kBossMaxPursuitMargin);
+    range.lungeOnActive = true;
     return range;
   }
   switch (archetype) {
@@ -84,6 +85,8 @@ EngagementRange EngagementRangeFor(EnemyArchetype archetype, float bodyRadius,
       range.ideal = kRangedIdeal;
       range.attack = std::max(kRangedAttackRange, range.ideal);
       range.maxPursuit = kRangedMaxPursuit;
+      // 远程站桩输出：Active 不突进，保持理想距离带。
+      range.lungeOnActive = false;
       return range;
     case EnemyArchetype::RiftClaw:
     case EnemyArchetype::Guard:
@@ -94,6 +97,7 @@ EngagementRange EngagementRangeFor(EnemyArchetype archetype, float bodyRadius,
       range.ideal = kMeleeIdeal;
       range.attack = std::max(kMeleeAttackRange, range.ideal);
       range.maxPursuit = kMeleeMaxPursuit;
+      range.lungeOnActive = true;
       return range;
   }
 }

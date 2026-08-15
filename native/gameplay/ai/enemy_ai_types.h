@@ -128,6 +128,8 @@ struct EngagementRange {
   float ideal = 0.0f;
   float attack = 0.0f;
   float maxPursuit = 0.0f;
+  // Active 阶段是否允许向目标突进（近战 true，远程 false）。
+  bool lungeOnActive = false;
 };
 
 struct PerceptionSnapshot {

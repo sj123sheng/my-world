@@ -3,6 +3,7 @@
 #include "combat_region.h"
 #include "enemy_agent.h"
 #include "enemy_archetypes.h"
+#include "engagement_spacing.h"
 #include "gameplay/entities/enemy.h"
 
 #include <algorithm>
@@ -542,6 +543,14 @@ void EncounterController::update(const EncounterFrameInput& input) {
   std::vector<std::pair<EnemySlot*, EnemyUpdateResult>> results;
   results.reserve(enemies_.size());
   const CombatRegion region(config_.region);
+  // 交战留白（Plan 2 Task 7）：同一玩家目标下的存活参与者按 ID 排序，
+  // 共享同一环形槽位分配。
+  std::vector<EntityId> participants;
+  participants.reserve(enemies_.size());
+  for (const std::unique_ptr<EnemySlot>& slot : enemies_) {
+    if (slot->target.alive()) participants.push_back(slot->enemy.id);
+  }
+  std::sort(participants.begin(), participants.end());
   for (const std::unique_ptr<EnemySlot>& slot : enemies_) {
     EnemyWorldView world;
     world.tick = tick;
@@ -566,6 +575,22 @@ void EncounterController::update(const EncounterFrameInput& input) {
            ally->enemy.shield, ally->enemy.position, ally->target.alive(),
            region.contains(ally->enemy.position)});
     }
+    // 交战留白：原型距离、环形槽位与邻居分离注入世界视图。
+    const EngagementRange engagementRange =
+        EngagementRangeFor(slot->enemy.archetype, 0.0f, false);
+    world.engagementRange = engagementRange;
+    world.engagementSlot =
+        EngagementSlotPosition(slot->enemy.id, input.playerPosition,
+                               engagementRange.ideal, participants);
+    std::vector<EngagementNeighbor> engagementNeighbors;
+    engagementNeighbors.reserve(enemies_.size());
+    for (const std::unique_ptr<EnemySlot>& other : enemies_) {
+      if (other.get() == slot.get() || !other->target.alive()) continue;
+      engagementNeighbors.push_back({other->enemy.id, other->enemy.position});
+    }
+    world.separationOffset = SeparationOffset(
+        slot->enemy.id, slot->enemy.position, engagementNeighbors,
+        engagementRange.minimum);
 
     EnemyExecutionContext execution;
     execution.targetAlive = combat_.snapshot().playerHp > 0;

@@ -408,6 +408,31 @@ void testProceduralChunkLifecycleAndStableReload() {
   assert(restored->position == killedPosition);
 }
 
+// 交战留白（Plan 2 Task 7）：同仇恨组两名近战从同一点被唤醒后，
+// 环形槽位 + 邻居分离把它们拉开，不重叠，也不贴穿主角最小空挡。
+void testEngagementSpacingSeparatesPack() {
+  std::vector<WorldLayout::WorldSpawnZoneDef> zones{
+      makeZone("pack", WorldLayout::SpawnArchetype::RiftClaw, 2, 0.5f, 0.62f,
+               "pack", 10000)};
+  WildSpawnSystem wild(zones);
+  const Vec2 player{0.5f, 0.55f};  // 距出生点 0.07 < 感知 0.12 → 唤醒
+  const EntityId a = WildSpawnSystem::kIdBase;
+  const EntityId b = WildSpawnSystem::kIdBase + 1;
+  for (int frame = 1; frame <= 240; ++frame) {
+    wild.update(makeInput(frame * kStepMs, player));
+  }
+  Vec2 pa{}, pb{};
+  assert(wild.positionOf(a, pa));
+  assert(wild.positionOf(b, pb));
+  // 两名近战不再重叠。
+  assert((pa - pb).length() > 0.05f);
+  // 与主角保持最小空挡（突进下限即 minimum）。
+  const float meleeMinimum = 0.08f;
+  assert((pa - player).length() >= meleeMinimum - 0.02f);
+  assert((pb - player).length() >= meleeMinimum - 0.02f);
+  std::printf("testEngagementSpacingSeparatesPack ok\n");
+}
+
 }  // namespace
 
 int main() {
@@ -420,6 +445,7 @@ int main() {
   testPatrolAndCandidates();
   testGeneratedLayoutKeepsSpawnPlateauSafe();
   testProceduralChunkLifecycleAndStableReload();
+  testEngagementSpacingSeparatesPack();
   std::printf("test_wild_spawn_system all passed\n");
   return 0;
 }

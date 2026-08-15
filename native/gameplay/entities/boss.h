@@ -42,6 +42,9 @@ struct BossConfig {
   float moveSpeedPerSecond = 0.22f;
   // 期望交战距离：小于该距离时切环绕走位，不再直冲。
   float preferredRange = 0.13f;
+  // 首领体型半径（Plan 2 Task 7）：驱动交战留白，体型越大空挡越大，
+  // 避免首领模型遮住主角。
+  float bodyRadius = 0.10f;
   // 环绕走位角速度（弧度/秒）。
   float orbitSpeedRadiansPerSecond = 1.1f;
   // 活动范围：以竞技场中心为圆心的钳制半径。

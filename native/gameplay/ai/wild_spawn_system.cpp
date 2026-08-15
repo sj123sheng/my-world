@@ -1,10 +1,13 @@
 #include "wild_spawn_system.h"
 
+#include "engagement_spacing.h"
+
 #include <algorithm>
 #include <cmath>
 #include <functional>
 #include <limits>
 #include <string_view>
+#include <unordered_map>
 
 namespace {
 
@@ -325,6 +328,17 @@ void WildSpawnSystem::update(const WildSpawnFrameInput& input) {
 
   // 5) AI / 巡逻 / 移动积分。
   std::vector<CombatEffectRequest> effects;
+  // 交战留白（Plan 2 Task 7）：按仇恨组收集存活仇恨参与者（ID 排序），
+  // 同组敌人共享环形槽位；不同组各自成环，避免跨区拉拽。
+  std::unordered_map<uint64_t, std::vector<EntityId>> participantsByGroup;
+  for (const std::unique_ptr<Slot>& uptr : slots_) {
+    const Slot& s = *uptr;
+    if (s.deathTick > 0 || s.frozen || !s.aggroed) continue;
+    participantsByGroup[s.aggroGroup].push_back(s.enemy.id);
+  }
+  for (auto& entry : participantsByGroup) {
+    std::sort(entry.second.begin(), entry.second.end());
+  }
   for (const std::unique_ptr<Slot>& uptr : slots_) {
     Slot& slot = *uptr;
     if (slot.deathTick > 0 || slot.frozen) continue;
@@ -401,6 +415,30 @@ void WildSpawnSystem::update(const WildSpawnFrameInput& input) {
              ally.enemy.shield, ally.enemy.position, ally.target.alive(),
              region.contains(ally.enemy.position)});
       }
+      // 交战留白：原型距离、环形槽位与邻居分离注入世界视图。
+      const EngagementRange engagementRange =
+          EngagementRangeFor(slot.enemy.archetype, 0.0f, false);
+      world.engagementRange = engagementRange;
+      std::vector<EntityId> participants;
+      const auto participantsIt = participantsByGroup.find(slot.aggroGroup);
+      if (participantsIt != participantsByGroup.end()) {
+        participants = participantsIt->second;
+      } else {
+        participants.push_back(slot.enemy.id);
+      }
+      world.engagementSlot = EngagementSlotPosition(
+          slot.enemy.id, input.playerPosition, engagementRange.ideal,
+          participants);
+      std::vector<EngagementNeighbor> engagementNeighbors;
+      for (const std::unique_ptr<Slot>& allyPtr : slots_) {
+        const Slot& ally = *allyPtr;
+        if (&ally == &slot || ally.deathTick > 0 || ally.frozen) continue;
+        if (ally.aggroGroup != slot.aggroGroup) continue;
+        engagementNeighbors.push_back({ally.enemy.id, ally.enemy.position});
+      }
+      world.separationOffset = SeparationOffset(
+          slot.enemy.id, slot.enemy.position, engagementNeighbors,
+          engagementRange.minimum);
 
       EnemyExecutionContext execution;
       execution.attacker = slot.enemy.id;

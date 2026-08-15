@@ -1,5 +1,7 @@
 #include "boss.h"
 
+#include "gameplay/ai/engagement_spacing.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -13,7 +15,7 @@ bool BossConfig::valid() const {
          moveSpeedPerSecond > 0.0f && preferredRange > 0.0f &&
          arenaRadius > 0.0f && basicAttackCooldownMs > 0 &&
          basicAttackWindupMs > 0 && basicAttackRange > 0.0f &&
-         basicAttackDamage > 0;
+         basicAttackDamage > 0 && bodyRadius >= 0.0f;
 }
 
 bool BossController::start(const BossConfig& config) {
@@ -181,24 +183,28 @@ void BossController::updateMotionAndBasicAttack(const BossFrameInput& input,
 
   // 自由移动：远距离直线追击，到达期望距离后绕玩家环绕走位，
   // 与主角一样持续位移，不再固定站桩。
+  // 交战留白（Plan 2 Task 7）：首领空挡随体型放大，避免身躯遮住玩家。
   if (distance <= 0.0f) return;
   const float dtSeconds = static_cast<float>(elapsed) / 1000.0f;
+  const EngagementRange bossRange =
+      EngagementRangeFor(EnemyArchetype::RiftClaw, config_.bodyRadius, true);
+  const float orbitDistance =
+      std::max(config_.preferredRange, bossRange.minimum);
   Vec2 step{};
-  if (distance > config_.preferredRange) {
+  if (distance > orbitDistance) {
     const float advance = std::min(
         config_.moveSpeedPerSecond * dtSeconds,
-        distance - config_.preferredRange * 0.5f);
+        distance - orbitDistance * 0.5f);
     step = snapshot_.facing * advance;
   } else {
     const Vec2 tangent{-snapshot_.facing.y * orbitDirection_,
                        snapshot_.facing.x * orbitDirection_};
     const float arc = config_.orbitSpeedRadiansPerSecond * dtSeconds *
-                      config_.preferredRange;
+                      orbitDistance;
     step = tangent * arc;
     // 贴得过近时向外侧微推，维持交战间距。
-    if (distance < config_.preferredRange * 0.6f) {
-      step = step - snapshot_.facing *
-                        (config_.preferredRange * 0.6f - distance);
+    if (distance < bossRange.minimum) {
+      step = step - snapshot_.facing * (bossRange.minimum - distance);
     }
   }
   if (step.finite() && step.length() > 0.0f) {
