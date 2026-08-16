@@ -1503,41 +1503,69 @@ static void drawTargetMarker(Surface& s, const glm::mat4& vp) {
   if (s.targetMarker3d.visibility <= 0.0f) return;
 
   const float phase = s.targetMarker3d.pulsePhase;
-  const float scalePulse = 1.0f + 0.10f * std::sin(phase * 2.0f);
+  // 脉冲幅度加大到 0.14，呼吸更明显。
+  const float scalePulse = 1.0f + 0.14f * std::sin(phase * 2.0f);
   // 基础环网格外半径 0.082（与预警/冲击波共用）：锁定环半径按目标
-  // 体型缩放到 0.5 倍模型缩放，落在接地阴影（0.36 倍）之外，
-  // 避免固定小环被敌人本体/阴影完全遮住而真机不可见。
+  // 体型缩放到 0.72 倍模型缩放（两倍于接地阴影 0.36），环体明显落在
+  // 阴影之外，类似主角脚下圆环的存在感。
   constexpr float kUnitRingOuterRadius = 0.082f;
-  constexpr float kLockRingRadiusFactor = 0.5f;
+  constexpr float kLockRingRadiusFactor = 0.72f;
   // 下限仅防 0（敌人体型缩放约 0.015 量级，不能再夹到 0.1）。
   const float bodyScale = std::max(s.targetMarker3d.targetScale, 1e-4f);
   const float ringScale =
       bodyScale * kLockRingRadiusFactor / kUnitRingOuterRadius * scalePulse;
-  // 环体旋转对称，无需旋转；仅做呼吸缩放脉冲。
-  const glm::mat4 model =
-      glm::translate(glm::mat4(1.0f),
-                     glm::vec3(s.targetMarker3d.x,
-                               groundYAt(s, s.targetMarker3d.x,
-                                         s.targetMarker3d.z) + 0.016f,
-                               s.targetMarker3d.z)) *
-      glm::scale(glm::mat4(1.0f), glm::vec3(ringScale));
+  const float groundY =
+      groundYAt(s, s.targetMarker3d.x, s.targetMarker3d.z);
   // 青金色锁定环，背光面仍保持可见。
   // 锁定元素目标时指示环混入元素色，提示目标系别。
   const glm::vec3 markerColor =
       TargetMarkerColorFor(s.targetMarker3d.element);
-  // 与预警环同一透明绘制口径：关闭深度写、开启混合，
-  // 避免环体被地形深度遮挡或 alpha 不生效导致真机不可见。
+  // 与预警环/冲击波/附着光环同一透明绘制口径：关闭深度写、
+  // 开启加法混合，避免环体被地形深度遮挡或 alpha 不生效导致真机不可见。
+  // 加法混合让元素色在暗处更醒目，与附着光环/冲击波同语言。
   glDepthMask(GL_FALSE);
   glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  s.shader3d.setMVP(vp * model);
-  // 与预警环同因：createRing 正面朝下，剔除开启时从上方不可见。
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE);
   glDisable(GL_CULL_FACE);
-  s.shader3d.setModel(model);
   s.shader3d.setSkinned(false);
   s.shader3d.setHasTexture(false);
-  s.shader3d.setLight(s.lightDir, markerColor * 0.7f, markerColor * 0.5f);
+  s.shader3d.setToonShading(false, glm::vec3(0.7f), 0.1f, 0.08f);
+  s.shader3d.setOutlinePass(0.0f, glm::vec3(0.0f));
+  s.shader3d.setRim(glm::vec3(0.0f), 0.0f);
+  s.shader3d.setSpecular(0.0f, 1.0f);
   s.shader3d.setEnvironmentTint(glm::vec3(0.0f), 0.0f);
+
+  // 底层发光圆盘（类似主角脚下接触阴影的填充存在感）：
+  // 加法混合的元素色淡光盘，半径略小于环，给锁定环一个地面光池，
+  // 让锁定指示从细线升级为有面积的可读标记。
+  if (s.shadowMesh.vbo != 0u) {
+    constexpr float kDiskBaseRadius = 0.5f;  // createDisk(0.5) 基准
+    const float discRadius = bodyScale * kLockRingRadiusFactor * 0.80f;
+    const glm::mat4 discModel =
+        glm::translate(glm::mat4(1.0f),
+                       glm::vec3(s.targetMarker3d.x, groundY + 0.010f,
+                                 s.targetMarker3d.z)) *
+        glm::scale(glm::mat4(1.0f),
+                   glm::vec3(discRadius / kDiskBaseRadius, 1.0f,
+                             discRadius / kDiskBaseRadius));
+    s.shader3d.setLight(glm::vec3(0.0f, 1.0f, 0.0f), markerColor * 0.5f,
+                        markerColor * 0.3f);
+    s.shader3d.setAlpha(s.targetMarker3d.visibility * 0.32f);
+    s.shader3d.setMVP(vp * discModel);
+    s.shader3d.setModel(discModel);
+    s.shadowMesh.draw();
+  }
+
+  // 锁定环本体：加法混合 + 提亮，元素色在地面光池之上更醒目。
+  const glm::mat4 model =
+      glm::translate(glm::mat4(1.0f),
+                     glm::vec3(s.targetMarker3d.x, groundY + 0.016f,
+                               s.targetMarker3d.z)) *
+      glm::scale(glm::mat4(1.0f), glm::vec3(ringScale));
+  s.shader3d.setLight(glm::vec3(0.0f, 1.0f, 0.0f), markerColor * 0.9f,
+                       markerColor * 0.7f);
+  s.shader3d.setMVP(vp * model);
+  s.shader3d.setModel(model);
   // 环体 alpha 由可见度驱动：手动常亮 0.92，自动活跃 0.72 随窗口衰减。
   s.shader3d.setAlpha(s.targetMarker3d.visibility);
   s.targetRingMesh.draw();
@@ -1545,6 +1573,9 @@ static void drawTargetMarker(Surface& s, const glm::mat4& vp) {
   glDisable(GL_BLEND);
   glDepthMask(GL_TRUE);
   glEnable(GL_CULL_FACE);
+  s.shader3d.setRim(kNeutralRimColor, kNeutralRimStrength);
+  s.shader3d.setSpecular(kNeutralSpecularStrength,
+                         kNeutralSpecularShininess);
 }
 
 // -----------------------------------------------------------------------------
