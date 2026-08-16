@@ -33,8 +33,11 @@ struct AssetProfile {
 // VFX 粒子尺寸的参考基准：取特效调参时的原始模型缩放。
 // 火花/投射物等特效按“当前模型缩放 / 基准”的比例动态放大，
 // 之后模型尺寸再调整时特效自动同步跟随，无需修改粒子代码。
+// 主角基准与档案缩放同步为 0.125/3：特效在 ratio=2 时定参，
+// 模型资产缩到 1/5 且档案缩放放大 5 倍后世界体量不变，基准必须
+// 同步，否则主角全部 ratio 驱动特效会放大 5 倍（光柱/冲击波遮屏）。
 inline float VfxSizeRatio(const AssetProfile& profile, ModelKind kind) {
-  const float reference = kind == ModelKind::Player  ? 0.025f / 3.0f
+  const float reference = kind == ModelKind::Player  ? 0.125f / 3.0f
                           : kind == ModelKind::Enemy ? 0.022f / 3.0f
                                                      : 0.045f / 3.0f;
   return reference > 0.0f ? profile.scale / reference : 1.0f;

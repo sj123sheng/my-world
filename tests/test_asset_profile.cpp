@@ -13,10 +13,14 @@ void testProfilesProduceUsableActorTransforms() {
   const AssetProfile player = AssetProfile::forModel(ModelKind::Player);
   const AssetProfile enemy = AssetProfile::forModel(ModelKind::Enemy);
   const AssetProfile boss = AssetProfile::forModel(ModelKind::Boss);
+  const AssetProfile npc = AssetProfile::forModel(ModelKind::Npc);
 
   // 主角模型为原始尺寸的 5 倍（0.05 → 0.25，曾放大 20 倍后缩回 1/4）。
   assert(nearlyEqual(player.scale, 0.25f / 3.0f));
-  assert(nearlyEqual(enemy.scale, 0.044f / 3.0f));
+  // 敌人模型放大 3 倍（0.044/3→0.132/3）；NPC 累计放大 6 倍
+  // （0.05/3→0.15/3→0.30/3，3 倍后仍显小再放大 2 倍）。
+  assert(nearlyEqual(enemy.scale, 0.132f / 3.0f));
+  assert(nearlyEqual(npc.scale, 0.20f / 3.0f));
   assert(nearlyEqual(boss.scale, 0.09f / 3.0f));
   // 主角调整后体量仍超过首领（刻意调整，不再是 Boss 最大）。
   assert(player.scale > boss.scale);
@@ -156,10 +160,17 @@ void testOutlineWidthFollowsRoleHierarchyAndFlash() {
   const AssetProfile player = AssetProfile::forModel(ModelKind::Player);
   const AssetProfile enemy = AssetProfile::forModel(ModelKind::Enemy);
   const AssetProfile boss = AssetProfile::forModel(ModelKind::Boss);
-  // 体量层级：Boss 描边最粗 > 主角 > 敌人。
+  const AssetProfile npc = AssetProfile::forModel(ModelKind::Npc);
+  // 绝对线宽：Boss 最粗、主角次之（主角焦点角色线宽偏细）；
+  // 敌人/NPC 模型放大 3 倍后描边随体量同步放大，绝对线宽超过主角。
   assert(boss.outlineWidth > player.outlineWidth);
-  assert(player.outlineWidth > enemy.outlineWidth);
   assert(enemy.outlineWidth > 0.0f);
+  assert(npc.outlineWidth > 0.0f);
+  // 相对线宽（世界宽度 / 模型缩放）才是体量层级口径：敌人/NPC 放大
+  // 3 倍后相对线宽保持原档（与 Boss 同量级），主角明显更细。
+  assert(enemy.outlineWidth / enemy.scale >
+         player.outlineWidth / player.scale);
+  assert(npc.outlineWidth / npc.scale > player.outlineWidth / player.scale);
   // 受击闪白窗口内描边加宽，强化打击感；窗口外回落。
   const float calm = ActorOutlineWidthFor(player, 0.0f);
   const float flashing = ActorOutlineWidthFor(player, 0.15f);
@@ -201,6 +212,20 @@ void testEnemyArchetypeScaleMatchesVisualRoles() {
   assert(nearlyEqual(EnemyArchetypeScale(99), 1.0f));
 }
 
+void testVfxSizeRatioStaysAtTunedBaseline() {
+  // 特效在 ratio=2 定参：主角模型资产缩到 1/5 且档案缩放放大 5 倍后
+  // 基准同步为 0.125/3，ratio 必须保持 2；基准失同步会让主角全部
+  // ratio 驱动特效（光柱/冲击波/符阵/火花）放大 5 倍遮屏。
+  // 敌人/NPC 模型放大 3 倍是世界体量真实变化：基准保持定参值不动，
+  // ratio 随模型放大到 6，ratio 驱动特效按设计自动随模型同步放大。
+  const AssetProfile player = AssetProfile::forModel(ModelKind::Player);
+  const AssetProfile enemy = AssetProfile::forModel(ModelKind::Enemy);
+  const AssetProfile boss = AssetProfile::forModel(ModelKind::Boss);
+  assert(nearlyEqual(VfxSizeRatio(player, ModelKind::Player), 2.0f));
+  assert(nearlyEqual(VfxSizeRatio(enemy, ModelKind::Enemy), 6.0f));
+  assert(nearlyEqual(VfxSizeRatio(boss, ModelKind::Boss), 2.0f));
+}
+
 }  // namespace
 
 int main() {
@@ -217,5 +242,6 @@ int main() {
   testOutlineWidthFollowsRoleHierarchyAndFlash();
   testOutlineColorDerivesFromRimAndWhitensOnFlash();
   testEnemyArchetypeScaleMatchesVisualRoles();
+  testVfxSizeRatioStaysAtTunedBaseline();
   return 0;
 }

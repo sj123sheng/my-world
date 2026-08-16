@@ -3650,7 +3650,9 @@ void Loop::updateFixed(Tick /*tick*/, int64_t dtMs) {
     const WeaponTrailPose playerTrail = WeaponTrailPoseAt(
         surface.playerSlashSeconds, surface.playerSlashCombo);
     if (playerTrail.active && surface.hitSparks3d.size() <= 128) {
-      const float scale = surface.playerAssetProfile.scale;
+      // 拖尾半径/高度与刀光同基准折回（资产缩 1/5、档案缩放放大 5 倍，
+      // 乘 0.2 保持定参时的世界尺寸），敌人分支不受影响。
+      const float scale = surface.playerAssetProfile.scale * 0.2f;
       const float phi = surface.playerSlashYaw + playerTrail.angleRadians;
       const float radius = playerTrail.radiusFactor * scale;
       float vx = 0.0f, vy = 0.0f, vz = 0.0f;

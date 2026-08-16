@@ -1829,10 +1829,12 @@ static void drawSlashArcs(Surface& s, const glm::mat4& vp) {
       // 元素附魔染色：刀光颜色跟随最近施放的源质（终结段固定金橙）。
       const glm::vec3 color =
           SlashArcColorFor(s.playerSlashCombo, s.playerSlashSource);
-      const float radius = s.playerAssetProfile.scale * 2.4f * pose.scale;
+      // 模型资产缩到 1/5 且档案缩放放大 5 倍（世界体量不变），
+      // 刀光倍率折回定参基准：2.4→0.48、1.15→0.23，否则刀光遮屏。
+      const float radius = s.playerAssetProfile.scale * 0.48f * pose.scale;
       const glm::vec3 center{s.player.x,
                              groundYAt(s, s.player.x, s.player.y) +
-                                 s.playerAssetProfile.scale * 1.15f,
+                                 s.playerAssetProfile.scale * 0.23f,
                              s.player.y};
       drawArc(center, s.playerSlashYaw, pose.sweepRadians, radius, color,
               pose.alpha * 0.85f);
