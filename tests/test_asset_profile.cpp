@@ -15,14 +15,12 @@ void testProfilesProduceUsableActorTransforms() {
   const AssetProfile boss = AssetProfile::forModel(ModelKind::Boss);
   const AssetProfile npc = AssetProfile::forModel(ModelKind::Npc);
 
-  // 主角模型为原始尺寸的 5 倍（0.05 → 0.25，曾放大 20 倍后缩回 1/4）。
-  assert(nearlyEqual(player.scale, 0.25f / 3.0f));
-  // 敌人模型放大 3 倍（0.044/3→0.132/3）；NPC 累计放大 6 倍
-  // （0.05/3→0.15/3→0.30/3，3 倍后仍显小再放大 2 倍）。
-  assert(nearlyEqual(enemy.scale, 0.132f / 3.0f));
-  assert(nearlyEqual(npc.scale, 0.20f / 3.0f));
-  assert(nearlyEqual(boss.scale, 0.09f / 3.0f));
-  // 主角调整后体量仍超过首领（刻意调整，不再是 Boss 最大）。
+  // 四类角色均已恢复注释记录的原始缩放（此前的放大调整全部回退）。
+  assert(nearlyEqual(player.scale, 0.05f));
+  assert(nearlyEqual(enemy.scale, 0.044f / 3.0f));
+  assert(nearlyEqual(npc.scale, 0.05f / 3.0f));
+  assert(nearlyEqual(boss.scale, 0.045f / 3.0f));
+  // 主角体量仍超过首领（恢复原始档后依旧成立）。
   assert(player.scale > boss.scale);
   // boss3d.angle 已按 boss→player 方向计算，模型局部 +Z 为前方，
   // yawOffset 必须为 0，否则首领永远背对玩家。
@@ -162,12 +160,12 @@ void testOutlineWidthFollowsRoleHierarchyAndFlash() {
   const AssetProfile boss = AssetProfile::forModel(ModelKind::Boss);
   const AssetProfile npc = AssetProfile::forModel(ModelKind::Npc);
   // 绝对线宽：Boss 最粗、主角次之（主角焦点角色线宽偏细）；
-  // 敌人/NPC 模型放大 3 倍后描边随体量同步放大，绝对线宽超过主角。
+  // 恢复原始缩放后描边已按同比例下调，层级关系保持不变。
   assert(boss.outlineWidth > player.outlineWidth);
   assert(enemy.outlineWidth > 0.0f);
   assert(npc.outlineWidth > 0.0f);
-  // 相对线宽（世界宽度 / 模型缩放）才是体量层级口径：敌人/NPC 放大
-  // 3 倍后相对线宽保持原档（与 Boss 同量级），主角明显更细。
+  // 相对线宽（世界宽度 / 模型缩放）才是体量层级口径：敌人/NPC 恢复
+  // 原始档后相对线宽保持原档（与 Boss 同量级），主角明显更细。
   assert(enemy.outlineWidth / enemy.scale >
          player.outlineWidth / player.scale);
   assert(npc.outlineWidth / npc.scale > player.outlineWidth / player.scale);
@@ -213,17 +211,16 @@ void testEnemyArchetypeScaleMatchesVisualRoles() {
 }
 
 void testVfxSizeRatioStaysAtTunedBaseline() {
-  // 特效在 ratio=2 定参：主角模型资产缩到 1/5 且档案缩放放大 5 倍后
-  // 基准同步为 0.125/3，ratio 必须保持 2；基准失同步会让主角全部
-  // ratio 驱动特效（光柱/冲击波/符阵/火花）放大 5 倍遮屏。
-  // 敌人/NPC 模型放大 3 倍是世界体量真实变化：基准保持定参值不动，
-  // ratio 随模型放大到 6，ratio 驱动特效按设计自动随模型同步放大。
+  // 特效在基准档定参：主角已恢复原始档案缩放 0.05，基准保持 0.125/3，
+  // ratio 随之回落到 1.2（基准不同步会让 ratio 驱动特效遮屏，故基准
+  // 只在资产重烘焙时才调整）。敌人/Boss 恢复原始缩放后 ratio 分别
+  // 回落到 2/1，ratio 驱动特效按设计自动随模型同步缩小。
   const AssetProfile player = AssetProfile::forModel(ModelKind::Player);
   const AssetProfile enemy = AssetProfile::forModel(ModelKind::Enemy);
   const AssetProfile boss = AssetProfile::forModel(ModelKind::Boss);
-  assert(nearlyEqual(VfxSizeRatio(player, ModelKind::Player), 2.0f));
-  assert(nearlyEqual(VfxSizeRatio(enemy, ModelKind::Enemy), 6.0f));
-  assert(nearlyEqual(VfxSizeRatio(boss, ModelKind::Boss), 2.0f));
+  assert(nearlyEqual(VfxSizeRatio(player, ModelKind::Player), 1.2f));
+  assert(nearlyEqual(VfxSizeRatio(enemy, ModelKind::Enemy), 2.0f));
+  assert(nearlyEqual(VfxSizeRatio(boss, ModelKind::Boss), 1.0f));
 }
 
 }  // namespace
